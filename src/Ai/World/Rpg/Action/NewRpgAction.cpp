@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "AreaDefines.h"
@@ -17,6 +19,7 @@
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowOracleZoneTravelAssistPolicy.h"
 #include "AutoWowQuestLedger.h"
+#include "Bag.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "Config.h"
@@ -746,6 +749,110 @@ bool NewRpgDoQuestAction::BlockQuest(NewRpgInfo::DoQuest& data, QuestFailureReas
     // the Blocked phase so the external Director can observe objectiveRuntime and
     // decide. The RPG_DO_QUEST -> IDLE status timeout is the ultimate safety net.
     return ForceToWait(3000);
+}
+
+namespace
+{
+// Per-bot full-bag escalation state. Kept outside NewRpgInfo so an Oracle re-arm or an RPG
+// status change cannot reset the backoff. Bots update on map threads, hence the lock.
+// ponytail: one global lock; entries are touched only while a bot's bags are full.
+std::mutex fullBagReliefLock;
+std::unordered_map<uint32, QuestInventoryReliefPolicy::FullBagRelief> fullBagReliefByBot;
+}  // namespace
+
+bool NewRpgDoQuestAction::RelieveFullBagsForQuest(NewRpgInfo::DoQuest& data)
+{
+    namespace Relief = QuestInventoryReliefPolicy;
+    static_assert(Relief::PoorQuality == ITEM_QUALITY_POOR);
+
+    QuestObjectiveRuntime& rt = data.objectiveRuntime;
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    uint32 const nowMs = getMSTime();
+    Relief::FullBagStep step;
+    {
+        std::lock_guard<std::mutex> guard(fullBagReliefLock);
+        step = Relief::ObserveFullBag(fullBagReliefByBot[botGuid], data.questId, nowMs);
+    }
+
+    auto setAside = [&]()
+    {
+        // Same shape as the Oracle "deferred unrunnable" path: keep the quest, lower its
+        // selection priority, and let the bot move on to other work.
+        botAI->lowPriorityQuest.insert(data.questId);
+        botAI->rpgInfo.ChangeToIdle();
+        return true;
+    };
+
+    if (step == Relief::FullBagStep::Backoff)
+        return setAside();
+
+    if (step == Relief::FullBagStep::TryVendor && TryRelieveInventoryAtVendor(data, /*incompleteItem*/ true))
+        return true;
+
+    // Vendor window spent or no vendor progress possible: free the needed slots from safe junk.
+    std::vector<Relief::BagItemFacts> items;
+    auto collect = [&](uint8 bag, uint8 slot, Item* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (!proto)
+            return;
+        Relief::BagItemFacts facts;
+        facts.bag = bag;
+        facts.slot = slot;
+        facts.quality = static_cast<uint8>(proto->Quality);
+        facts.questRelated = proto->Class == ITEM_CLASS_QUEST || proto->Bonding == BIND_QUEST_ITEM ||
+                             proto->StartQuest != 0 || bot->HasQuestForItem(proto->ItemId);
+        facts.retainedClass = proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_REAGENT ||
+                              proto->Class == ITEM_CLASS_RECIPE;
+        if (facts.quality == Relief::PoorQuality && !facts.questRelated && !facts.retainedClass)
+        {  // item usage is the expensive fact; only junk candidates need it
+            ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", proto->ItemId);
+            facts.usageSafe = usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH;
+        }
+        facts.value = proto->SellPrice * item->GetCount();
+        items.push_back(facts);
+    };
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        collect(INVENTORY_SLOT_BAG_0, slot, bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = bot->GetBagByPos(bagSlot))
+            for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                collect(bagSlot, static_cast<uint8>(slot), bag->GetItemByPos(static_cast<uint8>(slot)));
+
+    std::vector<Relief::BagItemFacts> const junk = Relief::SelectJunkToDestroy(items, Relief::NeededJunkSlots);
+    if (junk.size() == Relief::NeededJunkSlots)
+    {
+        for (Relief::BagItemFacts const& victim : junk)
+        {
+            Item* item = bot->GetItemByPos(victim.bag, victim.slot);
+            LOG_INFO("playerbots", "[New RPG] {} quest {} full-bag relief destroyed junk item {} x{} (value {})",
+                     bot->GetName(), data.questId, item ? item->GetEntry() : 0, item ? item->GetCount() : 0,
+                     victim.value);
+            bot->DestroyItem(victim.bag, victim.slot, true);
+        }
+        {
+            std::lock_guard<std::mutex> guard(fullBagReliefLock);
+            Relief::ResolveFullBag(fullBagReliefByBot[botGuid]);
+        }
+        context->GetValue<uint8>("bag space")->Reset();
+        rt.failure = QuestFailureReason::None;
+        EnterQuestPhase(data, QuestActionPhase::ResolveObjective);
+        rt.attemptCount = 0;
+        return true;
+    }
+
+    // Nothing safe to free: defer with a reason and back off before looking at this quest again.
+    uint32 backoffMs = 0;
+    {
+        std::lock_guard<std::mutex> guard(fullBagReliefLock);
+        backoffMs = Relief::DeferFullBag(fullBagReliefByBot[botGuid], nowMs);
+    }
+    LOG_DEBUG("playerbots", "[New RPG] {} quest {} deferred on full bags, backoff {} ms", bot->GetName(),
+              data.questId, backoffMs);
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, data.questId, "inventory_full",
+                                 AutoWowQuestLedger::PhaseName(rt.phase));
+    return setAside();
 }
 
 bool NewRpgDoQuestAction::MaintainQuestPartyCohesion(NewRpgInfo::DoQuest const& data,
@@ -2029,6 +2136,8 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
             questId, spec, AI_VALUE(uint8, "bag space"), bot->IsAlive(), bot->IsInCombat()))
     {
         rt.failure = QuestFailureReason::InventoryFull;
+        if (sPlayerbotAIConfig.autoWowQuestFullBagRelief)
+            return RelieveFullBagsForQuest(data);
         if (TryRelieveInventoryAtVendor(data, /*incompleteItem*/ true))
             return true;
         return BlockQuest(data, QuestFailureReason::InventoryFull, /*unsupported*/ false);

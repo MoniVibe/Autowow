@@ -154,6 +154,10 @@ protected:
     // Blocked phase so the Director can observe objectiveRuntime.failure and own
     // the abandon decision. Never increments the questAbandoned statistic.
     bool BlockQuest(NewRpgInfo::DoQuest& data, QuestFailureReason reason, bool unsupported);
+    // AutoWow.QuestFullBagRelief.Enable: bounded escalation for an incomplete collect-item quest
+    // stalled on 100% bag occupancy (vendor relief -> destroy safe junk -> defer with backoff).
+    // See QuestInventoryReliefPolicy. Never reached when the flag is off.
+    bool RelieveFullBagsForQuest(NewRpgInfo::DoQuest& data);
     // Keep a quest participant with its leader during ordinary non-combat travel. Combat, loot,
     // scripted interactions, and corpse recovery remain independent so the cohesion rule cannot
     // suppress legitimate work or rescue behavior.

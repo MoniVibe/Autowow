@@ -2229,6 +2229,14 @@ AutoWow.Ledger.Enable = 0
 # (run, bot, quest). Default empty.
 AutoWow.Ledger.RunId = ""
 
+# Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
+# 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
+# 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,
+# trade goods, reagents, recipes, equipped items, or anything above gray quality), else defer the
+# quest (ledger `deferred` reason inventory_full) and skip re-evaluation for 5/10/20/40/60 s.
+# Default 0 = legacy behavior (vendor relief, else hold Blocked).
+AutoWow.QuestFullBagRelief.Enable = 0
+
 #
 #
 ####################################################################################################

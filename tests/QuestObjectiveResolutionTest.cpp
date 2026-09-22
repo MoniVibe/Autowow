@@ -1220,3 +1220,112 @@ TEST(QuestObjectiveResolutionIntegration, DISABLED_AggroGeometryRespectsWhitelis
     // then assert the live targeter still selects the source. Needs world geometry / grid.
     GTEST_SKIP() << "Requires world geometry (real aggro-range grid).";
 }
+
+// =================================================================================================
+// Full-bag stall relief (AutoWow.QuestFullBagRelief.Enable): pure escalation + junk selection.
+// =================================================================================================
+TEST(QuestFullBagRelief, VendorWindowThenFallbackWithinOneEpisode)
+{
+    using namespace QuestInventoryReliefPolicy;
+    FullBagRelief s;
+    EXPECT_EQ(ObserveFullBag(s, 916, 1000), FullBagStep::TryVendor);
+    EXPECT_EQ(ObserveFullBag(s, 916, 1000 + VendorReliefBudgetMs - 1), FullBagStep::TryVendor);
+    // Observations keep the episode alive only while they arrive inside the gap.
+    FullBagRelief live;
+    uint32 t = 1000;
+    for (; t < 1000 + VendorReliefBudgetMs; t += 1000)
+        EXPECT_EQ(ObserveFullBag(live, 916, t), FullBagStep::TryVendor);
+    EXPECT_EQ(ObserveFullBag(live, 916, t), FullBagStep::Fallback);
+}
+
+TEST(QuestFullBagRelief, QuestChangeAndEpisodeGapReopenVendorWindow)
+{
+    using namespace QuestInventoryReliefPolicy;
+    FullBagRelief s;
+    uint32 t = 0;
+    for (; t <= VendorReliefBudgetMs; t += 1000)
+        (void)ObserveFullBag(s, 916, t);
+    EXPECT_EQ(ObserveFullBag(s, 916, t), FullBagStep::Fallback);
+    EXPECT_EQ(ObserveFullBag(s, 917, t), FullBagStep::TryVendor);  // different quest
+    FullBagRelief g;
+    for (t = 0; t <= VendorReliefBudgetMs; t += 1000)
+        (void)ObserveFullBag(g, 916, t);
+    EXPECT_EQ(ObserveFullBag(g, 916, t + FullBagEpisodeGapMs + 1), FullBagStep::TryVendor);
+}
+
+TEST(QuestFullBagRelief, DeferBackoffIsExponentialCappedAndSuppressesReevaluation)
+{
+    using namespace QuestInventoryReliefPolicy;
+    EXPECT_EQ(DeferBackoffMs(0), 5000u);
+    EXPECT_EQ(DeferBackoffMs(1), 10000u);
+    EXPECT_EQ(DeferBackoffMs(2), 20000u);
+    EXPECT_EQ(DeferBackoffMs(3), 40000u);
+    EXPECT_EQ(DeferBackoffMs(4), 60000u);
+    EXPECT_EQ(DeferBackoffMs(255), 60000u);
+
+    FullBagRelief s;
+    uint32 const t0 = 50000;
+    (void)ObserveFullBag(s, 916, t0);
+    EXPECT_EQ(DeferFullBag(s, t0), 5000u);
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 4999), FullBagStep::Backoff);
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 5000), FullBagStep::TryVendor);  // fresh vendor window
+    EXPECT_EQ(DeferFullBag(s, t0 + 5000), 10000u);
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 14999), FullBagStep::Backoff);
+
+    // A long idle gap (bot set the quest aside) keeps the exponent: no reset to 5 s.
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 200000), FullBagStep::TryVendor);
+    EXPECT_EQ(DeferFullBag(s, t0 + 200000), 20000u);
+
+    ResolveFullBag(s);
+    EXPECT_EQ(s.defers, 0u);
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 300000), FullBagStep::TryVendor);
+}
+
+TEST(QuestFullBagRelief, BackoffSurvivesMsTimerWrap)
+{
+    using namespace QuestInventoryReliefPolicy;
+    FullBagRelief s;
+    uint32 const t0 = 0xFFFFF000u;
+    (void)ObserveFullBag(s, 916, t0);
+    (void)DeferFullBag(s, t0);  // retryAt wraps past zero
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 1000), FullBagStep::Backoff);
+    EXPECT_EQ(ObserveFullBag(s, 916, t0 + 5000), FullBagStep::TryVendor);
+}
+
+TEST(QuestFullBagRelief, JunkSelectionIsPoorOnlyLowestValueDeterministic)
+{
+    using namespace QuestInventoryReliefPolicy;
+    auto poor = [](uint8 bag, uint8 slot, uint32 value)
+    {
+        BagItemFacts f;
+        f.bag = bag;
+        f.slot = slot;
+        f.quality = PoorQuality;
+        f.usageSafe = true;
+        f.value = value;
+        return f;
+    };
+    BagItemFacts quest = poor(255, 23, 0);
+    quest.questRelated = true;
+    BagItemFacts reagent = poor(255, 24, 0);
+    reagent.retainedClass = true;
+    BagItemFacts green = poor(255, 25, 0);
+    green.quality = 2;  // soulbound gear above gray is never junk
+    BagItemFacts useful = poor(255, 26, 0);
+    useful.usageSafe = false;  // equip/keep usage
+    BagItemFacts cheapLate = poor(20, 3, 7);
+    BagItemFacts cheapEarly = poor(19, 5, 7);
+    BagItemFacts dear = poor(255, 27, 90);
+
+    std::vector<BagItemFacts> const items{quest, reagent, green, useful, dear, cheapLate, cheapEarly};
+    std::vector<BagItemFacts> const one = SelectJunkToDestroy(items, NeededJunkSlots);
+    ASSERT_EQ(one.size(), 1u);
+    EXPECT_EQ(one[0].bag, 19);
+    EXPECT_EQ(one[0].slot, 5);
+
+    std::vector<BagItemFacts> const all = SelectJunkToDestroy(items, 10);
+    ASSERT_EQ(all.size(), 3u);  // exactly the three safe gray items, never more
+    EXPECT_EQ(all[2].value, 90u);
+
+    EXPECT_TRUE(SelectJunkToDestroy({quest, reagent, green, useful}, NeededJunkSlots).empty());
+}
