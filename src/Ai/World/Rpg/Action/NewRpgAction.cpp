@@ -729,8 +729,8 @@ bool NewRpgDoQuestAction::BlockQuest(NewRpgInfo::DoQuest& data, QuestFailureReas
     LOG_DEBUG("playerbots", "[New RPG] {} quest {} blocked (reason {}, unsupported {})", bot->GetName(), data.questId,
               static_cast<uint32>(reason), unsupported);
     if (AutoWowQuestLedger::Enabled())
-        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Blocked, data.questId,
-                                 AutoWowQuestLedger::ReasonName(reason), AutoWowQuestLedger::PhaseName(priorPhase));
+        AutoWowQuestLedger::EmitBlocked(bot, data.questId, AutoWowQuestLedger::ReasonName(reason),
+                                        AutoWowQuestLedger::PhaseName(priorPhase));
 
     if (unsupported)
     {

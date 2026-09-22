@@ -15,6 +15,9 @@
 //   - Event names are append-only and never reused; a meaning change bumps kSchemaVersion.
 //   - Positions are integer yards (floor); counters are the core QuestStatusData counters.
 //   - Gate: AutoWow.Ledger.Enable (default 0). Disabled cost is one cached bool read per call site.
+//   - Optional trailing fields (appended after `phase`, only on the events that carry them):
+//       n  (blocked, AutoWow.Ledger.BlockedDedupeMs > 0): occurrences this line stands for (>= 1).
+//          Lines without `n` stand for exactly one occurrence.
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -72,12 +75,75 @@ struct Row
     std::uint16_t i[kItemCounters] = {};
     char const* reason = "";  // static literal from a closed name table
     char const* phase = "";   // static literal from a closed name table
+    std::uint32_t n = 0;      // blocked repeat count; 0 = field omitted (one occurrence)
 };
+
+// Blocked-row dedupe (pure; unit-tested). A (quest, reason, phase) key emits on change; repeats of
+// the same key are counted and emitted as one heartbeat line with `n` once heartbeatMs has passed.
+// On a key change the previous key's uncounted repeats are flushed first, so sum(n) is exact except
+// for a trailing (< heartbeatMs) tail of a key the bot never reports again.
+struct BlockedKey
+{
+    std::uint32_t quest = 0;
+    char const* reason = "";  // static literals: ReasonName / PhaseName tables
+    char const* phase = "";
+};
+
+struct BlockedDedupeState
+{
+    BlockedKey key;
+    bool active = false;
+    std::uint64_t lastEmitMs = 0;
+    std::uint32_t suppressed = 0;
+};
+
+struct BlockedDecision
+{
+    std::uint32_t flushN = 0;  // > 0: first emit a line for flushKey with n = flushN
+    BlockedKey flushKey;
+    std::uint32_t n = 0;       // > 0: emit this occurrence with n; 0 = suppressed
+};
+
+inline bool SameBlockedKey(BlockedKey const& a, BlockedKey const& b)
+{
+    return a.quest == b.quest && std::string_view(a.reason ? a.reason : "") == (b.reason ? b.reason : "") &&
+           std::string_view(a.phase ? a.phase : "") == (b.phase ? b.phase : "");
+}
+
+inline BlockedDecision DedupeBlocked(BlockedDedupeState& s, BlockedKey const& key, std::uint64_t nowMs,
+                                     std::uint64_t heartbeatMs)
+{
+    BlockedDecision out;
+    if (s.active && SameBlockedKey(s.key, key))
+    {
+        if (nowMs - s.lastEmitMs < heartbeatMs)
+        {
+            ++s.suppressed;
+            return out;
+        }
+        out.n = s.suppressed + 1;
+    }
+    else
+    {
+        if (s.active && s.suppressed)
+        {
+            out.flushN = s.suppressed;
+            out.flushKey = s.key;
+        }
+        s.key = key;
+        s.active = true;
+        out.n = 1;
+    }
+    s.lastEmitMs = nowMs;
+    s.suppressed = 0;
+    return out;
+}
 
 namespace detail
 {
 inline bool gEnabled = false;
 inline std::string gRunId;
+inline std::uint64_t gBlockedDedupeMs = 0;
 
 inline void AppendEscaped(std::string& out, std::string_view text)
 {
@@ -150,7 +216,13 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
     detail::AppendEscaped(out, row.reason ? row.reason : "");
     out += "\",\"phase\":\"";
     detail::AppendEscaped(out, row.phase ? row.phase : "");
-    out += "\"}";
+    out += "\"";
+    if (row.n)
+    {
+        out += ",\"n\":";
+        out += std::to_string(row.n);
+    }
+    out += "}";
     return out;
 }
 
@@ -164,6 +236,10 @@ char const* PhaseName(QuestActionPhase phase);
 // World-thread only. No-op when disabled, when player is null, or when player is not a playerbot
 // (real players and human-controlled bots are never recorded).
 void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason = "", char const* phase = "");
+
+// Blocked event through the per-bot dedupe (AutoWow.Ledger.BlockedDedupeMs; 0 = every occurrence,
+// identical to Emit(Blocked)). reason/phase must be static literals (ReasonName / PhaseName).
+void EmitBlocked(Player* player, std::uint32_t questId, char const* reason, char const* phase);
 }  // namespace AutoWowQuestLedger
 
 #endif

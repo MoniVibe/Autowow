@@ -74,4 +74,78 @@ TEST(AutoWowQuestLedgerTest, DisabledByDefault)
 {
     EXPECT_FALSE(AutoWowQuestLedger::Enabled());
 }
+
+TEST(AutoWowQuestLedgerTest, BlockedCountFieldIsTrailingAndOmittedWhenZero)
+{
+    Row row;
+    row.ev = Event::Blocked;
+    row.reason = "inventory_full";
+    row.phase = "resolve_objective";
+    std::string const plain = AutoWowQuestLedger::FormatLine("r", row);
+    EXPECT_EQ(plain.find("\"n\":"), std::string::npos);
+    row.n = 42;
+    std::string const counted = AutoWowQuestLedger::FormatLine("r", row);
+    EXPECT_EQ(counted, plain.substr(0, plain.size() - 1) + ",\"n\":42}");
+}
+
+TEST(AutoWowQuestLedgerTest, BlockedDedupeEmitsOnChangeAndHeartbeatsWithCount)
+{
+    using AutoWowQuestLedger::BlockedDecision;
+    using AutoWowQuestLedger::BlockedDedupeState;
+    using AutoWowQuestLedger::BlockedKey;
+    using AutoWowQuestLedger::DedupeBlocked;
+    constexpr std::uint64_t hb = 60000;
+    BlockedDedupeState s;
+    BlockedKey const full{835, "inventory_full", "resolve_objective"};
+
+    BlockedDecision d = DedupeBlocked(s, full, 1000, hb);
+    EXPECT_EQ(d.n, 1u);
+    EXPECT_EQ(d.flushN, 0u);
+
+    // ~2 Hz for just under a minute: all suppressed.
+    std::uint32_t total = 1;
+    std::uint64_t t = 1000;
+    for (int k = 0; k < 119; ++k)
+    {
+        t += 500;
+        d = DedupeBlocked(s, full, t, hb);
+        EXPECT_EQ(d.n, 0u);
+        ++total;
+    }
+    // Heartbeat at 60 s: one line standing for 119 suppressed + this one.
+    d = DedupeBlocked(s, full, 61000, hb);
+    ++total;
+    EXPECT_EQ(d.n, 120u);
+
+    // Two more repeats, then the phase changes: flush those two, then emit the new key.
+    std::uint32_t emitted = 1 + 120;
+    (void)DedupeBlocked(s, full, 61500, hb);
+    (void)DedupeBlocked(s, full, 62000, hb);
+    total += 2;
+    BlockedKey const moved{835, "inventory_full", "travel_to_source"};
+    d = DedupeBlocked(s, moved, 62500, hb);
+    ++total;
+    EXPECT_EQ(d.flushN, 2u);
+    EXPECT_EQ(d.flushKey.quest, 835u);
+    EXPECT_STREQ(d.flushKey.phase, "resolve_objective");
+    EXPECT_EQ(d.n, 1u);
+    emitted += d.flushN + d.n;
+    EXPECT_EQ(emitted, total);  // sterile sum: sum(n) == occurrences
+
+    // A different quest with no suppressed repeats: no flush line.
+    d = DedupeBlocked(s, BlockedKey{836, "inventory_full", "travel_to_source"}, 63000, hb);
+    EXPECT_EQ(d.flushN, 0u);
+    EXPECT_EQ(d.n, 1u);
+}
+
+TEST(AutoWowQuestLedgerTest, BlockedDedupeComparesKeyByTextNotPointer)
+{
+    using AutoWowQuestLedger::BlockedDedupeState;
+    using AutoWowQuestLedger::BlockedKey;
+    using AutoWowQuestLedger::DedupeBlocked;
+    BlockedDedupeState s;
+    std::string const reasonCopy = "no_live_candidate";
+    (void)DedupeBlocked(s, BlockedKey{1, "no_live_candidate", "acquire_target"}, 0, 60000);
+    EXPECT_EQ(DedupeBlocked(s, BlockedKey{1, reasonCopy.c_str(), "acquire_target"}, 10, 60000).n, 0u);
+}
 }  // namespace

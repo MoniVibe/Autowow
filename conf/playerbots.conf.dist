@@ -2228,6 +2228,10 @@ AutoWow.Ledger.Enable = 0
 # Free-form run label copied into every line's "run" field so the offline reducer keys rows by
 # (run, bot, quest). Default empty.
 AutoWow.Ledger.RunId = ""
+# Blocked-row dedupe window (ms). 0 (default) = one `blocked` line per occurrence (legacy). N > 0 =
+# emit `blocked` only when (quest, reason, phase) changes, plus one heartbeat line per N ms of
+# repeats carrying a count field `n` (occurrences the line stands for). 60000 is the soak value.
+AutoWow.Ledger.BlockedDedupeMs = 0
 
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most

@@ -7,6 +7,8 @@
 #include "AutoWowQuestLedger.h"
 
 #include <cmath>
+#include <mutex>
+#include <unordered_map>
 
 #include "Config.h"
 #include "GameTime.h"
@@ -26,6 +28,7 @@ void LoadConfig()
 {
     detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Ledger.Enable", false);
     detail::gRunId = sConfigMgr->GetOption<std::string>("AutoWow.Ledger.RunId", "");
+    detail::gBlockedDedupeMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Ledger.BlockedDedupeMs", 0);
 }
 
 char const* ReasonName(QuestFailureReason reason)
@@ -90,16 +93,19 @@ char const* PhaseName(QuestActionPhase phase)
     return "unknown";
 }
 
-void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase)
+namespace
+{
+bool IsRecordedBot(Player* player)
 {
     if (!detail::gEnabled || !player)
-        return;
-
+        return false;
     PlayerbotAI* ai = PlayerbotsMgr::instance().GetPlayerbotAI(player);
-    if (!ai || ai->IsRealPlayer())
-        return;
+    return ai && !ai->IsRealPlayer();
+}
 
-    Row row;
+// Fills the bot context (time, identity, position, quest counters) of a row. Caller filtered.
+void FillRow(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase, Row& row)
+{
     row.ev = ev;
     row.ms = static_cast<std::uint64_t>(GameTime::GetGameTimeMS().count());
     row.bot = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
@@ -124,7 +130,54 @@ void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, c
     }
     row.reason = reason;
     row.phase = phase;
+}
 
+// Bots update on map threads; the dedupe table is shared. Touched only on blocked events.
+std::mutex gBlockedLock;
+std::unordered_map<std::uint32_t, BlockedDedupeState> gBlockedByBot;
+}  // namespace
+
+void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase)
+{
+    if (!IsRecordedBot(player))
+        return;
+
+    Row row;
+    FillRow(player, ev, questId, reason, phase, row);
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
+void EmitBlocked(Player* player, std::uint32_t questId, char const* reason, char const* phase)
+{
+    if (!IsRecordedBot(player))
+        return;
+    if (!detail::gBlockedDedupeMs)
+    {
+        Emit(player, Event::Blocked, questId, reason, phase);
+        return;
+    }
+
+    std::uint64_t const nowMs = static_cast<std::uint64_t>(GameTime::GetGameTimeMS().count());
+    BlockedDecision decision;
+    {
+        std::lock_guard<std::mutex> guard(gBlockedLock);
+        decision = DedupeBlocked(gBlockedByBot[static_cast<std::uint32_t>(player->GetGUID().GetCounter())],
+                                 BlockedKey{questId, reason, phase}, nowMs, detail::gBlockedDedupeMs);
+    }
+    if (decision.flushN)
+    {
+        Row row;
+        FillRow(player, Event::Blocked, decision.flushKey.quest, decision.flushKey.reason, decision.flushKey.phase,
+                row);
+        row.n = decision.flushN;
+        LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+    }
+    if (decision.n)
+    {
+        Row row;
+        FillRow(player, Event::Blocked, questId, reason, phase, row);
+        row.n = decision.n;
+        LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+    }
 }
 }  // namespace AutoWowQuestLedger
