@@ -10,6 +10,8 @@
 !/leagues/
 !/core-patches/
 !/census/
+!/research/
+!/jev-shadow/
 /leagues/results/
 *.pid.json
 *.gcno

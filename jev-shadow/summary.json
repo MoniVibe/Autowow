@@ -1,0 +1,209 @@
+{
+ "calls": 0,
+ "valid": 0,
+ "latency": {},
+ "cost_total": 0,
+ "cost_per_call": null,
+ "usage_sample": null,
+ "decision_points": {
+  "total": 16,
+  "by_kind": {
+   "stall": 5,
+   "rewarded": 9,
+   "deferred": 2
+  },
+  "span_h": 0.32293114516470167,
+  "bots": 13
+ },
+ "dp_per_bot_hour": 3.811243508709922,
+ "baseline_dist": {
+  "keep_trying": 3,
+  "pickup_new": 4,
+  "continue_368": 1,
+  "other": 1
+ },
+ "agreement": {
+  "agree": 0,
+  "comparable": 0,
+  "pct": null
+ },
+ "persona": {},
+ "errors": [],
+ "ledger_span_min": 24.10621666666667,
+ "rows": [
+  {
+   "dp": 1,
+   "kind": "stall",
+   "bot": 121,
+   "lvl": 12,
+   "quest": 748,
+   "reason": "inventory_full",
+   "jev": null,
+   "baseline": "keep_trying",
+   "next_ev": null,
+   "stall_persisted_min": 19.6,
+   "min_to_next_reward": null,
+   "options": [
+    "keep_trying",
+    "clear_bags",
+    "switch_746",
+    "defer_quest",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 3,
+   "kind": "rewarded",
+   "bot": 33,
+   "lvl": 80,
+   "quest": 13272,
+   "reason": "",
+   "jev": null,
+   "baseline": "pickup_new",
+   "next_ev": "accepted q12521 ",
+   "stall_persisted_min": null,
+   "min_to_next_reward": null,
+   "options": [
+    "turnin_12853",
+    "continue_12527",
+    "continue_12562",
+    "pickup_new",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 5,
+   "kind": "rewarded",
+   "bot": 236,
+   "lvl": 11,
+   "quest": 404,
+   "reason": "",
+   "jev": null,
+   "baseline": "continue_368",
+   "next_ev": "blocked q368 oracle_route_blocked",
+   "stall_persisted_min": null,
+   "min_to_next_reward": null,
+   "options": [
+    "continue_368",
+    "pickup_new",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 8,
+   "kind": "rewarded",
+   "bot": 29,
+   "lvl": 80,
+   "quest": 13099,
+   "reason": "",
+   "jev": null,
+   "baseline": "pickup_new",
+   "next_ev": "accepted q13556 ",
+   "stall_persisted_min": null,
+   "min_to_next_reward": null,
+   "options": [
+    "continue_12635",
+    "pickup_new",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 9,
+   "kind": "deferred",
+   "bot": 14,
+   "lvl": 9,
+   "quest": 384,
+   "reason": "executor_unsupported",
+   "jev": null,
+   "baseline": "pickup_new",
+   "next_ev": "accepted q317 ",
+   "stall_persisted_min": null,
+   "min_to_next_reward": 1.2,
+   "options": [
+    "turnin_400",
+    "turnin_475",
+    "continue_412",
+    "pickup_new",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 12,
+   "kind": "stall",
+   "bot": 30,
+   "lvl": 80,
+   "quest": 12624,
+   "reason": "progress_did_not_change",
+   "jev": null,
+   "baseline": "keep_trying",
+   "next_ev": null,
+   "stall_persisted_min": 2.8,
+   "min_to_next_reward": null,
+   "options": [
+    "keep_trying",
+    "switch_12522",
+    "switch_12524",
+    "defer_quest",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 13,
+   "kind": "rewarded",
+   "bot": 25,
+   "lvl": 9,
+   "quest": 817,
+   "reason": "",
+   "jev": null,
+   "baseline": "other",
+   "next_ev": "contaminated q0 rndbot_teleport",
+   "stall_persisted_min": null,
+   "min_to_next_reward": null,
+   "options": [
+    "continue_808",
+    "continue_826",
+    "continue_429",
+    "pickup_new",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 14,
+   "kind": "deferred",
+   "bot": 10,
+   "lvl": 11,
+   "quest": 1141,
+   "reason": "oracle_unrunnable",
+   "jev": null,
+   "baseline": "pickup_new",
+   "next_ev": "accepted q3524 ",
+   "stall_persisted_min": null,
+   "min_to_next_reward": null,
+   "options": [
+    "turnin_2520",
+    "continue_983",
+    "pickup_new",
+    "grind_nearby"
+   ]
+  },
+  {
+   "dp": 16,
+   "kind": "stall",
+   "bot": 101,
+   "lvl": 9,
+   "quest": 916,
+   "reason": "no_live_candidate",
+   "jev": null,
+   "baseline": "keep_trying",
+   "next_ev": null,
+   "stall_persisted_min": null,
+   "min_to_next_reward": null,
+   "options": [
+    "keep_trying",
+    "switch_3521",
+    "defer_quest",
+    "grind_nearby"
+   ]
+  }
+ ]
+}

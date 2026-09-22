@@ -1,0 +1,60 @@
+    80.80%     0.00%  [.] CalculatedValue<QuestObjectiveSpec>::Get()
+    80.79%     0.00%  [.] ActiveQuestObjectiveValue::Calculate()
+    68.78%     0.43%  [.] void std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>
+    68.78%     0.00%  [.] SingleCalculatedValue<std::unordered_map<unsigned int, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equ
+    68.78%     0.00%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std
+    68.78%     0.00%  [.] std::unordered_map<unsigned int, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::alloc
+    67.93%     0.09%  [.] std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::eq
+    67.87%     0.23%  [.] std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::eq
+    67.20%     0.15%  [.] decltype (::new ((void*)(0)) std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std:
+    67.10%     0.20%  [.] std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocato
+    66.90%     0.11%  [.] std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::ve
+    66.80%     0.35%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<s
+    66.37%     0.70%  [.] void std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::alloca
+    64.05%     0.27%  [.] std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::
+    63.86%     0.48%  [.] std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::
+    62.60%     0.40%  [.] decltype (::new ((void*)(0)) std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<st
+    62.25%     0.36%  [.] std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::vecto
+    61.89%     0.21%  [.] std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator
+    61.72%     0.41%  [.] std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> >
+    61.52%     1.47%  [.] void std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPositi
+    58.22%     0.00%  [.] 0xffffffffffffffff
+    56.01%     0.77%  [.] std::__detail::_Hash_node<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, false>* std::__detail::_AllocNode<std::allocator<std::__detail::_Hash_node<std::pair<in
+    55.50%     1.11%  [.] std::__detail::_Hash_node<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, false>* std::__detail::_Hashtable_alloc<std::allocator<std::__detail::_Hash_node<std::p
+    51.01%     0.40%  [.] decltype (::new ((void*)(0)) std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >((declval<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> 
+    50.58%     1.29%  [.] std::vector<GuidPosition, std::allocator<GuidPosition> >::vector(std::vector<GuidPosition, std::allocator<GuidPosition> > const&)
+    50.50%     0.38%  [.] std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >::pair(std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > > const&)
+    40.52%     0.57%  [.] GuidPosition* std::__uninitialized_copy_a<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*, GuidPosition>(__gnu_cxx::__
+    40.37%     3.62%  [.] GuidPosition* std::__do_uninit_copy<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*>(__gnu_cxx::__normal_iterator<Guid
+    40.08%     0.42%  [.] GuidPosition* std::uninitialized_copy<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*>(__gnu_cxx::__normal_iterator<Gu
+    39.79%     0.43%  [.] GuidPosition* std::__uninitialized_copy<false>::__uninit_copy<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*>(__gnu_c
+    27.51%     4.69%  [.] void std::_Construct<GuidPosition, GuidPosition const&>(GuidPosition*, GuidPosition const&)
+    25.06%     0.01%  [.] AutoWowOracleRuntime::Runtime::BuildLiveQuestFrame(unsigned long, unsigned long, unsigned long, unsigned long, AutoWowOracle::ActiveLeaseSnapshot const&, AutoWowOracleRuntime::Runtime::LiveQuest
+    21.82%     0.00%  [.] AutoWowOracleRuntime::Runtime::ProcessConfiguredBot(unsigned long)
+    21.55%     0.00%  [.] AutoWowOracleRuntime::Runtime::NativeDispatch(void*, AutoWowOracleQuestExecutor::NativeObjectiveStepRequest const&)
+    20.96%     7.71%  [.] GuidPosition::GuidPosition(GuidPosition const&)
+    19.37%     0.00%  [.] AutoWowOracleRuntime::Runtime::EnsureQuestDirective(unsigned long, AutoWowOracleRuntime::BotState&)
+    18.41%     0.00%  [.] Engine::ListenAndExecute(Action*, Event)
+    17.58%     0.00%  [.] NewRpgDoQuestAction::Execute(Event)
+    16.67%     0.00%  [.] NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest&)
+    15.33%     0.00%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std
+    15.33%     0.00%  [.] std::unordered_map<unsigned int, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::alloc
+    15.32%     0.00%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std
+    15.30%     0.11%  [.] std::__detail::_Hashtable_alloc<std::allocator<std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::all
+    15.19%     0.16%  [.] std::__detail::_Hashtable_alloc<std::allocator<std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::all
+    14.47%     0.12%  [.] void std::destroy_at<std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_t
+    14.45%     0.19%  [.] std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocato
+    14.25%     0.20%  [.] std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::ve
+    14.06%     0.16%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<s
+    13.35%     0.22%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<s
+    13.24%     3.81%  [.] WorldPosition::WorldPosition(WorldPosition const&)
+    13.06%     0.15%  [.] std::__detail::_Hashtable_alloc<std::allocator<std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash
+    12.82%     0.08%  [.] std::__detail::_Hashtable_alloc<std::allocator<std::__detail::_Hash_node<std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash
+    12.47%     0.00%  [.] Engine::ExecuteAction(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Event, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+    12.47%     0.00%  [.] PlayerbotAI::DoSpecificAction(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Event, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocato
+    11.91%     0.08%  [.] void std::destroy_at<std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<
+    11.85%     0.11%  [.] std::pair<unsigned int const, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::vecto
+    11.74%     0.05%  [.] std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator
+    11.72%     0.02%  [.] std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> >
+    11.55%     0.00%  [.] AutoWowOracleRuntime::Runtime::EnsureQuestDirective(unsigned long, AutoWowOracleRuntime::BotState&)::{lambda()#2}::operator()() const
+    10.55%     0.17%  [.] std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> >

@@ -1,0 +1,2 @@
+{"kind": "stall", "count": 5, "id": 1, "bot": 121, "team": 1, "lvl": 12, "quest": 748, "map": 1, "zone": 215, "ms": 243687, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790116835.1397035, "jev": true}
+{"kind": "stall", "count": 5, "id": 2, "bot": 244, "team": 1, "lvl": 8, "quest": 790, "map": 1, "zone": 14, "ms": 243687, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790116836.6814294, "jev": false}
