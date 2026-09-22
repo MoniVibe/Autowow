@@ -1,5 +1,9 @@
 #include "OnyTriggers.h"
 
+#include "EncounterRoleTriggerPolicy.h"
+#include "OnyBreathSignal.h"
+#include "RaidFearResponsePolicy.h"
+#include "RaidFearSignal.h"
 #include "GenericTriggers.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAI.h"
@@ -10,32 +14,35 @@ OnyxiaDeepBreathTrigger::OnyxiaDeepBreathTrigger(PlayerbotAI* botAI) : Trigger(b
 
 bool OnyxiaDeepBreathTrigger::IsActive()
 {
-    Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
-    if (!boss || !boss->HasUnitState(UNIT_STATE_CASTING))
-        return false;
-
-    // Check if Onyxia is casting
-    Spell* currentSpell = boss->GetCurrentSpell(CURRENT_GENERIC_SPELL);
-
-    if (!currentSpell || !currentSpell->m_spellInfo)
-        return false;
-
-    uint32 spellId = currentSpell->m_spellInfo->Id;
-
-    if (spellId == 17086 ||  // North to South
-        spellId == 18351 ||  // South to North
-        spellId == 18576 ||  // East to West
-        spellId == 18609 ||  // West to East
-        spellId == 18564 ||  // Southeast to Northwest
-        spellId == 18584 ||  // Northwest to Southeast
-        spellId == 18596 ||  // Southwest to Northeast
-        spellId == 18617     // Northeast to Southwest
-    )
+    if (uint32 const encounterSpell = OnyxiaBreathSignal::GetEncounterActive(bot->GetInstanceId()))
     {
+        OnyxiaBreathSignal::Record(bot->GetGUID(), encounterSpell);
         return true;
     }
 
-    return false;
+    Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
+    if (!boss || !boss->IsAlive())
+    {
+        OnyxiaBreathSignal::Clear(bot->GetGUID());
+        return false;
+    }
+
+    // Onyxia's encounter script starts Deep Breath with an effectively instant AOE spell and
+    // then waits before crossing the room. The AllSpellScript listener preserves that short
+    // cast event at instance scope so ordinary bot AI ticks cannot miss the warning.
+    if (boss->IsFlying() && boss->HasUnitState(UNIT_STATE_CASTING))
+    {
+        Spell* currentSpell = boss->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        if (currentSpell && currentSpell->m_spellInfo &&
+            OnyxiaBreathSignal::IsDeepBreathSpell(currentSpell->m_spellInfo->Id))
+        {
+            OnyxiaBreathSignal::Record(bot->GetGUID(), currentSpell->m_spellInfo->Id);
+        }
+    }
+
+    // Trigger evaluation and action execution happen on different AI ticks. Keep the warning
+    // alive after CURRENT_GENERIC_SPELL disappears so the emergency movement cannot be lost.
+    return OnyxiaBreathSignal::GetActive(bot->GetGUID()) != 0;
 }
 
 OnyxiaNearTailTrigger::OnyxiaNearTailTrigger(PlayerbotAI* botAI) : Trigger(botAI, "ony near tail") {}
@@ -91,7 +98,36 @@ bool RaidOnyxiaWhelpsSpawnTrigger::IsActive()
     if (!boss)
         return false;
 
-    return !botAI->IsHeal(bot) && boss->IsFlying();  // DPS + Tanks only
+    return EncounterRoleTriggerPolicy::ShouldTargetOnyxiaWhelps(
+        botAI->IsHeal(bot), botAI->IsTank(bot), botAI->IsRanged(bot), boss->IsFlying());
+}
+
+RaidOnyxiaFlyingRangedPressureTrigger::RaidOnyxiaFlyingRangedPressureTrigger(PlayerbotAI* botAI)
+    : Trigger(botAI, "ony flying ranged pressure")
+{
+}
+
+bool RaidOnyxiaFlyingRangedPressureTrigger::IsActive()
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
+    if (!boss)
+        return false;
+
+    return EncounterRoleTriggerPolicy::ShouldPressureFlyingOnyxia(
+        botAI->IsHeal(bot), botAI->IsDps(bot), botAI->IsRanged(bot), boss->IsFlying());
+}
+
+bool RaidOnyxiaImminentFearTrigger::IsActive()
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
+    if (!boss || !RaidFearResponsePolicy::ShouldWarnForOnyxiaLanding(
+            boss->IsAlive(), boss->IsFlying(), boss->GetHealthPct()))
+    {
+        return false;
+    }
+
+    RaidFearSignal::RecordImminent(bot->GetInstanceId(), boss->GetEntry());
+    return true;
 }
 
 OnyxiaAvoidEggsTrigger::OnyxiaAvoidEggsTrigger(PlayerbotAI* botAI) : Trigger(botAI, "ony avoid eggs") {}

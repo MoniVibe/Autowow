@@ -1,10 +1,15 @@
 #ifndef PLAYERBOTS_NEWRPGINFO_H
 #define PLAYERBOTS_NEWRPGINFO_H
 
+#include <cstddef>
+#include <vector>
+
 #include "Define.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
 #include "QuestDef.h"
+#include "QuestObjectiveContext.h"
+#include "StrictFinisherMovementPolicy.h"
 #include "Strategy.h"
 #include "Timer.h"
 #include "TravelMgr.h"
@@ -45,6 +50,11 @@ struct NewRpgInfo
         int32 objectiveIdx{0};
         WorldPosition pos{};
         uint32 lastReachPOI{0};
+
+        // Phase 1 objective-lock execution state. Owned here; published read-only through the
+        // "active quest objective" Value. Consumers read it via
+        //   std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data)->objectiveRuntime
+        QuestObjectiveRuntime objectiveRuntime{};
     };
     // RPG_TRAVEL_FLIGHT
     struct TravelFlight
@@ -75,6 +85,7 @@ struct NewRpgInfo
     uint32 stuckTs{0};
     uint32 stuckAttempts{0};
     WorldPosition moveFarPos;
+    StrictFinisherMovementPolicy::Provenance strictFinisherMovement;
     // END MOVE_FAR
 
     using RpgData = std::variant<
@@ -90,13 +101,43 @@ struct NewRpgInfo
     >;
     RpgData data;
 
+    // Durable direct-GameObject proof survives objective handoff, completed-quest finisher work,
+    // ChangeToIdle, and ordinary RPG Reset calls for the lifetime of this PlayerbotAI. Retention is
+    // bounded, while sequence numbers keep increasing even when the oldest receipt is evicted.
+    static constexpr std::size_t MaxDirectGameObjectReceipts = 64;
+    std::vector<DirectGameObjectReceipt> directGameObjectReceipts;
+    uint64 nextDirectGameObjectReceiptSequence = 1;
+
+    DirectGameObjectReceipt const& RecordDirectGameObjectReceipt(uint32 questId, uint8 objectiveSlot,
+                                                                  uint32 entry, ObjectGuid guid,
+                                                                  uint32 before, uint32 after)
+    {
+        if (directGameObjectReceipts.size() >= MaxDirectGameObjectReceipts)
+            directGameObjectReceipts.erase(directGameObjectReceipts.begin());
+
+        DirectGameObjectReceipt receipt;
+        receipt.sequence = nextDirectGameObjectReceiptSequence++;
+        receipt.questId = questId;
+        receipt.objectiveSlot = objectiveSlot;
+        receipt.entry = entry;
+        receipt.guid = guid;
+        receipt.before = before;
+        receipt.after = after;
+        directGameObjectReceipts.push_back(receipt);
+        return directGameObjectReceipts.back();
+    }
+
+    // A Director-selected quest is authoritative runtime state, not a transient strategy choice.
+    // AI resets (level/spec/group/map changes) use this to restore the non-combat New-RPG driver.
+    bool HasActiveQuestDirective() const { return std::holds_alternative<DoQuest>(data); }
+
     NewRpgStatus GetStatus();
     bool HasStatusPersisted(uint32 maxDuration) { return GetMSTimeDiffToNow(startT) > maxDuration; }
     void ChangeToGoGrind(WorldPosition pos);
     void ChangeToGoCamp(WorldPosition pos);
     void ChangeToWanderNpc();
     void ChangeToWanderRandom();
-    void ChangeToDoQuest(uint32 questId, const Quest* quest);
+    void ChangeToDoQuest(uint32 questId, const Quest* quest, bool oracleManaged = false);
     void ChangeToTravelFlight(uint32 flightMasterEntry, WorldPosition flightMasterPos, std::vector<uint32> path);
     void ChangeToOutdoorPvp(ObjectGuid::LowType capturePointSpawnId = 0);
     void ChangeToRest();

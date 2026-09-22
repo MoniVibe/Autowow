@@ -7,8 +7,10 @@
 #ifndef PLAYERBOTS_REVIVEFROMCORPSEACTION_H
 #define PLAYERBOTS_REVIVEFROMCORPSEACTION_H
 
+#include "CorpseRouteRetryPolicy.h"
 #include "MovementActions.h"
 
+class Corpse;
 class PlayerbotAI;
 
 struct GraveyardStruct;
@@ -38,6 +40,12 @@ public:
     GraveyardStruct const* GetGrave(bool startZone);
     bool Execute(Event event) override;
     bool isUseful() override;
+
+private:
+    bool ExecuteNoTeleportCorpseRecovery(Corpse* corpse);
+    bool TrySpiritHealerInteraction(CorpseRouteRetryPolicy::RouteEndpoint const& grave);
+
+    CorpseRouteRetryPolicy::State corpseRouteState_;
 };
 
 #endif

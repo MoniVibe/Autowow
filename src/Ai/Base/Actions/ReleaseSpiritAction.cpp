@@ -4,21 +4,216 @@
  */
 
 #include "ReleaseSpiritAction.h"
+#include "DungeonDeathRecoveryPolicy.h"
+#include "ReleasedCorpseApproachPolicy.h"
 #include "ServerFacade.h"
 #include "Event.h"
+#include "DBCStores.h"
 #include "GameGraveyard.h"
+#include "LastMovementValue.h"
+#include "Map.h"
 #include "NearestNpcsValue.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
+#include "ObjectMgr.h"
+#include "PathGenerator.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 #include "Corpse.h"
+#include "Group.h"
 #include "Log.h"
+#include "../../World/Gathering/GatheringWorkerState.h"
+
+#include <algorithm>
+#include <cmath>
+#include <ctime>
+#include <unordered_map>
+#include <vector>
+
+namespace
+{
+struct DungeonCorpseRunState
+{
+    uint32 corpseMap = 0;
+    time_t startedAt = 0;
+    uint8 entranceAttempts = 0;
+    time_t retryAfter = 0;
+    bool exhaustedLogged = false;
+};
+
+std::unordered_map<uint32, DungeonCorpseRunState> dungeonCorpseRuns;
+
+constexpr uint32 IngressRejectedPathTypes =
+    PATHFIND_SHORTCUT | PATHFIND_NOPATH |
+    PATHFIND_NOT_USING_PATH | PATHFIND_SHORT | PATHFIND_FARFROMPOLY;
+constexpr float IngressHeightSearchPadding = 2.0f;
+
+bool IsGroupedInstanceDeath(Player const* player)
+{
+    return player && player->GetGroup() && player->GetMap() && player->GetMap()->IsDungeon();
+}
+
+bool IsReleasedGroupedInstanceCorpse(Player const* player)
+{
+    if (!player || !player->GetGroup() || !player->HasCorpse() ||
+        !player->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+        return false;
+
+    MapEntry const* corpseMap = sMapStore.LookupEntry(player->GetCorpseLocation().GetMapId());
+    return corpseMap && corpseMap->IsDungeon();
+}
+
+DungeonCorpseRunState& GetDungeonCorpseRunState(Player const* player, uint32 corpseMap, time_t now)
+{
+    DungeonCorpseRunState& state = dungeonCorpseRuns[player->GetGUID().GetCounter()];
+    if (!state.startedAt || state.corpseMap != corpseMap)
+    {
+        state = {};
+        state.corpseMap = corpseMap;
+        state.startedAt = now;
+    }
+    return state;
+}
+
+DungeonCorpseRunState& ResetDungeonCorpseRunState(Player const* player, uint32 corpseMap, time_t now)
+{
+    DungeonCorpseRunState& state = dungeonCorpseRuns[player->GetGUID().GetCounter()];
+    state = {};
+    state.corpseMap = corpseMap;
+    state.startedAt = now;
+    return state;
+}
+
+uint32 CorpseRunElapsedSeconds(DungeonCorpseRunState const& state, time_t now)
+{
+    return now > state.startedAt ? static_cast<uint32>(now - state.startedAt) : 0;
+}
+
+void RecordEntranceAttempt(DungeonCorpseRunState& state, time_t now)
+{
+    state.entranceAttempts = std::min<uint8>(
+        static_cast<uint8>(state.entranceAttempts + 1),
+        DungeonDeathRecovery::MaxEntranceAttempts);
+    state.retryAfter = now + DungeonDeathRecovery::RetryBackoffSeconds;
+}
+
+ReleasedCorpseApproachPolicy::IngressTriggerVolume MakeIngressTriggerVolume(
+    AreaTrigger const& trigger)
+{
+    return {trigger.x, trigger.y, trigger.z, trigger.radius, trigger.length, trigger.width,
+            trigger.height, trigger.orientation};
+}
+
+bool IsUsableIngressPath(PathGenerator const& path)
+{
+    uint32 const pathType = static_cast<uint32>(path.GetPathType());
+    // The probe is only a bounded point inside the trigger volume, not a mandatory navmesh
+    // endpoint. A partial path is usable when its actual endpoint is inside the trigger; the
+    // endpointInside check below is the final admission gate. Unsafe/ambiguous path types remain
+    // rejected so this cannot turn into a shortcut or a blind cross-map attempt.
+    return (pathType & (PATHFIND_NORMAL | PATHFIND_INCOMPLETE)) != 0 &&
+        !(pathType & IngressRejectedPathTypes);
+}
+
+ReleasedCorpseApproachPolicy::IngressApproachSelection FindReachableIngressApproach(
+    Player const* player, AreaTrigger const& trigger)
+{
+    using namespace ReleasedCorpseApproachPolicy;
+
+    IngressTriggerVolume const volume = MakeIngressTriggerVolume(trigger);
+    std::vector<IngressApproachCandidate> const candidates =
+        BuildIngressApproachCandidates(volume);
+    Map* map = player ? player->GetMap() : nullptr;
+    uint32 const triggerMap = trigger.map;
+    float const verticalExtent = trigger.radius > 0.0f ? trigger.radius : trigger.height * 0.5f;
+    return SelectIngressApproach(candidates,
+        [player, map, &volume, triggerMap, verticalExtent](IngressApproachCandidate const& candidate)
+        {
+            IngressApproachEvaluation evaluation;
+            if (!player || !map || map->GetId() != player->GetMapId() ||
+                map->GetId() != triggerMap ||
+                !std::isfinite(verticalExtent) || verticalExtent <= 0.0f)
+            {
+                return evaluation;
+            }
+
+            float const searchTop = candidate.z + verticalExtent + IngressHeightSearchPadding;
+            float const searchDistance = verticalExtent * 2.0f +
+                IngressHeightSearchPadding * 2.0f;
+            float const ground = map->GetHeight(player->GetPhaseMask(), candidate.x, candidate.y,
+                                                searchTop, true, searchDistance);
+            evaluation.floorValid = ground > INVALID_HEIGHT && std::isfinite(ground) &&
+                IsInsideIngressTrigger(volume, candidate.x, candidate.y, ground);
+            if (!evaluation.floorValid)
+                return evaluation;
+
+            PathGenerator path(player);
+            bool const calculated = path.CalculatePath(candidate.x, candidate.y, ground, false);
+            evaluation.pathReachable = calculated && IsUsableIngressPath(path);
+            if (!evaluation.pathReachable)
+                return evaluation;
+
+            G3D::Vector3 const& endpoint = path.GetActualEndPosition();
+            evaluation.endpointX = endpoint.x;
+            evaluation.endpointY = endpoint.y;
+            evaluation.endpointZ = endpoint.z;
+            evaluation.endpointInside = IsInsideIngressTrigger(
+                volume, endpoint.x, endpoint.y, endpoint.z);
+            evaluation.pathDistance = path.getPathLength();
+            return evaluation;
+        });
+}
+
+ReleasedCorpseApproachPolicy::IngressPortalSelection FindIngressPortal(
+    Player const* player, uint32 corpseMap)
+{
+    std::vector<ReleasedCorpseApproachPolicy::IngressPortalCandidate> candidates;
+    for (auto const& [triggerId, teleport] : sObjectMgr->GetAllAreaTriggerTeleports())
+    {
+        AreaTrigger const* trigger = sObjectMgr->GetAreaTrigger(triggerId);
+        float distanceSquared = 0.0f;
+        if (trigger)
+        {
+            float const dx = player->GetPositionX() - trigger->x;
+            float const dy = player->GetPositionY() - trigger->y;
+            float const dz = player->GetPositionZ() - trigger->z;
+            distanceSquared = dx * dx + dy * dy + dz * dz;
+        }
+        candidates.push_back({triggerId, trigger ? trigger->map : 0, teleport.target_mapId,
+                              distanceSquared, trigger != nullptr});
+    }
+    return ReleasedCorpseApproachPolicy::SelectIngressPortal(
+        candidates, player->GetMapId(), corpseMap);
+}
+}
 
 // ReleaseSpiritAction implementation
 bool ReleaseSpiritAction::Execute(Event event)
 {
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()))
+    {
+        AutoWowGather::DeathRecoveryTransition const recovery = AutoWowGather::PlanDeathRecovery(
+            bot->GetGUID().GetCounter(), bot->IsAlive(), bot->HasPlayerFlag(PLAYER_FLAGS_GHOST),
+            bot->HasCorpse(), false, bot->isMoving());
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::ReleaseSpirit)
+        {
+            WorldPacket packet(CMSG_REPOP_REQUEST);
+            packet << uint8(0);
+            bot->GetSession()->HandleRepopRequestOpcode(packet);
+            botAI->SetNextCheckDelay(1000);
+            return true;
+        }
+
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::Wait)
+        {
+            botAI->SetNextCheckDelay(std::max<uint32>(1, recovery.delaySeconds) * 1000);
+            return true;
+        }
+
+        return false;
+    }
+
     if (bot->IsAlive())
     {
         if (!bot->InBattleground())
@@ -83,7 +278,50 @@ void ReleaseSpiritAction::LogRelease(const std::string& releaseMsg) const
 // AutoReleaseSpiritAction implementation
 bool AutoReleaseSpiritAction::Execute(Event /*event*/)
 {
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()) &&
+        !bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+    {
+        // Persistent gatherers use the same CMSG_REPOP_REQUEST a real client sends, but do not
+        // inherit the generic autonomous-bot durability repair side effect. The policy reserves
+        // this once per death and supplies the retry backoff, so repeated dead-engine ticks cannot
+        // spam release packets.
+        AutoWowGather::DeathRecoveryTransition const recovery = AutoWowGather::PlanDeathRecovery(
+            bot->GetGUID().GetCounter(), bot->IsAlive(), bot->HasPlayerFlag(PLAYER_FLAGS_GHOST),
+            bot->HasCorpse(), false, bot->isMoving());
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::ReleaseSpirit)
+        {
+            WorldPacket packet(CMSG_REPOP_REQUEST);
+            packet << uint8(0);
+            bot->GetSession()->HandleRepopRequestOpcode(packet);
+            botAI->SetNextCheckDelay(1000);
+            return true;
+        }
+
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::Wait)
+        {
+            botAI->SetNextCheckDelay(std::max<uint32>(1, recovery.delaySeconds) * 1000);
+            return true;
+        }
+
+        return false;
+    }
+
+    if (IsReleasedGroupedInstanceCorpse(bot) &&
+        bot->GetMapId() != bot->GetCorpseLocation().GetMapId())
+    {
+        // The dead engine's default strategy owns AreaTriggerAction. RepopAction arms that normal
+        // client-equivalent ingress path and never teleports or resurrects the ghost directly.
+        return botAI->DoSpecificAction("repop", Event("dungeon corpse run"), true);
+    }
+
+    bool const groupedInstanceDeath = IsGroupedInstanceDeath(bot);
     IncrementDeathCount();
+    if (groupedInstanceDeath)
+    {
+        // FindCorpseAction's legacy five-death branch instant-revives autonomous bots. A grouped
+        // dungeon/raid corpse is instead governed by the finite entrance-attempt policy below.
+        context->GetValue<uint32>("death count")->Set(0);
+    }
     bot->DurabilityRepairAll(false, 1.0f, false);
     LogRelease("auto released");
 
@@ -98,6 +336,17 @@ bool AutoReleaseSpiritAction::Execute(Event /*event*/)
         return HandleBattlegroundSpiritHealer();
     }
 
+    if (groupedInstanceDeath)
+    {
+        uint32 const corpseMap = bot->GetCorpseLocation().GetMapId();
+        if (IsReleasedGroupedInstanceCorpse(bot) && bot->GetMapId() != corpseMap)
+        {
+            ResetDungeonCorpseRunState(bot, corpseMap, time(nullptr));
+            if (botAI->DoSpecificAction("repop", Event("dungeon corpse run"), true))
+                return true;
+        }
+    }
+
     botAI->SetNextCheckDelay(1000);
     return true;
 }
@@ -107,11 +356,21 @@ bool AutoReleaseSpiritAction::isUseful()
     if (!bot->isDead() || bot->InArena())
         return false;
 
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()) &&
+        !bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+        return true;
+
     if (bot->InBattleground())
         return ShouldDelayBattlegroundRelease();
 
     if (bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
-        return false;
+    {
+        // Keep the bounded instance recovery action authoritative while the ghost is outside.
+        // This prevents the legacy cross-map FindCorpseAction from treating corpse coordinates on
+        // another map as local coordinates or falling back to an instant autonomous revive.
+        return IsReleasedGroupedInstanceCorpse(bot) &&
+            bot->GetMapId() != bot->GetCorpseLocation().GetMapId();
+    }
 
     return ShouldAutoRelease();
 }
@@ -168,8 +427,30 @@ bool AutoReleaseSpiritAction::HandleBattlegroundSpiritHealer()
 
 bool AutoReleaseSpiritAction::ShouldAutoRelease() const
 {
-    if (!bot->GetGroup())
+    Group* group = bot->GetGroup();
+    if (!group)
         return true;
+
+    bool const sameInstanceDungeon = bot->GetMap() && bot->GetMap()->IsDungeon();
+    bool aliveHealerPresent = false;
+    if (sameInstanceDungeon)
+    {
+        for (GroupReference* reference = group->GetFirstMember(); reference; reference = reference->next())
+        {
+            Player* member = reference->GetSource();
+            if (member && member != bot && member->IsAlive() && member->IsInWorld() &&
+                member->GetMapId() == bot->GetMapId() &&
+                member->GetInstanceId() == bot->GetInstanceId() &&
+                PlayerbotAI::IsHeal(member, true))
+            {
+                aliveHealerPresent = true;
+                break;
+            }
+        }
+    }
+
+    if (DungeonDeathRecovery::ShouldWaitForHealer(true, sameInstanceDungeon, aliveHealerPresent))
+        return false;
 
     Player* groupLeader = botAI->GetGroupLeader();
     if (!groupLeader || groupLeader == bot)
@@ -219,6 +500,130 @@ bool AutoReleaseSpiritAction::ShouldDelayBattlegroundRelease() const
 
 bool RepopAction::Execute(Event /*event*/)
 {
+    if (IsReleasedGroupedInstanceCorpse(bot))
+    {
+        time_t const now = time(nullptr);
+        uint32 const corpseMap = bot->GetCorpseLocation().GetMapId();
+        DungeonCorpseRunState& state = GetDungeonCorpseRunState(bot, corpseMap, now);
+        ReleasedCorpseApproachPolicy::IngressPortalSelection const portalSelection =
+            FindIngressPortal(bot, corpseMap);
+        AreaTrigger const* portal = portalSelection.found ?
+            sObjectMgr->GetAreaTrigger(portalSelection.candidate.triggerId) : nullptr;
+        bool const insidePortal = portal && bot->IsInAreaTriggerRadius(portal, 0.0f);
+
+        DungeonDeathRecovery::ReleasedRecoveryFacts facts;
+        facts.grouped = true;
+        facts.releasedGhost = true;
+        facts.corpseInDungeonOrRaid = true;
+        facts.onCorpseMap = bot->GetMapId() == corpseMap;
+        facts.ingressPortalAvailable = portal != nullptr;
+        facts.insideIngressPortal = insidePortal;
+        facts.movementOrTransferInProgress = bot->isMoving() || bot->IsBeingTeleported();
+        facts.retryBackoffActive = state.retryAfter > now;
+        facts.entranceAttempts = state.entranceAttempts;
+        facts.elapsedSeconds = CorpseRunElapsedSeconds(state, now);
+
+        DungeonDeathRecovery::ReleasedRecoveryStep const step =
+            DungeonDeathRecovery::EvaluateReleasedRecovery(facts);
+        LastMovement& portalMovement = context->GetValue<LastMovement&>("last area trigger")->Get();
+
+        switch (step)
+        {
+            case DungeonDeathRecovery::ReleasedRecoveryStep::ResumeCorpseApproach:
+                portalMovement.lastAreaTrigger = 0;
+                return false;
+            case DungeonDeathRecovery::ReleasedRecoveryStep::EntranceInProgress:
+                return true;
+            case DungeonDeathRecovery::ReleasedRecoveryStep::RetryBackoff:
+                botAI->SetNextCheckDelay(static_cast<uint32>((state.retryAfter - now) * IN_MILLISECONDS));
+                return true;
+            case DungeonDeathRecovery::ReleasedRecoveryStep::Exhausted:
+                portalMovement.lastAreaTrigger = 0;
+                bot->GetMotionMaster()->Clear();
+                bot->StopMoving();
+                if (!state.exhaustedLogged)
+                {
+                    state.exhaustedLogged = true;
+                    LOG_ERROR("playerbots",
+                        "[DungeonDeathRecovery] bot={} phase=exhausted corpse_map={} current_map={} attempts={} elapsed={} action=idle",
+                        bot->GetName(), corpseMap, bot->GetMapId(),
+                        static_cast<uint32>(state.entranceAttempts),
+                        facts.elapsedSeconds);
+                }
+                botAI->SetNextCheckDelay(30 * IN_MILLISECONDS);
+                return true;
+            case DungeonDeathRecovery::ReleasedRecoveryStep::MissingEntrance:
+                portalMovement.lastAreaTrigger = 0;
+                RecordEntranceAttempt(state, now);
+                LOG_ERROR("playerbots",
+                    "[DungeonDeathRecovery] bot={} phase=ingress_missing corpse_map={} current_map={} attempt={} action=backoff",
+                    bot->GetName(), corpseMap, bot->GetMapId(),
+                    static_cast<uint32>(state.entranceAttempts));
+                return true;
+            case DungeonDeathRecovery::ReleasedRecoveryStep::ApproachEntrance:
+            {
+                ReleasedCorpseApproachPolicy::IngressApproachSelection const approach =
+                    FindReachableIngressApproach(bot, *portal);
+                if (!approach.found)
+                {
+                    portalMovement.lastAreaTrigger = 0;
+                    RecordEntranceAttempt(state, now);
+                    LOG_ERROR("playerbots",
+                        "[DungeonDeathRecovery] bot={} phase=approach_failed reason=no_reachable_inside_candidate trigger={} corpse_map={} current_map={} attempt={} candidate_count={} probe_count={} action=backoff",
+                        bot->GetName(), portalSelection.candidate.triggerId, corpseMap,
+                        bot->GetMapId(), static_cast<uint32>(state.entranceAttempts),
+                        approach.candidateCount, approach.probesEvaluated);
+                    return true;
+                }
+
+                portalMovement.lastAreaTrigger = portalSelection.candidate.triggerId;
+                float const distance = bot->GetExactDist(
+                    approach.endpointX, approach.endpointY, approach.endpointZ);
+                bool const moved = MoveTo(bot->GetMapId(), approach.endpointX,
+                                          approach.endpointY, approach.endpointZ,
+                                          false, false, true);
+                if (moved)
+                {
+                    WaitForReach(distance);
+                    LOG_INFO("playerbots",
+                        "[DungeonDeathRecovery] bot={} phase=approach trigger={} corpse_map={} current_map={} distance={} path_distance={} candidate={} candidate_count={} probe_count={} attempt={} moved=true",
+                        bot->GetName(), portalSelection.candidate.triggerId, corpseMap,
+                        bot->GetMapId(), distance, approach.pathDistance,
+                        approach.candidate.candidateIndex, approach.candidateCount,
+                        approach.probesEvaluated,
+                        static_cast<uint32>(state.entranceAttempts) + 1);
+                    return true;
+                }
+
+                portalMovement.lastAreaTrigger = 0;
+                RecordEntranceAttempt(state, now);
+                LOG_ERROR("playerbots",
+                    "[DungeonDeathRecovery] bot={} phase=approach_failed reason=move_to_rejected trigger={} corpse_map={} current_map={} attempt={} candidate={} candidate_count={} probe_count={} action=backoff",
+                    bot->GetName(), portalSelection.candidate.triggerId, corpseMap,
+                    bot->GetMapId(), static_cast<uint32>(state.entranceAttempts),
+                    approach.candidate.candidateIndex, approach.candidateCount,
+                    approach.probesEvaluated);
+                return true;
+            }
+            case DungeonDeathRecovery::ReleasedRecoveryStep::ActivateEntrance:
+            {
+                portalMovement.lastAreaTrigger = portalSelection.candidate.triggerId;
+                RecordEntranceAttempt(state, now);
+                bool const activated = botAI->DoSpecificAction("area trigger", Event("dungeon corpse run"), true);
+                if (!activated)
+                    portalMovement.lastAreaTrigger = 0;
+                LOG_INFO("playerbots",
+                    "[DungeonDeathRecovery] bot={} phase=activate trigger={} corpse_map={} map_after={} attempt={} packet={} transfer={}",
+                    bot->GetName(), portalSelection.candidate.triggerId, corpseMap,
+                    bot->GetMapId(), static_cast<uint32>(state.entranceAttempts), activated,
+                    bot->IsBeingTeleported());
+                return true;
+            }
+            case DungeonDeathRecovery::ReleasedRecoveryStep::OrdinaryDeath:
+                break;
+        }
+    }
+
     const GraveyardStruct* graveyard = GetGrave(
         AI_VALUE(uint32, "death count") > 10 ||
         CalculateDeadTime() > 30 * MINUTE
@@ -233,7 +638,7 @@ bool RepopAction::Execute(Event /*event*/)
 
 bool RepopAction::isUseful()
 {
-    return !bot->InBattleground();
+    return !bot->InBattleground() && !bot->IsAlive();
 }
 
 int64 RepopAction::CalculateDeadTime() const

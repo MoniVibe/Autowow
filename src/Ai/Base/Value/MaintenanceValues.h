@@ -59,6 +59,14 @@ public:
     bool Calculate() override;
 };
 
+class CanSellGrayValue : public BoolCalculatedValue
+{
+public:
+    CanSellGrayValue(PlayerbotAI* botAI) : BoolCalculatedValue(botAI, "can sell gray", 2 * 2000) {}
+
+    bool Calculate() override;
+};
+
 class CanTrainValue : public BoolCalculatedValue
 {
 public:

@@ -303,13 +303,13 @@ AiPlayerbot.TwoRoundsGearInit = 0
 AiPlayerbot.FreeMethodLoot = 0
 
 # Bots' Roll level bots will use for items they Need (0 = pass, 1 = greed, 2 = need)
-# Default: 1 (greed)
-AiPlayerbot.LootNeedRollLevel = 1
+# Default: 2 (need)
+AiPlayerbot.LootNeedRollLevel = 2
 
 # Enable bots to roll GREED on items (global toggle)
 # If disabled, bots will PASS instead of GREED on all items
-# Default: 0 (disabled - bots only NEED or PASS)
-AiPlayerbot.LootGreedRollLevel = 0
+# Default: 1 (enabled)
+AiPlayerbot.LootGreedRollLevel = 1
 
 # Enable bots to roll on recipes. Will NEED on learnable profession recipes they don't already know
 # Bots will roll GREED on BoE recipes they can't learn if LootRollGreed is enabled.
@@ -2162,8 +2162,55 @@ PlayerbotsDatabase.SynchThreads     = 1
 
 Playerbots.Updates.EnableDatabases = 1
 
-# Command server port, 0 - disabled
-AiPlayerbot.CommandServerPort = 8888
+# Legacy Playerbots diagnostic command server port, 0 - disabled.
+# AutoWoW keeps this disabled because its protocol has no authentication.
+AiPlayerbot.CommandServerPort = 0
+
+# AutoWow local control bridge port, 0 - disabled. It always binds to 127.0.0.1.
+AutoWow.BridgePort = 18787
+
+# AutoWow Oracle runtime is a default-off, world-thread-only quest objective driver. Its default
+# mode has no database, teleport, or catch-up loop. Enable only with a dedicated decimal character GUID list;
+# GUIDs are normalized sorted/deduped nonzero entries, CadenceMs is 100..5000, and MaxBots is
+# capped at AutoWowOracle::kMaxBotLeases.
+AutoWow.OracleRuntime.Enabled = 0
+# Opt-in recovery for managed Oracle quest bots: after a bounded route stall or recoverable
+# exact-target failure, teleport to that quest spawn only when it is in the bot's current zone.
+# Ordinary routes, cross-zone travel, and all objective/quest interactions remain native.
+AutoWow.OracleRuntime.ZoneTravelAssist = 0
+AutoWow.OracleRuntime.BotGuids = ""
+AutoWow.OracleRuntime.CadenceMs = 1000
+AutoWow.OracleRuntime.MaxBots = 1
+AutoWow.OracleRuntime.LeaseTtlTicks = 3
+
+# Explicitly deployed worker_gather route seeking. Candidates are remembered static herb/ore
+# spawns; spawned state is checked only after the bot walks into sight. Movement uses mmap-backed
+# MoveFarTo with teleport recovery disabled. SearchDistance is yards, SightDistance is the local
+# live-object handoff radius, and misses (despawned/pool-inactive/unreachable nodes) cool down per bot.
+AutoWow.GatherSeek.Enabled = 1
+AutoWow.GatherSeek.SearchDistance = 1200
+AutoWow.GatherSeek.SightDistance = 55
+AutoWow.GatherSeek.MissCooldownSeconds = 300
+AutoWow.GatherSeek.MaxNodeLevelAboveBot = 5
+
+# AutoWow Observer Camera allow-list: comma/space separated character GUIDs permitted to use
+# the loopback `observe` bridge order (watch/relocate/status/protect/release). Empty (default)
+# means NO character may be driven as an observer. Only enroll a dedicated, GM-level observer
+# character here; the observer must never be a Playerbots bot and must not join bot groups.
+AutoWow.ObserverGuids = ""
+
+# AutoWow existing-character fixture allow-list: comma/space separated character GUIDs permitted
+# to use `fixture init <guid> <level> <spec-index> <quality>` and `fixture status <guid>`.
+# Empty (default) means NO fixture target is permitted. Targets must already be online Playerbots;
+# human/session observers and discoverable league racer/captain roles are rejected. The numeric
+# quality enum is constrained to 0..5 (poor through legendary), and spec-index to 0..19.
+AutoWow.FixtureGuids = ""
+
+# Fixture-only accelerated micro-scenario allow-list. Empty (default) means no character may
+# receive 1000%-of-baseline (10x) pacing or exact-target fixture kills. Keep these GUIDs separate
+# from FixtureGuids and from persistent campaign/league rosters; the adapter never grants quest or
+# gather credit directly and always uses native server hooks.
+AutoWow.MicroScenarioGuids = ""
 
 #
 #

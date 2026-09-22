@@ -2,9 +2,9 @@
 #ifndef PLAYERBOTS_ONYACTIONS_H
 #define PLAYERBOTS_ONYACTIONS_H
 
-#include "AttackAction.h"
 #include "GenericSpellActions.h"
 #include "MovementActions.h"
+#include "RaidTargetSelectionAction.h"
 
 class PlayerbotAI;
 
@@ -87,11 +87,22 @@ private:
     }
 };
 
-class RaidOnyxiaKillWhelpsAction : public AttackAction
+class RaidOnyxiaKillWhelpsAction : public CooperativeRaidTargetAction
 {
 public:
     RaidOnyxiaKillWhelpsAction(PlayerbotAI* botAI, std::string const name = "ony kill whelps")
-        : AttackAction(botAI, name)
+        : CooperativeRaidTargetAction(botAI, name)
+    {
+    }
+
+    bool Execute(Event event) override;
+};
+
+class RaidOnyxiaAttackFlyingBossAction : public CooperativeRaidTargetAction
+{
+public:
+    RaidOnyxiaAttackFlyingBossAction(PlayerbotAI* botAI, std::string const name = "ony attack flying boss")
+        : CooperativeRaidTargetAction(botAI, name)
     {
     }
 

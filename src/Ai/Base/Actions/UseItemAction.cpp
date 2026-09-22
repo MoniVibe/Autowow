@@ -64,6 +64,11 @@ bool UseItemAction::UseItemOnGameObject(Item* item, ObjectGuid go) { return UseI
 
 bool UseItemAction::UseItemOnItem(Item* item, Item* itemTarget) { return UseItem(item, ObjectGuid::Empty, itemTarget); }
 
+bool UseItemAction::UseItemOnUnit(Item* item, Unit* unitTarget)
+{
+    return item && unitTarget && UseItem(item, ObjectGuid::Empty, nullptr, unitTarget);
+}
+
 bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Unit* unitTarget)
 {
     if (bot->CanUseItem(item) != EQUIP_ERR_OK)
@@ -85,7 +90,7 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
         if (item->GetTemplate()->Spells[i].SpellId > 0)
         {
             spellId = item->GetTemplate()->Spells[i].SpellId;
-            if (!botAI->CanCastSpell(spellId, bot, false, itemTarget, item))
+            if (!botAI->CanCastSpell(spellId, unitTarget ? unitTarget : bot, false, itemTarget, item))
             {
                 return false;
             }
@@ -200,7 +205,7 @@ bool UseItemAction::UseItem(Item* item, ObjectGuid goGuid, Item* itemTarget, Uni
         if (!spellId)
             continue;
 
-        if (!botAI->CanCastSpell(spellId, bot, false))
+        if (!botAI->CanCastSpell(spellId, unitTarget ? unitTarget : bot, false))
             continue;
 
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);

@@ -6,6 +6,7 @@
 #ifndef PLAYERBOTS_PLAYERBOTAI_H
 #define PLAYERBOTS_PLAYERBOTAI_H
 
+#include <memory>
 #include <stack>
 
 #include "Chat.h"
@@ -39,6 +40,15 @@ class SpellInfo;
 class Unit;
 class WorldObject;
 class WorldPosition;
+
+class CampaignTravelAction;
+namespace AutoWowCampaignTravel
+{
+class CampaignTravelMailbox;
+class CampaignTravelSession;
+struct CampaignTravelIntent;
+struct CampaignTravelSnapshot;
+}
 
 struct CreatureData;
 struct GameObjectData;
@@ -349,6 +359,7 @@ public:
     void AddHandler(uint16 opcode, std::string const handler);
     void Handle(ExternalEventHelper& helper);
     void AddPacket(WorldPacket const& packet);
+    size_t PendingCount() const { return queue.size(); }
 
 private:
     std::map<uint16, std::string> handlers;
@@ -391,6 +402,38 @@ public:
     void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
 
     std::string const HandleRemoteCommand(std::string const command);
+    bool SubmitCampaignTravelIntent(AutoWowCampaignTravel::CampaignTravelIntent const& intent);
+    AutoWowCampaignTravel::CampaignTravelSnapshot GetCampaignTravelSnapshot() const;
+    bool HasCampaignTravelWork() const;
+    void SetAutoWowPaused(bool paused);
+    bool IsAutoWowPaused() const { return autoWowPaused; }
+    // AutoWow party members normally retain group membership without being forced into the
+    // Playerbots master/follow loop. Explicit quest, rally, or instance orders may temporarily
+    // disable this mode when coordinated movement is actually requested.
+    void SetAutoWowIndependentParty(bool independent) { autoWowIndependentParty = independent; }
+    bool IsAutoWowIndependentParty() const { return autoWowIndependentParty; }
+    size_t GetPendingBotOutgoingPacketCount() const { return botOutgoingPacketHandlers.PendingCount(); }
+    uint64 GetAutoWowLootResponseCount() const { return autoWowLootResponseCount; }
+    uint64 GetAutoWowStoreLootExecutionCount() const { return autoWowStoreLootExecutionCount; }
+    uint64 GetAutoWowAutostoreLootPacketCount() const { return autoWowAutostoreLootPacketCount; }
+    uint64 GetAutoWowLootReleasePacketCount() const { return autoWowLootReleasePacketCount; }
+    uint64 GetAutoWowLootPacketItemCount() const { return autoWowLootPacketItemCount; }
+    uint64 GetAutoWowLootAllowedOwnerSlotCount() const { return autoWowLootAllowedOwnerSlotCount; }
+    uint64 GetAutoWowLootSlotTypeRejectedCount() const { return autoWowLootSlotTypeRejectedCount; }
+    uint64 GetAutoWowLootPolicyRejectedCount() const { return autoWowLootPolicyRejectedCount; }
+    uint64 GetAutoWowLootMissingTemplateCount() const { return autoWowLootMissingTemplateCount; }
+    uint64 GetAutoWowLootBagReserveRejectedCount() const { return autoWowLootBagReserveRejectedCount; }
+    uint64 GetAutoWowQuestItemUsePacketCount() const { return autoWowQuestItemUsePacketCount; }
+    void RecordAutoWowStoreLootExecution() { ++autoWowStoreLootExecutionCount; }
+    void RecordAutoWowAutostoreLootPacket() { ++autoWowAutostoreLootPacketCount; }
+    void RecordAutoWowLootReleasePacket() { ++autoWowLootReleasePacketCount; }
+    void RecordAutoWowLootPacketItems(uint64 count) { autoWowLootPacketItemCount += count; }
+    void RecordAutoWowLootAllowedOwnerSlot() { ++autoWowLootAllowedOwnerSlotCount; }
+    void RecordAutoWowLootSlotTypeRejected() { ++autoWowLootSlotTypeRejectedCount; }
+    void RecordAutoWowLootPolicyRejected() { ++autoWowLootPolicyRejectedCount; }
+    void RecordAutoWowLootMissingTemplate() { ++autoWowLootMissingTemplateCount; }
+    void RecordAutoWowLootBagReserveRejected() { ++autoWowLootBagReserveRejectedCount; }
+    void RecordAutoWowQuestItemUsePacket() { ++autoWowQuestItemUsePacketCount; }
     void HandleCommand(uint32 type, std::string const text, Player* fromPlayer);
     void QueueChatResponse(const ChatQueuedReply reply);
     void HandleBotOutgoingPacket(WorldPacket const& packet);
@@ -554,6 +597,7 @@ public:
     bool HasPlayerNearby(float range = sPlayerbotAIConfig.reactDistance);
     bool AllowActive(ActivityType activityType);
     bool AllowActivity(ActivityType activityType = ALL_ACTIVITY, bool checkNow = false);
+    void InvalidateActivityPolicy();
     uint32 AutoScaleActivity(uint32 mod);
 
     // Check if player is safe to use.
@@ -612,6 +656,8 @@ public:
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);
 
 private:
+    friend class CampaignTravelAction;
+
     static void _fillGearScoreData(Player* player, Item* item, std::vector<uint32>* gearScore, uint32& twoHandScore,
                                    bool mixed = false);
     bool IsTellAllowed(PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
@@ -654,6 +700,21 @@ protected:
     Position jumpDestination = Position();
     uint32 nextTransportCheck = 0;
     bool spellInterruptRequested = false;
+    bool autoWowPaused = false;
+    bool autoWowIndependentParty = false;
+    uint64 autoWowLootResponseCount = 0;
+    uint64 autoWowStoreLootExecutionCount = 0;
+    uint64 autoWowAutostoreLootPacketCount = 0;
+    uint64 autoWowLootReleasePacketCount = 0;
+    uint64 autoWowLootPacketItemCount = 0;
+    uint64 autoWowLootAllowedOwnerSlotCount = 0;
+    uint64 autoWowLootSlotTypeRejectedCount = 0;
+    uint64 autoWowLootPolicyRejectedCount = 0;
+    uint64 autoWowLootMissingTemplateCount = 0;
+    uint64 autoWowLootBagReserveRejectedCount = 0;
+    uint64 autoWowQuestItemUsePacketCount = 0;
+    std::unique_ptr<AutoWowCampaignTravel::CampaignTravelSession> campaignTravelSession;
+    std::unique_ptr<AutoWowCampaignTravel::CampaignTravelMailbox> campaignTravelMailbox;
 };
 
 #endif

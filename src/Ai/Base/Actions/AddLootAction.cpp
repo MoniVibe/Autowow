@@ -44,6 +44,17 @@ bool AddAllLootAction::isUseful() { return true; }
 
 bool AddAllLootAction::AddLoot(ObjectGuid guid) { return AI_VALUE(LootObjectStack*, "available loot")->Add(guid); }
 
+bool AddGatheringLootAction::Execute(Event event)
+{
+    // Explicit worker gathering already resolved one live nearby node. Preserve the ordinary
+    // timer-triggered scan for empty events, but honor an explicit runtime GUID when supplied.
+    ObjectGuid const guid = event.getObject();
+    if (guid)
+        return AddLoot(guid);
+
+    return AddAllLootAction::Execute(event);
+}
+
 bool AddGatheringLootAction::AddLoot(ObjectGuid guid)
 {
     LootObject loot(bot, guid);

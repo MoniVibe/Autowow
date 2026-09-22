@@ -2,6 +2,7 @@
 #include "UKTriggers.h"
 #include "AiObject.h"
 #include "AiObjectContext.h"
+#include "EncounterRoleTriggerPolicy.h"
 
 bool KelesethFrostTombTrigger::IsActive()
 {
@@ -79,5 +80,6 @@ bool NotBehindIngvarTrigger::IsActive()
     Unit* boss = AI_VALUE2(Unit*, "find target", "ingvar the plunderer");
     if (!boss || botAI->IsTank(bot)) { return false; }
 
-    return AI_VALUE2(bool, "behind", "current target");
+    return EncounterRoleTriggerPolicy::IsNotBehindIngvar(
+        AI_VALUE2(bool, "behind", "current target"));
 }

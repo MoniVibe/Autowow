@@ -24,6 +24,10 @@ public:
 
     bool Execute(Event event) override;
     bool isPossible() override;
+    // Exact unit-targeted item use for objective executors. This still enters
+    // through WorldSession::HandleUseItemOpcode; callers do not cast or credit
+    // anything directly.
+    bool UseItemOnUnit(Item* item, Unit* unitTarget);
 
 protected:
     bool UseItemAuto(Item* item);

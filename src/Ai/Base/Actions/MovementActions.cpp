@@ -12,11 +12,14 @@
 #include <string>
 
 #include "Corpse.h"
+#include "CombatMovementPolicy.h"
+#include "DungeonNavigatorAmbientPolicy.h"
 #include "Event.h"
 #include "FleeManager.h"
 #include "G3D/Vector3.h"
 #include "GameObject.h"
 #include "LastMovementValue.h"
+#include "LineOfSightWaypointPolicy.h"
 #include "LootObjectStack.h"
 #include "Map.h"
 #include "MotionMaster.h"
@@ -147,6 +150,14 @@ bool MovementAction::MoveToLOS(WorldObject* target, bool ranged)
         {
             if (botAI->HasStrategy("debug move", BOT_STATE_NON_COMBAT))
                 CreateWp(bot, point.x, point.y, point.z, 0.0, 2334);
+
+            // PathGenerator commonly returns the bot's own projected start point first. Its
+            // terrain Z can satisfy the target-side LOS probe even while the bot's actual eye
+            // position cannot see the target. Selecting it produces a successful-looking no-op
+            // forever. Require a real horizontal step before accepting an LOS waypoint.
+            if (!LineOfSightWaypointPolicy::IsMeaningfulHorizontalStep(
+                    bot->GetDistance2d(point.x, point.y)))
+                continue;
 
             float distPoint = target->GetDistance(point.x, point.y, point.z);
             if (distPoint < dist && target->IsWithinLOS(point.x, point.y, point.z + bot->GetCollisionHeight()))
@@ -827,6 +838,16 @@ bool MovementAction::ReachCombatTo(Unit* target, float distance)
             ty = target->GetPositionY();
             tz = target->GetPositionZ();
         }
+    }
+
+    // A grounded attacker cannot path to an airborne creature's Z coordinate.
+    // Approach the terrain below the target instead; normal range logic still
+    // determines how close the bot needs to get before casting or attacking.
+    const bool projectToGround = CombatMovementPolicy::ShouldProjectTargetToGround(target->IsFlying(), bot->IsFlying());
+    if (projectToGround)
+    {
+        const float groundZ = bot->GetMapWaterOrGroundLevel(tx, ty, bot->GetPositionZ());
+        tz = CombatMovementPolicy::ResolveApproachZ(true, groundZ > INVALID_HEIGHT, tz, groundZ, bot->GetPositionZ());
     }
     float combatDistance = bot->GetCombatReach() + target->GetCombatReach();
     distance += combatDistance;
@@ -2749,6 +2770,9 @@ bool MoveOutOfCollisionAction::isUseful()
 
 bool MoveRandomAction::Execute(Event /*event*/)
 {
+    if (DungeonNavigatorAmbientPolicy::ShouldSuppress(bot, botAI, BOT_STATE_NON_COMBAT))
+        return false;
+
     float distance = sPlayerbotAIConfig.tooCloseDistance + urand(10, 30);
 
     Map* map = bot->GetMap();
@@ -2775,7 +2799,13 @@ bool MoveRandomAction::Execute(Event /*event*/)
     return false;
 }
 
-bool MoveRandomAction::isUseful() { return !AI_VALUE(GuidPosition, "rpg target"); }
+bool MoveRandomAction::isUseful()
+{
+    if (DungeonNavigatorAmbientPolicy::ShouldSuppress(bot, botAI, BOT_STATE_NON_COMBAT))
+        return false;
+
+    return !AI_VALUE(GuidPosition, "rpg target");
+}
 
 bool MoveInsideAction::Execute(Event /*event*/) { return MoveInside(bot->GetMapId(), x, y, bot->GetPositionZ(), distance); }
 

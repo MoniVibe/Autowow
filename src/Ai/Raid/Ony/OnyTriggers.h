@@ -34,6 +34,20 @@ public:
     bool IsActive() override;
 };
 
+class RaidOnyxiaFlyingRangedPressureTrigger : public Trigger
+{
+public:
+    RaidOnyxiaFlyingRangedPressureTrigger(PlayerbotAI* botAI);
+    bool IsActive() override;
+};
+
+class RaidOnyxiaImminentFearTrigger : public Trigger
+{
+public:
+    RaidOnyxiaImminentFearTrigger(PlayerbotAI* botAI) : Trigger(botAI, "ony imminent phase three fear", 1) {}
+    bool IsActive() override;
+};
+
 class OnyxiaAvoidEggsTrigger : public Trigger
 {
 public:

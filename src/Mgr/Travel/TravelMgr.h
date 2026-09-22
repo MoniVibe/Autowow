@@ -534,6 +534,10 @@ public:
 
     virtual Quest const* GetQuestTemplate() { return nullptr; }
     virtual bool isActive([[maybe_unused]] Player* bot) { return false; }
+    // Called immediately before a native target timer transitions to EXPIRED. Destinations with a
+    // stricter external lifecycle can reconcile their terminal reason first.
+    virtual void onTargetExpiry([[maybe_unused]] Player* bot) { }
+    virtual bool reconcileBeforeNativeExpiry() const { return false; }
 
     bool isFull(bool ignoreFull = false);
 
@@ -764,6 +768,13 @@ public:
     void setTarget(TravelDestination* tDestination1, WorldPosition* wPosition1, bool groupCopy1 = false);
     void setStatus(TravelStatus status);
     void setExpireIn(uint32 expireMs) { statusTime = getExpiredTime() + expireMs; }
+    // Ensure the live status timer cannot expire before an external route/session deadline.
+    // This extends only; it never shortens a target's native allowance.
+    void ensureTimeLeft(uint32 minimumMs);
+    // Replace the native relative timer with the exact remaining lifetime of an immutable
+    // external session deadline. Intended for one-time target installation, not polling.
+    bool alignTimeLeft(uint32 exactRemainingMs);
+    bool expireIfElapsed(uint32 elapsedMs);
 
     void incRetry(bool isMove)
     {
@@ -806,13 +817,19 @@ public:
 
     uint32 getExpiredTime() { return getMSTime() - startTime; }
 
-    uint32 getTimeLeft() { return statusTime - getExpiredTime(); }
+    uint32 getTimeLeft()
+    {
+        uint32 const elapsed = getExpiredTime();
+        return statusTime > elapsed ? statusTime - elapsed : 0;
+    }
+    uint32 getStatusDeadline() const { return statusTime; }
 
     uint32 getMaxTravelTime();
     uint32 getRetryCount(bool isMove) { return isMove ? moveRetryCount : extendRetryCount; }
 
     bool isTraveling();
     bool isActive();
+    bool isActiveAtElapsed(uint32 elapsedMs);
     bool isWorking();
     bool isPreparing();
     bool isMaxRetry(bool isMove) { return isMove ? (moveRetryCount > 5) : (extendRetryCount > 5); }

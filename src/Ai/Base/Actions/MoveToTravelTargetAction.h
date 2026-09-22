@@ -10,6 +10,7 @@
 #include "MovementActions.h"
 
 class PlayerbotAI;
+class TravelTarget;
 
 class MoveToTravelTargetAction : public MovementAction
 {
@@ -17,7 +18,13 @@ public:
     MoveToTravelTargetAction(PlayerbotAI* botAI) : MovementAction(botAI, "move to travel target") {}
 
     bool Execute(Event event) override;
+    // Controlled quest-acquisition entry point. It keeps the normal safety gates but bypasses
+    // generic Engine::ExecuteAction usefulness/strategy scheduling before staged movement.
+    bool ExecuteQuestGiverStagedEntry(TravelTarget* target);
     bool isUseful() override;
+
+private:
+    bool MoveQuestGiverStaged(TravelTarget* target);
 };
 
 #endif

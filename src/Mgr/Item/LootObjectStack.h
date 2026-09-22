@@ -14,6 +14,7 @@ class Player;
 class WorldObject;
 
 struct ItemTemplate;
+struct QuestObjectiveSpec;
 
 class LootStrategy
 {
@@ -42,7 +43,10 @@ public:
     uint32 reqSkillValue;
     uint32 reqItem;
 
-private:
+    // Exact required-item check against the bot's live quest log: true only while some
+    // INCOMPLETE quest still needs `itemId` (its required count is not yet met). Public so the
+    // objective-loot selector in LootObjectStack can reuse this exact local logic instead of
+    // duplicating it.
     static bool IsNeededForQuest(Player* bot, uint32 itemId);
 };
 
@@ -78,11 +82,26 @@ public:
     bool CanLoot(float maxDistance);
     LootObject GetLoot(float maxDistance = 0);
 
+    // Objective-locked loot selection for a CollectItem quest objective. Prefers the RPG
+    // runtime's selected target (`preferredGuid`, may be empty), requires the candidate's entry
+    // to be an accepted source of `spec`, requires the exact `spec.requiredItemId` to still be
+    // needed, and honours normal loot ownership / distance. Returns an empty LootObject when no
+    // matching, lootable source exists.
+    LootObject GetBestForObjective(QuestObjectiveSpec const& spec, ObjectGuid preferredGuid, float maxDistance = 0);
+
+    // Exact source (entry + guid) recorded by the most recent successful GetBestForObjective
+    // selection, so downstream progress verification can attribute a loot to the corpse/GO opened.
+    ObjectGuid GetLastObjectiveSourceGuid() const { return lastObjectiveGuid; }
+    uint32 GetLastObjectiveSourceEntry() const { return lastObjectiveEntry; }
+
 private:
     LootObject GetNearest(float maxDistance = 0);
 
     Player* bot;
     LootTargetList availableLoot;
+
+    ObjectGuid lastObjectiveGuid;
+    uint32 lastObjectiveEntry = 0;
 };
 
 #endif

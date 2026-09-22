@@ -10,9 +10,48 @@
 #include "Group.h"
 #include "ItemUsageValue.h"
 #include "LootAction.h"
+#include "Log.h"
 #include "ObjectMgr.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+
+namespace
+{
+char const* RollVoteName(RollVote vote)
+{
+    switch (vote)
+    {
+        case PASS: return "pass";
+        case NEED: return "need";
+        case GREED: return "greed";
+        case DISENCHANT: return "disenchant";
+        default: return "unknown";
+    }
+}
+
+RollVote ApplyConfiguredRollPolicy(RollVote vote, ItemTemplate const* proto, Player* bot)
+{
+    if (vote == NEED)
+    {
+        if (sPlayerbotAIConfig.lootNeedRollLevel == 0 || RollUniqueCheck(proto, bot))
+            return PASS;
+        if (sPlayerbotAIConfig.lootNeedRollLevel == 1)
+            return GREED;
+    }
+    if (vote == GREED && !sPlayerbotAIConfig.lootGreedRollLevel)
+        return PASS;
+    return vote;
+}
+
+void LogRaidLootVote(Player* bot, ObjectGuid itemGuid, uint32 itemId, ItemUsage usage, RollVote vote,
+    char const* source)
+{
+    LOG_INFO("playerbots",
+        "[RaidLoot] event=vote source={} bot={} bot_guid={} item={} item_guid={} usage={} vote={}",
+        source, bot->GetName(), bot->GetGUID().GetRawValue(), itemId, itemGuid.GetRawValue(),
+        static_cast<uint32>(usage), RollVoteName(vote));
+}
+}
 
 bool LootRollAction::Execute(Event /*event*/)
 {
@@ -83,26 +122,21 @@ bool LootRollAction::Execute(Event /*event*/)
                     break;
             }
         }
-        if (vote == NEED)
-        {
-            if (sPlayerbotAIConfig.lootNeedRollLevel == 0 || RollUniqueCheck(proto, bot))
-                vote = PASS;
-            else if (sPlayerbotAIConfig.lootNeedRollLevel == 1)
-                vote = GREED;
-        }
-        else if (vote == GREED && !sPlayerbotAIConfig.lootGreedRollLevel)
-            vote = PASS;
+        vote = ApplyConfiguredRollPolicy(vote, proto, bot);
 
+        RollVote effectiveVote = vote;
         switch (group->GetLootMethod())
         {
             case MASTER_LOOT:
             case FREE_FOR_ALL:
-                group->CountRollVote(bot->GetGUID(), guid, PASS);
+                effectiveVote = PASS;
+                group->CountRollVote(bot->GetGUID(), guid, effectiveVote);
                 break;
             default:
-                group->CountRollVote(bot->GetGUID(), guid, vote);
+                group->CountRollVote(bot->GetGUID(), guid, effectiveVote);
                 break;
         }
+        LogRaidLootVote(bot, guid, itemId, usage, effectiveVote, "periodic");
         // One item at a time
         return true;
     }
@@ -178,7 +212,10 @@ bool MasterLootRollAction::Execute(Event event)
     if (!group)
         return false;
 
-    group->CountRollVote(bot->GetGUID(), creatureGuid, CalculateRollVote(proto));
+    ItemUsage usage = AI_VALUE2(ItemUsage, "item usage", std::to_string(itemId));
+    RollVote vote = ApplyConfiguredRollPolicy(CalculateRollVote(proto, usage), proto, bot);
+    group->CountRollVote(bot->GetGUID(), creatureGuid, vote);
+    LogRaidLootVote(bot, creatureGuid, itemId, usage, vote, "packet");
 
     return true;
 }

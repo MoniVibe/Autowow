@@ -11,9 +11,43 @@
 #include "ItemCountValue.h"
 #include "ItemUsageValue.h"
 #include "ItemVisitors.h"
+#include "Log.h"
 #include "Playerbots.h"
 #include "StatsWeightCalculator.h"
 #include "ItemPackets.h"
+
+namespace
+{
+std::string RaidLootSourceName(std::string source)
+{
+    if (source.empty())
+        return "equip_upgrade";
+
+    for (char& character : source)
+    {
+        bool const safe = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+                          (character >= '0' && character <= '9') || character == '_' || character == '-';
+        if (!safe)
+            character = '_';
+    }
+    return source;
+}
+
+void LogRaidLootEquip(Player* bot, Item* expectedItem, uint8 slot, uint32 previousItemId,
+    uint32 previousItemGuidCounter)
+{
+    Item* equipped = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+    if (!equipped || !expectedItem || equipped->GetGUID() != expectedItem->GetGUID())
+        return;
+
+    LOG_INFO("playerbots",
+        "[RaidLoot] event=equip bot={} bot_guid={} bot_guid_counter={} item={} entry={} item_guid={} "
+        "item_guid_counter={} slot={} previous_item={} previous_item_guid_counter={} result=equipped",
+        bot->GetName(), bot->GetGUID().GetRawValue(), bot->GetGUID().GetCounter(), equipped->GetTemplate()->ItemId,
+        equipped->GetTemplate()->ItemId, equipped->GetGUID().GetRawValue(), equipped->GetGUID().GetCounter(),
+        static_cast<uint32>(slot), previousItemId, previousItemGuidCounter);
+}
+}
 
 bool EquipAction::Execute(Event event)
 {
@@ -104,6 +138,9 @@ void EquipAction::EquipItem(Item* item)
         // Handle them early here to avoid issues.
         if (invType == INVTYPE_RANGED || invType == INVTYPE_THROWN || invType == INVTYPE_RANGEDRIGHT)
         {
+            Item* previous = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+            uint32 const previousItemId = previous ? previous->GetTemplate()->ItemId : 0;
+            uint32 const previousItemGuidCounter = previous ? previous->GetGUID().GetCounter() : 0;
             WorldPacket packet(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
             ObjectGuid itemguid = item->GetGUID();
             packet << itemguid << uint8(EQUIPMENT_SLOT_RANGED);
@@ -111,6 +148,7 @@ void EquipAction::EquipItem(Item* item)
             WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(packet));
             nicePacket.Read();
             bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
+            LogRaidLootEquip(bot, item, EQUIPMENT_SLOT_RANGED, previousItemId, previousItemGuidCounter);
 
             std::ostringstream out;
             out << "Equipping " << chat->FormatItem(itemProto) << " in ranged slot";
@@ -202,6 +240,8 @@ void EquipAction::EquipItem(Item* item)
 
             if (canGoMain && betterThanMH && mhConditionOK)
             {
+                uint32 const previousItemId = mainHandItem ? mainHandItem->GetTemplate()->ItemId : 0;
+                uint32 const previousItemGuidCounter = mainHandItem ? mainHandItem->GetGUID().GetCounter() : 0;
                 // Equip new weapon in main hand
                 {
                     WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
@@ -211,6 +251,7 @@ void EquipAction::EquipItem(Item* item)
                     nicePacket.Read();
                     bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
                 }
+                LogRaidLootEquip(bot, item, EQUIPMENT_SLOT_MAINHAND, previousItemId, previousItemGuidCounter);
 
                 // Try moving old main hand weapon to offhand if beneficial
                 if (mainHandItem && mainHandCanGoOff && (!offHandItem || mainHandScore > offHandScore))
@@ -238,6 +279,8 @@ void EquipAction::EquipItem(Item* item)
             // Priority 2: If not better than main hand, check if better than offhand
             else if (canGoOff && newItemScore > offHandScore)
             {
+                uint32 const previousItemId = offHandItem ? offHandItem->GetTemplate()->ItemId : 0;
+                uint32 const previousItemGuidCounter = offHandItem ? offHandItem->GetGUID().GetCounter() : 0;
                 // Equip in offhand
                 WorldPacket eqPacket(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
                 ObjectGuid newItemGuid = item->GetGUID();
@@ -245,6 +288,7 @@ void EquipAction::EquipItem(Item* item)
                 WorldPackets::Item::AutoEquipItemSlot nicePacket(std::move(eqPacket));
                 nicePacket.Read();
                 bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
+                LogRaidLootEquip(bot, item, EQUIPMENT_SLOT_OFFHAND, previousItemId, previousItemGuidCounter);
 
                 std::ostringstream out;
                 out << "Equipping " << chat->FormatItem(itemProto) << " in offhand";
@@ -316,6 +360,9 @@ void EquipAction::EquipItem(Item* item)
         }
 
         // Equip the item in the chosen slot
+        Item* previous = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, dstSlot);
+        uint32 const previousItemId = previous ? previous->GetTemplate()->ItemId : 0;
+        uint32 const previousItemGuidCounter = previous ? previous->GetGUID().GetCounter() : 0;
         {
             WorldPacket packet(CMSG_AUTOEQUIP_ITEM_SLOT, 2);
             ObjectGuid itemguid = item->GetGUID();
@@ -324,6 +371,7 @@ void EquipAction::EquipItem(Item* item)
             nicePacket.Read();
             bot->GetSession()->HandleAutoEquipItemSlotOpcode(nicePacket);
         }
+        LogRaidLootEquip(bot, item, dstSlot, previousItemId, previousItemGuidCounter);
     }
 
     std::ostringstream out;
@@ -331,11 +379,12 @@ void EquipAction::EquipItem(Item* item)
     botAI->TellMaster(out);
 }
 
-ItemIds EquipAction::SelectInventoryItemsToEquip()
+ItemIds EquipAction::SelectInventoryItemsToEquip(std::string const& source)
 {
     CollectItemsVisitor visitor;
     IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
 
+    std::string const telemetrySource = RaidLootSourceName(source);
     ItemIds items;
     for (auto i = visitor.items.begin(); i != visitor.items.end(); ++i)
     {
@@ -362,7 +411,14 @@ ItemIds EquipAction::SelectInventoryItemsToEquip()
 
         ItemUsage usage = AI_VALUE2(ItemUsage, "item upgrade", itemUsageParam);
         if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_BAD_EQUIP)
+        {
+            LOG_INFO("playerbots",
+                "[RaidLoot] event=evaluate trigger=inventory_upgrade_scan source={} bot={} bot_guid={} "
+                "bot_guid_counter={} item={} entry={} item_guid={} item_guid_counter={} usage={} selected=true",
+                telemetrySource, bot->GetName(), bot->GetGUID().GetRawValue(), bot->GetGUID().GetCounter(), itemId,
+                itemId, item->GetGUID().GetRawValue(), item->GetGUID().GetCounter(), static_cast<uint32>(usage));
             items.insert(itemId);
+        }
     }
     return items;
 }
@@ -404,14 +460,14 @@ bool EquipUpgradesPacketAction::Execute(Event event)
             return false;
     }
 
-    ItemIds items = SelectInventoryItemsToEquip();
+    ItemIds items = SelectInventoryItemsToEquip(source);
     EquipItems(items);
     return true;
 }
 
-bool EquipUpgradeAction::Execute(Event /*event*/)
+bool EquipUpgradeAction::Execute(Event event)
 {
-    ItemIds items = SelectInventoryItemsToEquip();
+    ItemIds items = SelectInventoryItemsToEquip(event.GetSource());
     EquipItems(items);
     return true;
 }

@@ -1317,12 +1317,14 @@ TravelNodeRoute TravelNodeMap::getRoute(TravelNode* start, TravelNode* goal, Pla
 }
 
 TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition endPos,
-                                        std::vector<WorldPosition>& startPath, Player* bot)
+                                        std::vector<WorldPosition>& startPath, Player* bot,
+                                        bool allowUnattachedStart)
 {
     if (m_nodes.empty())
         return TravelNodeRoute();
 
     std::vector<WorldPosition> newStartPath;
+    TravelNodeRoute firstUnattachedStartRoute;
     std::vector<TravelNode*> startNodes = m_nodes, endNodes = m_nodes;
 
     if (!startNodes.size() || !endNodes.size())
@@ -1351,6 +1353,9 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
 
         if (!route.isEmpty())
         {
+            if (allowUnattachedStart && firstUnattachedStartRoute.isEmpty())
+                firstUnattachedStartRoute = route;
+
             // Check if the bot can actually walk to this start position.
             newStartPath = startPath;
             if (startNodePosition.cropPathTo(newStartPath, maxStartDistance) ||
@@ -1375,7 +1380,15 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
         }
     }
 
-    if (bot && !bot->HasSpellCooldown(8690))
+    if (allowUnattachedStart && !firstUnattachedStartRoute.isEmpty())
+    {
+        // The caller must validate the returned stored route from the live start. Do not claim
+        // that the graph's first node is reachable by leaving a stale or partial startPath here.
+        startPath.clear();
+        return firstUnattachedStartRoute;
+    }
+
+    if (!allowUnattachedStart && bot && !bot->HasSpellCooldown(8690))
     {
         startPath.clear();
         TravelNode* botNode = TravelNodeMap::instance().teleportNodes[bot->GetGUID()][0];
@@ -1401,7 +1414,8 @@ TravelNodeRoute TravelNodeMap::getRoute(WorldPosition startPos, WorldPosition en
     return TravelNodeRoute();
 }
 
-TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Player* bot)
+TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endPos, Player* bot,
+                                      bool allowUnattachedStart)
 {
     TravelPath movePath;
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
@@ -1415,11 +1429,12 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
     //[[Node pathfinding system]]
     // We try to find nodes near the bot and near the end position that have a route between them.
     // Then bot has to move towards/along the route.
-    TravelNodeMap::instance().m_nMapMtx.lock_shared();
+    std::shared_lock<std::shared_timed_mutex> mapLock(TravelNodeMap::instance().m_nMapMtx);
 
     // Find the route of nodes starting at a node closest to the start position and ending at a node closest to the
     // endposition. Also returns longPath: The path from the start position to the first node in the route.
-    TravelNodeRoute route = TravelNodeMap::instance().getRoute(startPos, endPos, beginPath, bot);
+    TravelNodeRoute route =
+        TravelNodeMap::instance().getRoute(startPos, endPos, beginPath, bot, allowUnattachedStart);
 
     if (route.isEmpty())
         return movePath;
@@ -1444,8 +1459,6 @@ TravelPath TravelNodeMap::getFullPath(WorldPosition startPos, WorldPosition endP
             sPlayerbotAIConfig.log("bot_pathfinding.csv", movePath.print().str().c_str());
         }
     }
-
-    TravelNodeMap::instance().m_nMapMtx.unlock_shared();
 
     return movePath;
 }

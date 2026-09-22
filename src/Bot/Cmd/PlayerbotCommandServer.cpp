@@ -32,8 +32,7 @@ bool ReadLine(socket_ptr sock, std::string* buffer, std::string* line)
         else if (error)
             throw boost::system::system_error(error);  // Some other error.
 
-        buf[n] = 0;
-        *buffer += buf;
+        buffer->append(buf, n);
     }
 
     *line = std::string(buffer->begin(), pos);
@@ -61,7 +60,7 @@ void session(socket_ptr sock)
 
 void server(Acore::Asio::IoContext& io_service, short port)
 {
-    tcp::acceptor a(io_service, tcp::endpoint(tcp::v4(), port));
+    tcp::acceptor a(io_service, tcp::endpoint(boost::asio::ip::address_v4::loopback(), port));
     for (;;)
     {
         socket_ptr sock(new tcp::socket(io_service));

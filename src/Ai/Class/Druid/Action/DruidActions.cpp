@@ -206,8 +206,10 @@ std::vector<NextAction> CastRebirthAction::getPrerequisites()
 
 bool CastRebirthAction::isUseful()
 {
-    return CastSpellAction::isUseful() &&
-           AI_VALUE2(float, "distance", GetTargetName()) <= sPlayerbotAIConfig.spellDistance;
+    // The shared resurrection action resolves either the dead unit or the released player's
+    // physical corpse.  The old generic spell check measured the ghost at the graveyard and
+    // therefore rejected a valid corpse target before Rebirth's reach prerequisite could run.
+    return ResurrectPartyMemberAction::isUseful();
 }
 
 bool CastInnervateOnHealerAction::isPossible()

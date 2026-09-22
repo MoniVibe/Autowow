@@ -6,15 +6,36 @@
 
 #include "ReviveFromCorpseAction.h"
 
+#include "AutoWowBridge.h"
+#include "DungeonPathSafety.h"
 #include "Event.h"
 #include "FleeManager.h"
 #include "GameGraveyard.h"
 #include "MapMgr.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#include "PersistentCorpseApproachPolicy.h"
 #include "RandomPlayerbotMgr.h"
 #include "ServerFacade.h"
 #include "Corpse.h"
+#include "../../World/Gathering/GatheringWorkerState.h"
+
+#include <cmath>
+
+namespace
+{
+constexpr uint32 PersistentCorpseRejectedPathTypes =
+    PATHFIND_SHORTCUT | PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH |
+    PATHFIND_SHORT | PATHFIND_FARFROMPOLY;
+
+CorpseRouteRetryPolicy::RouteEndpoint ToRouteEndpoint(GraveyardStruct const* grave)
+{
+    if (!grave)
+        return {};
+
+    return {grave->ID, grave->Map, grave->x, grave->y, grave->z};
+}
+}
 
 bool ReviveFromCorpseAction::Execute(Event event)
 {
@@ -39,6 +60,31 @@ bool ReviveFromCorpseAction::Execute(Event event)
 
     if (!corpse)
         return false;
+
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()))
+    {
+        bool const corpseNear = corpse->IsWithinDistInMap(bot, CORPSE_RECLAIM_RADIUS - 5.0f, true);
+        AutoWowGather::DeathRecoveryTransition const recovery = AutoWowGather::PlanDeathRecovery(
+            bot->GetGUID().GetCounter(), false, true, true, corpseNear, bot->isMoving());
+        if (recovery.action != AutoWowGather::DeathRecoveryAction::ReclaimCorpse)
+        {
+            if (recovery.action == AutoWowGather::DeathRecoveryAction::Wait)
+                botAI->SetNextCheckDelay((recovery.delaySeconds ? recovery.delaySeconds : 1) * 1000);
+            return false;
+        }
+
+        // This is the same reclaim opcode emitted by the normal client. The worker policy has
+        // already verified the corpse-near phase and reserved this attempt, preventing repeated
+        // reclaim packets while the core's corpse timer is still active.
+        LOG_DEBUG("playerbots", "[GatherWorkerRecovery] bot={} reclaiming corpse",
+                  bot->GetGUID().ToString().c_str());
+        bot->GetMotionMaster()->Clear();
+        bot->StopMoving();
+        WorldPacket packet(CMSG_RECLAIM_CORPSE);
+        packet << bot->GetGUID();
+        bot->GetSession()->HandleReclaimCorpseOpcode(packet);
+        return true;
+    }
 
     // if (corpse->GetGhostTime() + bot->GetCorpseReclaimDelay(corpse->GetType() == CORPSE_RESURRECTABLE_PVP) >
     // time(nullptr))
@@ -82,8 +128,84 @@ bool FindCorpseAction::Execute(Event /*event*/)
 
     Player* groupLeader = botAI->GetGroupLeader();
     Corpse* corpse = bot->GetCorpse();
+
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()))
+    {
+        bool const corpseNear = corpse &&
+            corpse->IsWithinDistInMap(bot, CORPSE_RECLAIM_RADIUS - 5.0f, true);
+        AutoWowGather::DeathRecoveryTransition const recovery = AutoWowGather::PlanDeathRecovery(
+            bot->GetGUID().GetCounter(), bot->IsAlive(), bot->HasPlayerFlag(PLAYER_FLAGS_GHOST),
+            bot->HasCorpse(), corpseNear, bot->isMoving());
+
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::ReleaseSpirit)
+        {
+            // Find-corpse can win the dead trigger before the generic auto-release trigger. Keep
+            // the worker path ordinary and repair-free in that ordering as well.
+            WorldPacket packet(CMSG_REPOP_REQUEST);
+            packet << uint8(0);
+            bot->GetSession()->HandleRepopRequestOpcode(packet);
+            botAI->SetNextCheckDelay(1000);
+            return true;
+        }
+
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::ReclaimCorpse)
+        {
+            LOG_DEBUG("playerbots", "[GatherWorkerRecovery] bot={} reclaiming corpse",
+                      bot->GetGUID().ToString().c_str());
+            bot->GetMotionMaster()->Clear();
+            bot->StopMoving();
+            WorldPacket packet(CMSG_RECLAIM_CORPSE);
+            packet << bot->GetGUID();
+            bot->GetSession()->HandleReclaimCorpseOpcode(packet);
+            return true;
+        }
+
+        if (recovery.action == AutoWowGather::DeathRecoveryAction::Wait)
+        {
+            botAI->SetNextCheckDelay((recovery.delaySeconds ? recovery.delaySeconds : 1) * 1000);
+            return true;
+        }
+    }
+
+    bool const persistentNoTeleport = AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter());
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()) && !persistentNoTeleport)
+    {
+        // A worker that was not deployed through the persistent lifecycle has no authority to
+        // enter the legacy corpse branch. Stop and expose the missing lifecycle guard rather than
+        // permitting its ordinary-bot teleport fallback.
+        AutoWowGather::SetRouteStatus(bot->GetGUID().GetCounter(), "blocked",
+                                      "worker_death_recovery_blocked", "no_teleport_policy_missing");
+        return false;
+    }
+
+    // Player::GetCorpse() only searches the player's current Map.  A released ghost whose body is
+    // on another continent or inside an unloaded instance still has an authoritative persisted
+    // corpse location, so hand that state to the ordinary local spirit-healer route.
+    if (!corpse && persistentNoTeleport && bot->HasCorpse() &&
+        bot->GetCorpseLocation().GetMapId() != bot->GetMapId())
+    {
+        LOG_WARN("playerbots",
+            "[PersistentCorpseRecovery] bot={} phase=cross_map_corpse_location current_map={} "
+            "corpse_map={} teleport_fallback=false",
+            bot->GetName(), bot->GetMapId(), bot->GetCorpseLocation().GetMapId());
+        return botAI->DoSpecificAction(
+            "spirit healer", Event("persistent cross-map corpse-location recovery"), true);
+    }
+
     if (!corpse)
         return false;
+
+    if (persistentNoTeleport && corpse->GetMapId() != bot->GetMapId())
+    {
+        // A released player cannot walk directly to a corpse on another map.  Hand the bot to the
+        // bounded local spirit-healer route immediately; never let the legacy corpse timeout move
+        // it across a continent or instance boundary.
+        LOG_WARN("playerbots",
+            "[PersistentCorpseRecovery] bot={} phase=cross_map_corpse current_map={} corpse_map={} "
+            "teleport_fallback=false",
+            bot->GetName(), bot->GetMapId(), corpse->GetMapId());
+        return botAI->DoSpecificAction("spirit healer", Event("persistent cross-map corpse recovery"), true);
+    }
 
     // if (groupLeader)
     // {
@@ -98,6 +220,12 @@ bool FindCorpseAction::Execute(Event /*event*/)
     {
         if (dCount >= 5)
         {
+            // Persistent AutoWow bots must escape a corpse camp as a player would: walk as a
+            // ghost to a spirit healer. The legacy random-bot path resurrects in place and resets
+            // the counter, which can create an endless die/revive loop at the same hostile spawn.
+            if (persistentNoTeleport)
+                return botAI->DoSpecificAction("spirit healer", Event("persistent corpse recovery"), true);
+
             // LOG_INFO("playerbots", "Bot {} {}:{} <{}>: died too many times, was revived and teleported",
             //     bot->GetGUID().ToString().c_str(), bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(),
             //     bot->GetName().c_str());
@@ -143,7 +271,7 @@ bool FindCorpseAction::Execute(Event /*event*/)
     {
         if (moveToLeader)
             moveToPos = leaderPos;
-        else
+        else if (!persistentNoTeleport)
         {
             FleeManager manager(bot, reclaimDist, 0.0, urand(0, 1), moveToPos);
 
@@ -169,6 +297,9 @@ bool FindCorpseAction::Execute(Event /*event*/)
 
         if (deadTime > delay)
         {
+            if (persistentNoTeleport)
+                return botAI->DoSpecificAction("spirit healer", Event("persistent corpse route timeout"), true);
+
             bot->GetMotionMaster()->Clear();
             bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
             bot->TeleportTo(moveToPos.GetMapId(), moveToPos.GetPositionX(), moveToPos.GetPositionY(), moveToPos.GetPositionZ(), 0);
@@ -184,8 +315,56 @@ bool FindCorpseAction::Execute(Event /*event*/)
         {
             if (deadTime < 10 * MINUTE && dCount < 5)  // Look for corpse up to 30 minutes.
             {
-                moved =
-                    MoveTo(moveToPos.GetMapId(), moveToPos.GetPositionX(), moveToPos.GetPositionY(), moveToPos.GetPositionZ(), false, false);
+                if (persistentNoTeleport && moveToPos.GetMapId() == bot->GetMapId())
+                {
+                    AutoWowDungeonPath::ProbeResult const probe = AutoWowDungeonPath::Probe(
+                        bot, moveToPos.GetPositionX(), moveToPos.GetPositionY(),
+                        moveToPos.GetPositionZ());
+                    bool const hasEndpoint = probe.path.size() >= 2;
+                    G3D::Vector3 endpoint;
+                    if (hasEndpoint)
+                        endpoint = probe.path.back();
+
+                    float const sourceToEndpoint = hasEndpoint ? bot->GetExactDist(
+                        endpoint.x, endpoint.y, endpoint.z) : 0.0f;
+                    float const endpointToDestination = hasEndpoint ? std::sqrt(
+                        std::pow(endpoint.x - moveToPos.GetPositionX(), 2.0f) +
+                        std::pow(endpoint.y - moveToPos.GetPositionY(), 2.0f) +
+                        std::pow(endpoint.z - moveToPos.GetPositionZ(), 2.0f)) : 0.0f;
+                    bool const partialPathTypeAllowed =
+                        (probe.pathType & PATHFIND_INCOMPLETE) != 0 &&
+                        (probe.pathType & PersistentCorpseRejectedPathTypes) == 0;
+                    PersistentCorpseApproachPolicy::Decision const decision =
+                        PersistentCorpseApproachPolicy::Select({
+                            true, probe.safe, partialPathTypeAllowed, hasEndpoint,
+                            probe.allGroundSamplesValid, bot->GetExactDist(
+                                moveToPos.GetPositionX(), moveToPos.GetPositionY(),
+                                moveToPos.GetPositionZ()),
+                            sourceToEndpoint, endpointToDestination});
+
+                    if (decision == PersistentCorpseApproachPolicy::Decision::DirectDestination)
+                    {
+                        moved = MoveTo(moveToPos.GetMapId(), moveToPos.GetPositionX(),
+                            moveToPos.GetPositionY(), moveToPos.GetPositionZ(), false, false, true);
+                    }
+                    else if (decision == PersistentCorpseApproachPolicy::Decision::PartialEndpoint)
+                    {
+                        moved = MoveTo(bot->GetMapId(), endpoint.x, endpoint.y, endpoint.z,
+                            false, false, true);
+                        if (moved)
+                        {
+                            LOG_DEBUG("playerbots",
+                                "[PersistentCorpseRecovery] bot={} phase=corpse_walk_segment "
+                                "segment_distance={} remaining_distance={} teleport_fallback=false",
+                                bot->GetName(), sourceToEndpoint, endpointToDestination);
+                        }
+                    }
+                }
+                else
+                {
+                    moved = MoveTo(moveToPos.GetMapId(), moveToPos.GetPositionX(),
+                        moveToPos.GetPositionY(), moveToPos.GetPositionZ(), false, false);
+                }
             }
 
             if (!moved)
@@ -203,7 +382,11 @@ bool FindCorpseAction::isUseful()
     if (bot->InBattleground())
         return false;
 
-    return bot->GetCorpse();
+    if (AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()))
+        return bot->isDead();
+
+    return bot->GetCorpse() ||
+        (AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter()) && bot->HasCorpse());
 }
 
 GraveyardStruct const* SpiritHealerAction::GetGrave(bool startZone)
@@ -299,8 +482,22 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     Corpse* corpse = bot->GetCorpse();
     if (!corpse)
     {
+        if (AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter()) && bot->HasCorpse() &&
+            bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+        {
+            return ExecuteNoTeleportCorpseRecovery(nullptr);
+        }
+
+        corpseRouteState_.Reset();
         botAI->TellError("I am not a spirit");
         return false;
+    }
+
+    if (AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter()))
+    {
+        // teleport_fallback=false: league-party and persistent-worker bots stay on the bounded
+        // walking route and can never reach the legacy teleport branch below.
+        return ExecuteNoTeleportCorpseRecovery(corpse);
     }
 
     uint32 dCount = AI_VALUE(uint32, "death count");
@@ -309,35 +506,12 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     GraveyardStruct const* ClosestGrave =
         GetGrave(dCount > 10 || deadTime > 15 * MINUTE || AI_VALUE(uint8, "durability") < 10);
 
-    if (bot->GetDistance2d(ClosestGrave->x, ClosestGrave->y) < sPlayerbotAIConfig.sightDistance)
-    {
-        GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
-        for (GuidVector::iterator i = npcs.begin(); i != npcs.end(); i++)
-        {
-            Unit* unit = botAI->GetUnit(*i);
-            if (unit && unit->HasNpcFlag(UNIT_NPC_FLAG_SPIRITHEALER))
-            {
-                LOG_DEBUG("playerbots", "Bot {} {}:{} <{}> revives at spirit healer", bot->GetGUID().ToString().c_str(),
-                          bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
-                PlayerbotChatHandler ch(bot);
-                bot->ResurrectPlayer(0.5f);
-                bot->SpawnCorpseBones();
-                context->GetValue<Unit*>("current target")->Set(nullptr);
-                bot->SetTarget();
-                botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("hello", "Hello", {}));
-
-                if (dCount > 20)
-                    context->GetValue<uint32>("death count")->Set(0);
-
-                return true;
-            }
-        }
-    }
-
     if (!ClosestGrave)
-    {
         return false;
-    }
+
+    CorpseRouteRetryPolicy::RouteEndpoint const legacyGrave = ToRouteEndpoint(ClosestGrave);
+    if (TrySpiritHealerInteraction(legacyGrave))
+        return true;
 
     bool moved = false;
 
@@ -360,6 +534,152 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     //          bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName().c_str());
 
     // botAI->TellError("Cannot find any spirit healer nearby");
+    return false;
+}
+
+bool SpiritHealerAction::ExecuteNoTeleportCorpseRecovery(Corpse* corpse)
+{
+    using namespace CorpseRouteRetryPolicy;
+
+    if (!corpse && !bot->HasCorpse())
+        return false;
+
+    // A remote corpse object is not loaded into the ghost's current Map.  The player-owned corpse
+    // location remains authoritative.  Quantize that persisted location into a stable per-body key
+    // so repeated action ticks share one retry budget without querying or mutating the database.
+    WorldLocation const persistedCorpse = bot->GetCorpseLocation();
+    auto const quantizedCoordinate = [](float coordinate)
+    {
+        return static_cast<std::uint64_t>(std::llround(coordinate * 4.0f)) & 0x1FFFFFu;
+    };
+    std::uint64_t const persistedCorpseKey =
+        ((static_cast<std::uint64_t>(persistedCorpse.GetMapId()) & 0x3FFu) << 42u) |
+        (quantizedCoordinate(persistedCorpse.GetPositionX()) << 21u) |
+        quantizedCoordinate(persistedCorpse.GetPositionY());
+    DeathIdentity const death = corpse ?
+        DeathIdentity{corpse->GetGUID().GetCounter(), static_cast<std::int64_t>(corpse->GetGhostTime())} :
+        DeathIdentity{bot->GetGUID().GetCounter(), static_cast<std::int64_t>(persistedCorpseKey)};
+    GraveyardStruct const* localGrave = sGraveyard->GetClosestGraveyard(bot, bot->GetTeamId());
+    RouteEndpoint localEndpoint = ToRouteEndpoint(localGrave);
+    if (!localEndpoint.IsLocalTo(bot->GetMapId()))
+        localEndpoint = {};
+    corpseRouteState_.BeginDeath(death, localEndpoint);
+
+    auto recordRouteFailure = [this](RouteEndpoint const& grave)
+    {
+        Transition const failure = corpseRouteState_.Observe(MovementObservation::RouteFailure);
+        if (failure.emitTerminalReceipt)
+        {
+            LOG_ERROR("playerbots",
+                "[PersistentCorpseRecovery] bot={} receipt=corpse_recovery_blocked_no_path grave_id={} "
+                "route_attempts={} route_failures={} teleport_fallback=false",
+                bot->GetName(), grave.graveId, corpseRouteState_.RouteAttempts(), corpseRouteState_.RouteFailures());
+        }
+
+        if (failure.blocked)
+        {
+            bot->StopMoving();
+            botAI->SetNextCheckDelay(BlockedRetryDelayMs);
+            return;
+        }
+
+        LOG_WARN("playerbots",
+            "[PersistentCorpseRecovery] bot={} phase=spirit_healer_walk grave_id={} route_attempt={} "
+            "route_failures={} teleport_fallback=false",
+            bot->GetName(), grave.graveId, corpseRouteState_.RouteAttempts(), corpseRouteState_.RouteFailures());
+        botAI->SetNextCheckDelay(RetryDelayMs(corpseRouteState_.RouteFailures()));
+    };
+
+    // A terminal state is checked before NPC interaction or movement. Once exhausted, this death
+    // remains idle and fail closed even if later action ticks keep selecting spirit healer.
+    if (corpseRouteState_.IsBlocked())
+    {
+        bot->StopMoving();
+        botAI->SetNextCheckDelay(BlockedRetryDelayMs);
+        return false;
+    }
+
+    RouteEndpoint const& grave = corpseRouteState_.Endpoint();
+    if (grave.IsValid() && bot->GetMapId() == grave.mapId &&
+        bot->GetDistance2d(grave.x, grave.y) < sPlayerbotAIConfig.sightDistance)
+    {
+        if (TrySpiritHealerInteraction(grave))
+        {
+            corpseRouteState_.Observe(MovementObservation::RecoverySucceeded);
+            return true;
+        }
+
+        corpseRouteState_.Observe(MovementObservation::Waiting);
+        botAI->SetNextCheckDelay(WaitingRetryDelayMs);
+        return true;
+    }
+
+    if (grave.IsValid())
+    {
+        UpdateMovementState();
+        MovementObservation const preflight =
+            ClassifyPreflight(IsMovingAllowed(), IsDuplicateMove(grave.x, grave.y, grave.z),
+                              IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL), bot->isMoving());
+        if (preflight != MovementObservation::Ready)
+        {
+            corpseRouteState_.Observe(preflight);
+            botAI->SetNextCheckDelay(WaitingRetryDelayMs);
+            return true;
+        }
+
+        // The previous accepted route is a genuine failure only after its duplicate/wait/moving
+        // gates have all cleared and the ghost is still not at the pinned grave.
+        if (corpseRouteState_.IsRouteInProgress())
+        {
+            recordRouteFailure(grave);
+            return false;
+        }
+
+        if (MoveTo(grave.mapId, grave.x, grave.y, grave.z, false, false))
+        {
+            corpseRouteState_.Observe(MovementObservation::RouteStarted);
+            LOG_DEBUG("playerbots",
+                "[PersistentCorpseRecovery] bot={} phase=spirit_healer_walk grave_id={} route_attempt={} "
+                "route_failures={} teleport_fallback=false",
+                bot->GetName(), grave.graveId, corpseRouteState_.RouteAttempts(),
+                corpseRouteState_.RouteFailures());
+            return true;
+        }
+    }
+
+    recordRouteFailure(grave);
+    return false;
+}
+
+bool SpiritHealerAction::TrySpiritHealerInteraction(CorpseRouteRetryPolicy::RouteEndpoint const& grave)
+{
+    if (!grave.IsValid() || bot->GetMapId() != grave.mapId ||
+        bot->GetDistance2d(grave.x, grave.y) >= sPlayerbotAIConfig.sightDistance)
+        return false;
+
+    GuidVector npcs = AI_VALUE(GuidVector, "nearest npcs");
+    for (GuidVector::iterator i = npcs.begin(); i != npcs.end(); i++)
+    {
+        Unit* unit = botAI->GetUnit(*i);
+        if (!unit || !unit->HasNpcFlag(UNIT_NPC_FLAG_SPIRITHEALER))
+            continue;
+
+        LOG_DEBUG("playerbots", "Bot {} {}:{} <{}> revives at spirit healer", bot->GetGUID().ToString().c_str(),
+                  bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
+        PlayerbotChatHandler ch(bot);
+        bot->ResurrectPlayer(0.5f);
+        bot->SpawnCorpseBones();
+        context->GetValue<Unit*>("current target")->Set(nullptr);
+        bot->SetTarget();
+        botAI->TellMaster(PlayerbotTextMgr::instance().GetBotTextOrDefault("hello", "Hello", {}));
+
+        uint32 const deathCount = AI_VALUE(uint32, "death count");
+        if (deathCount > 20)
+            context->GetValue<uint32>("death count")->Set(0);
+
+        return true;
+    }
+
     return false;
 }
 

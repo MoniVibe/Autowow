@@ -14,6 +14,7 @@ public:
         creators["ony spread out"] = &RaidOnyxiaActionContext::spread_out;
         creators["ony move to safe zone"] = &RaidOnyxiaActionContext::move_to_safe_zone;
         creators["ony kill whelps"] = &RaidOnyxiaActionContext::kill_whelps;
+        creators["ony attack flying boss"] = &RaidOnyxiaActionContext::attack_flying_boss;
         creators["ony avoid eggs move"] = &RaidOnyxiaActionContext::avoid_eggs;
     }
 
@@ -22,6 +23,7 @@ private:
     static Action* spread_out(PlayerbotAI* ai) { return new RaidOnyxiaSpreadOutAction(ai); }
     static Action* move_to_safe_zone(PlayerbotAI* ai) { return new RaidOnyxiaMoveToSafeZoneAction(ai); }
     static Action* kill_whelps(PlayerbotAI* ai) { return new RaidOnyxiaKillWhelpsAction(ai); }
+    static Action* attack_flying_boss(PlayerbotAI* ai) { return new RaidOnyxiaAttackFlyingBossAction(ai); }
     static Action* avoid_eggs(PlayerbotAI* ai) { return new OnyxiaAvoidEggsAction(ai); }
 };
 

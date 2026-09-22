@@ -608,7 +608,9 @@ bool Engine::ListenAndExecute(Action* action, Event event)
 void Engine::LogAction(char const* format, ...)
 {
     Player* bot = botAI->GetBot();
-    if (sPlayerbotAIConfig.logInGroupOnly && (!bot->GetGroup() || !botAI->HasRealPlayerMaster()) && !testMode)
+    // Strategy construction can log before PlayerbotAI is bound to its Player.
+    // Keep the action history, but never dereference the not-yet-bound bot.
+    if (sPlayerbotAIConfig.logInGroupOnly && (!bot || !bot->GetGroup() || !botAI->HasRealPlayerMaster()) && !testMode)
         return;
 
     char buf[1024];
@@ -636,7 +638,7 @@ void Engine::LogAction(char const* format, ...)
     }
     else
     {
-        LOG_DEBUG("playerbots", "{} {}", bot->GetName().c_str(), buf);
+        LOG_DEBUG("playerbots", "{} {}", bot ? bot->GetName().c_str() : "<unbound>", buf);
     }
 }
 

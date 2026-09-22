@@ -35,6 +35,7 @@ class AddGatheringLootAction : public AddAllLootAction
 {
 public:
     AddGatheringLootAction(PlayerbotAI* botAI) : AddAllLootAction(botAI, "add gathering loot") {}
+    bool Execute(Event event) override;
 
 protected:
     bool AddLoot(ObjectGuid guid) override;

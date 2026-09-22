@@ -3,8 +3,10 @@
 #include "GenericSpellActions.h"
 #include "LastMovementValue.h"
 #include "MovementActions.h"
+#include "OnyBreathSignal.h"
 #include "Playerbots.h"
 #include "PositionAction.h"
+#include "RaidSafeZoneSelectionPolicy.h"
 
 bool RaidOnyxiaMoveToSideAction::Execute(Event /*event*/)
 {
@@ -65,43 +67,57 @@ bool RaidOnyxiaSpreadOutAction::Execute(Event /*event*/)
 
 bool RaidOnyxiaMoveToSafeZoneAction::Execute(Event /*event*/)
 {
+    uint32 spellId = OnyxiaBreathSignal::GetActive(bot->GetGUID());
     Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
-    if (!boss)
+    Spell* currentSpell = boss ? boss->GetCurrentSpell(CURRENT_GENERIC_SPELL) : nullptr;
+    if (!spellId && currentSpell && currentSpell->m_spellInfo &&
+        OnyxiaBreathSignal::IsDeepBreathSpell(currentSpell->m_spellInfo->Id))
+    {
+        spellId = currentSpell->m_spellInfo->Id;
+        OnyxiaBreathSignal::Record(bot->GetGUID(), spellId);
+    }
+    if (!spellId)
         return false;
-
-    Spell* currentSpell = boss->GetCurrentSpell(CURRENT_GENERIC_SPELL);
-    if (!currentSpell || !currentSpell->m_spellInfo)
-        return false;
-
-    uint32 spellId = currentSpell->m_spellInfo->Id;
 
     std::vector<SafeZone> safeZones = GetSafeZonesForBreath(spellId);
     if (safeZones.empty())
         return false;
 
-    // Find closest safe zone
-    SafeZone* bestZone = nullptr;
-    float bestDist = std::numeric_limits<float>::max();
+    std::vector<RaidSafeZoneSelectionPolicy::Point> zonePoints;
+    zonePoints.reserve(safeZones.size());
+    for (SafeZone const& zone : safeZones)
+        zonePoints.push_back({zone.pos.GetPositionX(), zone.pos.GetPositionY()});
 
-    for (auto& zone : safeZones)
-    {
-        float dist = bot->GetExactDist2d(zone.pos.GetPositionX(), zone.pos.GetPositionY());
-        if (dist < bestDist)
-        {
-            bestDist = dist;
-            bestZone = &zone;
-        }
-    }
-
-    if (!bestZone)
-        return false;
+    // Deep Breath is directional: crossing the room to follow a shared raid anchor can move a
+    // bot through the breath lane. Each responder therefore uses its nearest valid shelter.
+    std::size_t const bestIndex = RaidSafeZoneSelectionPolicy::SelectClosest(
+        {bot->GetPositionX(), bot->GetPositionY()}, zonePoints);
+    SafeZone* bestZone = &safeZones[bestIndex];
+    float const bestDist = bot->GetExactDist2d(bestZone->pos.GetPositionX(), bestZone->pos.GetPositionY());
 
     if (bot->IsWithinDist2d(bestZone->pos.GetPositionX(), bestZone->pos.GetPositionY(), bestZone->radius))
+    {
+        if (OnyxiaBreathSignal::MarkArrival(bot->GetGUID(), spellId))
+        {
+            LOG_INFO("playerbots", "[Onyxia] breath_safe_arrival bot={} guid={} spell={} pos=({:.2f},{:.2f},{:.2f})",
+                bot->GetName(), bot->GetGUID().GetCounter(), spellId, bot->GetPositionX(), bot->GetPositionY(),
+                bot->GetPositionZ());
+        }
         return false;  // Already safe
+    }
 
     // Stop current spell first
     bot->AttackStop();
     bot->InterruptNonMeleeSpells(false);
+
+    if (OnyxiaBreathSignal::MarkMove(bot->GetGUID(), spellId))
+    {
+        LOG_INFO("playerbots",
+            "[Onyxia] breath_safe_move bot={} guid={} spell={} from=({:.2f},{:.2f},{:.2f}) to=({:.2f},{:.2f},{:.2f}) distance={:.2f}",
+            bot->GetName(), bot->GetGUID().GetCounter(), spellId, bot->GetPositionX(), bot->GetPositionY(),
+            bot->GetPositionZ(), bestZone->pos.GetPositionX(), bestZone->pos.GetPositionY(),
+            bestZone->pos.GetPositionZ(), bestDist);
+    }
 
     // bot->Yell("Moving to Safe Zone!", LANG_UNIVERSAL);
     return MoveTo(bot->GetMapId(), bestZone->pos.GetPositionX(), bestZone->pos.GetPositionY(), bestZone->pos.GetPositionZ(),
@@ -126,10 +142,25 @@ bool RaidOnyxiaKillWhelpsAction::Execute(Event /*event*/)
         if (unit->GetEntry() == 11262)  // Onyxia Whelp
         {
             // bot->Yell("Attacking Whelps!", LANG_UNIVERSAL);
-            return Attack(unit);
+            return AttackWithRaidTargetClaim(
+                unit, "ony whelp baseline", RaidTargetAuthority::EncounterBaseline);
         }
     }
     return false;
+}
+
+bool RaidOnyxiaAttackFlyingBossAction::Execute(Event /*event*/)
+{
+    Unit* boss = AI_VALUE2(Unit*, "find target", "onyxia");
+    if (!boss || !boss->IsAlive() || !boss->IsFlying())
+        return false;
+
+    Unit* currentTarget = AI_VALUE(Unit*, "current target");
+    if (currentTarget == boss)
+        return false;
+
+    return AttackWithRaidTargetClaim(
+        boss, "ony flying baseline", RaidTargetAuthority::EncounterBaseline);
 }
 
 bool OnyxiaAvoidEggsAction::Execute(Event /*event*/)

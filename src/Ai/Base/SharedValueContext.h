@@ -13,6 +13,8 @@
 #include "PvpValues.h"
 #include "QuestValues.h"
 
+#include <memory>
+
 class SharedValueContext : public NamedObjectContext<UntypedValue>
 {
 public:
@@ -26,14 +28,10 @@ public:
     template <class T>
     Value<T>* getGlobalValue(std::string const name)
     {
-        // should never reach here
-        SharedNamedObjectContextList<UntypedValue> sValueContexts;
-        sValueContexts.Add(this);
-        NamedObjectContextList<UntypedValue> valueContexts(sValueContexts);
-        PlayerbotAI* botAI = new PlayerbotAI();
-
-        UntypedValue* value = valueContexts.GetContextObject(name, botAI);
-        delete botAI;
+        // Global values must be owned by this process-lifetime context. Building a temporary
+        // SharedNamedObjectContextList here makes its destructor delete both this singleton and the
+        // returned value before the caller can invoke Get(), leaving a dangling pointer.
+        UntypedValue* value = NamedObjectContext<UntypedValue>::create(name, sharedBotAI.get());
         return dynamic_cast<Value<T>*>(value);
     }
 
@@ -52,7 +50,7 @@ public:
     }
 
 private:
-    SharedValueContext() : NamedObjectContext(true)
+    SharedValueContext() : NamedObjectContext(true), sharedBotAI(std::make_unique<PlayerbotAI>())
     {
         creators["bg masters"] = &SharedValueContext::bg_masters;
         creators["drop map"] = &SharedValueContext::drop_map;
@@ -63,7 +61,12 @@ private:
         creators["quest guidp map"] = &SharedValueContext::quest_guidp_map;
         creators["quest givers"] = &SharedValueContext::quest_givers;
     }
-    ~SharedValueContext() = default;
+    ~SharedValueContext()
+    {
+        // Destroy the cached values while their shared PlayerbotAI owner is still alive. The base
+        // destructor calls Clear() again, which is harmless after this first pass emptied the map.
+        Clear();
+    }
 
     SharedValueContext(const SharedValueContext&) = delete;
     SharedValueContext& operator=(const SharedValueContext&) = delete;
@@ -79,6 +82,8 @@ private:
     static UntypedValue* entry_quest_relation(PlayerbotAI* botAI) { return new EntryQuestRelationMapValue(botAI); }
     static UntypedValue* quest_guidp_map(PlayerbotAI* botAI) { return new QuestGuidpMapValue(botAI); }
     static UntypedValue* quest_givers(PlayerbotAI* botAI) { return new QuestGiversValue(botAI); }
+
+    std::unique_ptr<PlayerbotAI> sharedBotAI;
 
 };
 

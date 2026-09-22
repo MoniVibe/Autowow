@@ -5,6 +5,8 @@
 
 #include "FollowActions.h"
 
+#include "DungeonNavigatorAmbientPolicy.h"
+
 #include <algorithm>
 #include <cmath>
 #include <array>
@@ -241,6 +243,18 @@ bool FollowAction::Execute(Event /*event*/)
 
 bool FollowAction::isUseful()
 {
+    Player* navigatorLeader = botAI->GetGroupLeader();
+    PlayerbotAI* navigatorLeaderAI = navigatorLeader ? GET_PLAYERBOT_AI(navigatorLeader) : nullptr;
+    bool const navigatorGroupFollower = bot->GetGroup() && navigatorLeader && navigatorLeader != bot;
+    bool const navigatorSameContext = navigatorGroupFollower && navigatorLeader->IsInWorld() &&
+        navigatorLeader->GetMap() == bot->GetMap();
+    if (DungeonNavigatorAmbientPolicy::ShouldSuppressOrdinaryFollow(
+            bot, botAI, navigatorLeaderAI, navigatorGroupFollower, navigatorSameContext,
+            botAI->GetState(), BOT_STATE_NON_COMBAT))
+    {
+        return false;
+    }
+
     // move from group takes priority over follow as it's added and removed automatically
     // (without removing/adding follow)
     if (botAI->HasStrategy("move from group", BOT_STATE_COMBAT) ||

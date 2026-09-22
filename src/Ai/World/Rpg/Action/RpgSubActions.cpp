@@ -254,7 +254,13 @@ Event RpgBuyAction::ActionEvent(Event /*event*/) { return Event("rpg action", "v
 
 std::string const RpgSellAction::ActionName() { return "sell"; }
 
-Event RpgSellAction::ActionEvent(Event /*event*/) { return Event("rpg action", "vendor"); }
+Event RpgSellAction::ActionEvent(Event /*event*/)
+{
+    if (AI_VALUE(bool, "can sell"))
+        return Event("rpg action", "vendor");
+
+    return Event("rpg action", "gray");
+}
 
 std::string const RpgRepairAction::ActionName() { return "repair"; }
 

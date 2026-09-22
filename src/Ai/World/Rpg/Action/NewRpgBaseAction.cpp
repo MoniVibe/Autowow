@@ -1,13 +1,27 @@
 #include "NewRpgBaseAction.h"
 
+#include <algorithm>
+#include <limits>
+#include <optional>
+#include <unordered_map>
+
+#include "AutoWowAcceptance.h"
+#include "AutoWowBridge.h"
+#include "AutoWowOracleRuntime.h"
+#include "AutonomousRpgTravelPolicy.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "Creature.h"
+#include "DBCStores.h"
+#include "DungeonPathSafety.h"
+#include "DungeonPathWalkAction.h"
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GossipDef.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
+#include "ItemTemplate.h"
+#include "MotionMaster.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -24,16 +38,199 @@
 #include "Playerbots.h"
 #include "Position.h"
 #include "QuestDef.h"
+#include "QuestInventoryReliefPolicy.h"
 #include "QuestPackets.h"
+#include "QuestTravelWalk.h"
 #include "Random.h"
 #include "RandomPlayerbotMgr.h"
+#include "SellAction.h"
 #include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
 #include "Timer.h"
 #include "TravelMgr.h"
+#include "TravelNode.h"
 
-bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
+namespace
 {
+// Keep the expensive TravelMgr graph probe out of the per-bot NewRpgInfo header. The map is
+// intentionally keyed by the persistent bot GUID and contains only the latest timestamp per bot.
+std::unordered_map<uint32, uint32> questWalkProbeTsByBot;
+
+// Only the AutoWow autonomous RPG travel path uses this short rejection memory. Keeping it
+// outside NewRpgInfo avoids resetting a failed destination on an ordinary RPG status change.
+struct FailedTravelDestination
+{
+    WorldPosition pos;
+    uint32 failedAt;
+};
+std::unordered_map<uint32, std::vector<FailedTravelDestination>> failedTravelByBot;
+std::unordered_map<uint32, uint32> lastAutonomousTravelTickByBot;
+constexpr size_t maxFailedTravelDestinations = 8;
+
+struct VendorReliefCandidate
+{
+    uint32 mapId = 0;
+    uint32 zoneId = 0;
+    uint32 phaseMask = 0;
+    uint32 checkedAtMs = 0;
+    WorldPosition pos;
+};
+std::unordered_map<uint32, VendorReliefCandidate> vendorReliefCandidatesByBot;
+constexpr uint32 vendorReliefCacheMs = 60 * 1000;
+constexpr float maxVendorReliefDistance = 800.0f;
+std::unordered_map<uint32, uint32> lastQuestBagPurchaseAttemptByBot;
+
+struct QuestBagOffer
+{
+    uint32 itemId = 0;
+    uint32 vendorSlot = 0;
+    uint32 priceCopper = 0;
+};
+
+bool TravelDestinationCoolingDown(uint32 botGuid, WorldPosition const& pos)
+{
+    auto it = failedTravelByBot.find(botGuid);
+    if (it == failedTravelByBot.end())
+        return false;
+    auto& failed = it->second;
+    failed.erase(std::remove_if(failed.begin(), failed.end(), [](FailedTravelDestination const& entry)
+    {
+        return !AutonomousRpgTravelPolicy::IsCoolingDown(entry.failedAt, getMSTime());
+    }), failed.end());
+    for (FailedTravelDestination const& entry : failed)
+        if (entry.pos.GetMapId() == pos.GetMapId() && entry.pos.GetExactDist2d(pos) < 30.0f)
+            return true;
+    return false;
+}
+
+WorldPosition SelectReachableAutoWowTravelPos(Player* bot, std::vector<WorldLocation> const& locs,
+                                               float minRange)
+{
+    // A cache location is only a coarse point of interest. Re-ground it, then require a complete
+    // local mmap route before committing a long-lived GO_GRIND/GO_CAMP status to it.
+    std::vector<WorldPosition> candidates;
+    uint32 coolingCandidates = 0;
+    bool inCity = false;
+    if (AreaTableEntry const* zone = sAreaTableStore.LookupEntry(bot->GetZoneId()))
+        inCity = (zone->flags & AREA_FLAG_CAPITAL) != 0;
+    for (WorldLocation const& loc : locs)
+    {
+        if (loc.GetMapId() != bot->GetMapId() || bot->GetExactDist2d(loc) < minRange ||
+            bot->GetExactDist2d(loc) > 250.0f)
+            continue;
+        float const ground = std::max(bot->GetMap()->GetHeight(loc.GetPositionX(), loc.GetPositionY(), MAX_HEIGHT),
+                                      bot->GetMap()->GetWaterLevel(loc.GetPositionX(), loc.GetPositionY()));
+        if (ground == INVALID_HEIGHT || ground == VMAP_INVALID_HEIGHT_VALUE)
+            continue;
+        if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(),
+                                                loc.GetPositionY(), ground) != bot->GetZoneId())
+            continue;
+        WorldPosition candidate(loc.GetMapId(), loc.GetPositionX(), loc.GetPositionY(), ground,
+                                loc.GetOrientation());
+        if (!TravelDestinationCoolingDown(bot->GetGUID().GetCounter(), candidate))
+            candidates.push_back(candidate);
+        else
+            ++coolingCandidates;
+    }
+
+    size_t const eligibleCandidates = candidates.size();
+    size_t probes = 0;
+    WorldPosition bestPartial;
+    float bestPartialProgress = 0.0f;
+    for (size_t attempt = 0; attempt < 8 && !candidates.empty(); ++attempt)
+    {
+        ++probes;
+        size_t const index = urand(0, candidates.size() - 1);
+        WorldPosition const candidate = candidates[index];
+        candidates[index] = candidates.back();
+        candidates.pop_back();
+        PathGenerator path(bot);
+        path.SetSlopeCheck(true);
+        path.CalculatePath(candidate.GetPositionX(), candidate.GetPositionY(), candidate.GetPositionZ());
+        PathType const type = path.GetPathType();
+        G3D::Vector3 const& endpoint = path.GetActualEndPosition();
+        if (AutonomousRpgTravelPolicy::IsCompleteLocalRoute(
+                (type & PATHFIND_NORMAL) != 0, (type & PATHFIND_INCOMPLETE) != 0,
+                (type & PATHFIND_NOPATH) != 0, (type & PATHFIND_FARFROMPOLY) != 0,
+                (type & PATHFIND_SHORTCUT) != 0, (type & PATHFIND_NOT_USING_PATH) != 0,
+                candidate.GetExactDist(endpoint.x, endpoint.y, endpoint.z)))
+            return candidate;
+
+        // A long coarse point may have only a safe initial navmesh leg. Probe the corridor
+        // with terrain checks and retain that reachable endpoint as a short local destination.
+        AutoWowDungeonPath::ProbeResult const segment = AutoWowDungeonPath::Probe(
+            bot, candidate.GetPositionX(), candidate.GetPositionY(), candidate.GetPositionZ());
+        if (segment.safe && segment.mode == "navmesh" && segment.pathType == PATHFIND_NORMAL &&
+            segment.endpointDistance <= 10.0f)
+            return candidate;
+        if (!segment.safe || segment.mode != "navmesh" || segment.path.empty())
+            continue;
+        G3D::Vector3 const& legEnd = segment.path.back();
+        WorldPosition const leg(bot->GetMapId(), legEnd.x, legEnd.y, legEnd.z,
+                                candidate.GetOrientation());
+        bool const sameZone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(),
+            legEnd.x, legEnd.y, legEnd.z) == bot->GetZoneId();
+        AutonomousRpgTravelPolicy::PartialSegmentFacts const facts{
+            segment.safe && segment.mode == "navmesh",
+            segment.pathType == (PATHFIND_NORMAL | PATHFIND_INCOMPLETE),
+            sameZone,
+            TravelDestinationCoolingDown(bot->GetGUID().GetCounter(), leg),
+            segment.pathLength,
+            bot->GetExactDist(candidate.GetPositionX(), candidate.GetPositionY(),
+                              candidate.GetPositionZ()),
+            segment.endpointDistance,
+            bot->GetExactDist(legEnd.x, legEnd.y, legEnd.z)};
+        auto const selected = AutonomousRpgTravelPolicy::SelectPartialSegmentEndpoint(
+            facts, {legEnd.x, legEnd.y, legEnd.z});
+        if (selected.accepted && selected.progress > bestPartialProgress)
+        {
+            bestPartialProgress = selected.progress;
+            bestPartial = leg;
+        }
+    }
+    if (bestPartial != WorldPosition())
+    {
+        LOG_DEBUG("playerbots", "[New RPG] AutoWow {} selected grounded partial travel segment ({},{},{},{}) progress={} probed={}",
+                  bot->GetName(), bestPartial.GetMapId(), bestPartial.GetPositionX(),
+                  bestPartial.GetPositionY(), bestPartial.GetPositionZ(), bestPartialProgress, probes);
+        return bestPartial;
+    }
+    LOG_DEBUG("playerbots", "[New RPG] AutoWow {} no reachable local travel destination coarse={} eligible={} cooldown={} probed={}",
+              bot->GetName(), locs.size(), eligibleCandidates, coolingCandidates, probes);
+    return {};
+}
+}
+
+bool NewRpgBaseAction::IsAutoWowTravelBot() const
+{
+    return botAI->IsAutoWowIndependentParty() ||
+        AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
+}
+
+void NewRpgBaseAction::MarkTravelDestinationFailed(WorldPosition const& pos)
+{
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    auto& failed = failedTravelByBot[botGuid];
+    failed.erase(std::remove_if(failed.begin(), failed.end(), [&](FailedTravelDestination const& entry)
+    {
+        return entry.pos.GetMapId() == pos.GetMapId() && entry.pos.GetExactDist2d(pos) < 30.0f;
+    }), failed.end());
+    if (failed.size() >= maxFailedTravelDestinations)
+        failed.erase(failed.begin());
+    failed.push_back({pos, getMSTime()});
+    LOG_INFO("playerbots", "[New RPG] AutoWow {} replans failed destination ({},{},{},{}) cooldown_ms={}",
+             bot->GetName(), pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(),
+             AutonomousRpgTravelPolicy::kFailedDestinationCooldownMs);
+}
+
+bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool* outStuck,
+                                 bool deterministicPath,
+                                 StrictFinisherMovementPolicy::RouteIdentity strictRoute,
+                                 bool allowLegacyTeleportRecovery)
+{
+    if (outStuck)
+        *outStuck = false;
+
     if (dest == WorldPosition())
         return false;
 
@@ -43,8 +240,121 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         botAI->rpgInfo.SetMoveFarTo(dest);
     }
 
-    // performance optimization
-    if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+    LastMovement& lastMovement = AI_VALUE(LastMovement&, "last movement");
+    if (deterministicPath)
+    {
+        if (!strictRoute.IsValid())
+        {
+            if (outStuck)
+                *outStuck = true;
+            return false;
+        }
+
+        StrictFinisherMovementPolicy::LastMovementFacts const observed{
+            bot->isMoving() || lastMovement.msTime != 0,
+            lastMovement.msTime,
+            lastMovement.lastMoveToMapId,
+            lastMovement.lastMoveToX,
+            lastMovement.lastMoveToY,
+            lastMovement.lastMoveToZ};
+        StrictFinisherMovementPolicy::Decision const inherited =
+            StrictFinisherMovementPolicy::Evaluate(
+                strictRoute, observed, botAI->rpgInfo.strictFinisherMovement);
+        if (inherited == StrictFinisherMovementPolicy::Decision::RejectAndClearInherited)
+        {
+            if (bot->isMoving())
+                bot->StopMoving();
+            bot->GetMotionMaster()->Clear();
+            lastMovement.clear();
+            botAI->rpgInfo.strictFinisherMovement = {};
+        }
+        else if (inherited == StrictFinisherMovementPolicy::Decision::NoInheritedMovement)
+        {
+            botAI->rpgInfo.strictFinisherMovement = {};
+        }
+    }
+
+    auto issueMove = [&](uint32 mapId, float x, float y, float z)
+    {
+        bool const moved = MoveTo(mapId, x, y, z, false, false, false, true);
+        if (moved && deterministicPath)
+        {
+            LastMovement& issued = AI_VALUE(LastMovement&, "last movement");
+            botAI->rpgInfo.strictFinisherMovement = {
+                true,
+                strictRoute,
+                {true, issued.msTime, issued.lastMoveToMapId, issued.lastMoveToX,
+                 issued.lastMoveToY, issued.lastMoveToZ}};
+        }
+        return moved;
+    };
+
+    // A direct quest point can be a valid ground coordinate while still being outside the local
+    // mmap corridor. Reuse the staged mover's exact-path proof: complete direct walk first, then a
+    // bounded TravelMgr re-anchor whose candidate is freshly probed from the live bot position.
+    // Strict Oracle finishers may use this only as an intermediate segment: the requested
+    // destination and strict route identity remain unchanged, while every executed segment still
+    // comes from the same fresh no-teleport probe.
+    auto tryPreparedQuestWalk = [&](bool force = false) -> bool
+    {
+        if (!bot->IsInWorld() || bot->GetMapId() != dest.GetMapId())
+            return false;
+
+        constexpr uint32 questWalkProbeCooldownMs = 5000;
+        uint32 const botGuid = bot->GetGUID().GetCounter();
+        uint32 const lastProbeTs = questWalkProbeTsByBot[botGuid];
+        if (!force && lastProbeTs != 0 && GetMSTimeDiffToNow(lastProbeTs) < questWalkProbeCooldownMs)
+            return false;
+
+        questWalkProbeTsByBot[botGuid] = getMSTime();
+        AutoWowQuestGiverTravel::QuestWalkProbeSelection selection =
+            AutoWowQuestGiverTravel::SelectQuestWalkProbeDetailed(bot, dest);
+        if (!selection.probe)
+            return false;
+
+        AutoWowDungeonWalkAction walk(botAI);
+        selection.diagnostics.walkPreparedCalled = true;
+        AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason rejectReason =
+            AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::None;
+        bool const accepted = walk.WalkPrepared(*selection.probe, &rejectReason);
+        selection.diagnostics.walkPreparedAccepted = accepted;
+        selection.diagnostics.walkRejectReason = rejectReason;
+        AutoWowQuestGiverTravel::RecordQuestWalkDiagnostics(botGuid, selection.diagnostics);
+        if (!accepted)
+            return false;
+
+        if (deterministicPath)
+        {
+            // Preserve the strict handoff across the next AI tick. Without this provenance record,
+            // the next deterministic MoveFarTo call would treat its own prepared spline as an
+            // unrelated inherited move and clear it before it could finish.
+            LastMovement& issued = AI_VALUE(LastMovement&, "last movement");
+            botAI->rpgInfo.strictFinisherMovement = {
+                true,
+                strictRoute,
+                {true, issued.msTime, issued.lastMoveToMapId, issued.lastMoveToX,
+                 issued.lastMoveToY, issued.lastMoveToZ}};
+        }
+
+        botAI->rpgInfo.nearestMoveFarDis = bot->GetExactDist(dest);
+        botAI->rpgInfo.stuckTs = getMSTime();
+        botAI->rpgInfo.stuckAttempts = 0;
+        G3D::Vector3 const& endpoint = selection.probe->path.back();
+        LOG_DEBUG("playerbots", "[New RPG] {} walk-only quest route toward {} via ({},{},{}) mode {}",
+                  bot->GetName(), dest.GetMapId(), endpoint.x, endpoint.y, endpoint.z,
+                  selection.probe->mode);
+        return true;
+    };
+
+    bool const autoWowTravel = IsAutoWowTravelBot();
+    NewRpgStatus const status = botAI->rpgInfo.GetStatus();
+    bool const watchDestination = autoWowTravel && !questNoTeleport && !deterministicPath &&
+        (status == RPG_GO_GRIND || status == RPG_GO_CAMP);
+
+    // Ordinary Playerbots retain their historical movement timing. For autonomous AutoWow bots,
+    // evaluate destination progress even while a spline is active: repeatedly reissued partial
+    // paths can otherwise keep the wait gate true forever and hide a genuine oscillation.
+    if (!watchDestination && IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
     {
         return false;
     }
@@ -68,10 +378,10 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // progress toward dest and triggers teleport recovery if the
     // committed paths genuinely aren't closing the gap.
     {
-        LastMovement& lastMove = AI_VALUE(LastMovement&, "last movement");
-        if (bot->isMoving() && lastMove.lastMoveToMapId == bot->GetMapId())
+        if (!watchDestination && bot->isMoving() && lastMovement.lastMoveToMapId == bot->GetMapId())
         {
-            float remaining = bot->GetExactDist(lastMove.lastMoveToX, lastMove.lastMoveToY, lastMove.lastMoveToZ);
+            float remaining = bot->GetExactDist(lastMovement.lastMoveToX, lastMovement.lastMoveToY,
+                                                lastMovement.lastMoveToZ);
             if (remaining > 10.0f)
                 return true;
         }
@@ -83,19 +393,51 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // The old 1yd threshold was small enough that bots oscillating back
     // and forth around an obstacle would keep "making progress" forever
     // and never trigger the teleport recovery below.
-    if (disToDest + 5.0f < botAI->rpgInfo.nearestMoveFarDis)
+    bool stalled = false;
+    if (watchDestination)
+        stalled = AutonomousRpgTravelPolicy::ObserveProgress(
+            disToDest, botAI->rpgInfo.nearestMoveFarDis, botAI->rpgInfo.stuckTs,
+            botAI->rpgInfo.stuckAttempts,
+            lastAutonomousTravelTickByBot[bot->GetGUID().GetCounter()], getMSTime());
+    else if (disToDest + 5.0f < botAI->rpgInfo.nearestMoveFarDis)
     {
         botAI->rpgInfo.nearestMoveFarDis = disToDest;
         botAI->rpgInfo.stuckTs = getMSTime();
         botAI->rpgInfo.stuckAttempts = 0;
     }
     else if (++botAI->rpgInfo.stuckAttempts >= 5 && GetMSTimeDiffToNow(botAI->rpgInfo.stuckTs) >= stuckTime)
+        stalled = true;
+    if (stalled)
     {
-        // No meaningful progress toward dest for `stuckTime`: fall
-        // back to teleporting directly so the bot can get on with
-        // its RPG objective instead of oscillating indefinitely.
+        // No meaningful progress toward dest for `stuckTime`. Ordinary
+        // Playerbots may use the historical teleport fallback, but the
+        // AutoWow league must expose the failure to its external recovery
+        // loop rather than silently changing world position.
         botAI->rpgInfo.stuckTs = getMSTime();
         botAI->rpgInfo.stuckAttempts = 0;
+        // No-teleport hold when either:
+        //   - this is a quest-path move (objective source / finisher travel), so
+        //     the quest never changes world position by teleport, or
+        //   - the AutoWow league policy forbids teleport for this bot.
+        // The quest path additionally surfaces the stall via `outStuck` so the
+        // caller can raise a typed MovementStuckNoTeleport blocker for the
+        // external recovery loop instead of silently spinning.
+        bool const policyNoTeleport = AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter());
+        if (questNoTeleport || autoWowTravel || (policyNoTeleport && !allowLegacyTeleportRecovery))
+        {
+            if (questNoTeleport && tryPreparedQuestWalk(true))
+                return true;
+
+            LOG_DEBUG("playerbots", "[New RPG] {} no-teleport hold for {} at ({},{},{},{}) toward ({},{},{},{})",
+                      questNoTeleport ? "quest-path" : "AutoWow", bot->GetName(), bot->GetPositionX(),
+                      bot->GetPositionY(), bot->GetPositionZ(), bot->GetMapId(), dest.GetPositionX(),
+                      dest.GetPositionY(), dest.GetPositionZ(), dest.GetMapId());
+            if (outStuck)
+                *outStuck = true;
+            return !watchDestination;
+        }
+
+        // Keep the historical fallback for non-AutoWow, non-quest bots.
         const AreaTableEntry* entry = sAreaTableStore.LookupEntry(bot->GetZoneId());
         std::string zone_name = PlayerbotAI::GetLocalizedAreaName(entry);
         LOG_DEBUG(
@@ -105,14 +447,34 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), dest.GetMapId(), bot->GetZoneId(),
             zone_name);
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+        // Acceptance guard: a no-teleport (quest-path / AutoWow) bot is held above and must never reach a
+        // real teleport. Counting here catches any regression that bypasses that hold.
+        if (questNoTeleport || autoWowTravel || (policyNoTeleport && !allowLegacyTeleportRecovery))
+            AutoWowAcceptance::NoteTeleport();
         return bot->TeleportTo(dest);
     }
 
+    if (watchDestination)
+    {
+        if (IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL))
+            return true;
+        if (bot->isMoving() && lastMovement.lastMoveToMapId == bot->GetMapId())
+        {
+            float const remaining = bot->GetExactDist(lastMovement.lastMoveToX,
+                                                       lastMovement.lastMoveToY,
+                                                       lastMovement.lastMoveToZ);
+            if (remaining > 10.0f)
+                return true;
+        }
+    }
+
     float dis = bot->GetExactDist(dest);
+    if (questNoTeleport && tryPreparedQuestWalk())
+        return true;
+
     if (dis < pathFinderDis)
     {
-        return MoveTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), false, false,
-                      false, true);
+        return issueMove(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
     }
 
     const uint32 typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
@@ -129,6 +491,11 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     // further PathGenerator calls fire until the bot arrives.
     {
         PathGenerator path(bot);
+        // Keep the runtime route calculation aligned with the read-only path probe. Without
+        // slope checking the two can disagree on steep terrain: the probe authorizes a grounded
+        // route while this executor returns a partial/no-progress result and never commits a
+        // meaningful waypoint.
+        path.SetSlopeCheck(true);
         path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
         PathType type = path.GetPathType();
         bool canReach = !(type & (~typeOk));
@@ -143,9 +510,30 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
             float endDistToDest = dest.GetExactDist(endPos.x, endPos.y, endPos.z);
             if (endDistToDest + 5.0f < disToDest)
             {
-                return MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true);
+                return issueMove(bot->GetMapId(), endPos.x, endPos.y, endPos.z);
             }
         }
+    }
+
+    if (questNoTeleport && tryPreparedQuestWalk())
+        return true;
+
+    // A strict exact-finisher route must never substitute a randomized stepping stone for the
+    // verified destination. The caller owns the typed failure/blocked transition.
+    if (deterministicPath)
+    {
+        if (outStuck)
+            *outStuck = true;
+        return false;
+    }
+
+    // An autonomous bot must reject an unreachable destination so its RPG status can choose
+    // another activity. Random forward-cone steps can repeatedly return it to the same obstacle.
+    if (watchDestination)
+    {
+        if (outStuck)
+            *outStuck = true;
+        return false;
     }
 
     // Fallback: mmap couldn't route to the destination. Sample the
@@ -169,6 +557,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
         float dy = y + sin(angle) * sampleDis;
         float dz = z + 0.5f;
         PathGenerator path(bot);
+        path.SetSlopeCheck(true);
         path.CalculatePath(dx, dy, dz);
         PathType type = path.GetPathType();
         bool canReach = !(type & (~typeOk));
@@ -185,7 +574,7 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest)
     }
     if (found)
     {
-        return MoveTo(bot->GetMapId(), rx, ry, rz, false, false, false, true);
+        return issueMove(bot->GetMapId(), rx, ry, rz);
     }
     return false;
 }
@@ -227,6 +616,9 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
 
 bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority, WorldObject*)
 {
+    // Random movement can never be inherited as exact-finisher movement, even if it happened to
+    // use the same map and endpoint in the same update.
+    botAI->rpgInfo.strictFinisherMovement = {};
     if (IsWaitingForLastMove(priority))
         return false;
 
@@ -275,6 +667,309 @@ bool NewRpgBaseAction::ForceToWait(uint32 duration, MovementPriority priority)
     AI_VALUE(LastMovement&, "last movement")
         .Set(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetOrientation(),
              duration, priority);
+    return true;
+}
+
+bool NewRpgBaseAction::TryRelieveInventoryAtVendor(NewRpgInfo::DoQuest& data, bool incompleteItem)
+{
+    QuestObjectiveRuntime& runtime = data.objectiveRuntime;
+    if (runtime.failure != QuestFailureReason::InventoryFull || !bot->IsAlive() || bot->IsInCombat())
+        return false;
+
+    // The incomplete-item caller has just observed 100% occupied bag slots. Its explicit
+    // capacity fact is stronger than the cached general maintenance "should sell" value.
+    if (!incompleteItem && !AI_VALUE(bool, "should sell"))
+        return false;
+
+    bool const canSell = AI_VALUE(bool, "can sell");
+    bool const canSellGray = AI_VALUE(bool, "can sell gray");
+    if (!incompleteItem && !canSell && !canSellGray)
+        return false;
+
+    // Only an incomplete collect-item quest with no safe gray sale can buy a bag.
+    // The bag goes straight to an empty equipment slot, so a full backpack is valid.
+    uint8 emptyBagSlot = NULL_SLOT;
+    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+        if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+        {
+            emptyBagSlot = slot;
+            break;
+        }
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    auto const purchaseAttempt = lastQuestBagPurchaseAttemptByBot.find(botGuid);
+    bool const purchaseCoolingDown = purchaseAttempt != lastQuestBagPurchaseAttemptByBot.end() &&
+        GetMSTimeDiffToNow(purchaseAttempt->second) < QuestInventoryReliefPolicy::BagPurchaseCooldownMs;
+    context->GetValue<uint8>("bag space")->Reset();
+    bool const buyBag = QuestInventoryReliefPolicy::ShouldTryBagPurchase(
+        incompleteItem, bot->IsAlive(), bot->IsInCombat(), AI_VALUE(uint8, "bag space"),
+        canSellGray, emptyBagSlot != NULL_SLOT, purchaseCoolingDown);
+    if (incompleteItem && !canSellGray && !buyBag)
+        return false;
+
+    auto findBagOffer = [&](Creature* vendor) -> std::optional<QuestBagOffer>
+    {
+        VendorItemData const* offers = vendor ? vendor->GetVendorItems() : nullptr;
+        if (!offers)
+            return std::nullopt;
+        for (uint32 vendorSlot = 0; vendorSlot < offers->GetItemCount(); ++vendorSlot)
+        {
+            VendorItem const* offer = offers->GetItem(vendorSlot);
+            ItemTemplate const* proto = offer ? sObjectMgr->GetItemTemplate(offer->item) : nullptr;
+            if (!proto)
+                continue;
+            bool const ordinaryBag = proto->Class == ITEM_CLASS_CONTAINER &&
+                proto->SubClass == ITEM_SUBCLASS_CONTAINER && proto->InventoryType == INVTYPE_BAG;
+            if (!ordinaryBag || proto->ContainerSlots < QuestInventoryReliefPolicy::MinBagSlots ||
+                proto->BuyCount != 1 || offer->ExtendedCost != 0 || proto->BuyPrice == 0 ||
+                proto->BuyPrice > QuestInventoryReliefPolicy::MaxBagPriceCopper)
+                continue;
+            bool const available = offer->maxcount == 0 ||
+                vendor->GetVendorItemCurrentCount(offer) >= proto->BuyCount;
+            uint32 const price = QuestInventoryReliefPolicy::DiscountedBagPrice(
+                proto->BuyPrice, bot->GetReputationPriceDiscount(vendor));
+            if (!QuestInventoryReliefPolicy::AcceptBagOffer(
+                    ordinaryBag, proto->ContainerSlots, proto->BuyCount, offer->ExtendedCost,
+                    available, proto->BuyPrice, price, bot->GetMoney()))
+                continue;
+
+            uint16 destination = 0;
+            if (bot->CanEquipNewItem(emptyBagSlot, destination, proto->ItemId, false) != EQUIP_ERR_OK)
+                continue;
+            return QuestBagOffer{proto->ItemId, vendorSlot, price};
+        }
+        return std::nullopt;
+    };
+
+    GuidVector const vendors = AI_VALUE(GuidVector, "possible new rpg targets");
+    ObjectGuid vendorGuid;
+    WorldObject* vendorObject = nullptr;
+    float nearestDistance = std::numeric_limits<float>::max();
+
+    for (ObjectGuid const& candidateGuid : vendors)
+    {
+        WorldObject* candidate = ObjectAccessor::GetWorldObject(*bot, candidateGuid);
+        Creature* creature = candidate ? candidate->ToCreature() : nullptr;
+        if (!creature || !creature->IsInWorld() || !creature->IsAlive() ||
+            !creature->HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
+            continue;
+        if (incompleteItem &&
+            (creature->GetZoneId() != bot->GetZoneId() || !bot->IsFriendlyTo(creature) ||
+             !sObjectMgr->GetNpcVendorItemList(creature->GetEntry())))
+            continue;
+        if (buyBag && !findBagOffer(creature))
+            continue;
+
+        float const distance = bot->GetExactDist(creature);
+        if (distance < nearestDistance)
+        {
+            nearestDistance = distance;
+            vendorGuid = candidateGuid;
+            vendorObject = creature;
+        }
+    }
+
+    if (!vendorObject)
+    {
+        // Bag purchases require a live nearby vendor and a checked offer; a distant generic
+        // vendor route is not sufficient evidence of stock, price, or an interactable NPC.
+        if (buyBag)
+            return false;
+        // The vendor need not be loaded yet. Prefer the existing RPG travel catalogue; the
+        // spawn-catalog fallback below also uses real core creature data and normal walking.
+        WorldPosition botPosition(bot);
+        WorldPosition vendorPosition;
+        float nearestDestinationDistance = std::numeric_limits<float>::max();
+
+        for (TravelDestination* destination : TravelMgr::instance().getRpgTravelDestinations(
+                 bot, /*ignoreFull*/ true, /*ignoreInactive*/ true))
+        {
+            RpgTravelDestination* rpgDestination = dynamic_cast<RpgTravelDestination*>(destination);
+            CreatureTemplate const* proto = rpgDestination ? rpgDestination->GetCreatureTemplate() : nullptr;
+            if (!rpgDestination || !proto || !(proto->npcflag & UNIT_NPC_FLAG_VENDOR))
+                continue;
+            if (incompleteItem)
+            {
+                FactionTemplateEntry const* faction = sFactionTemplateStore.LookupEntry(proto->faction);
+                if (!sObjectMgr->GetNpcVendorItemList(proto->Entry) || !faction ||
+                    Unit::GetFactionReactionTo(bot->GetFactionTemplateEntry(), faction) < REP_NEUTRAL)
+                    continue;
+            }
+
+            std::vector<WorldPosition*> points = destination->nextPoint(&botPosition, true);
+            if (points.empty() || !points.front() || points.front()->GetMapId() != bot->GetMapId())
+                continue;
+            if (incompleteItem &&
+                bot->GetMap()->GetZoneId(bot->GetPhaseMask(), points.front()->GetPositionX(),
+                                         points.front()->GetPositionY(), points.front()->GetPositionZ()) !=
+                    bot->GetZoneId())
+                continue;
+
+            float const distance = botPosition.distance(*points.front());
+            if (incompleteItem && distance > maxVendorReliefDistance)
+                continue;
+            if (distance < nearestDestinationDistance)
+            {
+                nearestDestinationDistance = distance;
+                vendorPosition = *points.front();
+            }
+        }
+
+        if (vendorPosition == WorldPosition())
+        {
+            // The RPG travel cache can be empty in an Oracle-only world. Use the core's
+            // already-loaded spawn catalog to find a real nearby, same-zone vendor.
+            // Cache the result per bot for one minute; scanning every quest tick is unnecessary.
+            uint32 const botGuid = bot->GetGUID().GetCounter();
+            VendorReliefCandidate& cached = vendorReliefCandidatesByBot[botGuid];
+            if (cached.checkedAtMs && cached.mapId == bot->GetMapId() &&
+                cached.zoneId == bot->GetZoneId() &&
+                cached.phaseMask == bot->GetPhaseMask() &&
+                GetMSTimeDiffToNow(cached.checkedAtMs) < vendorReliefCacheMs)
+            {
+                vendorPosition = cached.pos;
+            }
+            else
+            {
+                cached = {bot->GetMapId(), bot->GetZoneId(), bot->GetPhaseMask(),
+                          getMSTime(), WorldPosition()};
+                for (auto const& [spawnId, spawn] : sObjectMgr->GetAllCreatureData())
+                {
+                    (void)spawnId;
+                    if (spawn.mapid != bot->GetMapId() || !(spawn.phaseMask & bot->GetPhaseMask()) ||
+                        !(spawn.spawnMask & (1u << bot->GetMap()->GetSpawnMode())))
+                        continue;
+
+                    CreatureTemplate const* proto = sObjectMgr->GetCreatureTemplate(spawn.id);
+                    if (!proto)
+                        continue;
+
+                    bool const vendorFlag =
+                        ((spawn.npcflag ? spawn.npcflag : proto->npcflag) & UNIT_NPC_FLAG_VENDOR) != 0;
+                    if (!vendorFlag)
+                        continue;
+                    bool const stocked = sObjectMgr->GetNpcVendorItemList(spawn.id) != nullptr;
+                    if (!stocked)
+                        continue;
+
+                    FactionTemplateEntry const* faction = sFactionTemplateStore.LookupEntry(proto->faction);
+                    bool const friendly = faction &&
+                        Unit::GetFactionReactionTo(bot->GetFactionTemplateEntry(), faction) >= REP_NEUTRAL;
+                    if (!friendly)
+                        continue;
+                    uint32 const zone = bot->GetMap()->GetZoneId(bot->GetPhaseMask(),
+                                                                  spawn.posX, spawn.posY, spawn.posZ);
+                    if (!QuestInventoryReliefPolicy::AcceptVendorSpawn(
+                            bot->GetMapId(), bot->GetZoneId(), bot->GetPhaseMask(),
+                            spawn.mapid, zone, spawn.phaseMask,
+                            vendorFlag, stocked, friendly))
+                        continue;
+
+                    WorldPosition const candidate(spawn.mapid, spawn.posX, spawn.posY, spawn.posZ);
+                    float const distance = botPosition.distance(candidate);
+                    if (distance < nearestDestinationDistance && distance <= maxVendorReliefDistance)
+                    {
+                        nearestDestinationDistance = distance;
+                        vendorPosition = candidate;
+                    }
+                }
+                cached.pos = vendorPosition;
+            }
+        }
+
+        if (vendorPosition == WorldPosition())
+            return false;
+
+        LOG_DEBUG("playerbots", "[New RPG] {} quest {} inventory relief routing to vendor at ({},{},{})",
+                  bot->GetName(), data.questId, vendorPosition.GetPositionX(), vendorPosition.GetPositionY(),
+                  vendorPosition.GetPositionZ());
+        bool stuck = false;
+        if (!MoveFarTo(vendorPosition, /*questNoTeleport*/ incompleteItem, &stuck) && stuck)
+            ForceToWait(500);
+        return true;
+    }
+
+    if (!IsWithinInteractionDist(vendorObject))
+    {
+        if (!MoveWorldObjectTo(vendorGuid))
+            ForceToWait(250);
+        return true;
+    }
+
+    if (incompleteItem && !bot->GetNPCIfCanInteractWith(vendorGuid, UNIT_NPC_FLAG_VENDOR))
+        return false;
+
+    if (buyBag)
+    {
+        // Recheck the actual state at interaction time. The first full-bag sample can be old
+        // after travel, and a normal gray sale always takes priority if one became possible.
+        context->GetValue<uint8>("bag space")->Reset();
+        if (AI_VALUE(uint8, "bag space") < 100)
+        {
+            runtime.failure = QuestFailureReason::None;
+            runtime.phase = QuestActionPhase::ResolveObjective;
+            data.lastReachPOI = 0;
+            return true;
+        }
+        context->GetValue<bool>("can sell gray")->Reset();
+        if (!AI_VALUE(bool, "can sell gray"))
+        {
+            if (emptyBagSlot == NULL_SLOT ||
+                bot->GetItemByPos(INVENTORY_SLOT_BAG_0, emptyBagSlot))
+                return false;
+
+            std::optional<QuestBagOffer> offer = findBagOffer(vendorObject->ToCreature());
+            if (!offer)
+                return false;
+            uint16 destination = 0;
+            if (bot->CanEquipNewItem(emptyBagSlot, destination, offer->itemId, false) != EQUIP_ERR_OK)
+                return false;
+
+            uint32 const moneyBefore = bot->GetMoney();
+            lastQuestBagPurchaseAttemptByBot[botGuid] = getMSTime();
+            bot->GetSession()->SetCurrentVendor(0);
+            // Core chooses CanEquipNewItem/EquipNewItem for this equipment destination,
+            // and handles price, stock, vendor access, and item creation normally.
+            bot->BuyItemFromVendorSlot(vendorGuid, offer->vendorSlot, offer->itemId, 1,
+                                       INVENTORY_SLOT_BAG_0, emptyBagSlot);
+            Item* const equippedBag = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, emptyBagSlot);
+            uint32 const moneyAfter = bot->GetMoney();
+            context->GetValue<uint8>("bag space")->Reset();
+            if (!equippedBag || equippedBag->GetEntry() != offer->itemId ||
+                moneyAfter > moneyBefore || moneyAfter < QuestInventoryReliefPolicy::MoneyReserveCopper ||
+                moneyBefore - moneyAfter != offer->priceCopper ||
+                AI_VALUE(uint8, "bag space") >= 100)
+            {
+                LOG_ERROR("playerbots", "[New RPG] {} quest {} bag relief purchase did not verify",
+                          bot->GetName(), data.questId);
+                return false;
+            }
+
+            LOG_INFO("playerbots", "[New RPG] {} quest {} bought bag {} into slot {} for {} copper",
+                     bot->GetName(), data.questId, offer->itemId, emptyBagSlot, moneyBefore - moneyAfter);
+            runtime.failure = QuestFailureReason::None;
+            runtime.phase = QuestActionPhase::ResolveObjective;
+            data.lastReachPOI = 0;
+            runtime.attemptCount = 0;
+            return true;
+        }
+    }
+
+    std::string const mode = incompleteItem ? "autowow-gray" : (canSell ? "vendor" : "autowow-gray");
+    LOG_DEBUG("playerbots", "[New RPG] {} quest {} inventory relief selling mode={}", bot->GetName(), data.questId,
+              mode);
+    if (!botAI->DoSpecificAction("sell", Event("autowow inventory relief", mode), true))
+    {
+        ForceToWait(500);
+        return true;
+    }
+
+    // The item source must be re-resolved after a vendor detour. Reward recovery retains its
+    // existing exact-finisher retry; neither path credits the quest or creates an item.
+    runtime.failure = QuestFailureReason::None;
+    runtime.phase = incompleteItem ? QuestActionPhase::ResolveObjective : QuestActionPhase::InteractFinisher;
+    data.lastReachPOI = 0;
+    runtime.attemptCount = 0;
+    runtime.selectedRewardIndexKnown = false;
     return true;
 }
 
@@ -952,6 +1647,14 @@ bool NewRpgBaseAction::GetQuestPOIPosAndObjectiveIdx(uint32 questId, std::vector
 WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 {
     const std::vector<WorldLocation>& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
+    if (IsAutoWowTravelBot())
+    {
+        WorldPosition const dest = SelectReachableAutoWowTravelPos(bot, locs, 60.0f);
+        LOG_DEBUG("playerbots", "[New RPG] AutoWow {} selected grounded grind destination ({},{},{},{})",
+                  bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(),
+                  dest.GetPositionZ());
+        return dest;
+    }
     float hiRange = 500.0f;
     float loRange = 2500.0f;
     if (bot->GetLevel() < 5)
@@ -1010,6 +1713,14 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
 WorldPosition NewRpgBaseAction::SelectRandomCampPos(Player* bot)
 {
     const std::vector<WorldLocation> locs = sTravelMgr.GetTravelHubs(bot);
+    if (IsAutoWowTravelBot())
+    {
+        WorldPosition const dest = SelectReachableAutoWowTravelPos(bot, locs, 50.0f);
+        LOG_DEBUG("playerbots", "[New RPG] AutoWow {} selected grounded camp destination ({},{},{},{})",
+                  bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(),
+                  dest.GetPositionZ());
+        return dest;
+    }
 
     bool inCity = false;
 
@@ -1156,7 +1867,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                 const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
                 if (quest)
                 {
-                    botAI->rpgInfo.ChangeToDoQuest(questId, quest);
+                    botAI->rpgInfo.ChangeToDoQuest(
+                        questId, quest, AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()));
                     return true;
                 }
             }

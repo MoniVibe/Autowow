@@ -10,6 +10,8 @@
 
 #include "AccountMgr.h"
 #include "AiFactory.h"
+#include "AutoWowOracleRuntime.h"
+#include "AutoWowProfessionReconciliation.h"
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
 #include "DBCStores.h"
@@ -871,6 +873,75 @@ void PlayerbotFactory::Randomize(bool incremental)
     LOG_DEBUG("playerbots", "Initialization Done.");
     if (pmo)
         pmo->finish();
+}
+
+bool PlayerbotFactory::InitializeFixture(uint32 specIndex, uint32 requestedQuality)
+{
+    // A prior combat fixture may have left the character dead in an instance that no longer
+    // exists. Match RandomPlayerbotMgr::Refresh: make the reusable fixture alive at its current
+    // staging position and retire the stale corpse before applying the deterministic loadout.
+    if (bot->isDead())
+    {
+        bot->ResurrectPlayer(1.0f, false);
+        bot->SpawnCorpseBones();
+    }
+
+    // The constructor treats quality 0 as "use configured random quality". Restore the explicit
+    // fixture request here so every constrained ItemQualities value reaches InitEquipment.
+    itemQuality = requestedQuality;
+    gearScoreLimit = 0;
+
+    bot->GiveLevel(level);
+    bot->SetUInt32Value(PLAYER_XP, 0);
+    bot->InitStatsForLevel(true);
+    bot->LearnDefaultSkills();
+    InitSkills();
+    InitClassSpells();
+    InitAvailableSpells();
+    InitTalentsBySpecNo(bot, static_cast<int>(specIndex), true);
+    fixtureExactItemQuality = true;
+    InitEquipment(false, false);
+    fixtureExactItemQuality = false;
+
+    // Exact fixture equipment must be honest. An empty required slot or retained item of another
+    // quality means the requested deterministic loadout was unavailable; do not report success or
+    // persist a partially initialized fixture. Offhand is optional for two-handed loadouts.
+    for (int32 slot : initSlotsOrder)
+    {
+        if (slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_OFFHAND)
+            continue;
+        if (level < 50 && (slot == EQUIPMENT_SLOT_TRINKET1 || slot == EQUIPMENT_SLOT_TRINKET2))
+            continue;
+        if (level < 30 && (slot == EQUIPMENT_SLOT_NECK || slot == EQUIPMENT_SLOT_HEAD))
+            continue;
+        if (level < 20 && (slot == EQUIPMENT_SLOT_FINGER1 || slot == EQUIPMENT_SLOT_FINGER2))
+            continue;
+        if (level < 5 && slot != EQUIPMENT_SLOT_MAINHAND && slot != EQUIPMENT_SLOT_FEET &&
+            slot != EQUIPMENT_SLOT_LEGS && slot != EQUIPMENT_SLOT_CHEST && slot != EQUIPMENT_SLOT_RANGED)
+        {
+            continue;
+        }
+
+        Item* equipped = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        ItemTemplate const* itemTemplate = equipped ? equipped->GetTemplate() : nullptr;
+        if (!itemTemplate || itemTemplate->Quality != requestedQuality)
+            return false;
+    }
+
+    // Fixture characters are reusable test inputs. Remove only carried leftovers after the new
+    // loadout is equipped, leaving every equipment slot intact. Ordinary bot refresh/runtime paths
+    // never call this fixture-only cleanup.
+    ClearFixtureCarriedItems();
+    InitBags(true);
+    InitAmmo();
+    InitReagents();
+    InitConsumables();
+    EnsureFixtureLootSlotReserve(kFixtureLootSlotReserve);
+
+    bot->SetHealth(bot->GetMaxHealth());
+    bot->SetPower(POWER_MANA, bot->GetMaxPower(POWER_MANA));
+    bot->SaveToDB(false, false);
+    return true;
 }
 
 void PlayerbotFactory::Refresh()
@@ -2168,7 +2239,8 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
             if (!proto) continue;
             // Respect gear quality limit: trinket must not exceed itemQuality setting
-            if (static_cast<int32>(proto->Quality) > static_cast<int32>(itemQuality)) continue;
+            if (fixtureExactItemQuality && proto->Quality != itemQuality) continue;
+            if (!fixtureExactItemQuality && static_cast<int32>(proto->Quality) > static_cast<int32>(itemQuality)) continue;
             if (proto->RequiredLevel > level) continue;
             if (!CanEquipItem(proto)) continue;
             uint16 dest;
@@ -2233,7 +2305,9 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         }
 
         int32 desiredQuality = itemQuality;
-        if (urand(0, 100) < 100 * sPlayerbotAIConfig.randomGearLoweringChance && desiredQuality > ITEM_QUALITY_NORMAL)
+        if (!fixtureExactItemQuality &&
+            urand(0, 100) < 100 * sPlayerbotAIConfig.randomGearLoweringChance &&
+            desiredQuality > ITEM_QUALITY_NORMAL)
             desiredQuality--;
 
         do
@@ -2246,7 +2320,7 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                     for (uint32 itemId : sRandomItemMgr.GetEquipmentNew(requiredLevel, inventoryType))
                     {
                         uint32 skipProb = 25;
-                        if (urand(1, 100) <= skipProb)
+                        if (!fixtureExactItemQuality && urand(1, 100) <= skipProb)
                             continue;
 
                         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemId);
@@ -2298,7 +2372,8 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
                     }
                 }
             }
-        } while (items[slot].size() < 25 && desiredQuality-- > ITEM_QUALITY_POOR);
+        } while (!fixtureExactItemQuality && items[slot].size() < 25 &&
+                 desiredQuality-- > ITEM_QUALITY_POOR);
 
         std::vector<std::pair<uint32, int32>>& ids = items[slot];
         if (ids.empty())
@@ -2357,15 +2432,22 @@ void PlayerbotFactory::InitEquipment(bool incremental, bool second_chance)
         }
         if (oldItem)
         {
-            uint8 bagIndex = oldItem->GetBagSlot();
-            uint8 slot = oldItem->GetSlot();
-            uint8 dstBag = NULL_BAG;
+            if (fixtureExactItemQuality)
+            {
+                bot->DestroyItem(oldItem->GetBagSlot(), oldItem->GetSlot(), true);
+            }
+            else
+            {
+                uint8 bagIndex = oldItem->GetBagSlot();
+                uint8 slot = oldItem->GetSlot();
+                uint8 dstBag = NULL_BAG;
 
-            WorldPacket packet(CMSG_AUTOSTORE_BAG_ITEM, 3);
-            packet << bagIndex << slot << dstBag;
-            WorldPackets::Item::AutoStoreBagItem nicePacket(std::move(packet));
-            nicePacket.Read();
-            bot->GetSession()->HandleAutoStoreBagItemOpcode(nicePacket);
+                WorldPacket packet(CMSG_AUTOSTORE_BAG_ITEM, 3);
+                packet << bagIndex << slot << dstBag;
+                WorldPackets::Item::AutoStoreBagItem nicePacket(std::move(packet));
+                nicePacket.Read();
+                bot->GetSession()->HandleAutoStoreBagItemOpcode(nicePacket);
+            }
         }
 
         oldItem = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
@@ -2754,7 +2836,8 @@ bool PlayerbotFactory::CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item)
 
 void PlayerbotFactory::InitTradeSkills()
 {
-    if (!sRandomPlayerbotMgr.IsRandomBot(bot))
+    bool const autoWowManaged = AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
+    if (!sRandomPlayerbotMgr.IsRandomBot(bot) && !autoWowManaged)
         return;
 
     uint32 const maxPrimaryTradeSkills =
@@ -2777,9 +2860,11 @@ void PlayerbotFactory::InitTradeSkills()
                                                               ? GetClassProfessionPairs(bot)
                                                               : GetRandomProfessionPairs();
 
-    bool const hasStoredProfessionPair = firstSkill && secondSkill && firstSkill != secondSkill &&
-                                         IsPrimaryTradeSkill(firstSkill) && IsPrimaryTradeSkill(secondSkill) &&
-                                         HasProfessionPair(professionPairs, firstSkill, secondSkill);
+    bool const validStoredProfessionPair = firstSkill && secondSkill && firstSkill != secondSkill &&
+                                           IsPrimaryTradeSkill(firstSkill) && IsPrimaryTradeSkill(secondSkill);
+    bool const hasStoredProfessionPair = AutoWowProfessionReconciliation::ShouldHonorStoredPair(
+        autoWowManaged, validStoredProfessionPair,
+        HasProfessionPair(professionPairs, firstSkill, secondSkill));
     bool const keepExistingProfessionPair = maxPrimaryTradeSkills < 2 && hasStoredProfessionPair;
 
     if (maxPrimaryTradeSkills == 1 && !keepExistingProfessionPair)
@@ -2802,9 +2887,7 @@ void PlayerbotFactory::InitTradeSkills()
         sRandomPlayerbotMgr.SetValue(bot, "secondSkill", secondSkill);
     }
 
-    if (maxPrimaryTradeSkills >= 2 &&
-        (!firstSkill || !secondSkill || firstSkill == secondSkill || !IsPrimaryTradeSkill(firstSkill) ||
-         !IsPrimaryTradeSkill(secondSkill) || !HasProfessionPair(professionPairs, firstSkill, secondSkill)))
+    if (maxPrimaryTradeSkills >= 2 && !hasStoredProfessionPair)
     {
         auto const& professionPair = ChooseProfessionPair(professionPairs);
         firstSkill = professionPair.first;
@@ -2849,6 +2932,36 @@ void PlayerbotFactory::InitTradeSkills()
     }
 
     InitTradeSpecializations();
+}
+
+bool PlayerbotFactory::ReconcilePrimaryTradeSkills(uint16 firstSkill, uint16 secondSkill)
+{
+    if (!bot || !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()) ||
+        !IsPrimaryTradeSkill(firstSkill) || !IsPrimaryTradeSkill(secondSkill) ||
+        firstSkill == secondSkill)
+        return false;
+
+    AutoWowProfessionReconciliation::ObservedPrimarySkills observed;
+    for (uint32 skill : tradeSkills)
+    {
+        if (!IsPrimaryTradeSkill(static_cast<uint16>(skill)) || !bot->HasSkill(skill) ||
+            observed.count >= observed.skills.size())
+            continue;
+        observed.skills[observed.count++] = static_cast<uint16>(skill);
+    }
+
+    if (!AutoWowProfessionReconciliation::ReconcilePrimarySkills(
+            observed, {firstSkill, secondSkill}))
+        return false;
+
+    // Do not call the full skill reset helper: it also removes race/class skills and resets the
+    // entire factory state.
+    for (uint32 skill : tradeSkills)
+    {
+        if (IsPrimaryTradeSkill(static_cast<uint16>(skill)) && bot->HasSkill(skill))
+            bot->SetSkill(skill, 0, 0, 0);
+    }
+    return true;
 }
 
 void PlayerbotFactory::InitTradeSpecializations()
@@ -3625,6 +3738,77 @@ void PlayerbotFactory::ClearAllItems()
 {
     DestroyItemsVisitor visitor(bot);
     IterateItems(&visitor, ITERATE_ALL_ITEMS);
+}
+
+void PlayerbotFactory::ClearFixtureCarriedItems()
+{
+    // Backpack slots are distinct from equipment slots even though both live in bag zero.
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            bot->DestroyItem(INVENTORY_SLOT_BAG_0, slot, true);
+
+    // Empty equipped bags without deleting the bags themselves. InitBags can then replace them
+    // safely, and no selected equipment item is ever considered by this helper.
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = bot->GetBagByPos(bagSlot))
+            for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
+                if (bag->GetItemByPos(slot))
+                    bot->DestroyItem(bagSlot, slot, true);
+}
+
+namespace
+{
+uint32 CountFreeCarriedSlots(Player* player)
+{
+    uint32 freeSlots = 0;
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        if (!player->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            ++freeSlots;
+
+    for (uint8 bagSlot = INVENTORY_SLOT_BAG_START; bagSlot < INVENTORY_SLOT_BAG_END; ++bagSlot)
+        if (Bag* bag = player->GetBagByPos(bagSlot))
+            freeSlots += bag->GetFreeSlots();
+
+    return freeSlots;
+}
+}
+
+void PlayerbotFactory::EnsureFixtureLootSlotReserve(uint32 minimumFreeSlots)
+{
+    uint32 freeSlots = CountFreeCarriedSlots(bot);
+    if (freeSlots >= minimumFreeSlots)
+        return;
+
+    uint32 slotsToRelease = minimumFreeSlots - freeSlots;
+
+    // Supplies are stored deterministically from low slots upward. Trim from the end only in the
+    // unlikely event that class supplies consume the reserve after bags have been equipped.
+    for (int32 bagSlot = INVENTORY_SLOT_BAG_END - 1;
+         bagSlot >= INVENTORY_SLOT_BAG_START && slotsToRelease > 0; --bagSlot)
+    {
+        Bag* bag = bot->GetBagByPos(static_cast<uint8>(bagSlot));
+        if (!bag)
+            continue;
+
+        for (int32 slot = static_cast<int32>(bag->GetBagSize()) - 1; slot >= 0 && slotsToRelease > 0; --slot)
+        {
+            if (!bag->GetItemByPos(static_cast<uint32>(slot)))
+                continue;
+
+            bot->DestroyItem(static_cast<uint8>(bagSlot), static_cast<uint8>(slot), true);
+            --slotsToRelease;
+        }
+    }
+
+    for (int32 slot = INVENTORY_SLOT_ITEM_END - 1;
+         slot >= INVENTORY_SLOT_ITEM_START && slotsToRelease > 0; --slot)
+    {
+        if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, static_cast<uint8>(slot)))
+            continue;
+
+        bot->DestroyItem(INVENTORY_SLOT_BAG_0, static_cast<uint8>(slot), true);
+        --slotsToRelease;
+    }
 }
 
 void PlayerbotFactory::InitAmmo()

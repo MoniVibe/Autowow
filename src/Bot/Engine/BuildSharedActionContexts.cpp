@@ -2,6 +2,10 @@
 #include "ActionContext.h"
 #include "ChatActionContext.h"
 #include "WorldPacketActionContext.h"
+#include "AutoWow/CampaignTravelAction.h"
+#include "Ai/World/Gathering/GatheringActionContext.h"
+#include "Ai/Dungeon/Generic/DungeonNavigatorContext.h"
+#include "Ai/Raid/Generic/RaidEncounterTriageContext.h"
 #include "Aq20ActionContext.h"
 #include "MCActionContext.h"
 #include "BWLActionContext.h"
@@ -29,6 +33,10 @@ void AiObjectContext::BuildSharedActionContexts(SharedNamedObjectContextList<Act
     actionContexts.Add(new ActionContext());
     actionContexts.Add(new ChatActionContext());
     actionContexts.Add(new WorldPacketActionContext());
+    actionContexts.Add(new CampaignTravelActionContext());
+    actionContexts.Add(new GatheringActionContext());
+    actionContexts.Add(new DungeonNavigatorActionContext());
+    actionContexts.Add(new RaidEncounterTriageActionContext());
     actionContexts.Add(new RaidAq20ActionContext());
     actionContexts.Add(new RaidMcActionContext());
     actionContexts.Add(new RaidBwlActionContext());

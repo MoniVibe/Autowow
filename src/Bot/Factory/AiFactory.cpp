@@ -6,6 +6,7 @@
 
 #include "AiFactory.h"
 
+#include "AvoidAoeStrategyPolicy.h"
 #include "BattlegroundMgr.h"
 #include "DKAiObjectContext.h"
 #include "DruidAiObjectContext.h"
@@ -288,7 +289,27 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
     if (!player->InBattleground())
         engine->addStrategiesNoInit("racials", "chat", "default", "cast time", "potions", "duel", "boost", nullptr);
 
-    if (sPlayerbotAIConfig.autoAvoidAoe && facade->HasRealPlayerMaster())
+    bool enableAvoidAoe = false;
+    if (sPlayerbotAIConfig.autoAvoidAoe)
+    {
+        bool const hasRealPlayerMaster = facade->HasRealPlayerMaster();
+        bool isTank = false;
+        bool isHealer = false;
+        bool isDps = false;
+        if (!hasRealPlayerMaster)
+        {
+            isTank = PlayerbotAI::IsTank(player, true);
+            if (!isTank)
+            {
+                isHealer = PlayerbotAI::IsHeal(player, true);
+                isDps = PlayerbotAI::IsDps(player, true);
+            }
+        }
+
+        enableAvoidAoe = AiFactoryPolicy::ShouldEnableAvoidAoe(true, hasRealPlayerMaster, isTank, isHealer, isDps);
+    }
+
+    if (enableAvoidAoe)
         engine->addStrategy("avoid aoe", false);
 
     engine->addStrategy("formation", false);
@@ -583,7 +604,8 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     if (!player->InBattleground())
     {
         nonCombatEngine->addStrategiesNoInit("nc", "food", "chat", "follow", "default", "quest", "loot",
-                                            "gather", "duel", "pvp", "buff", "mount", "emote", nullptr);
+                                            "gather", "duel", "pvp", "buff", "mount", "emote",
+                                            "dungeon transition", nullptr);
     }
 
     if (sPlayerbotAIConfig.autoSaveMana && PlayerbotAI::IsHeal(player, true))

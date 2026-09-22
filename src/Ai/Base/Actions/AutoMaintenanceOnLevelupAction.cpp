@@ -1,5 +1,6 @@
 #include "AutoMaintenanceOnLevelupAction.h"
 
+#include "AutoWowOracleRuntime.h"
 #include "SpellMgr.h"
 
 #include "PlayerbotAIConfig.h"
@@ -32,7 +33,9 @@ void AutoMaintenanceOnLevelupAction::AutoTeleportForLevel()
 
 void AutoMaintenanceOnLevelupAction::AutoPickTalents()
 {
-    if (!sPlayerbotAIConfig.autoPickTalents || !sRandomPlayerbotMgr.IsRandomBot(bot))
+    bool const oracleManaged = AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
+    if (!sPlayerbotAIConfig.autoPickTalents ||
+        (!sRandomPlayerbotMgr.IsRandomBot(bot) && !oracleManaged))
         return;
 
     if (bot->GetFreeTalentPoints() <= 0)
@@ -64,10 +67,13 @@ void AutoMaintenanceOnLevelupAction::AutoLearnSpell()
 void AutoMaintenanceOnLevelupAction::LearnSpells(std::ostringstream* out)
 {
     BroadcastHelper::BroadcastLevelup(botAI, bot);
-    if (sPlayerbotAIConfig.autoLearnTrainerSpells && sRandomPlayerbotMgr.IsRandomBot(bot))
+    bool const oracleManaged = AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
+    if (sPlayerbotAIConfig.autoLearnTrainerSpells &&
+        (sRandomPlayerbotMgr.IsRandomBot(bot) || oracleManaged))
         LearnTrainerSpells(out);
 
-    if (sPlayerbotAIConfig.autoLearnQuestSpells && sRandomPlayerbotMgr.IsRandomBot(bot))
+    if (sPlayerbotAIConfig.autoLearnQuestSpells &&
+        (sRandomPlayerbotMgr.IsRandomBot(bot) || oracleManaged))
         LearnQuestSpells(out);
 }
 
@@ -156,7 +162,8 @@ std::string const AutoMaintenanceOnLevelupAction::FormatSpell(SpellInfo const* s
 
 void AutoMaintenanceOnLevelupAction::AutoUpgradeEquip()
 {
-    if (!sRandomPlayerbotMgr.IsRandomBot(bot))
+    if (!sRandomPlayerbotMgr.IsRandomBot(bot) &&
+        !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()))
         return;
 
     PlayerbotFactory factory(bot, bot->GetLevel());

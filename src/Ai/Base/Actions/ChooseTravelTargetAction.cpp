@@ -9,6 +9,7 @@
 #include "ChatHelper.h"
 #include "LootObjectStack.h"
 #include "Playerbots.h"
+#include "QuestObjectiveContext.h"
 
 bool ChooseTravelTargetAction::Execute(Event /*event*/)
 {
@@ -45,6 +46,15 @@ void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarge
     // Join groups members
     bool foundTarget = foundTarget = SetGroupTarget(newTarget);
 
+    // An explicit quest directive owns proactive travel from objective acquisition through reward.
+    // Keep quest, group, and continue-current travel available, but suppress unrelated destinations
+    // even after the strict objective lock is released for finisher travel.
+    QuestObjectiveSpec const objectiveSpec = AI_VALUE(QuestObjectiveSpec, "active quest objective");
+    bool const objectiveLock = objectiveSpec.hasLock();
+    bool const questDirectiveActive = std::holds_alternative<NewRpgInfo::DoQuest>(botAI->rpgInfo.data);
+    bool const suppressUnrelatedTravel =
+        objectiveLock || ShouldSuppressLegacyQuestGrind(questDirectiveActive, objectiveSpec);
+
     //Empty bags/repair
     if (!foundTarget && urand(1, 100) > 10 && bot->GetLevel() > 5)           //90% chance
     {
@@ -57,14 +67,14 @@ void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarge
     }
 
     //Rpg in city
-    if (!foundTarget && urand(1, 100) > 90 && bot->GetLevel() > 5)           //10% chance
+    if (!suppressUnrelatedTravel && !foundTarget && urand(1, 100) > 90 && bot->GetLevel() > 5)  //10% chance
     {
         foundTarget = SetNpcFlagTarget(newTarget, { UNIT_NPC_FLAG_BANKER,UNIT_NPC_FLAG_BATTLEMASTER,UNIT_NPC_FLAG_AUCTIONEER });
     }
 
     // PvP activities
     bool pvpActivate = false;
-    if (pvpActivate && !foundTarget && urand(0, 4) && bot->GetLevel() > 50)
+    if (pvpActivate && !suppressUnrelatedTravel && !foundTarget && urand(0, 4) && bot->GetLevel() > 50)
     {
         WorldPosition pos = WorldPosition(bot);
         WorldPosition* botPos = &pos;
@@ -87,7 +97,7 @@ void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarge
     }
 
     //Grind for money
-    if (!foundTarget && AI_VALUE(bool, "should get money"))
+    if (!suppressUnrelatedTravel && !foundTarget && AI_VALUE(bool, "should get money"))
     {
         //Empty mail for money
         //if (AI_VALUE(bool, "can get mail"))
@@ -138,7 +148,7 @@ void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarge
     //}
 
     //Dungeon in group. 50% chance
-    if (!foundTarget && urand(1, 100) > 50)
+    if (!suppressUnrelatedTravel && !foundTarget && urand(1, 100) > 50)
     {
         if (AI_VALUE(bool, "can fight boss"))
         {
@@ -155,20 +165,22 @@ void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarge
     }
 
     //Explore a nearby unexplored area.
-    if (!foundTarget && botAI->HasStrategy("explore", BotState::BOT_STATE_NON_COMBAT) && urand(1, 100) > 90)  //10% chance Explore a unexplored sub-zone.
+    if (!suppressUnrelatedTravel && !foundTarget &&
+        botAI->HasStrategy("explore", BotState::BOT_STATE_NON_COMBAT) &&
+        urand(1, 100) > 90)  //10% chance Explore a unexplored sub-zone.
     {
         foundTarget = SetExploreTarget(newTarget);
     }
 
     //Just hang with an npc 50% chance
-    if (!foundTarget && urand(1, 100) > 50)
+    if (!suppressUnrelatedTravel && !foundTarget && urand(1, 100) > 50)
     {
         foundTarget = SetRpgTarget(newTarget);
         if (foundTarget)
             newTarget->setForced(true);
     }
 
-    if (!foundTarget)
+    if (!suppressUnrelatedTravel && !foundTarget)
     {
         foundTarget = SetGrindTarget(newTarget);
     }

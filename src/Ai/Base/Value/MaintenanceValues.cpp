@@ -6,8 +6,11 @@
 
 #include "MaintenanceValues.h"
 
+#include "Bag.h"
 #include "BudgetValues.h"
+#include "Item.h"
 #include "ItemUsageValue.h"
+#include "Player.h"
 #include "Playerbots.h"
 
 bool CanMoveAroundValue::Calculate()
@@ -43,6 +46,52 @@ bool CanSellValue::Calculate()
 {
     return (AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_VENDOR)) +
             AI_VALUE2(uint32, "item count", "usage " + std::to_string(ITEM_USAGE_AH))) > 1;
+}
+
+bool CanSellGrayValue::Calculate()
+{
+    auto isSafePoor = [this](Item* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (!proto || proto->Quality != ITEM_QUALITY_POOR)
+            return false;
+
+        // Oracle relief is deliberately narrower than the chat command `s gray`: retain
+        // trade goods, reagents, recipes, and quest items even when their quality is poor.
+        if (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_REAGENT ||
+            proto->Class == ITEM_CLASS_RECIPE || proto->Class == ITEM_CLASS_QUEST)
+            return false;
+
+        ItemUsage const usage = AI_VALUE2(ItemUsage, "item usage", proto->ItemId);
+        return usage == ITEM_USAGE_NONE || usage == ITEM_USAGE_VENDOR || usage == ITEM_USAGE_AH;
+    };
+
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+    {
+        if (isSafePoor(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot)))
+            return true;
+    }
+
+    for (uint8 slot = KEYRING_SLOT_START; slot < KEYRING_SLOT_END; ++slot)
+    {
+        if (isSafePoor(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot)))
+            return true;
+    }
+
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+    {
+        Bag* container = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        if (!container)
+            continue;
+
+        for (uint32 slot = 0; slot < container->GetBagSize(); ++slot)
+        {
+            if (isSafePoor(container->GetItemByPos(slot)))
+                return true;
+        }
+    }
+
+    return false;
 }
 
 bool CanTrainValue::Calculate()

@@ -142,7 +142,13 @@ bool RpgSellTrigger::IsActive()
     if (!guidP.HasNpcFlag(UNIT_NPC_FLAG_VENDOR))
         return false;
 
-    if (!AI_VALUE(bool, "can sell"))
+    // Vendor relief is a capacity response, not a normal RPG preference. Keeping this gate
+    // before the item-usage query prevents every nearby vendor from becoming a sell candidate
+    // while the bot still has ordinary bag room.
+    if (!AI_VALUE(bool, "should sell"))
+        return false;
+
+    if (!AI_VALUE(bool, "can sell") && !AI_VALUE(bool, "can sell gray"))
         return false;
 
     return true;

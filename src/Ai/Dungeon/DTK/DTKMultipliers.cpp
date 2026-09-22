@@ -1,5 +1,6 @@
 #include "DTKMultipliers.h"
 #include "DTKActions.h"
+#include "DTKNovosPolicy.h"
 #include "GenericSpellActions.h"
 #include "ChooseTargetActions.h"
 #include "MovementActions.h"
@@ -11,7 +12,9 @@ float NovosMultiplier::GetValue(Action* action)
     Unit* boss = AI_VALUE2(Unit*, "find target", "novos the summoner");
     if (!boss) { return 1.0f; }
 
-    if (boss->FindCurrentSpellBySpellId(SPELL_ARCANE_FIELD) && bot->GetTarget())
+    if (DTKNovosPolicy::IsShieldPhase(
+            boss->IsInCombat(), boss->HasAura(SPELL_ARCANE_FIELD)) &&
+        bot->GetTarget())
     {
         if (dynamic_cast<DpsAssistAction*>(action)
             || dynamic_cast<TankAssistAction*>(action))

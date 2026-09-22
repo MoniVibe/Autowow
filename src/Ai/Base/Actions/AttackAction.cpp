@@ -7,12 +7,14 @@
 #include "AttackAction.h"
 
 #include "CreatureAI.h"
+#include "DungeonPullReadinessGuard.h"
 #include "Event.h"
 #include "LastMovementValue.h"
 #include "LootObjectStack.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#include "RaidTargetClaimValue.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "Unit.h"
@@ -75,6 +77,22 @@ bool AttackAction::Attack(Unit* target, bool /*with_pet*/ /*true*/)
 
         return false;
     }
+
+    // Cooperative raid target claims are authoritative across ordinary target selectors. Without
+    // this guard, a raid action can select the boss/add correctly and a generic assist action can
+    // replace it on the next engine decision. Invalid or expired claims clear themselves, while a
+    // cooperative action may still preempt a claim through its explicit authority ordering.
+    RaidTargetClaim& raidClaim = AI_VALUE(RaidTargetClaim&, "raid target claim");
+    if (raidClaim.target && !RaidTargetClaimPolicy::IsExpired(getMSTime(), raidClaim.expiresAtMs))
+    {
+        Unit* claimedTarget = botAI->GetUnit(raidClaim.target);
+        if (!claimedTarget || !claimedTarget->IsAlive() || !claimedTarget->IsInWorld())
+            raidClaim.Clear();
+        else if (claimedTarget != target)
+            return false;
+    }
+    else if (raidClaim.target)
+        raidClaim.Clear();
 
     if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FLIGHT_MOTION_TYPE ||
         bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
@@ -165,6 +183,9 @@ bool AttackAction::Attack(Unit* target, bool /*with_pet*/ /*true*/)
 
         return false;
     }
+
+    if (!DungeonPullReadiness::IsReady(botAI, bot, target, getName()))
+        return false;
 
     // if (bot->IsMounted() && bot->IsWithinLOSInMap(target))
     // {

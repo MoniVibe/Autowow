@@ -123,6 +123,7 @@ void GenericMageStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     // Counterspell / Spellsteal Triggers
     triggers.push_back(new TriggerNode("spellsteal", { NextAction("spellsteal", 40.0f) }));
+    triggers.push_back(new TriggerNode("counterspell", { NextAction("counterspell", 40.0f) }));
     triggers.push_back(new TriggerNode("counterspell on enemy healer", { NextAction("counterspell on enemy healer", 40.0f) }));
 }
 

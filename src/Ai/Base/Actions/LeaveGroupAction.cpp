@@ -6,6 +6,7 @@
 
 #include "LeaveGroupAction.h"
 
+#include "AutoWowBridge.h"
 #include "Event.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotTextMgr.h"
@@ -111,6 +112,12 @@ bool LeaveFarAwayAction::isUseful()
         return false;
 
     if (!bot->GetGroup())
+        return false;
+
+    // AutoWow's persistent rosters are repaired to an exact, server-authoritative party and
+    // deliberately retain membership through deaths, distance, and temporary level skew. The
+    // guardian owns roster changes; autonomous RPG heuristics must not dissolve that party.
+    if (AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter()))
         return false;
 
     Player* groupLeader = botAI->GetGroupLeader();

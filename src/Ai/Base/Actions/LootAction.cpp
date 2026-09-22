@@ -9,23 +9,61 @@
 #include "Event.h"
 #include "GuildMgr.h"
 #include "GuildTaskMgr.h"
+#include "GatheringWorkerState.h"
 #include "ItemUsageValue.h"
 #include "LootObjectStack.h"
 #include "LootStrategyValue.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "QuestObjectiveContext.h"
 #include "ServerFacade.h"
 #include "GuildMgr.h"
 #include "BroadcastHelper.h"
 
 bool LootAction::Execute(Event /*event*/)
 {
+    QuestObjectiveSpec objective = AI_VALUE(QuestObjectiveSpec, "active quest objective");
+    if (objective.hasLock() && objective.kind == QuestObjectiveKind::CollectItem)
+    {
+        if (NewRpgInfo::DoQuest* doQuest = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+            doQuest && doQuest->objectiveRuntime.selectedSourceEntry < 0)
+        {
+            // An objective-locked gameobject is owned by the exact New-RPG
+            // interaction phase. Ambient loot selection can otherwise open and
+            // deactivate the chest before that phase consumes the required
+            // quest item.
+            context->GetValue<LootObject>("loot target")->Set(LootObject());
+            return false;
+        }
+    }
+
     if (!AI_VALUE(bool, "has available loot"))
         return false;
 
     LootObject prevLoot = AI_VALUE(LootObject, "loot target");
-    LootObject const& lootObject =
-        AI_VALUE(LootObjectStack*, "available loot")->GetLoot(sPlayerbotAIConfig.lootDistance);
+
+    LootObjectStack* availableLoot = AI_VALUE(LootObjectStack*, "available loot");
+
+    // When the RPG runtime has locked onto a specific item objective, pick the exact source that
+    // satisfies it (runtime-selected target preferred, entry whitelisted, item still needed).
+    // Otherwise, and whenever that objective yields no valid source, fall back to generic loot so
+    // incidental loot is still cleared and existing behaviour is preserved.
+    LootObject lootObject;
+    if (objective.hasLock() && objective.kind == QuestObjectiveKind::CollectItem)
+    {
+        ObjectGuid selectedTarget;
+        if (NewRpgInfo::DoQuest* doQuest = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data))
+            selectedTarget = doQuest->objectiveRuntime.selectedTargetGuid;
+
+        lootObject = availableLoot->GetBestForObjective(objective, selectedTarget, sPlayerbotAIConfig.lootDistance);
+
+        if (lootObject.IsEmpty())
+            lootObject = availableLoot->GetLoot(sPlayerbotAIConfig.lootDistance);
+    }
+    else
+    {
+        lootObject = availableLoot->GetLoot(sPlayerbotAIConfig.lootDistance);
+    }
 
     if (!prevLoot.IsEmpty() && prevLoot.guid != lootObject.guid)
     {
@@ -72,10 +110,26 @@ enum ProfessionSpells
 
 bool OpenLootAction::Execute(Event /*event*/)
 {
+    QuestObjectiveSpec objective = AI_VALUE(QuestObjectiveSpec, "active quest objective");
+    if (objective.hasLock() && objective.kind == QuestObjectiveKind::CollectItem)
+    {
+        if (NewRpgInfo::DoQuest* doQuest = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+            doQuest && doQuest->objectiveRuntime.selectedSourceEntry < 0)
+        {
+            // See LootAction::Execute: the exact quest phase performs the
+            // validated GO interaction and synchronous headless slot click.
+            return false;
+        }
+    }
+
     LootObject lootObject = AI_VALUE(LootObject, "loot target");
+    GameObject* liveGameObject = botAI->GetGameObject(lootObject.guid);
+    std::uint64_t const liveSpawnId = liveGameObject ? liveGameObject->GetSpawnId() : 0;
     bool result = DoLoot(lootObject);
     if (result)
     {
+        if (liveSpawnId)
+            AutoWowGather::MarkCandidateGathered(bot->GetGUID().GetCounter(), liveSpawnId);
         AI_VALUE(LootObjectStack*, "available loot")->Remove(lootObject.guid);
         context->GetValue<LootObject>("loot target")->Set(LootObject());
     }
@@ -352,6 +406,8 @@ proto->Name1.c_str(), 1, bidPrice, buyoutPrice);
 
 bool StoreLootAction::Execute(Event event)
 {
+    botAI->RecordAutoWowStoreLootExecution();
+
     WorldPacket p(event.getPacket());  // (8+1+4+1+1+4+4+4+4+4+1)
     ObjectGuid guid;
     uint8 loot_type;
@@ -369,6 +425,11 @@ bool StoreLootAction::Execute(Event event)
     }
 
     bot->SetLootGUID(guid);
+    botAI->RecordAutoWowLootPacketItems(items);
+
+    // Resolve once per response. A currently locked quest item receives priority over the generic
+    // >80% bag-reserve rule below, while the core's normal inventory checks remain unchanged.
+    QuestObjectiveSpec const objective = AI_VALUE(QuestObjectiveSpec, "active quest objective");
 
     if (gold > 0)
     {
@@ -393,20 +454,37 @@ bool StoreLootAction::Execute(Event event)
         p >> lootslot_type;     // 0 = can get, 1 = look only, 2 = master get
 
         if (lootslot_type != LOOT_SLOT_TYPE_ALLOW_LOOT && lootslot_type != LOOT_SLOT_TYPE_OWNER)
+        {
+            botAI->RecordAutoWowLootSlotTypeRejected();
             continue;
+        }
+
+        botAI->RecordAutoWowLootAllowedOwnerSlot();
 
         if (loot_type != LOOT_SKINNING && !IsLootAllowed(itemid, botAI))
+        {
+            if (!sObjectMgr->GetItemTemplate(itemid))
+                botAI->RecordAutoWowLootMissingTemplate();
+            botAI->RecordAutoWowLootPolicyRejected();
             continue;
+        }
 
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(itemid);
         if (!proto)
+        {
+            botAI->RecordAutoWowLootMissingTemplate();
             continue;
+        }
 
-        if (!botAI->HasActivePlayerMaster() && AI_VALUE(uint8, "bag space") > 80)
+        if (!objective.isPendingRequiredItem(itemid) && !botAI->HasActivePlayerMaster() &&
+            AI_VALUE(uint8, "bag space") > 80)
         {
             uint32 maxStack = proto->GetMaxStackSize();
             if (maxStack == 1)
+            {
+                botAI->RecordAutoWowLootBagReserveRejected();
                 continue;
+            }
 
             std::vector<Item*> found = parseItems(chat->FormatItem(proto));
 
@@ -422,7 +500,10 @@ bool StoreLootAction::Execute(Event event)
             }
 
             if (!hasFreeStack)
+            {
+                botAI->RecordAutoWowLootBagReserveRejected();
                 continue;
+            }
         }
 
         Player* master = botAI->GetMaster();
@@ -441,6 +522,7 @@ bool StoreLootAction::Execute(Event event)
         WorldPacket* packet = new WorldPacket(CMSG_AUTOSTORE_LOOT_ITEM, 1);
         *packet << itemindex;
         bot->GetSession()->QueuePacket(packet);
+        botAI->RecordAutoWowAutostoreLootPacket();
         // bot->GetSession()->HandleAutostoreLootItemOpcode(packet);
         botAI->SetNextCheckDelay(sPlayerbotAIConfig.lootDelay);
 
@@ -453,12 +535,30 @@ bool StoreLootAction::Execute(Event event)
         BroadcastHelper::BroadcastLootingItem(botAI, bot, proto);
     }
 
+    // A processed loot response is terminal for this corpse: every visible item has either been
+    // queued through the normal autostore path or deliberately rejected by policy. Hand control
+    // back to VerifyProgress immediately so a no-drop corpse is not reopened until despawn, and so
+    // a successful drop can rebase the objective before selecting the next live source.
+    if (objective.hasLock())
+    {
+        if (NewRpgInfo::DoQuest* doQuest = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data))
+        {
+            QuestObjectiveRuntime& runtime = doQuest->objectiveRuntime;
+            if (!runtime.selectedTargetGuid.IsEmpty() && runtime.selectedTargetGuid == guid)
+            {
+                runtime.phase = QuestActionPhase::VerifyProgress;
+                doQuest->lastReachPOI = 0;
+            }
+        }
+    }
+
     AI_VALUE(LootObjectStack*, "available loot")->Remove(guid);
 
     // release loot
     WorldPacket* packet = new WorldPacket(CMSG_LOOT_RELEASE, 8);
     *packet << guid;
     bot->GetSession()->QueuePacket(packet);
+    botAI->RecordAutoWowLootReleasePacket();
     // bot->GetSession()->HandleLootReleaseOpcode(packet);
     return true;
 }
@@ -492,7 +592,7 @@ bool StoreLootAction::IsLootAllowed(uint32 itemid, PlayerbotAI* botAI)
         if (!quest)
             continue;
 
-        for (uint8 i = 0; i < 4; i++)
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; i++)
         {
             if (quest->RequiredItemId[i] == itemid)
             {
@@ -511,6 +611,14 @@ bool StoreLootAction::IsLootAllowed(uint32 itemid, PlayerbotAI* botAI)
     //     proto->Bonding == BIND_QUEST_ITEM1 || //Eventually this has to be removed.
     //     proto->Class == ITEM_CLASS_QUEST)
     //{
+
+    // The ordinary loot strategy is intentionally conservative and can reject trade goods with no
+    // item-usage value. A mining node is still a real player loot session, so admit only the item
+    // advertised by the exact prepared gather source. Template validity, unique/capped MaxCount,
+    // always-loot and quest checks above remain authoritative; this bypasses only CanLoot.
+    if (botAI && botAI->GetBot() &&
+        AutoWowGather::IsPendingGatherSourceLoot(botAI, botAI->GetBot()->GetLootGUID(), itemid))
+        return true;
 
     bool canLoot = lootStrategy->CanLoot(proto, context);
     // if (canLoot && proto->Bonding == BIND_WHEN_PICKED_UP && botAI->HasActivePlayerMaster())

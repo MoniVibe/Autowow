@@ -4,6 +4,7 @@
  */
 
 #include "PlayerbotAI.h"
+#include "AutoWow/AutoWowIndependentActivityPolicy.h"
 
 #include <cmath>
 #include <mutex>
@@ -11,6 +12,8 @@
 #include <string>
 
 #include "AiFactory.h"
+#include "AutoWow/AutoWowBridge.h"
+#include "AutoWow/CampaignTravelSession.h"
 #include "BudgetValues.h"
 #include "ChannelMgr.h"
 #include "CharacterPackets.h"
@@ -24,6 +27,7 @@
 #include "ExternalEventHelper.h"
 #include "GameObjectData.h"
 #include "GameTime.h"
+#include "GatheringWorkerState.h"
 #include "GuildMgr.h"
 #include "LFGMgr.h"
 #include "LastMovementValue.h"
@@ -118,6 +122,9 @@ PlayerbotAI::PlayerbotAI()
       chatFilter(this),
       security(nullptr)
 {
+    campaignTravelSession = std::make_unique<AutoWowCampaignTravel::CampaignTravelSession>();
+    campaignTravelMailbox = std::make_unique<AutoWowCampaignTravel::CampaignTravelMailbox>();
+
     for (uint8 i = 0; i < BOT_STATE_MAX; i++)
         engines[i] = nullptr;
 
@@ -136,6 +143,9 @@ PlayerbotAI::PlayerbotAI(Player* bot)
       chatFilter(this),
       security(bot)  // reorder args - whipowill
 {
+    campaignTravelSession = std::make_unique<AutoWowCampaignTravel::CampaignTravelSession>();
+    campaignTravelMailbox = std::make_unique<AutoWowCampaignTravel::CampaignTravelMailbox>();
+
     if (!bot->isTaxiCheater() && HasCheat((BotCheatMask::taxi)))
         bot->SetTaxiCheater(true);
 
@@ -249,6 +259,13 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     if (!bot || !bot->GetSession() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
         bot->GetSession()->isLogingOut() || bot->IsDuringRemoveFromWorld())
         return;
+
+    if (autoWowPaused)
+    {
+        if (bot->isMoving())
+            bot->StopMoving();
+        return;
+    }
 
     // Handle cheat options (set bot health and power if cheats are enabled)
     if (bot->IsAlive() &&
@@ -398,9 +415,59 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // Update the bot's group status (moved to helper function)
     UpdateAIGroupMaster();
 
+    // A campaign journey is map-thread-owned and suppresses ordinary non-combat travel while one
+    // frozen leg is active. Combat and death engines retain control until the bot is safe to travel.
+    if (currentState == BOT_STATE_NON_COMBAT && bot->IsAlive() && !bot->IsInCombat() &&
+        HasCampaignTravelWork())
+    {
+        DoSpecificAction("campaign travel", Event(), true);
+        YieldThread(bot, GetReactDelay());
+        return;
+    }
+
+    // Quest acquisition is a native, lower-priority movement owner. The bridge tick runs on this
+    // map/world thread, continues one request's staged route, and suppresses generic movement
+    // only while its exact target is safely owned. Combat/death and Campaign Travel have already
+    // had priority above and are allowed to proceed when the bridge returns NoWork.
+    AutoWowBridge::QuestAcquisitionTickResult const questAcquisitionTick =
+        AutoWowBridge::instance().TickQuestAcquisition(this, elapsed);
+    if (questAcquisitionTick != AutoWowQuestAcquisitionBridge::TickResult::NoWork)
+    {
+        YieldThread(bot, GetReactDelay());
+        return;
+    }
+
     // Update internal AI
     UpdateAIInternal(elapsed, minimal);
     YieldThread(bot, GetReactDelay());
+}
+
+bool PlayerbotAI::SubmitCampaignTravelIntent(
+    AutoWowCampaignTravel::CampaignTravelIntent const& intent)
+{
+    return campaignTravelMailbox && campaignTravelMailbox->Submit(intent);
+}
+
+AutoWowCampaignTravel::CampaignTravelSnapshot PlayerbotAI::GetCampaignTravelSnapshot() const
+{
+    return campaignTravelMailbox ? campaignTravelMailbox->ReadSnapshot() :
+        AutoWowCampaignTravel::CampaignTravelSnapshot{};
+}
+
+bool PlayerbotAI::HasCampaignTravelWork() const
+{
+    return campaignTravelMailbox && campaignTravelMailbox->HasWork();
+}
+
+void PlayerbotAI::SetAutoWowPaused(bool paused)
+{
+    autoWowPaused = paused;
+
+    if (autoWowPaused && bot)
+    {
+        InterruptSpell();
+        bot->StopMoving();
+    }
 }
 
 // Helper function for UpdateAI to check group membership and handle removal if necessary
@@ -417,9 +484,19 @@ void PlayerbotAI::UpdateAIGroupMaster()
 
     bool IsRandomBot = sRandomPlayerbotMgr.IsRandomBot(bot);
 
-    // If bot is not in group verify that for is RandomBot before clearing  master and resetting.
+    // A race seed/autonomous bot is intentionally solo. Preserve that mode across the
+    // group-maintenance tick; otherwise the first post-login pass clears the independent flag
+    // and the normal strategy path can reintroduce +follow. Explicit party/deploy/deactivate
+    // operations still change the flag when a different mode is requested.
     if (!group)
     {
+        if (autoWowIndependentParty)
+        {
+            SetMaster(nullptr);
+            return;
+        }
+
+        autoWowIndependentParty = false;
         if (master && IsRandomBot)
         {
             SetMaster(nullptr);
@@ -428,6 +505,13 @@ void PlayerbotAI::UpdateAIGroupMaster()
         }
         return;
     }
+
+    // AutoWow forms bot-only parties as social rosters, not permanent master/follower chains.
+    // The bridge explicitly clears this mode for a coordinated quest/rally/instance operation.
+    // Without this guard the native group-maintenance pass would re-add +follow every tick when
+    // the stored master is another bot, undoing the independent New-RPG loop.
+    if (autoWowIndependentParty && !bot->InBattleground())
+        return;
 
     // Bot in BG, but master no longer part of a group: release master
     // Exclude alt and addclass bots as they rely on current (real player) master, security-wise.
@@ -1120,6 +1204,9 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
     if (!bot || !bot->IsInWorld() || bot->IsDuringRemoveFromWorld())
         return;
 
+    if (packet.GetOpcode() == SMSG_LOOT_RESPONSE)
+        ++autoWowLootResponseCount;
+
     switch (packet.GetOpcode())
     {
         case SMSG_SPELL_FAILURE:
@@ -1608,6 +1695,12 @@ void PlayerbotAI::SelectiveResetStrategies(BotState type)
     if (sPlayerbotAIConfig.applyInstanceStrategies)
         ApplyInstanceStrategies(bot->GetMapId());
 
+    // Preserve an explicit Director quest across normal AI resets (level-up, spec/group changes,
+    // selective map refreshes). The DoQuest payload is the authority; without restoring this
+    // strategy its phase machine survives but has no trigger to resume after combat.
+    if (type == BOT_STATE_NON_COMBAT && rpgInfo.HasActiveQuestDirective())
+        e->addStrategy("new rpg", false);
+
     e->Init();
 }
 
@@ -1629,7 +1722,7 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
         "ulduar", "voa", "wotlk-an", "wotlk-cos", "wotlk-dtk", "wotlk-eoe", "wotlk-fos",
         "wotlk-gd", "wotlk-hol", "wotlk-hor", "wotlk-hos", "wotlk-nex", "wotlk-occ",
         "wotlk-ok", "wotlk-os", "wotlk-pos", "wotlk-toc", "wotlk-uk", "wotlk-up",
-        "wotlk-vh", "zulaman"
+        "wotlk-vh", "zulaman", "raid triage", "dungeon navigator"
     };
 
     for (const std::string& strat : allInstanceStrategies)
@@ -1752,6 +1845,16 @@ void PlayerbotAI::ApplyInstanceStrategies(uint32 mapId, bool tellMaster)
         default:
             break;
     }
+
+    // Generic raid safety is an overlay, not an encounter strategy. Its separate
+    // strategy context lets it coexist with the map-specific sibling strategy.
+    if (bot->GetMap() && bot->GetMap()->IsRaid())
+        engines[BOT_STATE_COMBAT]->addStrategy("raid triage");
+
+    // Generic instance navigation is a non-combat overlay beside any map-specific
+    // dungeon or raid strategy. Encounter selection and travel routes are data-driven.
+    if (bot->GetMap() && bot->GetMap()->GetId() == mapId && bot->GetMap()->IsDungeon())
+        engines[BOT_STATE_NON_COMBAT]->addStrategy("dungeon navigator");
 
     if (strategyName.empty())
         return;
@@ -1876,6 +1979,10 @@ void PlayerbotAI::ResetStrategies(bool /*load*/)
     AiFactory::AddDefaultDeadStrategies(bot, this, engines[BOT_STATE_DEAD]);
     if (sPlayerbotAIConfig.applyInstanceStrategies)
         ApplyInstanceStrategies(bot->GetMapId());
+
+    // See SelectiveResetStrategies: a live Director quest must outlive routine strategy rebuilds.
+    if (rpgInfo.HasActiveQuestDirective())
+        engines[BOT_STATE_NON_COMBAT]->addStrategy("new rpg", false);
 
     for (uint8 i = 0; i < BOT_STATE_MAX; i++)
         engines[i]->Init();
@@ -4610,6 +4717,13 @@ bool PlayerbotAI::AllowActive(ActivityType activityType)
     if (activityType == PACKET_ACTIVITY)
         return true;
 
+    // Independent AutoWoW bots are live actors even when no real player is nearby. Keep
+    // ordinary solo bots on the configured background rotation and scaling policy.
+    if (AutoWowIndependentActivityPolicy::ShouldForceActivity(
+            autoWowIndependentParty, autoWowPaused) ||
+        AutoWowGather::IsExplicitWorker(bot->GetGUID().GetCounter()))
+        return true;
+
     // all bots forced active, no rotation or scaling needed
     if (sPlayerbotAIConfig.botActiveAlone >= 100 && !sPlayerbotAIConfig.botActiveAloneSmartScale)
         return true;
@@ -4798,6 +4912,15 @@ bool PlayerbotAI::AllowActivity(ActivityType activityType, bool checkNow)
     allowActiveCheckTimer[activityIndex] = getMSTime();
 
     return allowed;
+}
+
+void PlayerbotAI::InvalidateActivityPolicy()
+{
+    for (uint8 i = 0; i < MAX_ACTIVITY_TYPE; ++i)
+    {
+        allowActiveCheckTimer[i] = 0;
+        allowActive[i] = false;
+    }
 }
 
 uint32 PlayerbotAI::AutoScaleActivity(uint32 mod)
@@ -6611,6 +6734,13 @@ std::set<uint32> PlayerbotAI::GetCurrentIncompleteQuestIds()
 uint32 PlayerbotAI::GetReactDelay()
 {
     uint32 base = sPlayerbotAIConfig.reactDelay;  // Default 100(ms)
+
+    // Only independent AutoWoW bots get a short non-combat decision cadence.
+    // Combat, casts, movement, and action-specific waits keep their existing delays.
+    if (bot && AutoWowIndependentActivityPolicy::ShouldUseFastReaction(
+            autoWowIndependentParty, autoWowPaused, bot->IsInCombat(),
+            currentState == BOT_STATE_COMBAT))
+        return AutoWowIndependentActivityPolicy::NonCombatReactDelay(base);
 
     // If dynamic react delay is disabled, use a static calculation
     if (!sPlayerbotAIConfig.dynamicReactDelay)

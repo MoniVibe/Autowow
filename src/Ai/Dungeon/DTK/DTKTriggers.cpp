@@ -1,5 +1,6 @@
 #include "Playerbots.h"
 #include "DTKTriggers.h"
+#include "DTKNovosPolicy.h"
 #include "AiObject.h"
 #include "AiObjectContext.h"
 
@@ -27,11 +28,8 @@ bool CorpseExplodeTrigger::IsActive()
 bool ArcaneFieldTrigger::IsActive()
 {
     Unit* boss = AI_VALUE2(Unit*, "find target", "novos the summoner");
-    if (boss)
-    {
-        return boss->HasUnitState(UNIT_STATE_CASTING) && boss->FindCurrentSpellBySpellId(SPELL_ARCANE_FIELD);
-    }
-    return false;
+    return boss && DTKNovosPolicy::IsShieldPhase(
+        boss->IsInCombat(), boss->HasAura(SPELL_ARCANE_FIELD));
 }
 
 // bool CrystalHandlerTrigger::IsActive()

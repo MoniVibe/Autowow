@@ -22,7 +22,7 @@ public:
 
     bool Execute(Event event) override;
     void EquipItems(ItemIds ids);
-    ItemIds SelectInventoryItemsToEquip();
+    ItemIds SelectInventoryItemsToEquip(std::string const& source);
 
 private:
     void EquipItem(FindItemVisitor* visitor);

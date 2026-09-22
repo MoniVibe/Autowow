@@ -78,6 +78,7 @@
 #include "QuestValues.h"
 #include "RTSCValues.h"
 #include "RandomBotUpdateValue.h"
+#include "RaidTargetClaimValue.h"
 #include "RangeValues.h"
 #include "RpgValues.h"
 #include "RtiTargetValue.h"
@@ -105,6 +106,7 @@ public:
         creators["active spell"] = &ValueContext::active_spell;
         creators["craft"] = &ValueContext::craft;
         creators["collision"] = &ValueContext::collision;
+        creators["raid target claim"] = &ValueContext::raid_target_claim;
         creators["skip spells list"] = &ValueContext::skip_spells_list_value;
         creators["nearest game objects"] = &ValueContext::nearest_game_objects;
         creators["nearest game objects no los"] = &ValueContext::nearest_game_objects_no_los;
@@ -265,6 +267,8 @@ public:
         creators["home bind"] = &ValueContext::home_bind;
         creators["last long move"] = &ValueContext::last_long_move;
 
+        creators["active quest objective"] = &ValueContext::active_quest_objective;
+        creators["active quest finisher"] = &ValueContext::active_quest_finisher;
         creators["free quest log slots"] = &ValueContext::free_quest_log_slots;
         creators["dialog status"] = &ValueContext::dialog_status;
         creators["dialog status quest"] = &ValueContext::dialog_status_quest;
@@ -283,6 +287,7 @@ public:
         creators["can repair"] = &ValueContext::can_repair;
         creators["should sell"] = &ValueContext::should_sell;
         creators["can sell"] = &ValueContext::can_sell;
+        creators["can sell gray"] = &ValueContext::can_sell_gray;
         creators["can train"] = &ValueContext::can_train;
         creators["can fight equal"] = &ValueContext::can_fight_equal;
         creators["can fight elite"] = &ValueContext::can_fight_elite;
@@ -353,6 +358,7 @@ private:
     static UntypedValue* group(PlayerbotAI* botAI) { return new IsInGroupValue(botAI); }
     static UntypedValue* craft(PlayerbotAI* botAI) { return new CraftValue(botAI); }
     static UntypedValue* collision(PlayerbotAI* botAI) { return new CollisionValue(botAI); }
+    static UntypedValue* raid_target_claim(PlayerbotAI* botAI) { return new RaidTargetClaimValue(botAI); }
     static UntypedValue* already_seen_players(PlayerbotAI* botAI) { return new AlreadySeenPlayersValue(botAI); }
     static UntypedValue* new_player_nearby(PlayerbotAI* botAI) { return new NewPlayerNearbyValue(botAI); }
     static UntypedValue* item_usage(PlayerbotAI* botAI) { return new ItemUsageValue(botAI); }
@@ -518,6 +524,8 @@ private:
     static UntypedValue* last_long_move(PlayerbotAI* botAI) { return new LastLongMoveValue(botAI); }
     static UntypedValue* home_bind(PlayerbotAI* botAI) { return new HomeBindValue(botAI); }
 
+    static UntypedValue* active_quest_objective(PlayerbotAI* botAI) { return new ActiveQuestObjectiveValue(botAI); }
+    static UntypedValue* active_quest_finisher(PlayerbotAI* botAI) { return new ActiveQuestFinisherValue(botAI); }
     static UntypedValue* free_quest_log_slots(PlayerbotAI* botAI) { return new FreeQuestLogSlotValue(botAI); }
     static UntypedValue* dialog_status(PlayerbotAI* botAI) { return new DialogStatusValue(botAI); }
     static UntypedValue* dialog_status_quest(PlayerbotAI* botAI) { return new DialogStatusQuestValue(botAI); }
@@ -539,6 +547,7 @@ private:
     static UntypedValue* can_repair(PlayerbotAI* botAI) { return new CanRepairValue(botAI); }
     static UntypedValue* should_sell(PlayerbotAI* botAI) { return new ShouldSellValue(botAI); }
     static UntypedValue* can_sell(PlayerbotAI* botAI) { return new CanSellValue(botAI); }
+    static UntypedValue* can_sell_gray(PlayerbotAI* botAI) { return new CanSellGrayValue(botAI); }
     static UntypedValue* can_train(PlayerbotAI* botAI) { return new CanTrainValue(botAI); }
     static UntypedValue* can_fight_equal(PlayerbotAI* botAI) { return new CanFightEqualValue(botAI); }
     static UntypedValue* can_fight_elite(PlayerbotAI* botAI) { return new CanFightEliteValue(botAI); }

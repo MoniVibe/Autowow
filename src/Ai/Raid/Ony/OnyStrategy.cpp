@@ -22,6 +22,14 @@ void RaidOnyxiaStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode(
         "ony whelps spawn", { NextAction("ony kill whelps", ACTION_RAID + 1) }));
+
+    triggers.push_back(new TriggerNode(
+        "ony flying ranged pressure", { NextAction("ony attack flying boss", ACTION_RAID + 2) }));
+
+    // The response is shared raid behavior; this adapter only gives legitimate class tools enough
+    // warning before the instant landing roar.
+    triggers.push_back(new TriggerNode(
+        "ony imminent phase three fear", { NextAction("raid prepare for fear", ACTION_EMERGENCY + 4) }));
 }
 
 void RaidOnyxiaStrategy::InitMultipliers(std::vector<Multiplier*>& /*multipliers*/)

@@ -540,12 +540,16 @@ public:
     // Finds the best nodePath between two nodes
     TravelNodeRoute getRoute(TravelNode* start, TravelNode* goal, Player* bot = nullptr);
 
-    // Find the best node between two positions
+    // Find the best node between two positions. When allowUnattachedStart is true, a graph route
+    // may be returned without a startPath; the caller must validate that stored route from the
+    // live start position before moving.
     TravelNodeRoute getRoute(WorldPosition startPos, WorldPosition endPos, std::vector<WorldPosition>& startPath,
-                             Player* bot = nullptr);
+                             Player* bot = nullptr, bool allowUnattachedStart = false);
 
-    // Find the full path between those locations
-    static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Player* bot = nullptr);
+    // Find the full path between those locations. The unattached-start mode is opt-in and is only
+    // safe for callers that exact-reprobe the returned stored path.
+    static TravelPath getFullPath(WorldPosition startPos, WorldPosition endPos, Player* bot = nullptr,
+                                  bool allowUnattachedStart = false);
 
     // Manage/update nodes
     void manageNodes(Unit* bot, bool mapFull = false);

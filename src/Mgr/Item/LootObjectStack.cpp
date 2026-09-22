@@ -10,6 +10,7 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "Playerbots.h"
+#include "QuestObjectiveContext.h"
 #include "Unit.h"
 
 #define MAX_LOOT_OBJECT_COUNT 200
@@ -381,6 +382,79 @@ LootObject LootObjectStack::GetLoot(float maxDistance)
 {
     LootObject nearest = GetNearest(maxDistance);
     return nearest.IsEmpty() ? LootObject() : nearest;
+}
+
+LootObject LootObjectStack::GetBestForObjective(QuestObjectiveSpec const& spec, ObjectGuid preferredGuid,
+                                                float maxDistance)
+{
+    availableLoot.shrink(time(nullptr) - 30);
+
+    // Only loot toward this objective while the exact required item is still needed (the bot has
+    // not yet reached the required count). Reuses the live quest-log check so we never chase an
+    // already-satisfied objective.
+    if (!LootObject::IsNeededForQuest(bot, spec.requiredItemId))
+        return LootObject();
+
+    LootObject best;
+    float bestDistance = std::numeric_limits<float>::max();
+
+    LootTargetList safeCopy(availableLoot);
+    for (LootTargetList::iterator i = safeCopy.begin(); i != safeCopy.end(); ++i)
+    {
+        ObjectGuid guid = i->guid;
+
+        // Restrict to sources this objective actually accepts (exact entry whitelist).
+        if (guid.IsGameObject())
+        {
+            if (!spec.acceptsGameObjectEntry(guid.GetEntry()))
+                continue;
+        }
+        else if (guid.IsCreature())
+        {
+            if (!spec.acceptsCreatureEntry(guid.GetEntry()))
+                continue;
+        }
+        else
+            continue;
+
+        WorldObject* worldObj = ObjectAccessor::GetWorldObject(*bot, guid);
+        if (!worldObj)
+            continue;
+
+        float distance = bot->GetDistance(worldObj);
+        if (maxDistance && distance > maxDistance)
+            continue;
+
+        // Honour normal loot ownership / distance / skill gating.
+        LootObject lootObject(bot, guid);
+        if (!lootObject.IsLootPossible(bot))
+            continue;
+
+        // The RPG runtime's selected target wins outright when it is itself lootable; record the
+        // exact source before returning it. Otherwise keep the nearest accepted source as a
+        // fallback.
+        if (preferredGuid && guid == preferredGuid)
+        {
+            lastObjectiveGuid = guid;
+            lastObjectiveEntry = guid.GetEntry();
+            return lootObject;
+        }
+
+        if (distance < bestDistance)
+        {
+            bestDistance = distance;
+            best = lootObject;
+        }
+    }
+
+    // Record the exact source (entry + guid) before the caller opens it.
+    if (!best.IsEmpty())
+    {
+        lastObjectiveGuid = best.guid;
+        lastObjectiveEntry = best.guid.GetEntry();
+    }
+
+    return best;
 }
 
 LootObject LootObjectStack::GetNearest(float maxDistance)

@@ -6,6 +6,7 @@
 
 #include "AttackersValue.h"
 #include "CreatureAI.h"
+#include "DungeonPullReadinessGuard.h"
 #include "Playerbots.h"
 #include "PlayerbotTextMgr.h"
 #include "PositionValue.h"
@@ -76,6 +77,9 @@ bool PullRequestAction::Execute(Event event)
         botAI->TellError(text);
         return false;
     }
+
+    if (!DungeonPullReadiness::IsReady(botAI, bot, target, getName(), true))
+        return false;
 
     PositionMap& posMap = AI_VALUE(PositionMap&, "position");
     PositionInfo pullPosition = posMap["pull"];
@@ -180,6 +184,9 @@ bool PullAction::Execute(Event event)
         return false;
 
     if (target->IsInCombat())
+        return false;
+
+    if (!DungeonPullReadiness::IsReady(botAI, bot, target, getName(), true))
         return false;
 
     if (!IsWithinPullRange(bot, target, strategy))

@@ -13,6 +13,8 @@ public:
         creators["ony deep breath warning"] = &RaidOnyxiaTriggerContext::deep_breath;
         creators["ony fireball splash incoming"] = &RaidOnyxiaTriggerContext::fireball_splash;
         creators["ony whelps spawn"] = &RaidOnyxiaTriggerContext::whelps_spawn;
+        creators["ony flying ranged pressure"] = &RaidOnyxiaTriggerContext::flying_ranged_pressure;
+        creators["ony imminent phase three fear"] = &RaidOnyxiaTriggerContext::imminent_phase_three_fear;
         creators["ony avoid eggs"] = &RaidOnyxiaTriggerContext::avoid_eggs;
     }
 
@@ -21,6 +23,14 @@ private:
     static Trigger* deep_breath(PlayerbotAI* ai) { return new OnyxiaDeepBreathTrigger(ai); }
     static Trigger* fireball_splash(PlayerbotAI* ai) { return new RaidOnyxiaFireballSplashTrigger(ai); }
     static Trigger* whelps_spawn(PlayerbotAI* ai) { return new RaidOnyxiaWhelpsSpawnTrigger(ai); }
+    static Trigger* flying_ranged_pressure(PlayerbotAI* ai)
+    {
+        return new RaidOnyxiaFlyingRangedPressureTrigger(ai);
+    }
+    static Trigger* imminent_phase_three_fear(PlayerbotAI* ai)
+    {
+        return new RaidOnyxiaImminentFearTrigger(ai);
+    }
     static Trigger* avoid_eggs(PlayerbotAI* ai) { return new OnyxiaAvoidEggsTrigger(ai); }
 };
 

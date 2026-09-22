@@ -7,6 +7,7 @@
 #include "TravelMgr.h"
 
 #include <iomanip>
+#include <limits>
 #include <numeric>
 
 #include "AreaDefines.h"
@@ -1068,7 +1069,7 @@ GuidPosition::GuidPosition(CreatureData const& creData)
 }
 
 GuidPosition::GuidPosition(GameObjectData const& goData)
-    : ObjectGuid(HighGuid::GameObject, goData.id),
+    : ObjectGuid(HighGuid::GameObject, goData.spawnId),
       WorldPosition(goData.mapid, goData.posX, goData.posY, goData.posZ, goData.orientation)
 {
     loadedFromDB = true;
@@ -1560,7 +1561,12 @@ void TravelTarget::setStatus(TravelStatus status)
             statusTime = 1;
             break;
         case TRAVEL_STATUS_TRAVEL:
-            statusTime = getMaxTravelTime() * 2 + sPlayerbotAIConfig.maxWaitForMove;
+            // The default-constructed PlayerbotAI is used by lifecycle tests. Production targets
+            // always have a bot; a null bot starts with a minimal timer that ensureTimeLeft can
+            // safely extend without inventing movement data.
+            statusTime = bot
+                ? getMaxTravelTime() * 2 + sPlayerbotAIConfig.maxWaitForMove
+                : 1;
             break;
         case TRAVEL_STATUS_WORK:
             statusTime = tDestination->getExpireDelay();
@@ -1572,19 +1578,58 @@ void TravelTarget::setStatus(TravelStatus status)
     }
 }
 
+void TravelTarget::ensureTimeLeft(uint32 minimumMs)
+{
+    uint32 const elapsed = getExpiredTime();
+    uint64 const requested = static_cast<uint64>(elapsed) + minimumMs;
+    uint32 const bounded = requested > std::numeric_limits<uint32>::max()
+        ? std::numeric_limits<uint32>::max()
+        : static_cast<uint32>(requested);
+    if (statusTime < bounded)
+        statusTime = bounded;
+}
+
+bool TravelTarget::alignTimeLeft(uint32 exactRemainingMs)
+{
+    if (m_status != TRAVEL_STATUS_TRAVEL || exactRemainingMs == 0)
+        return false;
+
+    uint64 const requested = static_cast<uint64>(getExpiredTime()) + exactRemainingMs;
+    statusTime = requested > std::numeric_limits<uint32>::max()
+        ? std::numeric_limits<uint32>::max()
+        : static_cast<uint32>(requested);
+    return true;
+}
+
+bool TravelTarget::expireIfElapsed(uint32 elapsedMs)
+{
+    if (statusTime == 0 || elapsedMs <= statusTime)
+        return false;
+
+    setStatus(TRAVEL_STATUS_EXPIRED);
+    return true;
+}
+
 bool TravelTarget::isActive()
+{
+    return isActiveAtElapsed(getExpiredTime());
+}
+
+bool TravelTarget::isActiveAtElapsed(uint32 elapsedMs)
 {
     if (m_status == TRAVEL_STATUS_NONE || m_status == TRAVEL_STATUS_EXPIRED || m_status == TRAVEL_STATUS_PREPARE)
         return false;
 
+    // Preserve legacy generic forced-target ordering. Only destinations that explicitly opt in may
+    // reconcile an external lifecycle before native expiry; quest acquisition is unforced.
     if (forced && isTraveling())
         return true;
 
-    if ((statusTime > 0 && startTime + statusTime < getMSTime()))
-    {
-        setStatus(TRAVEL_STATUS_EXPIRED);
+    if (statusTime > 0 && elapsedMs > statusTime && tDestination &&
+        tDestination->reconcileBeforeNativeExpiry())
+        tDestination->onTargetExpiry(bot);
+    if (expireIfElapsed(elapsedMs))
         return false;
-    }
 
     if (m_status == TRAVEL_STATUS_COOLDOWN)
         return true;
@@ -2048,12 +2093,20 @@ void TravelMgr::LoadQuestTravelTable()
                         container->questTakers.push_back(loc);
                         locs.push_back(loc);
                     }
-                    else
+
+                    // Objective destinations are an INDEPENDENT role, not the "else" of quest-taker.
+                    // As an else-branch it (a) turned every giver-only relation into a false
+                    // objective-0 destination, and (b) suppressed the objective destination for any
+                    // relation that was both a taker and an objective. Treat the objective flags
+                    // explicitly so giver / taker / objective are resolved independently.
+                    uint32 const objectiveFlags = (uint32)QuestRelationFlag::objective1 |
+                                                  (uint32)QuestRelationFlag::objective2 |
+                                                  (uint32)QuestRelationFlag::objective3 |
+                                                  (uint32)QuestRelationFlag::objective4;
+                    if (flag & objectiveFlags)
                     {
-                        uint32 objective = 0;
-                        if (flag & (uint32)QuestRelationFlag::objective1)
-                            objective = 0;
-                        else if (flag & (uint32)QuestRelationFlag::objective2)
+                        uint32 objective = 0;  // objective1
+                        if (flag & (uint32)QuestRelationFlag::objective2)
                             objective = 1;
                         else if (flag & (uint32)QuestRelationFlag::objective3)
                             objective = 2;
@@ -4359,6 +4412,16 @@ void TravelMgr::Init()
     {
         PrepareZone2LevelBracket();
         PrepareDestinationCache();
+
+        // Load the persisted long-range travel graph without reviving the legacy
+        // LoadQuestTravelTable path.  Dungeon navigation and other route consumers
+        // need these calculated nodes, while the current lightweight startup path
+        // otherwise initializes only destination and taxi caches.
+        if (sTravelNodeMap.getNodes().empty())
+        {
+            sTravelNodeMap.loadNodeStore();
+            sTravelNodeMap.generateAll();
+        }
     }
     sTravelNodeMap.InitTaxiGraph();
     LOG_INFO("playerbots", "Playerbots Taxi graph and destination cache built.");

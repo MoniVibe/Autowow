@@ -25,7 +25,9 @@ public:
 };
 
 //                   itemId, entry
-typedef std::unordered_map<uint32, int32> DropMap;
+// One quest item can be dropped by many creature/gameobject entries.  Callers use equal_range(),
+// so this must preserve every source instead of silently retaining only the first entry per item.
+typedef std::unordered_multimap<uint32, int32> DropMap;
 
 // Returns the loot map of all entries
 class DropMapValue : public SingleCalculatedValue<DropMap*>

@@ -17,12 +17,17 @@
 
 #include "Playerbots.h"
 
+#include "AutoWowBridge.h"
+#include "AutoWowOracleRuntime.h"
+#include "CombatPerformanceTelemetry.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
+#include "Group.h"
 #include "GuildTaskMgr.h"
+#include "Item.h"
 #include "PlayerScript.h"
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotGuildMgr.h"
@@ -33,6 +38,21 @@
 #include "PlayerbotCommandScript.h"
 #include "cmath"
 #include "BattleGroundTactics.h"
+
+namespace
+{
+char const* RaidLootVoteName(RollVote vote)
+{
+    switch (vote)
+    {
+        case PASS: return "pass";
+        case NEED: return "need";
+        case GREED: return "greed";
+        case DISENCHANT: return "disenchant";
+        default: return "unknown";
+    }
+}
+}
 
 class PlayerbotsDatabaseScript : public DatabaseScript
 {
@@ -89,7 +109,9 @@ public:
         PLAYERHOOK_CAN_PLAYER_USE_GUILD_CHAT,
         PLAYERHOOK_CAN_PLAYER_USE_CHANNEL_CHAT,
         PLAYERHOOK_ON_GIVE_EXP,
-        PLAYERHOOK_ON_BEFORE_TELEPORT
+        PLAYERHOOK_ON_BEFORE_TELEPORT,
+        PLAYERHOOK_ON_PLAYER_RESURRECT,
+        PLAYERHOOK_ON_GROUP_ROLL_REWARD_ITEM
     }) {}
 
     void OnPlayerLogin(Player* player) override
@@ -179,6 +201,17 @@ public:
         {
             playerbotMgr->UpdateAI(diff);
         }
+    }
+
+    void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
+    {
+        if (!player || PlayerbotsMgr::instance().GetPlayerbotAI(player) == nullptr)
+            return;
+
+        // This hook runs after Player::ResurrectPlayer has established the authoritative alive
+        // state, including the delayed post-teleport path used for released corpses.
+        LOG_DEBUG("playerbots", "[CorpseRescue] completed target={} alive={} map={} instance={}",
+                  player->GetName(), player->IsAlive(), player->GetMapId(), player->GetInstanceId());
     }
 
     bool OnPlayerCanUseChat(Player* player, uint32 type, uint32 /*lang*/, std::string& msg, Player* receiver) override
@@ -302,6 +335,23 @@ public:
         // otherwise apply bot XP multiplier.
         amount = static_cast<uint32>(std::round(static_cast<float>(amount) * sPlayerbotAIConfig.randomBotXPRate));
     }
+
+    void OnPlayerGroupRollRewardItem(Player* player, Item* item, uint32 count, RollVote voteType,
+                                     Roll* roll) override
+    {
+        if (!player || !item)
+            return;
+
+        uint64 const rollGuid = roll ? roll->itemGUID.GetRawValue() : 0;
+        uint32 const rollGuidCounter = roll ? roll->itemGUID.GetCounter() : 0;
+
+        LOG_INFO("playerbots",
+            "[RaidLoot] event=award winner={} winner_guid={} winner_guid_counter={} item={} entry={} "
+            "roll_guid={} roll_guid_counter={} item_guid={} item_guid_counter={} count={} vote={}",
+            player->GetName(), player->GetGUID().GetRawValue(), player->GetGUID().GetCounter(), item->GetEntry(),
+            item->GetEntry(), rollGuid, rollGuidCounter, item->GetGUID().GetRawValue(), item->GetGUID().GetCounter(),
+            count, RaidLootVoteName(voteType));
+    }
 };
 
 class PlayerbotsMiscScript : public MiscScript
@@ -314,7 +364,11 @@ public:
         PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
 
         if (botAI != nullptr)
+        {
+            AutoWowCombatPerformanceTelemetry::Forget(
+                static_cast<uint32>(player->GetGUID().GetCounter()));
             delete botAI;
+        }
 
         if (PlayerbotMgr* playerbotMgr = GET_PLAYERBOT_MGR(player))
             delete playerbotMgr;
@@ -367,6 +421,7 @@ public:
         LOG_INFO("server.loading", "Load Playerbots Config...");
 
         sPlayerbotAIConfig.Initialize();
+        AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
         LOG_INFO("server.loading", " ");
@@ -379,6 +434,7 @@ public:
     void OnUpdate(uint32 diff) override
     {
         PlayerbotWorldThreadProcessor::instance().Update(diff);
+        AutoWowOracleRuntime::Update(diff);
         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
     }
 };
@@ -530,6 +586,8 @@ void AddSC_TempestKeepBotScripts();
 void AddSC_HyjalSummitBotScripts();
 void AddSC_IcecrownBotScripts();
 void AddSC_RubySanctumBotScripts();
+void AddSC_OnyxiaBotScripts();
+void AddSC_RaidFearBotScripts();
 
 void AddPlayerbotsScripts()
 {
@@ -543,10 +601,13 @@ void AddPlayerbotsScripts()
     new PlayerBotsBGScript();
     AddPlayerbotsSecureLoginScripts();
     AddPlayerbotsCommandscripts();
+    AutoWowCombatPerformanceTelemetry::AddAutoWowCombatPerformanceTelemetryScript();
     PlayerBotsGuildValidationScript();
     AddSC_MagtheridonBotScripts();
     AddSC_TempestKeepBotScripts();
     AddSC_HyjalSummitBotScripts();
     AddSC_IcecrownBotScripts();
     AddSC_RubySanctumBotScripts();
+    AddSC_OnyxiaBotScripts();
+    AddSC_RaidFearBotScripts();
 }

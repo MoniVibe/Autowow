@@ -10,6 +10,7 @@
 #include "GenericSpellActions.h"
 #include "MovementActions.h"
 
+class Player;
 class PlayerbotAI;
 
 class ReachTargetAction : public MovementAction
@@ -59,6 +60,8 @@ class ReachPartyMemberToHealAction : public ReachTargetAction
 public:
     ReachPartyMemberToHealAction(PlayerbotAI* botAI);
 
+    bool Execute(Event event) override;
+    bool isUseful() override;
     std::string const GetTargetName() override;
 };
 
@@ -67,7 +70,12 @@ class ReachPartyMemberToResurrectAction : public ReachTargetAction
 public:
     ReachPartyMemberToResurrectAction(PlayerbotAI* botAI);
 
+    bool Execute(Event event) override;
+    bool isUseful() override;
     std::string const GetTargetName() override;
+
+private:
+    bool MoveToReleasedCorpseFallback(WorldObject* anchor, Player* dead, char const* reason);
 };
 
 #endif

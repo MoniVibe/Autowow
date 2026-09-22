@@ -9,13 +9,18 @@
 #include <ctime>
 #include <unordered_set>
 
+#include "Corpse.h"
 #include "Event.h"
 #include "ItemTemplate.h"
+#include "LastSpellCastValue.h"
 #include "ObjectDefines.h"
 #include "Opcodes.h"
 #include "Player.h"
 #include "Playerbots.h"
+#include "PositionValue.h"
+#include "ResurrectionTargetPolicy.h"
 #include "ServerFacade.h"
+#include "Spell.h"
 #include "WorldPacket.h"
 #include "Group.h"
 #include "Chat.h"
@@ -133,6 +138,25 @@ namespace
                 return false;
         }
     }
+
+    bool IsRecoverableResurrectionCastResult(SpellCastResult result)
+    {
+        switch (result)
+        {
+            case SPELL_CAST_OK:
+            case SPELL_FAILED_LINE_OF_SIGHT:
+            case SPELL_FAILED_MOVING:
+            case SPELL_FAILED_NOT_INFRONT:
+            case SPELL_FAILED_NOT_SHAPESHIFT:
+            case SPELL_FAILED_NOT_STANDING:
+            case SPELL_FAILED_OUT_OF_RANGE:
+            case SPELL_FAILED_TRY_AGAIN:
+            case SPELL_FAILED_UNIT_NOT_INFRONT:
+                return true;
+            default:
+                return false;
+        }
+    }
 }
 
 CastSpellAction::CastSpellAction(PlayerbotAI* botAI, std::string const spell)
@@ -233,6 +257,174 @@ bool CastSpellAction::isPossible()
 
     // Spell* currentSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL); //not used, line marked for removal.
     return botAI->CanCastSpell(spell, GetTarget());
+}
+
+bool ResurrectPartyMemberAction::IsCombatResurrection() const
+{
+    // Rebirth is the only playerbot party resurrection intentionally scheduled by combat
+    // strategies. Ordinary resurrection, redemption, revive, and ancestral spirit fail closed.
+    return spell == "rebirth";
+}
+
+bool ResurrectPartyMemberAction::isUseful()
+{
+    if (botAI->IsInVehicle() && !botAI->IsInVehicle(false, false, true))
+        return false;
+
+    Unit* target = GetTarget();
+    Player* dead = target ? target->ToPlayer() : nullptr;
+    ResurrectionTargetPolicy::ResolvedTarget const resolved =
+        ResurrectionTargetPolicy::Resolve(bot, dead);
+    if (resolved.kind == ResurrectionTargetPolicy::TargetKind::Invalid)
+        return false;
+    if (!ResurrectionTargetPolicy::CanCastInCombat(bot->IsInCombat(), IsCombatResurrection()))
+        return false;
+    if (ResurrectionTargetPolicy::HasResurrectionReservation(bot, dead, resolved.corpse))
+        return false;
+
+    uint32 const spellId = AI_VALUE2(uint32, "spell id", spell);
+    return bot->HasSpell(spellId) &&
+           ResurrectionTargetPolicy::HasResurrectionEffect(sSpellMgr->GetSpellInfo(spellId));
+}
+
+bool ResurrectPartyMemberAction::isPossible()
+{
+    if (botAI->IsInVehicle() && !botAI->IsInVehicle(false, false, true))
+        return false;
+
+    Unit* target = GetTarget();
+    Player* dead = target ? target->ToPlayer() : nullptr;
+    ResurrectionTargetPolicy::ResolvedTarget const resolved =
+        ResurrectionTargetPolicy::Resolve(bot, dead);
+    if (resolved.kind == ResurrectionTargetPolicy::TargetKind::Invalid ||
+        !ResurrectionTargetPolicy::CanCastInCombat(bot->IsInCombat(), IsCombatResurrection()) ||
+        ResurrectionTargetPolicy::HasResurrectionReservation(bot, dead, resolved.corpse))
+    {
+        return false;
+    }
+
+    uint32 const spellId = AI_VALUE2(uint32, "spell id", spell);
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellId || !spellInfo || !bot->HasSpell(spellId) || bot->HasSpellCooldown(spellId) ||
+        bot->HasUnitState(UNIT_STATE_LOST_CONTROL) ||
+        bot->GetCurrentSpell(CURRENT_GENERIC_SPELL) ||
+        bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL) ||
+        bot->IsFlying() || bot->HasUnitState(UNIT_STATE_IN_FLIGHT) ||
+        !ResurrectionTargetPolicy::HasResurrectionEffect(spellInfo))
+    {
+        return false;
+    }
+
+    Spell* probe = new Spell(bot, spellInfo, TRIGGERED_IGNORE_POWER_AND_REAGENT_COST);
+    if (resolved.kind == ResurrectionTargetPolicy::TargetKind::ReleasedCorpse)
+        probe->m_targets.SetCorpseTarget(resolved.corpse);
+    else
+        probe->m_targets.SetUnitTarget(dead);
+
+    SpellCastResult const result = probe->CheckCast(true);
+    delete probe;
+    return IsRecoverableResurrectionCastResult(result);
+}
+
+bool ResurrectPartyMemberAction::Execute(Event event)
+{
+    Unit* target = GetTarget();
+    Player* dead = target ? target->ToPlayer() : nullptr;
+    ResurrectionTargetPolicy::ResolvedTarget const resolved =
+        ResurrectionTargetPolicy::Resolve(bot, dead);
+    if (resolved.kind == ResurrectionTargetPolicy::TargetKind::Invalid)
+    {
+        LOG_DEBUG("playerbots", "[CorpseRescue] cast_blocked healer={} target={} reason={}",
+                  bot->GetName(), dead ? dead->GetName() : "none",
+                  ResurrectionTargetPolicy::ToString(resolved.failure));
+        return false;
+    }
+    bool const healerInCombat = bot->IsInCombat();
+    bool const combatResurrection = IsCombatResurrection();
+    if (!ResurrectionTargetPolicy::CanCastInCombat(healerInCombat, combatResurrection))
+    {
+        LOG_DEBUG("playerbots", "[CorpseRescue] cast_blocked healer={} target={} reason=combat caster_combat={} combat_res={}",
+                  bot->GetName(), dead->GetName(), healerInCombat, combatResurrection);
+        return false;
+    }
+    if (ResurrectionTargetPolicy::HasResurrectionReservation(bot, dead, resolved.corpse))
+    {
+        LOG_DEBUG("playerbots", "[CorpseRescue] cast_blocked healer={} target={} reason=reserved",
+                  bot->GetName(), dead->GetName());
+        return false;
+    }
+
+    if (resolved.kind == ResurrectionTargetPolicy::TargetKind::UnreleasedUnit)
+    {
+        bool const castStarted = CastSpellAction::Execute(event);
+        LOG_DEBUG("playerbots", "[CorpseRescue] cast_{} healer={} target={} spell={} mode=unit caster_combat={} combat_res={}",
+                  castStarted ? "started" : "failed", bot->GetName(), dead->GetName(), spell,
+                  healerInCombat, combatResurrection);
+        return castStarted;
+    }
+
+    Corpse* corpse = resolved.corpse;
+    bool const withinRange = corpse && bot->GetDistance(corpse) <= range;
+    bool const hasLineOfSight = corpse && bot->IsWithinLOSInMap(corpse);
+    if (!ResurrectionTargetPolicy::IsGeometryReady(withinRange, hasLineOfSight))
+    {
+        LOG_DEBUG("playerbots", "[CorpseRescue] cast_blocked healer={} target={} reason={}{}",
+                  bot->GetName(), dead->GetName(), withinRange ? "" : "range",
+                  hasLineOfSight ? "" : (withinRange ? "los" : "+los"));
+        return false;
+    }
+
+    uint32 const spellId = AI_VALUE2(uint32, "spell id", spell);
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+    if (!spellInfo || !bot->HasSpell(spellId) || !ResurrectionTargetPolicy::HasResurrectionEffect(spellInfo))
+        return false;
+    if (bot->IsFlying() || bot->HasUnitState(UNIT_STATE_IN_FLIGHT))
+        return false;
+
+    if (!bot->IsStandState())
+    {
+        bot->SetStandState(UNIT_STAND_STATE_STAND);
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig.reactDelay);
+        return false;
+    }
+
+    if (!bot->HasInArc(CAST_ANGLE_IN_FRONT, corpse) &&
+        (spellInfo->FacingCasterFlags & SPELL_FACING_FLAG_INFRONT))
+    {
+        ServerFacade::instance().SetFacingTo(bot, corpse);
+    }
+
+    if (bot->isMoving() && spellInfo->CalcCastTime(bot))
+    {
+        botAI->SetNextCheckDelay(sPlayerbotAIConfig.reactDelay);
+        return false;
+    }
+
+    // Do not restart a corpse-target resurrection every AI tick.  Spell::prepare registers the
+    // cast as CURRENT_GENERIC_SPELL; replacing it before its cast time elapses prevents the
+    // resurrection request from ever reaching the dead player's AI and repeatedly spends mana.
+    if (bot->GetCurrentSpell(CURRENT_GENERIC_SPELL))
+        return false;
+
+    Spell* corpseSpell = new Spell(bot, spellInfo, TRIGGERED_NONE);
+    SpellCastTargets targets;
+    targets.SetCorpseTarget(corpse);
+    SpellCastResult const result = corpseSpell->prepare(&targets);
+    if (result != SPELL_CAST_OK)
+    {
+        LOG_DEBUG("playerbots", "[CorpseRescue] cast_failed healer={} target={} spell={} mode=corpse result={}",
+                  bot->GetName(), dead->GetName(), spell, static_cast<int>(result));
+        return false;
+    }
+
+    time_t const now = time(nullptr);
+    context->GetValue<time_t>("last spell cast time", spell)->Set(now);
+    context->GetValue<LastSpellCast&>("last spell cast")->Get().Set(spellId, dead->GetGUID(), now);
+    context->GetValue<PositionMap&>("position")->Get()["random"].Reset();
+    LOG_DEBUG("playerbots", "[CorpseRescue] cast_started healer={} target={} spell={} mode=corpse corpse={} caster_combat={} combat_res={}",
+              bot->GetName(), dead->GetName(), spell, corpse->GetGUID().GetCounter(),
+              healerInCombat, combatResurrection);
+    return true;
 }
 
 CastMeleeSpellAction::CastMeleeSpellAction(

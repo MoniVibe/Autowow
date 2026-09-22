@@ -28,12 +28,16 @@ void NewRpgInfo::ChangeToWanderRandom()
     data = WanderRandom{};
 }
 
-void NewRpgInfo::ChangeToDoQuest(uint32 questId, const Quest* quest)
+void NewRpgInfo::ChangeToDoQuest(uint32 questId, const Quest* quest, bool oracleManaged)
 {
     startT = getMSTime();
     DoQuest do_quest;
     do_quest.questId = questId;
     do_quest.quest = quest;
+    // Entering DoQuest (including a switch to a different quest) starts a fresh objective lock.
+    do_quest.objectiveRuntime = QuestObjectiveRuntime{};
+    do_quest.objectiveRuntime.oracleManaged = oracleManaged;
+    strictFinisherMovement = {};
     data = do_quest;
 }
 
@@ -65,6 +69,10 @@ void NewRpgInfo::ChangeToRest()
 void NewRpgInfo::ChangeToIdle()
 {
     startT = getMSTime();
+    // Leaving a quest: clear any objective-lock state before dropping the DoQuest payload.
+    if (auto* do_quest = std::get_if<DoQuest>(&data))
+        do_quest->objectiveRuntime = QuestObjectiveRuntime{};
+    strictFinisherMovement = {};
     data = Idle{};
 }
 
@@ -76,6 +84,7 @@ bool NewRpgInfo::CanChangeTo(NewRpgStatus)
 void NewRpgInfo::Reset()
 {
     data = Idle{};
+    strictFinisherMovement = {};
     startT = getMSTime();
 }
 
@@ -154,6 +163,12 @@ std::string NewRpgInfo::ToString()
             out << "\npoiPos: " << arg.pos.GetMapId() << " " << arg.pos.GetPositionX() << " "
                 << arg.pos.GetPositionY() << " " << arg.pos.GetPositionZ();
             out << "\nlastReachPOI: " << (arg.lastReachPOI ? GetMSTimeDiffToNow(arg.lastReachPOI) : 0);
+            out << "\nobjPhase: " << (uint32)arg.objectiveRuntime.phase;
+            out << "\nobjFailure: " << (uint32)arg.objectiveRuntime.failure;
+            out << "\nobjSelectedEntry: " << arg.objectiveRuntime.selectedSourceEntry;
+            out << "\nobjCount: " << arg.objectiveRuntime.lastObservedCount << "/"
+                << arg.objectiveRuntime.baselineCount;
+            out << "\nfinisherEntry: " << arg.objectiveRuntime.finisher.signedEntry;
         }
         else if constexpr (std::is_same_v<T, TravelFlight>)
         {

@@ -41,6 +41,37 @@ public:
     }
 };
 
+class SellOracleGrayItemsVisitor : public SellItemsVisitor
+{
+public:
+    SellOracleGrayItemsVisitor(SellAction* action, AiObjectContext* context)
+        : SellItemsVisitor(action), context(context)
+    {
+    }
+
+    bool Visit(Item* item) override
+    {
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto || proto->Quality != ITEM_QUALITY_POOR)
+            return true;
+
+        // The Oracle capacity path must not sell a quest/profession item merely because it is
+        // gray. Keep these classes and any item with a stronger non-vendor usage classification.
+        if (proto->Class == ITEM_CLASS_TRADE_GOODS || proto->Class == ITEM_CLASS_REAGENT ||
+            proto->Class == ITEM_CLASS_RECIPE || proto->Class == ITEM_CLASS_QUEST)
+            return true;
+
+        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", proto->ItemId)->Get();
+        if (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH)
+            return true;
+
+        return SellItemsVisitor::Visit(item);
+    }
+
+private:
+    AiObjectContext* context;
+};
+
 class SellVendorItemsVisitor : public SellItemsVisitor
 {
 public:
@@ -64,6 +95,13 @@ bool SellAction::Execute(Event event)
     if (text == "gray" || text == "*")
     {
         SellGrayItemsVisitor visitor(this);
+        IterateItems(&visitor);
+        return true;
+    }
+
+    if (text == "autowow-gray")
+    {
+        SellOracleGrayItemsVisitor visitor(this, context);
         IterateItems(&visitor);
         return true;
     }

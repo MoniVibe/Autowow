@@ -210,6 +210,9 @@ public:
     ResurrectPartyMemberAction(PlayerbotAI* botAI, std::string const spell) : CastSpellAction(botAI, spell) {}
 
     std::string const GetTargetName() override { return "party member to resurrect"; }
+    bool Execute(Event event) override;
+    bool isUseful() override;
+    bool isPossible() override;
     std::vector<NextAction> getPrerequisites() override
     {
         return NextAction::merge(
@@ -217,6 +220,9 @@ public:
             Action::getPrerequisites()
         );
     }
+
+protected:
+    bool IsCombatResurrection() const;
 };
 
 class CurePartyMemberAction : public CastSpellAction, public PartyMemberActionNameSupport

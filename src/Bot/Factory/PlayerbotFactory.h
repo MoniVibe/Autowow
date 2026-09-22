@@ -52,15 +52,21 @@ enum spec : uint8
 class PlayerbotFactory
 {
 public:
+    static constexpr uint32 kFixtureLootSlotReserve = 8;
+
     PlayerbotFactory(Player* bot, uint32 level, uint32 itemQuality = 0, uint32 gearScoreLimit = 0);
 
     static ObjectGuid GetRandomBot();
     static void Init();
     void Refresh();
     void Randomize(bool incremental);
+    bool InitializeFixture(uint32 specIndex, uint32 requestedQuality);
     static std::list<uint32> classQuestIds;
     void ClearEverything();
     void InitSkills();
+    // Clears only mismatched primary trade-skill records for an explicit AutoWow pair. The caller
+    // must still call InitSkills() to initialize the requested pair and normal class skills.
+    bool ReconcilePrimaryTradeSkills(uint16 firstSkill, uint16 secondSkill);
 
     static uint32 tradeSkills[];
     static float CalculateEnchantScore(uint32 enchant_id, Player* bot);
@@ -186,6 +192,8 @@ private:
     void InitQuests(std::list<uint32>& questMap, bool withRewardItem = true);
     void ClearInventory();
     void ClearAllItems();
+    void ClearFixtureCarriedItems();
+    void EnsureFixtureLootSlotReserve(uint32 minimumFreeSlots);
     void ResetQuests();
 
     std::vector<uint32> GetCurrentGemsCount();
@@ -219,6 +227,7 @@ private:
     uint32 level;
     uint32 itemQuality;
     uint32 gearScoreLimit;
+    bool fixtureExactItemQuality = false;
     static std::list<uint32> specialQuestIds;
     static std::unordered_map<uint32, std::vector<uint32>> trainerIdCache;
     static std::vector<uint32> enchantSpellIdCache;
