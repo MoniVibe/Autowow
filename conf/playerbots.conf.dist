@@ -2182,6 +2182,12 @@ AutoWow.OracleRuntime.BotGuids = ""
 AutoWow.OracleRuntime.CadenceMs = 1000
 AutoWow.OracleRuntime.MaxBots = 1
 AutoWow.OracleRuntime.LeaseTtlTicks = 3
+# Round-robin world-tick slicing for the Oracle pass. 0 (default) drives every managed bot on the
+# cadence edge in one world update (legacy behavior). N > 0 drives at most N bots per world update
+# in ascending-GUID order; a new cadence edge first finishes any unfinished pass, so every bot still
+# runs exactly once per CadenceMs. Pick N >= ceil(MaxBots * worldDiffMs / CadenceMs) to avoid
+# drain bursts at the edge. Requires LeaseTtlTicks >= 2 (else the runtime disables itself).
+AutoWow.OracleRuntime.SliceBots = 0
 
 # Explicitly deployed worker_gather route seeking. Candidates are remembered static herb/ore
 # spawns; spawned state is checked only after the bot walks into sight. Movement uses mmap-backed

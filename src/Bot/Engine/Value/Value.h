@@ -149,7 +149,13 @@ public:
         this->Reset();
     }
 
-    T Get() override
+    T Get() override { return RefGet(); }
+
+    // Computes once, then returns the cached value without copying. The inherited
+    // CalculatedValue::RefGet would recompute on every call (checkInterval 1). The reference
+    // stays valid until the next Reset()+recompute of this value; callers must not hold it
+    // across a Reset().
+    T& RefGet() override
     {
         time_t now = time(0);
         if (!this->lastCheckTime)

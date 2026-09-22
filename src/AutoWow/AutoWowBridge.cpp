@@ -4002,8 +4002,9 @@ private:
         // The shared quest-position value is built from ObjectMgr spawn data, so it covers
         // unloaded grids without borrowing the legacy TravelMgr quest destination pointers.
         // Those destinations are non-owning; this session instead copies the selected point.
-        questGuidpMap questMap =
-            sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->Get();
+        // The map is a compute-once process-lifetime value, so a const reference avoids a full copy.
+        questGuidpMap const& questMap =
+            sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
         for (auto const& [questId, relationMap] : questMap)
         {
             Quest const* quest = sObjectMgr->GetQuestTemplate(questId);

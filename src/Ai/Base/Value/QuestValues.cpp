@@ -124,7 +124,7 @@ questGiverMap QuestGiversValue::Calculate()
     if (hasQualifier)
         level = stoi(q);
 
-    questGuidpMap questMap = GAI_VALUE(questGuidpMap, "quest guidp map");
+    questGuidpMap const& questMap = sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
 
     questGiverMap guidps;
 
@@ -137,7 +137,7 @@ questGiverMap QuestGiversValue::Calculate()
 
             for (auto& entry : relationBucket.second)
             {
-                for (auto& guidp : entry.second)
+                for (auto const& guidp : entry.second)
                 {
                     uint32 questId = qPair.first;
 
@@ -205,7 +205,7 @@ std::vector<GuidPosition> ActiveQuestGiversValue::Calculate()
 
 std::vector<GuidPosition> ActiveQuestTakersValue::Calculate()
 {
-    questGuidpMap questMap = GAI_VALUE(questGuidpMap, "quest guidp map");
+    questGuidpMap const& questMap = sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
 
     std::vector<GuidPosition> retQuestTakers;
 
@@ -249,7 +249,7 @@ std::vector<GuidPosition> ActiveQuestTakersValue::Calculate()
                     }
                 }
 
-                for (auto& guidp : entry.second)
+                for (GuidPosition guidp : entry.second) // copy: IsCreatureOrGOAccessible() is non-const
                 {
                     if (!guidp.IsCreatureOrGOAccessible())
                         continue;
@@ -265,7 +265,7 @@ std::vector<GuidPosition> ActiveQuestTakersValue::Calculate()
 
 std::vector<GuidPosition> ActiveQuestObjectivesValue::Calculate()
 {
-    questGuidpMap questMap = GAI_VALUE(questGuidpMap, "quest guidp map");
+    questGuidpMap const& questMap = sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
 
     std::vector<GuidPosition> retQuestObjectives;
 
@@ -317,7 +317,7 @@ std::vector<GuidPosition> ActiveQuestObjectivesValue::Calculate()
 
             for (auto& entry : qt->second)
             {
-                for (auto& guidp : entry.second)
+                for (GuidPosition guidp : entry.second) // copy: IsCreatureOrGOAccessible() is non-const
                 {
                     if (!guidp.IsCreatureOrGOAccessible())
                         continue;
@@ -356,7 +356,7 @@ QuestObjectiveSpec ActiveQuestObjectiveValue::Calculate()
 
     QuestStatusData const& statusData = itStatus->second;
 
-    questGuidpMap questMap = GAI_VALUE(questGuidpMap, "quest guidp map");
+    questGuidpMap const& questMap = sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
 
     // Collect every stable spawn known for a (signed) source entry of this quest, scanning across all
     // relation-flag buckets so both creature-kill and item-drop sources resolve. Signed entry keys
@@ -712,7 +712,7 @@ QuestFinisherRef ActiveQuestFinisherValue::Calculate()
     if (!ready)
         return ref;
 
-    questGuidpMap questMap = GAI_VALUE(questGuidpMap, "quest guidp map");
+    questGuidpMap const& questMap = sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
     auto q = questMap.find(questId);
     if (q == questMap.end())
         return ref;
@@ -741,7 +741,7 @@ QuestFinisherRef ActiveQuestFinisherValue::Calculate()
                 }
             }
 
-            for (auto& guidp : entry.second)
+            for (auto const& guidp : entry.second)
             {
                 // Preserve signed identity all the way through selection: positive entries may only
                 // bind creature spawns and negative entries may only bind gameobject spawns.

@@ -2056,7 +2056,7 @@ void TravelMgr::LoadQuestTravelTable()
     bool loadQuestData = true;
     if (loadQuestData)
     {
-        questGuidpMap questMap = SharedValueContext::instance().getGlobalValue<questGuidpMap>("quest guidp map")->Get();
+        questGuidpMap const& questMap = SharedValueContext::instance().getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
 
         for (auto& q : questMap)
         {
