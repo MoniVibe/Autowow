@@ -9,6 +9,7 @@
 !/autopilot/
 !/leagues/
 !/core-patches/
+!/census/
 /leagues/results/
 *.pid.json
 *.gcno
