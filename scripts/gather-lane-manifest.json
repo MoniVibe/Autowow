@@ -1,0 +1,19 @@
+{
+  "schema": "autowow.gathering-proof.fixture-roster.v1",
+  "purpose": "gathering-proof",
+  "cohort_name": "persistent-economy-herbalists-v1",
+  "allow_campaign_characters": true,
+  "members": [
+    { "guid": 3, "name": "Emealar", "profession": "Herbalism" },
+    { "guid": 6, "name": "Kurl", "profession": "Mining" },
+    { "guid": 49, "name": "Pikli", "profession": "Herbalism" }
+  ],
+  "protected_guids": [
+    2, 7, 8, 10, 11, 12, 13, 14, 15, 18, 19, 20, 24, 25, 26, 41, 45, 60, 68, 72, 83, 19032, 19033
+  ],
+  "notes": [
+    "Only the three listed GUIDs may receive bridge mutations from gather-lane.ps1.",
+    "The exact roster uses neutral account-type-0 RandomPlayerbots, not campaign, raid, or interaction-fixture characters.",
+    "Credentials are resolved by gathering-proof.ps1 from runtime configuration and are never stored here."
+  ]
+}

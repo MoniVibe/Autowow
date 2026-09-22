@@ -1,0 +1,30 @@
+{
+  "schema": "autowow.oracle.capabilities.v1",
+  "schema_version": 1,
+  "server_build": "fixture-deployed-gather",
+  "session_id": "fixture-session-2",
+  "contract_schema_version": 1,
+  "runtime_enabled": true,
+  "generated_at": "2026-07-18T12:00:00.0000000Z",
+  "bridge": { "deployed": true },
+  "sql_read_deployed": true,
+  "operations": [
+    {
+      "operation": "gather_source",
+      "deployed": true,
+      "native_adapter_available": true,
+      "runtime_authorized": true,
+      "receipt_export_available": true,
+      "constraints": null
+    },
+    {
+      "operation": "gather_route",
+      "deployed": true,
+      "native_adapter_available": true,
+      "runtime_authorized": true,
+      "receipt_export_available": true,
+      "constraints": null
+    }
+  ],
+  "_fixture_note": "Hypothetical future manifest with the gathering Oracle deployed. Used by the unavailable-to-deployed transition rehearsal."
+}

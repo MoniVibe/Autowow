@@ -1,0 +1,18 @@
+{
+  "schema": "autowow.autopilot.checkpoint.v1",
+  "schema_version": 1,
+  "updated_utc": "2026-07-18T17:49:58.8691571Z",
+  "action_counts": {
+    "held": 1
+  },
+  "capability_provider": "manifest",
+  "clock_kind": "real",
+  "manifest_source": "D:\\Games\\wowstuff\\AutoWoW\\work\\autopilot\\capabilities.json",
+  "session": {
+    "known": true,
+    "build": "wsl-live-20260718",
+    "session_id": "wsl-33432-20260718T1007"
+  },
+  "sim_now": "2026-07-18T17:49:58.8691571Z",
+  "tick": 60
+}

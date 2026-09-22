@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autowow://schemas/autopilot/campaign/v1",
+  "title": "AutoWoW Autopilot Campaign v1",
+  "description": "A player-editable campaign: characters, profiles, goals, and limits. Loading a campaign only PROPOSES jobs and enrollment requests - it never sends commands. Campaigns are strategic preference and can never override capability manifests, ownership leases, allowlists, or normal game rules.",
+  "type": "object",
+  "required": ["schema", "schema_version", "campaign", "characters"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "autowow.autopilot.campaign.v1" },
+    "schema_version": { "const": 1 },
+    "campaign": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,40}$" },
+    "description": { "type": "string" },
+    "team": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "faction": { "type": "string", "enum": ["alliance", "horde", "neutral"] },
+        "name": { "type": "string" }
+      }
+    },
+    "characters": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["guid", "profile", "goals"],
+        "additionalProperties": false,
+        "properties": {
+          "guid": { "type": "integer", "minimum": 1 },
+          "profile": { "type": "string", "minLength": 1, "description": "Name of a profile document in autopilot\\profiles\\." },
+          "priority": { "type": "integer", "minimum": 0, "maximum": 100, "default": 50 },
+          "goals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["kind"],
+              "description": "Goal shapes are validated by the goal planner (autowow.autopilot.goal.v1): ReachLevel{level}, LearnProfession{profession,targetSkill?}, Stockpile{itemId,count}, CraftItem{itemId,count,...}, RunDungeon{name,...}, RunRaid{name,...}, RunBattleground{name,...}."
+            }
+          }
+        }
+      }
+    },
+    "permittedActivities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["QuestLevel", "Gather", "Craft", "TrainProfession", "VendorRepair", "BankDeposit", "MailTransfer", "FormParty", "Travel", "Dungeon", "Raid", "Battleground", "OpenWorldPvp", "Restock", "Idle"]
+      },
+      "description": "Campaign-wide allow-list. A goal node whose job kind is not listed here is excluded with an explicit blocker. Empty/absent means all kinds the profiles allow."
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "playWindowsUtc": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["start", "end"],
+            "additionalProperties": false,
+            "properties": {
+              "start": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+              "end": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+            }
+          }
+        }
+      }
+    },
+    "resourceTargets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemId", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "itemId": { "type": "integer", "minimum": 1 },
+          "name": { "type": "string" },
+          "count": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "professionPlans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["guid", "profession"],
+        "additionalProperties": false,
+        "properties": {
+          "guid": { "type": "integer", "minimum": 1 },
+          "profession": { "type": "string" },
+          "targetSkill": { "type": "integer", "minimum": 1, "maximum": 450 }
+        }
+      }
+    },
+    "progression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dungeons": { "type": "array", "items": { "type": "string" } },
+        "raids": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "pvp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "optIn": { "type": "boolean", "default": false },
+        "battlegrounds": { "type": "array", "items": { "type": "string", "enum": ["wsg"] } }
+      }
+    },
+    "spendingLimits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxSpendCopperPerCharacter": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "stopConditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "type": "string", "enum": ["all-goals-complete", "wall-clock-utc", "max-total-deaths", "any-job-failed"] },
+          "params": { "type": "object" }
+        }
+      }
+    }
+  }
+}

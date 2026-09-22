@@ -1,0 +1,37 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "gatherer",
+  "description": "Resource-loop preference: gather ore and herbs on low-risk circuits, bank the haul, and travel between node routes. Prefers Mining and Herbalism. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["Gather", "Travel", "BankDeposit"],
+  "priorityWeights": {
+    "Gather": 12,
+    "BankDeposit": 4,
+    "Travel": 2
+  },
+  "preferredZones": ["Elwynn Forest", "Westfall", "Darkshore"],
+  "preferredMaterials": [
+    { "itemId": 2770, "name": "Copper Ore" },
+    { "itemId": 765, "name": "Silverleaf" },
+    { "itemId": 2447, "name": "Peacebloom" }
+  ],
+  "preferredProfessions": ["Mining", "Herbalism"],
+  "groupRole": null,
+  "groupingAllowed": false,
+  "pvpOptIn": false,
+  "riskTolerance": "low",
+  "consumableReserve": [
+    { "itemId": 159, "minCount": 10 }
+  ],
+  "bagSpaceReserveSlots": 10,
+  "repairThresholdPct": 25,
+  "maxDeathsBeforeBlock": 3,
+  "schedule": { "playWindowsUtc": [] },
+  "economy": {
+    "allowSpending": false,
+    "allowSelling": false,
+    "allowMailing": false,
+    "allowAuction": false,
+    "maxSpendCopper": 0
+  }
+}

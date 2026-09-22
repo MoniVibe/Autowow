@@ -1,0 +1,5 @@
+{
+  "_fixture_note": "Deliberately NOT a valid autowow.oracle.capabilities.v1 manifest: an unknown schema must fail closed (everything undeployed).",
+  "schema": "autowow.oracle.capabilities.v999",
+  "schema_version": 999
+}

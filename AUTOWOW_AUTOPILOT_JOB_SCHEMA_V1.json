@@ -1,0 +1,650 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autowow://schemas/autopilot/job/v1",
+  "title": "AutoWoW Autopilot Job v1",
+  "description": "One long-running strategic job assigned to one or more characters. The Autopilot owns this document; the server Oracle never reads it. Success is measured ONLY by the objective counters named in successCriteria - movement, XP gain, or elapsed time are never success evidence on their own.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "jobId",
+    "idempotencyKey",
+    "kind",
+    "owner",
+    "characters",
+    "priority",
+    "createdAt",
+    "updatedAt",
+    "prerequisites",
+    "successCriteria",
+    "timeoutPolicy",
+    "retryPolicy",
+    "cancellation",
+    "permittedCapabilities",
+    "progress",
+    "phase",
+    "executionMode",
+    "spec"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Schema major version. Readers must reject documents with a version they do not understand (fail closed)."
+    },
+    "jobId": {
+      "type": "string",
+      "pattern": "^job-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$",
+      "description": "Unique per job instance: job-<UTC compact timestamp>-<8 hex>. Assigned once at creation, never reused."
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128,
+      "description": "Stable key derived from (owner.campaign | kind | canonicalized spec | sorted eligibleGuids). Re-submitting the same logical job yields the same key; the store refuses to create a second non-terminal job with the same key."
+    },
+    "kind": {
+      "$ref": "#/$defs/jobKind"
+    },
+    "owner": {
+      "type": "object",
+      "required": ["campaign", "requestedBy"],
+      "additionalProperties": false,
+      "properties": {
+        "campaign": { "type": "string", "minLength": 1, "description": "Owning campaign, e.g. 'league-v0'." },
+        "requestedBy": { "type": "string", "minLength": 1, "description": "Human or process that created the job, e.g. 'operator', 'autopilot-scheduler'." },
+        "team": { "type": ["string", "null"], "description": "Optional team label from the campaign roster, e.g. 'alliance', 'horde', 'neutral'." }
+      }
+    },
+    "characters": {
+      "type": "object",
+      "required": ["eligibleGuids", "assignedGuids"],
+      "additionalProperties": false,
+      "properties": {
+        "eligibleGuids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/guid" },
+          "uniqueItems": true,
+          "minItems": 1,
+          "description": "Explicit allow-list of character GUIDs this job may ever control. The Autopilot never controls a character outside this list."
+        },
+        "assignedGuids": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/guid" },
+          "uniqueItems": true,
+          "description": "Subset of eligibleGuids currently bound to the job by the planner. Empty until Validating succeeds."
+        },
+        "maxConcurrent": { "type": "integer", "minimum": 1, "default": 1 }
+      }
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Higher runs first. Ties broken by createdAt then jobId (deterministic)."
+    },
+    "createdAt": { "$ref": "#/$defs/timestamp" },
+    "updatedAt": { "$ref": "#/$defs/timestamp" },
+    "startedAt": { "$ref": "#/$defs/nullableTimestamp" },
+    "completedAt": { "$ref": "#/$defs/nullableTimestamp" },
+    "notBefore": { "$ref": "#/$defs/nullableTimestamp" },
+    "prerequisites": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/prerequisite" },
+      "description": "All must hold before the job may leave Validating. Unmet prerequisites move the job to Blocked with blockedReason.code = 'prerequisite-unmet'."
+    },
+    "successCriteria": {
+      "type": "object",
+      "required": ["measure", "counters"],
+      "additionalProperties": false,
+      "properties": {
+        "measure": { "$ref": "#/$defs/progressMeasure" },
+        "counters": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "integer", "minimum": 0 },
+          "description": "Named objective targets, e.g. {\"questsTurnedIn\": 3} or {\"itemCount\": 100}. The job is Completed only when every counter in progress.counters meets or exceeds its target here, proven by receipts."
+        },
+        "description": { "type": "string" }
+      }
+    },
+    "timeoutPolicy": {
+      "type": "object",
+      "required": ["jobTimeoutMinutes", "phaseTimeoutMinutes", "noProgressSeconds"],
+      "additionalProperties": false,
+      "properties": {
+        "jobTimeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 10080 },
+        "phaseTimeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 1440 },
+        "noProgressSeconds": {
+          "type": "integer",
+          "minimum": 30,
+          "default": 120,
+          "description": "Stall threshold: both no qualifying movement and no objective progress for this long triggers Recovering (mirrors the league director's 120 s anti-stuck guard)."
+        }
+      }
+    },
+    "retryPolicy": {
+      "type": "object",
+      "required": ["maxAttempts", "maxRecoveriesPerObjective", "backoffSeconds", "onExhaust"],
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10, "default": 3 },
+        "maxRecoveriesPerObjective": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 2,
+          "description": "Bounded native replans per objective before the job is Blocked for review (mirrors QUEST_RECOVERY_V0)."
+        },
+        "backoffSeconds": { "type": "integer", "minimum": 0, "default": 60 },
+        "onExhaust": {
+          "type": "string",
+          "enum": ["block", "fail"],
+          "default": "block",
+          "description": "'block' parks the job Blocked for operator review; 'fail' terminates it. Recovery must never silently degrade the objective (e.g. quest -> generic grinding)."
+        }
+      }
+    },
+    "cancellation": {
+      "type": "object",
+      "required": ["requested"],
+      "additionalProperties": false,
+      "properties": {
+        "requested": { "type": "boolean", "default": false },
+        "requestedAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "reason": { "type": ["string", "null"] },
+        "acknowledgedAt": { "$ref": "#/$defs/nullableTimestamp" }
+      }
+    },
+    "permittedCapabilities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/capability" },
+      "uniqueItems": true,
+      "minItems": 1,
+      "description": "Closed allow-list of Oracle/bridge capabilities the adapter may invoke for this job. The adapter fails closed on anything not listed. Capabilities whose backing surface is not deployed cause Blocked('oracle-capability-not-deployed'), never emulation."
+    },
+    "progress": {
+      "type": "object",
+      "required": ["counters", "lastProgressAt", "attempt", "recoveriesUsed"],
+      "additionalProperties": false,
+      "properties": {
+        "counters": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 },
+          "description": "Live objective counters, same keys as successCriteria.counters. Updated only from verified telemetry (bridge questobjective/questlog/snapshot, SQL snapshots), never assumed."
+        },
+        "lastProgressAt": { "$ref": "#/$defs/nullableTimestamp" },
+        "attempt": { "type": "integer", "minimum": 0 },
+        "recoveriesUsed": { "type": "integer", "minimum": 0 },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/receiptRef" },
+          "description": "Receipts proving each counter increment."
+        }
+      }
+    },
+    "phase": { "$ref": "#/$defs/phase" },
+    "phaseEnteredAt": { "$ref": "#/$defs/nullableTimestamp" },
+    "blockedReason": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/blockedReason" }
+      ],
+      "description": "Required non-null whenever phase is Blocked; also used for Idle jobs to state why no legal useful action exists."
+    },
+    "leaseRef": {
+      "type": ["string", "null"],
+      "description": "Opaque reference to the current server-side ownership (Oracle lease id or bridge order context). Null when the Autopilot holds no live claim."
+    },
+    "receiptLog": {
+      "type": "object",
+      "required": ["file", "lastSeq"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "description": "Append-only JSONL receipt file path. Live jobs use an absolute path under logs\\autopilot\\<run-id>\\; dry-run/scratch jobs live under the Autopilot state root." },
+        "lastSeq": { "type": "integer", "minimum": 0, "description": "Sequence number of the newest receipt emitted for this job." },
+        "runId": { "type": ["string", "null"], "description": "Controller run id owning the live receipt directory, or 'state' for scratch/dry-run placement." }
+      }
+    },
+    "executionMode": {
+      "type": "string",
+      "enum": ["dry-run", "live"],
+      "default": "dry-run",
+      "description": "dry-run: adapter records the exact command it would send and sends nothing. live: requires the character allow-list and a reachable bridge."
+    },
+    "spec": {
+      "type": "object",
+      "description": "Kind-specific parameters; validated by the if/then branches below."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Controller-internal annotations (profile name, campaign node id, suspend bookkeeping, quest mode). Never execution authority."
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supersedesJobId", "retryReason", "retriedAt"],
+      "description": "Present on successor/retry jobs only. The superseded job and its ledger remain byte-for-byte unchanged; provenance lives entirely on the successor.",
+      "properties": {
+        "supersedesJobId": { "type": "string" },
+        "retryReason": { "type": "string" },
+        "retriedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "allOf": [
+    { "if": { "properties": { "kind": { "const": "QuestLevel" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specQuestLevel" } } } },
+    { "if": { "properties": { "kind": { "const": "Gather" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specGather" } } } },
+    { "if": { "properties": { "kind": { "const": "Craft" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specCraft" } } } },
+    { "if": { "properties": { "kind": { "const": "TrainProfession" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specTrainProfession" } } } },
+    { "if": { "properties": { "kind": { "const": "VendorRepair" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specVendorRepair" } } } },
+    { "if": { "properties": { "kind": { "const": "BankDeposit" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specBankDeposit" } } } },
+    { "if": { "properties": { "kind": { "const": "MailTransfer" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specMailTransfer" } } } },
+    { "if": { "properties": { "kind": { "const": "FormParty" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specFormParty" } } } },
+    { "if": { "properties": { "kind": { "const": "Travel" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specTravel" } } } },
+    { "if": { "properties": { "kind": { "const": "Dungeon" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specDungeon" } } } },
+    { "if": { "properties": { "kind": { "const": "Raid" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specRaid" } } } },
+    { "if": { "properties": { "kind": { "const": "Battleground" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specBattleground" } } } },
+    { "if": { "properties": { "kind": { "const": "OpenWorldPvp" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specOpenWorldPvp" } } } },
+    { "if": { "properties": { "kind": { "const": "Restock" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specRestock" } } } },
+    { "if": { "properties": { "kind": { "const": "Idle" } } }, "then": { "properties": { "spec": { "$ref": "#/$defs/specIdle" } } } }
+  ],
+  "$defs": {
+    "jobKind": {
+      "type": "string",
+      "enum": [
+        "QuestLevel",
+        "Gather",
+        "Craft",
+        "TrainProfession",
+        "VendorRepair",
+        "BankDeposit",
+        "MailTransfer",
+        "FormParty",
+        "Travel",
+        "Dungeon",
+        "Raid",
+        "Battleground",
+        "OpenWorldPvp",
+        "Restock",
+        "Idle"
+      ]
+    },
+    "guid": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Character GUID low-part (counter), as used by the AutoWow bridge."
+    },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "nullableTimestamp": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "Queued",
+        "Validating",
+        "Preparing",
+        "Traveling",
+        "Executing",
+        "Verifying",
+        "Completed",
+        "Blocked",
+        "Recovering",
+        "Suspended",
+        "Cancelled",
+        "Failed"
+      ],
+      "description": "Main path: Queued -> Validating -> Preparing -> Traveling -> Executing -> Verifying -> Completed. Side states: Blocked, Recovering, Suspended, Cancelled, Failed. Every transition emits a structured receipt."
+    },
+    "capability": {
+      "type": "string",
+      "enum": [
+        "bridge.list",
+        "bridge.snapshot",
+        "bridge.destinations",
+        "bridge.questlog",
+        "bridge.questobjective",
+        "bridge.acceptance",
+        "bridge.combatlog",
+        "bridge.encounterlog",
+        "bridge.quest",
+        "bridge.quest.acquire",
+        "bridge.travel",
+        "bridge.recover",
+        "bridge.pause",
+        "bridge.resume",
+        "bridge.party",
+        "bridge.rally",
+        "bridge.deploy",
+        "bridge.route",
+        "bridge.advance",
+        "bridge.advancepoint",
+        "bridge.engage",
+        "bridge.scout",
+        "bridge.pathprobe",
+        "bridge.boss",
+        "bridge.activate",
+        "bridge.deactivate",
+        "bridge.wsg.queue",
+        "bridge.wsg.status",
+        "bridge.wsg.leave",
+        "bridge.raid.create",
+        "bridge.raid.status",
+        "bridge.raid.leave",
+        "bridge.observe",
+        "bridge.fixture.init",
+        "bridge.fixture.status",
+        "bridge.probe.reset",
+        "oracle.combat_action",
+        "oracle.navigate",
+        "oracle.quest_acquire",
+        "oracle.quest_accept",
+        "oracle.quest_objective",
+        "oracle.quest_turn_in",
+        "oracle.gather_route",
+        "oracle.gather_source",
+        "oracle.craft",
+        "oracle.bank_withdraw",
+        "oracle.bank_deposit",
+        "oracle.mail_receive",
+        "oracle.mail_send",
+        "oracle.vendor_buy",
+        "oracle.vendor_sell",
+        "oracle.auction_buy",
+        "oracle.auction_sell",
+        "oracle.roster_assignment",
+        "oracle.recover",
+        "oracle.pvp_objective",
+        "oracle.pvp_challenge",
+        "oracle.disengage",
+        "sql.read"
+      ],
+      "description": "bridge.* map 1:1 to AutoWowBridge.cpp wire commands (ParseRequest dispatch). bridge.fixture.* and bridge.probe.reset are lab-only (acceptance fixtures, Scope LabFixture), never granted to campaign jobs. oracle.* mirror AutoWowOracleContract.h OperationCode names exactly; grant them only when the corresponding AutoWow.OracleRuntime executor is deployed and enabled - otherwise jobs requiring them are Blocked('oracle-capability-not-deployed'), never emulated. sql.read is read-only character/world snapshot queries."
+    },
+    "prerequisite": {
+      "type": "object",
+      "required": ["kind", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "min-level",
+            "max-level",
+            "job-completed",
+            "item-present",
+            "money-at-least",
+            "profession-at-least",
+            "spell-known",
+            "capability-deployed",
+            "character-online",
+            "character-alive",
+            "free-bag-slots",
+            "gear-not-broken",
+            "in-zone",
+            "party-formed"
+          ]
+        },
+        "params": { "type": "object" },
+        "description": { "type": "string" }
+      }
+    },
+    "progressMeasure": {
+      "type": "string",
+      "enum": [
+        "quest-objective-counters",
+        "quest-turnins",
+        "character-level",
+        "inventory-item-count",
+        "profession-skill-level",
+        "recipe-known",
+        "gold-delta-at-vendor",
+        "bank-item-count",
+        "mail-delivered",
+        "party-composition",
+        "arrival-at-destination",
+        "dungeon-boss-kills",
+        "raid-encounter-receipts",
+        "battleground-scoreboard",
+        "pvp-objective-receipts",
+        "restock-inventory-count",
+        "none"
+      ],
+      "description": "The observable, verifiable measure this job's success is judged by. 'none' is legal only for Idle."
+    },
+    "blockedReason": {
+      "type": "object",
+      "required": ["code", "detail", "since"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "prerequisite-unmet",
+            "capability-missing",
+            "oracle-capability-not-deployed",
+            "character-unavailable",
+            "character-offline",
+            "character-dead-unrecoverable",
+            "bags-full",
+            "gear-broken",
+            "out-of-consumables",
+            "insufficient-funds",
+            "no-legal-action",
+            "server-unreachable",
+            "bridge-timeout",
+            "lease-denied",
+            "stale-state",
+            "roster-conflict",
+            "roster-owned",
+            "party-contract-unmet",
+            "operator-suspended",
+            "recovery-budget-exhausted",
+            "phase-timeout",
+            "job-timeout",
+            "awaiting-verification"
+          ]
+        },
+        "detail": { "type": "string", "minLength": 1 },
+        "since": { "$ref": "#/$defs/timestamp" },
+        "nextAction": { "type": "string", "description": "What the planner will try next, for `autowow explain`." }
+      }
+    },
+    "receiptRef": {
+      "type": "object",
+      "required": ["seq", "receiptId"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": { "type": "integer", "minimum": 0 },
+        "receiptId": { "type": "string" },
+        "note": { "type": "string" }
+      }
+    },
+    "itemRequirement": {
+      "type": "object",
+      "required": ["itemId", "count"],
+      "additionalProperties": false,
+      "properties": {
+        "itemId": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "description": "Human-readable item name for status output; itemId is authoritative." },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "role": { "type": "string", "enum": ["tank", "healer", "dps"] },
+    "specQuestLevel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "partyLeaderGuid": { "$ref": "#/$defs/guid", "description": "Leader whose party runs the native quest cycle (bridge `quest <leader-guid>`)." },
+        "targetLevel": { "type": ["integer", "null"], "minimum": 2, "maximum": 80 },
+        "questAllowlist": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "description": "Optional explicit quest ids (bridge `quest <leader> <quest-id>`). Empty means native selection." },
+        "zoneHint": { "type": ["string", "null"] }
+      }
+    },
+    "specGather": {
+      "type": "object",
+      "required": ["item", "stopAtCount"],
+      "additionalProperties": false,
+      "properties": {
+        "item": { "$ref": "#/$defs/itemRequirement" },
+        "stopAtCount": { "type": "integer", "minimum": 1, "description": "Hard stop: the worker must stop gathering at exactly this inventory count." },
+        "profession": { "type": "string", "enum": ["mining", "herbalism", "skinning"] },
+        "zoneHint": { "type": ["string", "null"] },
+        "note": { "type": "string", "description": "v1: requires oracle.gather (AutoWow.GatherSeek + fixed-target executor). Kept Blocked('oracle-capability-not-deployed') until that runtime is deployed." }
+      }
+    },
+    "specCraft": {
+      "type": "object",
+      "required": ["recipeSpellId", "count"],
+      "additionalProperties": false,
+      "properties": {
+        "recipeSpellId": { "type": "integer", "minimum": 1 },
+        "resultItemId": { "type": ["integer", "null"] },
+        "count": { "type": "integer", "minimum": 1 },
+        "professionSkillId": { "type": ["integer", "null"] }
+      }
+    },
+    "specTrainProfession": {
+      "type": "object",
+      "required": ["professionSkillId", "targetSkill"],
+      "additionalProperties": false,
+      "properties": {
+        "professionSkillId": { "type": "integer", "minimum": 1 },
+        "professionName": { "type": ["string", "null"], "description": "Human-readable profession name; professionSkillId is authoritative." },
+        "targetSkill": { "type": "integer", "minimum": 1, "maximum": 450 },
+        "trainerHint": { "type": ["string", "null"] }
+      }
+    },
+    "specVendorRepair": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repairThresholdPct": { "type": "integer", "minimum": 0, "maximum": 100, "default": 30 },
+        "sellJunk": { "type": "boolean", "default": false },
+        "vendorHint": { "type": ["string", "null"] }
+      }
+    },
+    "specBankDeposit": {
+      "type": "object",
+      "required": ["items"],
+      "additionalProperties": false,
+      "properties": {
+        "items": { "type": "array", "items": { "$ref": "#/$defs/itemRequirement" }, "minItems": 1 },
+        "keepGoldBelow": { "type": ["integer", "null"], "minimum": 0, "description": "Copper. Deposit gold above this amount." }
+      }
+    },
+    "specMailTransfer": {
+      "type": "object",
+      "required": ["toCharacterGuid"],
+      "additionalProperties": false,
+      "properties": {
+        "toCharacterGuid": { "$ref": "#/$defs/guid" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/itemRequirement" } },
+        "moneyCopper": { "type": ["integer", "null"], "minimum": 1 },
+        "subject": { "type": "string", "maxLength": 64 }
+      }
+    },
+    "specFormParty": {
+      "type": "object",
+      "required": ["roles"],
+      "additionalProperties": false,
+      "properties": {
+        "roles": { "type": "array", "items": { "$ref": "#/$defs/role" }, "minItems": 2, "maxItems": 5 },
+        "leaderGuid": { "oneOf": [ { "type": "null" }, { "$ref": "#/$defs/guid" } ], "description": "If null the planner picks the leader from assigned characters by suitability." }
+      }
+    },
+    "specTravel": {
+      "type": "object",
+      "required": ["destination"],
+      "additionalProperties": false,
+      "properties": {
+        "destination": { "type": "string", "minLength": 1, "description": "Playerbots destination name resolved by the bridge travel resolver (never raw coordinates, never teleport)." },
+        "arrivalRadiusYards": { "type": "integer", "minimum": 5, "maximum": 200, "default": 30 }
+      }
+    },
+    "specDungeon": {
+      "type": "object",
+      "required": ["name", "roles"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "entranceRoute": { "type": ["string", "null"], "description": "Named recorded exterior route to the entrance if one exists." },
+        "roles": { "type": "array", "items": { "$ref": "#/$defs/role" }, "minItems": 5, "maxItems": 5 },
+        "clearBosses": { "type": ["integer", "null"], "minimum": 1, "description": "How many bosses count as success; null means full clear as defined by the acceptance list." }
+      }
+    },
+    "specRaid": {
+      "type": "object",
+      "required": ["name", "rosterSize", "difficulty"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "rosterSize": { "type": "integer", "enum": [10, 25, 40] },
+        "difficulty": { "type": "integer", "minimum": 0, "maximum": 3, "description": "Bridge raid-create difficulty token." },
+        "roleCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tank": { "type": "integer", "minimum": 1 },
+            "healer": { "type": "integer", "minimum": 1 },
+            "dps": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "targetBosses": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "specBattleground": {
+      "type": "object",
+      "required": ["name", "teamSize"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "enum": ["wsg"], "description": "v1 supports Warsong Gulch (bridge wsg-queue); other battlegrounds are future capabilities." },
+        "teamSize": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "matches": { "type": "integer", "minimum": 1, "default": 1 }
+      }
+    },
+    "specOpenWorldPvp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "zone": { "type": ["string", "null"] },
+        "opposingPartyLeaderGuid": { "oneOf": [ { "type": "null" }, { "$ref": "#/$defs/guid" } ] },
+        "durationMinutes": { "type": "integer", "minimum": 1, "maximum": 240 }
+      }
+    },
+    "specRestock": {
+      "type": "object",
+      "required": ["consumables"],
+      "additionalProperties": false,
+      "properties": {
+        "consumables": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["itemId", "minCount"],
+            "additionalProperties": false,
+            "properties": {
+              "itemId": { "type": "integer", "minimum": 1 },
+              "name": { "type": "string" },
+              "minCount": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "vendorHint": { "type": ["string", "null"] }
+      }
+    },
+    "specIdle": {
+      "type": "object",
+      "required": ["reason"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": { "type": "string", "minLength": 1, "description": "Why no legal useful action exists right now. Idle is always explicit and always explainable." },
+        "reviewAfterMinutes": { "type": "integer", "minimum": 1, "default": 15 }
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "quester",
+  "description": "Solo quest-leveling preference: prioritize quest turn-ins, keep gear repaired and supplies stocked, travel between quest hubs. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["QuestLevel", "VendorRepair", "Restock", "Travel", "TrainProfession"],
+  "priorityWeights": {
+    "QuestLevel": 10,
+    "VendorRepair": 3,
+    "Restock": 2,
+    "Travel": 1,
+    "TrainProfession": 2
+  },
+  "preferredZones": ["Elwynn Forest", "Westfall", "Redridge Mountains", "Duskwood"],
+  "preferredMaterials": [],
+  "preferredProfessions": [],
+  "groupRole": null,
+  "groupingAllowed": false,
+  "pvpOptIn": false,
+  "riskTolerance": "normal",
+  "consumableReserve": [
+    { "itemId": 159, "minCount": 20 },
+    { "itemId": 4540, "minCount": 20 }
+  ],
+  "bagSpaceReserveSlots": 4,
+  "repairThresholdPct": 35,
+  "maxDeathsBeforeBlock": 5,
+  "schedule": { "playWindowsUtc": [] },
+  "economy": {
+    "allowSpending": true,
+    "allowSelling": true,
+    "allowMailing": false,
+    "allowAuction": false,
+    "maxSpendCopper": 50000
+  }
+}

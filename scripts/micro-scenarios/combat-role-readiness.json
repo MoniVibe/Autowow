@@ -1,0 +1,91 @@
+{
+  "schema": "autowow.micro-scenario.manifest.v1",
+  "id": "combat-role-readiness-v1",
+  "title": "Verify a tank, healer, and damage role contract",
+  "version": 1,
+  "fixture_only": true,
+  "status": "partial",
+  "identity": {
+    "affiliation_semantics": "wayfarer",
+    "roster_semantics": "out-of-roster",
+    "neutral_faction_claim": false,
+    "party_members": 2,
+    "purpose": "small isolated combat fixture; no campaign roster membership"
+  },
+  "fixture_inputs": {
+    "roster": [
+      {"role": "tank", "level": 20, "class": "fixture-supplied"},
+      {"role": "healer", "level": 20, "class": "fixture-supplied"},
+      {"role": "damage", "level": 20, "class": "fixture-supplied"}
+    ],
+    "encounter": {
+      "target_entry": 0,
+      "target_stable_spawn_id": 0,
+      "target_input_required": true,
+      "map_id": 0,
+      "values_are_fixture_inputs_not_live_claims": true
+    },
+    "role_state": {
+      "tank_has_defensive_spec_and_gear": true,
+      "healer_has_healing_spec_and_gear": true,
+      "damage_has_damage_spec_and_gear": true,
+      "talents_and_gear_must_be_observed_not_assumed": true
+    }
+  },
+  "preparation": {
+    "purpose": "Create the exact small roster and capture role readiness before engagement.",
+    "allowed_mutations": ["activate", "fixture-init", "party", "raid-create", "route"],
+    "adapter_required": ["exact_fixture_role_loadout", "exact_encounter_target_seed"],
+    "steps": [
+      "Allocate three wayfarer/out-of-roster characters and assert no unrelated party, raid, or campaign ownership.",
+      "Seed level, class, specialization, talents, gear, resources, and bags through the fixture adapter.",
+      "Create exactly the declared party or raid roster; do not add a hidden healer or tank.",
+      "Stage using a legitimate route or a fixture position seed recorded as setup only.",
+      "Read snapshot, combatlog, encounterlog, and role/loadout telemetry before the pull."
+    ],
+    "baseline_observations": ["bridge.list", "bridge.snapshot", "bridge.combatlog", "bridge.encounterlog", "read_only_role_loadout"]
+  },
+  "operation": {
+    "purpose": "Run one bounded native pull and measure role behavior.",
+    "allowed_mutations": ["engage", "boss"],
+    "bridge_verbs": ["engage", "boss", "boss-status", "combatlog", "encounterlog", "snapshot"],
+    "target_binding": "engage only the exact fixture target entry or player supplied by the manifest; no nearest-target substitution",
+    "bounded_attempt": {
+      "max_minutes": 3,
+      "max_pulls": 1,
+      "random_targeting_allowed": false,
+      "synthetic_damage_or_healing_allowed": false,
+      "teleport_proof_allowed": false
+    },
+    "native_evidence_required": [
+      "combatlog and encounterlog identify the exact target and pull window",
+      "the tank, healer, and damage characters are attributable by GUID",
+      "the healer emits native healing or assist events while the tank is engaged",
+      "damage characters emit native damage events",
+      "the result records survival, death, wipe, or timeout honestly"
+    ]
+  },
+  "postconditions": [
+    {
+      "id": "exact-target-engaged",
+      "observable": "bridge.combatlog and bridge.encounterlog",
+      "predicate": "the pull references the declared target entry/spawn and no substitute target"
+    },
+    {
+      "id": "role-events-attributed",
+      "observable": "combat and role telemetry",
+      "predicate": "native tank, healer, and damage events are attributed to the exact fixture GUIDs"
+    },
+    {
+      "id": "honest-outcome",
+      "observable": "bridge.boss-status, encounterlog, and snapshots",
+      "predicate": "the fixture records defeated, survived, wiped, or timed_out; no success is inferred from movement or ok:true"
+    }
+  ],
+  "adapter_boundary": {
+    "current_bridge_can_prove": ["roster activation", "party or raid creation", "exact engage request", "combat and encounter event collection", "honest death or boss outcome when emitted"],
+    "adapter_still_needed": ["seed exact talents, gear, resources, and target spawn", "attribute threat/healing/avoidance by role if the current logs omit it", "provide deterministic fixture reset"],
+    "native_evidence_remains_mandatory": ["GUID-attributed native combat events", "target identity", "outcome event"]
+  },
+  "cleanup": ["end the pull through native combat resolution", "disband or leave the fixture roster", "deactivate fixture characters after persistence is stable"]
+}

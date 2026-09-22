@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "bot": {
+    "guid": 10,
+    "name": "Brandreas",
+    "level": 9,
+    "class": 1,
+    "race": 1,
+    "map": 0,
+    "zone": "Elwynn Forest",
+    "x": -9449.06,
+    "y": -1330.82,
+    "z": 44.31,
+    "alive": true,
+    "in_combat": false,
+    "paused": false,
+    "ai_action": "quest",
+    "travel": "idle"
+  },
+  "_fixture_note": "Recorded-shape approximation of `snapshot <guid>` (AutoWowBridge.cpp SnapshotJson) for dry-run use only."
+}

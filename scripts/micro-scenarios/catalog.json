@@ -1,0 +1,78 @@
+{
+  "schema": "autowow.micro-scenario.catalog.v1",
+  "catalog_version": 1,
+  "purpose": "Resettable, fixture-only proofs for playerbot questing, gathering, crafting, and combat behavior.",
+  "default_mode": "dry_run",
+  "fixture_policy": {
+    "fixture_only": true,
+    "allowed_affiliation_semantics": ["wayfarer", "out-of-roster"],
+    "neutral_faction_claim_allowed": false,
+    "position_seed_is_setup_only": true,
+    "native_route_required_for_travel_proof": true,
+    "synthetic_quest_completion_allowed": false,
+    "direct_database_completion_allowed": false,
+    "teleport_based_proof_allowed": false,
+    "accelerated_pacing": {
+      "label": "1000_percent_of_baseline",
+      "multiplier": 10,
+      "scope": "fixture-only",
+      "production_or_campaign_allowed": false
+    }
+  },
+  "manifests": [
+    {
+      "id": "gather-exact-node-v1",
+      "file": "gather-exact-node.json",
+      "domain": "gathering",
+      "kind": "exact_source",
+      "readiness": "partial",
+      "current_bridge_verbs": ["activate", "fixture-init", "fixture-status", "route", "deploy", "snapshot", "professioneconomy"],
+      "adapter_requirements": ["exact_fixture_loadout_and_source_seed"]
+    },
+    {
+      "id": "blacksmith-one-craft-v1",
+      "file": "blacksmith-one-craft.json",
+      "domain": "crafting",
+      "kind": "single_operation",
+      "readiness": "partial",
+      "current_bridge_verbs": ["activate", "fixture-init", "fixture-status", "route", "professioneconomy", "craft", "craft-status"],
+      "adapter_requirements": ["exact_fixture_profession_and_inventory_seed", "durable_inventory_snapshot"]
+    },
+    {
+      "id": "quest-giver-acquisition-v1",
+      "file": "quest-giver-acquisition.json",
+      "domain": "questing",
+      "kind": "normal_acquisition_and_interaction",
+      "readiness": "partial",
+      "current_bridge_verbs": ["activate", "fixture-init", "fixture-status", "route", "quest-acquire", "quest", "questlog", "acceptance", "questobjective"],
+      "adapter_requirements": ["exact_fixture_quest_and_route_seed"]
+    },
+    {
+      "id": "combat-role-readiness-v1",
+      "file": "combat-role-readiness.json",
+      "domain": "combat",
+      "kind": "role_contract",
+      "readiness": "partial",
+      "current_bridge_verbs": ["activate", "fixture-init", "fixture-status", "party", "raid-create", "route", "engage", "boss", "boss-status", "combatlog", "encounterlog", "snapshot"],
+      "adapter_requirements": ["exact_fixture_role_loadout", "role_attribution_and_threat_observer"]
+    },
+    {
+      "id": "quest-progression-accelerated-fixture-v1",
+      "file": "quest-progression-accelerated-fixture.json",
+      "domain": "questing",
+      "kind": "accelerated_fixture_progression",
+      "readiness": "blocked_until_adapter",
+      "current_bridge_verbs": ["activate", "fixture-init", "fixture-status", "fixture-accelerate", "fixture-accelerate-off", "fixture-kill", "route", "quest-acquire", "quest", "questlog", "questobjective", "acceptance", "snapshot"],
+      "adapter_requirements": ["fixture_pacing_10x", "exact_fixture_quest_and_route_seed", "exact_target_instant_kill_if_kill_objective"]
+    },
+    {
+      "id": "harvest-accelerated-fixture-v1",
+      "file": "harvest-accelerated-fixture.json",
+      "domain": "gathering",
+      "kind": "accelerated_fixture_harvest",
+      "readiness": "blocked_until_adapter",
+      "current_bridge_verbs": ["activate", "fixture-init", "fixture-status", "fixture-accelerate", "fixture-accelerate-off", "fixture-kill", "route", "deploy", "snapshot", "professioneconomy"],
+      "adapter_requirements": ["fixture_pacing_10x", "exact_fixture_loadout_and_source_seed", "exact_target_instant_kill_if_guarded_source"]
+    }
+  ]
+}

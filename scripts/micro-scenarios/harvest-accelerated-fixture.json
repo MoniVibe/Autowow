@@ -1,0 +1,113 @@
+{
+  "schema": "autowow.micro-scenario.manifest.v1",
+  "id": "harvest-accelerated-fixture-v1",
+  "title": "Accelerated fixture-only harvesting",
+  "version": 1,
+  "fixture_only": true,
+  "status": "blocked_until_adapter",
+  "identity": {
+    "affiliation_semantics": "wayfarer",
+    "roster_semantics": "out-of-roster",
+    "neutral_faction_claim": false,
+    "party_members": 0,
+    "purpose": "fast deterministic gather fixture; never a persistent economy worker"
+  },
+  "fixture_inputs": {
+    "worker": {
+      "level": 20,
+      "profession": "Mining",
+      "skill_minimum": 50,
+      "tool_item_id": 2901,
+      "free_bag_slots_minimum": 4
+    },
+    "source": {
+      "map_id": 1,
+      "entry": 324,
+      "stable_spawn_id": 201104,
+      "yield_item_id": 2835,
+      "values_are_fixture_inputs_not_live_claims": true
+    },
+    "position": {
+      "mode": "fixture_position_seed",
+      "setup_only": true,
+      "native_route_required_after_baseline": true
+    }
+  },
+  "acceleration": {
+    "scope": "fixture-only",
+    "pacing_percent_of_baseline": 1000,
+    "pacing_multiplier": 10,
+    "meaning": "1000% of baseline pacing, exactly 10x; no persistent worker or campaign rate is changed",
+    "production_or_campaign_allowed": false,
+    "exact_target_instant_kill": {
+      "requested_for_guarded_sources": true,
+      "supported_only_when": "a server capability probe and fixture adapter both report exact_target_fixture_kill=true",
+      "target_must_match": ["map_id", "instance_id", "entry", "stable_spawn_id", "fixture_lease"],
+      "fallback_when_unsupported": "blocked",
+      "does_not_replace_native_credit": true
+    }
+  },
+  "preparation": {
+    "purpose": "Seed one exact worker/source pair and record the inventory and skill baseline.",
+    "allowed_mutations": ["activate", "fixture-init", "route"],
+    "adapter_required": ["fixture_pacing_10x", "exact_fixture_loadout_and_source_seed", "exact_target_instant_kill_if_guarded_source"],
+    "steps": [
+      "Allocate one wayfarer/out-of-roster worker with no campaign or persistent gather-lane ownership.",
+      "Seed profession, tool, bag space, source identity, and initial materials through the fixture adapter.",
+      "Record position seeding as setup only and exclude it from travel or gathering credit.",
+      "Capture stable inventory, skills, professioneconomy, snapshot, and gather_route baselines.",
+      "Refuse the run if the 10x fixture lease is not capability-attested or the exact source is not in-world."
+    ],
+    "baseline_observations": ["bridge.professioneconomy", "bridge.snapshot", "bridge.gather_route", "read_only_inventory", "read_only_skills", "fixture_capability_probe"]
+  },
+  "operation": {
+    "purpose": "Run one native gather attempt at accelerated fixture pacing.",
+    "allowed_mutations": ["deploy", "route"],
+    "bridge_verbs": ["deploy", "snapshot", "professioneconomy"],
+    "route_policy": "native_route_only",
+    "exact_target": {
+      "source_entry": 324,
+      "stable_spawn_id": 201104,
+      "requested_item_id": 2835,
+      "selection_must_match_all_fields": true
+    },
+    "bounded_attempt": {
+      "max_minutes": 3,
+      "max_source_attempts": 1,
+      "random_movement_allowed": false,
+      "synthetic_material_grant_allowed": false,
+      "direct_database_inventory_write_allowed": false,
+      "teleport_proof_allowed": false
+    },
+    "native_evidence_required": [
+      "gather_route identifies the exact source",
+      "native gather or loot credit identifies the exact source and requested material",
+      "read-only inventory shows the durable material delta",
+      "read-only skill and profession state remain coherent with the worker"
+    ]
+  },
+  "postconditions": [
+    {
+      "id": "accelerated-policy-isolated",
+      "observable": "fixture capability and lease receipt",
+      "predicate": "10x pacing is scoped to this fixture and campaign configuration is unchanged"
+    },
+    {
+      "id": "exact-source-credit",
+      "observable": "bridge.gather_route",
+      "predicate": "the exact entry and stable spawn are selected and native credit is emitted"
+    },
+    {
+      "id": "durable-harvest-output",
+      "observable": "read-only inventory after stable persistence",
+      "predicate": "the requested material increases and is attributed to the exact source receipt"
+    }
+  ],
+  "adapter_boundary": {
+    "current_bridge_can_prove": ["native worker activation", "gather_route source and credit when emitted", "live profession and snapshot telemetry"],
+    "adapter_still_needed": ["fixture-only 10x pacing", "exact profession/tool/inventory/source seed", "exact-target instant-kill only for a guarded source that genuinely supports it", "durable inventory snapshot if not supplied by the proof harness"],
+    "native_evidence_remains_mandatory": ["source-attributed gather credit", "durable inventory delta", "coherent skill/profession state"],
+    "not_an_adapter_goal": "Never replace a missing gather receipt with a synthetic material grant."
+  },
+  "cleanup": ["expire the 10x fixture lease", "deactivate the worker", "verify the persistent economy roster and campaign configuration are unchanged"]
+}

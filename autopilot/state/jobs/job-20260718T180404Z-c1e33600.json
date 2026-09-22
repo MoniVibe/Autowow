@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "jobId": "job-20260718T180404Z-c1e33600",
+  "idempotencyKey": "c1e336002fecf6090b71e7231f32394a77417f41e2372baeed5efa1d773fa8f6",
+  "kind": "QuestLevel",
+  "owner": {
+    "campaign": "live-supervised",
+    "requestedBy": "successor-retry",
+    "team": "northstar"
+  },
+  "characters": {
+    "eligibleGuids": [
+      10
+    ],
+    "assignedGuids": [],
+    "maxConcurrent": 1
+  },
+  "priority": 70,
+  "createdAt": "2026-07-18T18:04:04.6721848Z",
+  "updatedAt": "2026-07-18T18:04:04.8553651Z",
+  "startedAt": null,
+  "completedAt": null,
+  "notBefore": null,
+  "prerequisites": [],
+  "successCriteria": {
+    "counters": {
+      "questsTurnedIn": 1
+    },
+    "measure": "quest-turnins"
+  },
+  "timeoutPolicy": {
+    "phaseTimeoutMinutes": 60,
+    "jobTimeoutMinutes": 480,
+    "noProgressSeconds": 120
+  },
+  "retryPolicy": {
+    "maxRecoveriesPerObjective": 2,
+    "backoffSeconds": 60,
+    "maxAttempts": 3,
+    "onExhaust": "block"
+  },
+  "cancellation": {
+    "requested": false,
+    "requestedAt": null,
+    "reason": null,
+    "acknowledgedAt": null
+  },
+  "permittedCapabilities": [
+    "bridge.snapshot",
+    "bridge.questlog",
+    "bridge.questobjective",
+    "bridge.acceptance",
+    "bridge.quest",
+    "bridge.quest.acquire",
+    "bridge.recover",
+    "sql.read"
+  ],
+  "progress": {
+    "counters": {},
+    "lastProgressAt": null,
+    "attempt": 0,
+    "recoveriesUsed": 0,
+    "evidence": []
+  },
+  "phase": "Suspended",
+  "phaseEnteredAt": "2026-07-18T18:04:04.8553651Z",
+  "blockedReason": null,
+  "leaseRef": null,
+  "receiptLog": {
+    "file": "D:\\Games\\wowstuff\\AutoWoW\\logs\\autopilot\\run-20260718T180404Z-7af0\\job-20260718T180404Z-c1e33600.jsonl",
+    "lastSeq": 3,
+    "runId": "run-20260718T180404Z-7af0"
+  },
+  "executionMode": "live",
+  "spec": {
+    "partyLeaderGuid": 10
+  },
+  "provenance": {
+    "supersedesJobId": "job-20260718T072359Z-fbc69de8",
+    "retryReason": "original 480-min wall clock expired during the maintenance window; corrected worldserver binary now live; awaiting Sol supervised test window",
+    "retriedAt": "2026-07-18T18:04:04.6721848Z"
+  },
+  "metadata": {
+    "suspendedFromPhase": "Queued"
+  }
+}

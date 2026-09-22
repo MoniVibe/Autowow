@@ -1,0 +1,43 @@
+{
+  "schema": "autowow.probe-lab.manifest.v1",
+  "lab_id": "concurrent-probes-example",
+  "probes": [
+    {
+      "id": "nexus-party",
+      "kind": "party",
+      "size": 5,
+      "leader_guid": 101,
+      "expected_map_id": 576,
+      "exterior_route": "nexus-exterior",
+      "members": [
+        { "guid": 101, "name": "ProbeTank", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 102, "name": "ProbeHeal", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 103, "name": "ProbeDpsA", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 104, "name": "ProbeDpsB", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 105, "name": "ProbeDpsC", "level": 80, "spec_index": 0, "quality": 3 }
+      ]
+    },
+    {
+      "id": "raid-ten",
+      "kind": "raid",
+      "size": 10,
+      "leader_guid": 201,
+      "expected_map_id": 624,
+      "raid_difficulty": 0,
+      "exterior_route": "voa-exterior",
+      "advance_waypoint": "voa-portal",
+      "members": [
+        { "guid": 201, "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 202, "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 203, "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 204, "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 205, "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 206, "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 207, "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 208, "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 209, "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 210, "level": 80, "spec_index": 0, "quality": 3 }
+      ]
+    }
+  ]
+}

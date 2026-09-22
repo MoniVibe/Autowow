@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "order": "questobjective",
+  "guid": 10,
+  "quest_id": 792,
+  "quest_status": "rewarded",
+  "rewarded": true,
+  "objectives": [
+    { "slot": 0, "family": "NpcOrGameObject", "required_entry": 3101, "current": 8, "required": 8, "complete": true }
+  ],
+  "_fixture_note": "Scenario A step 3: objective complete 8/8 and quest rewarded (turn-in postcondition)."
+}

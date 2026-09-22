@@ -1,0 +1,64 @@
+{
+  "schema": "autowow.micro-scenario.v1",
+  "schema_version": 1,
+  "scenario_id": "accelerated-fixture-smoke-v1",
+  "run_id": "accelerated-fixture-plan",
+  "fixture_only": true,
+  "allowed_guids": [236],
+  "state_seeds": [
+    {
+      "seed_id": "nolliano-accelerated-fixture",
+      "kind": "existing-character",
+      "guid": 236,
+      "conditions": ["online", "alive", "noncombat"]
+    }
+  ],
+  "limits": {
+    "step_timeout_seconds": 30,
+    "max_run_seconds": 120
+  },
+  "steps": [
+    {
+      "sequence": 1,
+      "step_id": "accelerated-preflight",
+      "phase": "preflight",
+      "operation": "snapshot",
+      "guid": 236,
+      "arguments": {},
+      "assertions": [{ "path": "ok", "equals": true }]
+    },
+    {
+      "sequence": 2,
+      "step_id": "accelerate-fixture",
+      "phase": "operation",
+      "operation": "fixture-accelerate",
+      "guid": 236,
+      "arguments": { "pacing_percent": 1000 },
+      "assertions": [
+        { "path": "ok", "equals": true },
+        { "path": "pacing_percent", "equals": 1000 },
+        { "path": "pacing_multiplier", "equals": 10 }
+      ]
+    },
+    {
+      "sequence": 3,
+      "step_id": "accelerated-observation",
+      "phase": "observe",
+      "operation": "snapshot",
+      "guid": 236,
+      "arguments": {},
+      "duration_seconds": 5,
+      "poll_seconds": 1,
+      "assertions": [{ "path": "ok", "equals": true }]
+    },
+    {
+      "sequence": 4,
+      "step_id": "accelerate-cleanup",
+      "phase": "cleanup",
+      "operation": "fixture-accelerate-off",
+      "guid": 236,
+      "arguments": {},
+      "assertions": [{ "path": "ok", "equals": true }]
+    }
+  ]
+}

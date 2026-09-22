@@ -1,0 +1,236 @@
+{
+  "schema": "autowow.oracle.controlled-agent.v1",
+  "language": {
+    "name": "Oracle Controlled Agent Language",
+    "inspired_by": "ASD-STE100",
+    "formal_ste_compliance": false,
+    "rule_order": ["WHEN", "DO", "VERIFY", "ON_FAILURE", "THEN"],
+    "one_word_one_meaning": true,
+    "runtime_consumes": "structured_contract_fields"
+  },
+  "doctrines": [
+    {
+      "id": "independent_quester.v1",
+      "requires_leader": false,
+      "cooperation": "voluntary",
+      "priorities": ["quest", "survival", "loot", "travel", "gather", "craft", "train"],
+      "failure_policy": "recover_then_replan"
+    },
+    {
+      "id": "independent_gatherer.v1",
+      "requires_leader": false,
+      "cooperation": "voluntary",
+      "priorities": ["survival", "gather", "loot", "travel", "craft", "train", "quest"],
+      "failure_policy": "replan_then_idle"
+    },
+    {
+      "id": "independent_survivor.v1",
+      "requires_leader": false,
+      "cooperation": "voluntary",
+      "priorities": ["survival", "combat", "quest", "loot", "travel", "train"],
+      "failure_policy": "recover_then_idle"
+    },
+    {
+      "id": "independent_support.v1",
+      "requires_leader": false,
+      "cooperation": "voluntary",
+      "priorities": ["survival", "combat", "cooperation", "quest", "loot", "travel", "train"],
+      "failure_policy": "assist_then_replan"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "quest.npc_objective.v1",
+      "domain": "quest",
+      "status": "native",
+      "intent": "advance_active_objective",
+      "controlled_rule": "WHEN quest.active IS true AND objective.kind IS npc AND objective.remaining IS greater_than 0 DO target objective.required_entry VERIFY objective.current INCREASES OR quest.completed IS true ON_FAILURE quest:objective_no_progress THEN recover",
+      "preconditions": [
+        { "id": "quest_active", "subject": "quest.active", "operator": "eq", "value": true },
+        { "id": "objective_kind", "subject": "objective.kind", "operator": "in", "value": ["npc"] },
+        { "id": "objective_remaining", "subject": "objective.remaining", "operator": "gt", "value": 0 },
+        { "id": "bot_alive", "subject": "bot.alive", "operator": "eq", "value": true }
+      ],
+      "action": {
+        "phase": "execute",
+        "verb": "target",
+        "operation": "quest.kill_required_entry",
+        "target": "objective.required_entry"
+      },
+      "success": [
+        { "id": "objective_progress", "type": "objective_count_increase", "source": "questobjective.current" },
+        { "id": "quest_complete", "type": "quest_complete", "source": "questlog" }
+      ],
+      "failure": {
+        "code": "quest:objective_no_progress",
+        "next_phase": "recover",
+        "fallback": "recover",
+        "retry_limit": 2
+      },
+      "evidence": {
+        "live_sources": ["questobjective", "questlog"],
+        "minimum": "one_success_signal"
+      }
+    },
+    {
+      "id": "quest.turn_in.v1",
+      "domain": "quest",
+      "status": "native",
+      "intent": "reward_completed_quest",
+      "controlled_rule": "WHEN quest.completed IS true AND quest.finisher.available IS true AND bot.alive IS true DO interact quest.finisher VERIFY quest.rewarded IS true ON_FAILURE quest:turn_in_not_proven THEN replan",
+      "preconditions": [
+        { "id": "quest_complete", "subject": "quest.completed", "operator": "eq", "value": true },
+        { "id": "finisher_available", "subject": "quest.finisher.available", "operator": "eq", "value": true },
+        { "id": "bot_alive", "subject": "bot.alive", "operator": "eq", "value": true }
+      ],
+      "action": {
+        "phase": "execute",
+        "verb": "interact",
+        "operation": "quest.turn_in",
+        "target": "quest.finisher"
+      },
+      "success": [
+        { "id": "reward_proven", "type": "quest_rewarded", "source": "questlog+acceptance" }
+      ],
+      "failure": {
+        "code": "quest:turn_in_not_proven",
+        "next_phase": "plan",
+        "fallback": "replan",
+        "retry_limit": 1
+      },
+      "evidence": {
+        "live_sources": ["questlog", "acceptance.reward.reward_status"],
+        "minimum": "quest_log_vanish_and_positive_reward_status"
+      }
+    },
+    {
+      "id": "gather.exact_source.v1",
+      "domain": "gather",
+      "status": "native",
+      "intent": "collect_planned_material",
+      "controlled_rule": "WHEN bot.alive IS true AND profession.gathering_available IS true AND source.valid IS true AND source.required_skill IS less_or_equal profession.skill DO gather source.guid VERIFY material.count INCREASES OR profession.skill INCREASES ON_FAILURE gather:no_material_credit THEN replan",
+      "preconditions": [
+        { "id": "bot_alive", "subject": "bot.alive", "operator": "eq", "value": true },
+        { "id": "gathering_profession", "subject": "profession.gathering_available", "operator": "eq", "value": true },
+        { "id": "source_valid", "subject": "source.valid", "operator": "eq", "value": true },
+        { "id": "skill_sufficient", "subject": "source.required_skill", "operator": "lte", "value": "profession.skill" }
+      ],
+      "action": {
+        "phase": "execute",
+        "verb": "gather",
+        "operation": "gather.collect_exact_source",
+        "target": "source.guid"
+      },
+      "success": [
+        { "id": "material_credit", "type": "material_count_increase", "source": "bag.material_count" },
+        { "id": "skill_credit", "type": "skill_increase", "source": "profession.skill" }
+      ],
+      "failure": {
+        "code": "gather:no_material_credit",
+        "next_phase": "plan",
+        "fallback": "replan",
+        "retry_limit": 1
+      },
+      "evidence": {
+        "live_sources": ["professioneconomy", "gather_route", "bag"],
+        "minimum": "material_or_skill_delta"
+      }
+    },
+    {
+      "id": "craft.exact_recipe.v1",
+      "domain": "craft",
+      "status": "planned",
+      "intent": "produce_one_planned_item",
+      "controlled_rule": "WHEN recipe.known IS true AND reagents.sufficient IS true AND bot.out_of_combat IS true AND bag.capacity IS true DO craft recipe.spell_id VERIFY craft.receipt.success IS true ON_FAILURE craft:execution_unavailable THEN idle",
+      "preconditions": [
+        { "id": "recipe_known", "subject": "recipe.known", "operator": "eq", "value": true },
+        { "id": "reagents_sufficient", "subject": "reagents.sufficient", "operator": "eq", "value": true },
+        { "id": "out_of_combat", "subject": "bot.out_of_combat", "operator": "eq", "value": true },
+        { "id": "bag_capacity", "subject": "bag.capacity", "operator": "eq", "value": true }
+      ],
+      "action": {
+        "phase": "execute",
+        "verb": "craft",
+        "operation": "craft.exact_recipe",
+        "target": "recipe.spell_id"
+      },
+      "success": [
+        { "id": "craft_receipt", "type": "craft_receipt_success", "source": "craft.receipt" }
+      ],
+      "failure": {
+        "code": "craft:execution_unavailable",
+        "next_phase": "recover",
+        "fallback": "idle",
+        "retry_limit": 0
+      },
+      "evidence": {
+        "live_sources": ["professioneconomy", "craft.receipt", "bag"],
+        "minimum": "positive_craft_receipt_and_output_delta"
+      }
+    },
+    {
+      "id": "train.level_up.v1",
+      "domain": "train",
+      "status": "native",
+      "intent": "learn_available_training",
+      "controlled_rule": "WHEN bot.alive IS true AND trainer.valid IS true AND trainer.in_range IS true AND trainer.affordable IS true DO train trainer.available_spells VERIFY spell.known INCREASES OR profession.skill INCREASES ON_FAILURE train:no_affordable_training THEN replan",
+      "preconditions": [
+        { "id": "bot_alive", "subject": "bot.alive", "operator": "eq", "value": true },
+        { "id": "trainer_valid", "subject": "trainer.valid", "operator": "eq", "value": true },
+        { "id": "trainer_in_range", "subject": "trainer.in_range", "operator": "eq", "value": true },
+        { "id": "trainer_affordable", "subject": "trainer.affordable", "operator": "eq", "value": true }
+      ],
+      "action": {
+        "phase": "execute",
+        "verb": "train",
+        "operation": "trainer.learn_available",
+        "target": "trainer.available_spells"
+      },
+      "success": [
+        { "id": "spell_learned", "type": "spell_known", "source": "live_spellbook" },
+        { "id": "profession_skill", "type": "skill_increase", "source": "professioneconomy" }
+      ],
+      "failure": {
+        "code": "train:no_affordable_training",
+        "next_phase": "plan",
+        "fallback": "replan",
+        "retry_limit": 1
+      },
+      "evidence": {
+        "live_sources": ["snapshot", "professioneconomy"],
+        "minimum": "spell_or_skill_delta"
+      }
+    },
+    {
+      "id": "combat.engage_target.v1",
+      "domain": "combat",
+      "status": "native",
+      "intent": "defeat_valid_hostile_target",
+      "controlled_rule": "WHEN bot.alive IS true AND target.valid IS true AND target.hostile IS true DO fight target.guid VERIFY target.defeated IS true ON_FAILURE combat:engagement_no_progress THEN recover",
+      "preconditions": [
+        { "id": "bot_alive", "subject": "bot.alive", "operator": "eq", "value": true },
+        { "id": "target_valid", "subject": "target.valid", "operator": "eq", "value": true },
+        { "id": "target_hostile", "subject": "target.hostile", "operator": "eq", "value": true }
+      ],
+      "action": {
+        "phase": "execute",
+        "verb": "fight",
+        "operation": "combat.engage_target",
+        "target": "target.guid"
+      },
+      "success": [
+        { "id": "target_defeated", "type": "target_defeated", "source": "combat_log" }
+      ],
+      "failure": {
+        "code": "combat:engagement_no_progress",
+        "next_phase": "recover",
+        "fallback": "recover",
+        "retry_limit": 2
+      },
+      "evidence": {
+        "live_sources": ["snapshot", "combat_log"],
+        "minimum": "target_defeated_or_explicit_combat_failure"
+      }
+    }
+  ]
+}

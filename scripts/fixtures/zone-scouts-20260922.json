@@ -1,0 +1,12 @@
+{
+  "schema": "autowow.zone-scout.manifest.v1",
+  "campaign": "Six-zone natural progression",
+  "scouts": [
+    { "guid": 101, "name": "Zathis", "home_zone": "Teldrassil", "starting_zone_id": 141, "starting_map": 1 },
+    { "guid": 112, "name": "Naomini", "home_zone": "Elwynn Forest", "starting_zone_id": 12, "starting_map": 0 },
+    { "guid": 121, "name": "Musliwho", "home_zone": "Mulgore", "starting_zone_id": 215, "starting_map": 1 },
+    { "guid": 123, "name": "Aenstus", "home_zone": "Eversong Woods", "starting_zone_id": 3430, "starting_map": 530 },
+    { "guid": 236, "name": "Nolliano", "home_zone": "Tirisfal Glades", "starting_zone_id": 85, "starting_map": 0 },
+    { "guid": 244, "name": "Ugrilok", "home_zone": "Durotar", "starting_zone_id": 14, "starting_map": 1 }
+  ]
+}

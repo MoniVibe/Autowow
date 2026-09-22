@@ -1,0 +1,40 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "raider",
+  "description": "Raid-night preference: join the raid on schedule with full repairs and a deep consumable reserve; conservative risk outside raid hours. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["Raid", "FormParty", "VendorRepair", "Restock"],
+  "priorityWeights": {
+    "Raid": 15,
+    "FormParty": 6,
+    "VendorRepair": 5,
+    "Restock": 5
+  },
+  "preferredZones": ["Molten Core", "Onyxia's Lair"],
+  "preferredMaterials": [],
+  "preferredProfessions": [],
+  "groupRole": "dps",
+  "groupingAllowed": true,
+  "pvpOptIn": false,
+  "riskTolerance": "low",
+  "consumableReserve": [
+    { "itemId": 13446, "minCount": 20 },
+    { "itemId": 13444, "minCount": 20 },
+    { "itemId": 8952, "minCount": 40 }
+  ],
+  "bagSpaceReserveSlots": 12,
+  "repairThresholdPct": 80,
+  "maxDeathsBeforeBlock": 12,
+  "schedule": {
+    "playWindowsUtc": [
+      { "start": "18:00", "end": "23:00" }
+    ]
+  },
+  "economy": {
+    "allowSpending": true,
+    "allowSelling": true,
+    "allowMailing": false,
+    "allowAuction": false,
+    "maxSpendCopper": 500000
+  }
+}

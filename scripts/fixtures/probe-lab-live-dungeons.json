@@ -1,0 +1,36 @@
+{
+  "schema": "autowow.probe-lab.manifest.v1",
+  "lab_id": "live-nexus-dtk",
+  "probes": [
+    {
+      "id": "nexus-party",
+      "kind": "party",
+      "size": 5,
+      "leader_guid": 17392,
+      "expected_map_id": 576,
+      "exterior_route": "nexus-exterior",
+      "members": [
+        { "guid": 17392, "name": "Roleaflag", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17393, "name": "Roleapriest", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 17395, "name": "Rolearogue", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17397, "name": "Roleahunter", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 17398, "name": "Roleamage", "level": 80, "spec_index": 1, "quality": 3 }
+      ]
+    },
+    {
+      "id": "dtk-party",
+      "kind": "party",
+      "size": 5,
+      "leader_guid": 17402,
+      "expected_map_id": 600,
+      "exterior_route": "dtk-exterior",
+      "members": [
+        { "guid": 17402, "name": "Rolehflag", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17403, "name": "Rolehpriest", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 17405, "name": "Rolehrogue", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17407, "name": "Rolehhunter", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 17408, "name": "Rolehmage", "level": 80, "spec_index": 1, "quality": 3 }
+      ]
+    }
+  ]
+}

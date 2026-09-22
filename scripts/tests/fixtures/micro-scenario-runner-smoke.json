@@ -1,0 +1,75 @@
+{
+  "schema": "autowow.micro-scenario.v1",
+  "schema_version": 1,
+  "scenario_id": "runner-smoke-v1",
+  "run_id": "runner-smoke-plan",
+  "fixture_only": true,
+  "allowed_guids": [236],
+  "state_seeds": [
+    {
+      "seed_id": "nolliano-online",
+      "kind": "existing-character",
+      "guid": 236,
+      "conditions": ["online", "alive", "noncombat"]
+    }
+  ],
+  "limits": {
+    "step_timeout_seconds": 30,
+    "max_run_seconds": 120
+  },
+  "steps": [
+    {
+      "sequence": 1,
+      "step_id": "list-before",
+      "phase": "preflight",
+      "operation": "list",
+      "guid": 0,
+      "arguments": {},
+      "assertions": []
+    },
+    {
+      "sequence": 2,
+      "step_id": "snapshot-before",
+      "phase": "preflight",
+      "operation": "snapshot",
+      "guid": 236,
+      "arguments": {},
+      "assertions": [
+        { "path": "ok", "equals": true }
+      ]
+    },
+    {
+      "sequence": 3,
+      "step_id": "fixture-loadout",
+      "phase": "fixture-init",
+      "operation": "fixture-init",
+      "guid": 236,
+      "arguments": { "level": 5, "spec_index": 0, "quality": 2 },
+      "assertions": [
+        { "path": "ok", "equals": true }
+      ]
+    },
+    {
+      "sequence": 4,
+      "step_id": "independent-operation",
+      "phase": "operation",
+      "operation": "independent",
+      "guid": 236,
+      "arguments": {},
+      "assertions": [
+        { "path": "ok", "equals": true }
+      ]
+    },
+    {
+      "sequence": 5,
+      "step_id": "snapshot-after",
+      "phase": "assert",
+      "operation": "snapshot",
+      "guid": 236,
+      "arguments": {},
+      "assertions": [
+        { "path": "ok", "equals": true }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "idle-support",
+  "description": "Standby preference for parked support characters: hold position idle, keep gear repaired, and forward mail; never groups. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["Idle", "VendorRepair", "MailTransfer"],
+  "priorityWeights": {
+    "Idle": 5,
+    "VendorRepair": 3,
+    "MailTransfer": 3
+  },
+  "preferredZones": ["Stormwind City"],
+  "preferredMaterials": [],
+  "preferredProfessions": [],
+  "groupRole": null,
+  "groupingAllowed": false,
+  "pvpOptIn": false,
+  "riskTolerance": "low",
+  "consumableReserve": [],
+  "bagSpaceReserveSlots": 2,
+  "repairThresholdPct": 60,
+  "maxDeathsBeforeBlock": 1,
+  "schedule": { "playWindowsUtc": [] },
+  "economy": {
+    "allowSpending": true,
+    "allowSelling": false,
+    "allowMailing": true,
+    "allowAuction": false,
+    "maxSpendCopper": 20000
+  }
+}

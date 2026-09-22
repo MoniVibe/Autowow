@@ -1,0 +1,94 @@
+{
+  "schema": "autowow.micro-scenario.manifest.v1",
+  "id": "quest-giver-acquisition-v1",
+  "title": "Accept one quest through normal giver interaction",
+  "version": 1,
+  "fixture_only": true,
+  "status": "partial",
+  "identity": {
+    "affiliation_semantics": "wayfarer",
+    "roster_semantics": "out-of-roster",
+    "neutral_faction_claim": false,
+    "party_members": 0,
+    "purpose": "single-character quest acquisition fixture"
+  },
+  "fixture_inputs": {
+    "character": {
+      "level": 8,
+      "race": "fixture-supplied",
+      "class": "fixture-supplied",
+      "freshness": "quest absent, no rewarded row, no unrelated objective state",
+      "example_values_are_live_claim": false
+    },
+    "quest": {
+      "id": 786,
+      "title": "Thwarting Kolkar Aggression",
+      "giver_entry": 3140,
+      "giver_stable_spawn_id": 4699,
+      "giver_name": "Lar Prowltusk",
+      "map_id": 1,
+      "route_name": "q786-lar-prowltusk",
+      "objective_entries": [3189, 3190, 3192],
+      "values_are_fixture_examples": true
+    }
+  },
+  "preparation": {
+    "purpose": "Place a fresh character in the legitimate quest-giver context without granting the quest.",
+    "allowed_mutations": ["activate", "fixture-init", "route"],
+    "adapter_required": ["exact_fixture_quest_and_route_seed"],
+    "steps": [
+      "Allocate a dedicated wayfarer/out-of-roster character and assert it is not grouped or roster-owned.",
+      "Seed only the allowed level/spec/gear fixture state; do not insert quest status or reward rows.",
+      "Use the named native route to stage near the exact giver entry and stable spawn.",
+      "Read questlog, acceptance, questobjective, snapshot, and giver position before operation.",
+      "Require the quest to be absent from the log and the character to be eligible for normal acceptance."
+    ],
+    "baseline_observations": ["bridge.questlog", "bridge.acceptance", "bridge.questobjective", "bridge.snapshot", "read_only_quest_status"]
+  },
+  "operation": {
+    "purpose": "Let the native quest AI acquire the quest through normal interaction, then observe it.",
+    "allowed_mutations": ["quest-acquire", "quest"],
+    "bridge_verbs": ["quest-acquire", "quest", "questlog", "acceptance", "questobjective"],
+    "priority_policy": "the named quest directive may be highest priority only inside this fixture lease; priority is not proof",
+    "route_policy": "native_route_only",
+    "bounded_attempt": {
+      "max_minutes": 5,
+      "max_accept_directives": 1,
+      "max_explicit_quest_directives": 1,
+      "synthetic_quest_grant_allowed": false,
+      "synthetic_quest_completion_allowed": false,
+      "direct_database_quest_write_allowed": false,
+      "teleport_proof_allowed": false
+    },
+    "native_evidence_required": [
+      "the character reaches the giver through native movement or is already at the seeded setup location; seeded location is not travel evidence",
+      "acceptance response reports a positive native reward_status or equivalent accepted state",
+      "questlog shows the exact quest id after the operation",
+      "questobjective reports the native objective vector, initially at zero unless the fixture explicitly tests interaction credit",
+      "for a gameobject objective, direct native use receipts and the exact objective delta are required"
+    ]
+  },
+  "postconditions": [
+    {
+      "id": "normal-acquisition",
+      "observable": "bridge.acceptance plus bridge.questlog",
+      "predicate": "the exact quest appears in the log and acceptance is positive without a database grant"
+    },
+    {
+      "id": "giver-binding",
+      "observable": "bridge.questobjective and route receipts",
+      "predicate": "the operation is attributed to the named giver context, not a random quest or grind fallback"
+    },
+    {
+      "id": "native-interaction-credit-when_requested",
+      "observable": "bridge.questobjective.direct_go_receipts and objective counters",
+      "predicate": "only required for an interaction variant; exact native use receipt precedes the counter delta"
+    }
+  ],
+  "adapter_boundary": {
+    "current_bridge_can_prove": ["normal quest directive", "quest log presence", "acceptance response", "live objective and direct gameobject receipts when emitted"],
+    "adapter_still_needed": ["provision a fresh quest/giver/route fixture", "provide an exact route when the named route is absent", "support quest item use, escort, scripted event, or dungeon-group objectives"],
+    "never_adapter_prove": ["quest status insertion", "reward insertion", "quest completion without the native operation"]
+  },
+  "cleanup": ["leave the quest in its native observed state or abandon through a separately authorized reset", "do not mark it rewarded during cleanup", "deactivate the fixture"]
+}

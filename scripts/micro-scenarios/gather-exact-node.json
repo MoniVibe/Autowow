@@ -1,0 +1,102 @@
+{
+  "schema": "autowow.micro-scenario.manifest.v1",
+  "id": "gather-exact-node-v1",
+  "title": "Gather one exact herb or ore node",
+  "version": 1,
+  "fixture_only": true,
+  "status": "partial",
+  "identity": {
+    "affiliation_semantics": "wayfarer",
+    "roster_semantics": "out-of-roster",
+    "neutral_faction_claim": false,
+    "party_members": 0,
+    "purpose": "isolated worker fixture; never a Northstar or Ember roster member"
+  },
+  "fixture_inputs": {
+    "character": {
+      "race": "fixture-supplied",
+      "class": "fixture-supplied",
+      "level": 20,
+      "profession": "Herbalism",
+      "skill_minimum": 50,
+      "tool_item_id": 0,
+      "tool_requirement": "use the profession's native tool requirement if one exists"
+    },
+    "source": {
+      "map_id": 1,
+      "entry": 1620,
+      "stable_spawn_id": 207617,
+      "yield_item_id": 785,
+      "example_values_are_live_claim": false,
+      "operator_must_replace_with_a_real_spawn": true
+    },
+    "position": {
+      "mode": "fixture_position_seed",
+      "meaning": "setup only; it does not prove travel or gathering",
+      "must_be_same_map_as_source": true
+    }
+  },
+  "preparation": {
+    "purpose": "Create a clean worker and establish a read-only baseline before the operation.",
+    "allowed_mutations": ["activate", "fixture-init", "route"],
+    "adapter_required": ["exact_fixture_loadout_and_source_seed"],
+    "steps": [
+      "Allocate one dedicated wayfarer/out-of-roster character and assert no team, party, raid, or campaign ownership.",
+      "Seed the profession, skill, tool, bag capacity, initial inventory, map, and exact source identity through the fixture adapter.",
+      "If a position is seeded for convenience, record it as setup and do not count it as movement evidence.",
+      "Read list, snapshot, professioneconomy, inventory, skills, and the initial gather_route before operation.",
+      "Require the exact target source to be present, same-map, in-world, and not already credited to the worker."
+    ],
+    "baseline_observations": ["bridge.list", "bridge.snapshot", "bridge.professioneconomy", "read_only_inventory", "read_only_skills", "bridge.gather_route"]
+  },
+  "operation": {
+    "purpose": "Let the native gather loop travel to and harvest exactly one named source.",
+    "allowed_mutations": ["route", "deploy"],
+    "bridge_verbs": ["deploy", "snapshot", "professioneconomy"],
+    "route_policy": "native_route_only",
+    "exact_target": {
+      "source_entry": 1620,
+      "stable_spawn_id": 207617,
+      "requested_item_id": 785,
+      "selection_must_match_all_fields": true,
+      "source_is_fixture_input_not_live_claim": true
+    },
+    "bounded_attempt": {
+      "max_minutes": 5,
+      "max_source_attempts": 1,
+      "random_movement_allowed": false,
+      "synthetic_credit_allowed": false,
+      "teleport_proof_allowed": false
+    },
+    "native_evidence_required": [
+      "gather_route identifies the exact source entry and stable spawn",
+      "gather_route records native credit evidence such as loot_consumed, skill_credit, or an equivalent server event",
+      "read-only inventory snapshot shows a positive requested-material delta",
+      "read-only skill snapshot is stable or increased and the worker remains the named profession"
+    ]
+  },
+  "postconditions": [
+    {
+      "id": "exact-source-attribution",
+      "observable": "bridge.gather_route",
+      "predicate": "candidate.entry, candidate.spawn_id, requested_material_item_id, and source_guid match the fixture source"
+    },
+    {
+      "id": "native-gather-credit",
+      "observable": "bridge.gather_route",
+      "predicate": "credit_evidence is native and is not merely movement, target selection, or an ok response"
+    },
+    {
+      "id": "durable-material-delta",
+      "observable": "read-only character inventory after a stable logout or save boundary",
+      "predicate": "requested material count increases and the increase is attributed to the exact source receipt"
+    }
+  ],
+  "adapter_boundary": {
+    "current_bridge_can_prove": ["worker activation", "native route observation", "exact source receipt when the runtime emits it", "read-only live telemetry"],
+    "adapter_still_needed": ["seed exact profession/tool/inventory/source fixture", "guarantee a deterministic source spawn", "perform durable inventory snapshot if the proof harness is unavailable"],
+    "never_adapter_prove": ["material delta without source attribution", "a teleport or direct inventory write"
+    ]
+  },
+  "cleanup": ["deactivate the fixture character", "wait for stable persistence", "retain the receipt and restore the fixture-owned inventory only"]
+}

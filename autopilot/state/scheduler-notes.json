@@ -1,0 +1,8 @@
+{
+  "schema": "autowow.autopilot.scheduler-notes.v1",
+  "schema_version": 1,
+  "held": {},
+  "idle": {
+    "10": "job-timeout: job exceeded jobTimeoutMinutes=480 (started 7/18/2026 7:24:14 AM)"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema": "autowow.oracle.capabilities.v1",
+  "schema_version": 1,
+  "server_build": "fixture-deployed-quest",
+  "session_id": "fixture-session-1",
+  "contract_schema_version": 1,
+  "runtime_enabled": true,
+  "generated_at": "2026-07-18T12:00:00.0000000Z",
+  "bridge": { "deployed": true },
+  "sql_read_deployed": true,
+  "operations": [
+    {
+      "operation": "quest_objective",
+      "deployed": true,
+      "native_adapter_available": true,
+      "runtime_authorized": true,
+      "receipt_export_available": false,
+      "constraints": null
+    }
+  ],
+  "_fixture_note": "Hypothetical post-maintenance manifest: bridge + quest_objective fully deployed. Used by tests for live-gate and rehearsal scenarios."
+}

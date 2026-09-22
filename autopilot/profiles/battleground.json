@@ -1,0 +1,36 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "battleground",
+  "description": "PvP preference: queue Warsong Gulch with a premade group during the overnight window; accepts high risk and opts in to PvP. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["Battleground", "FormParty"],
+  "priorityWeights": {
+    "Battleground": 14,
+    "FormParty": 4
+  },
+  "preferredZones": ["Warsong Gulch"],
+  "preferredMaterials": [],
+  "preferredProfessions": [],
+  "groupRole": "dps",
+  "groupingAllowed": true,
+  "pvpOptIn": true,
+  "riskTolerance": "high",
+  "consumableReserve": [
+    { "itemId": 929, "minCount": 5 }
+  ],
+  "bagSpaceReserveSlots": 4,
+  "repairThresholdPct": 40,
+  "maxDeathsBeforeBlock": 20,
+  "schedule": {
+    "playWindowsUtc": [
+      { "start": "22:00", "end": "06:00" }
+    ]
+  },
+  "economy": {
+    "allowSpending": false,
+    "allowSelling": false,
+    "allowMailing": false,
+    "allowAuction": false,
+    "maxSpendCopper": 0
+  }
+}

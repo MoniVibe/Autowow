@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "leagueName": "AutoWoW Local League",
+  "teamSize": 40,
+  "humanCaptainsIncluded": true,
+  "teams": [
+    {
+      "id": "northstar",
+      "displayName": "Northstar",
+      "faction": "Alliance",
+      "captainAccount": "SHONHAY",
+      "rosterAccounts": [
+        "NORTHSTAR01",
+        "NORTHSTAR02",
+        "NORTHSTAR03",
+        "NORTHSTAR04"
+      ]
+    },
+    {
+      "id": "ember",
+      "displayName": "Ember",
+      "faction": "Horde",
+      "captainAccount": "EMBERCAPTAIN",
+      "rosterAccounts": [
+        "EMBER01",
+        "EMBER02",
+        "EMBER03",
+        "EMBER04"
+      ]
+    }
+  ],
+  "rules": {
+    "persistentProgression": true,
+    "allowMaintenanceCommands": false,
+    "allowAutoGearBis": false,
+    "allowFreeConsumables": false,
+    "pveScoring": [
+      "clear_time_seconds",
+      "boss_attempts",
+      "wipes",
+      "deaths",
+      "loot_upgrades",
+      "median_gear_score"
+    ],
+    "pvpScoring": [
+      "wins",
+      "score_delta",
+      "deaths",
+      "objective_score",
+      "match_duration_seconds"
+    ]
+  },
+  "performanceGuardrails": {
+    "minimumAvailableMemoryMiB": 5120,
+    "maximumWorldPrivateGiB": 10,
+    "maximumTeamSize": 40,
+    "nextPopulationTier": 80
+  }
+}

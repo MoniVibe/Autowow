@@ -1,0 +1,52 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "all-rounder",
+  "description": "Generalist preference: takes most job kinds with modest weights, flexes between solo and group work, and keeps upkeep chores in rotation. Strategic preference only - never execution authority.",
+  "allowedJobKinds": [
+    "QuestLevel",
+    "Gather",
+    "Craft",
+    "TrainProfession",
+    "VendorRepair",
+    "BankDeposit",
+    "MailTransfer",
+    "FormParty",
+    "Travel",
+    "Dungeon",
+    "Restock",
+    "Idle"
+  ],
+  "priorityWeights": {
+    "QuestLevel": 4,
+    "Dungeon": 3,
+    "Gather": 2,
+    "Craft": 2,
+    "VendorRepair": 1,
+    "Restock": 1
+  },
+  "preferredZones": ["Elwynn Forest", "Westfall"],
+  "preferredMaterials": [
+    { "itemId": 2770, "name": "Copper Ore" }
+  ],
+  "preferredProfessions": ["Mining", "First Aid"],
+  "groupRole": "flex",
+  "groupingAllowed": true,
+  "pvpOptIn": false,
+  "riskTolerance": "normal",
+  "consumableReserve": [
+    { "itemId": 159, "minCount": 10 },
+    { "itemId": 4540, "minCount": 10 }
+  ],
+  "bagSpaceReserveSlots": 6,
+  "repairThresholdPct": 40,
+  "maxDeathsBeforeBlock": 6,
+  "schedule": { "playWindowsUtc": [] },
+  "economy": {
+    "allowSpending": true,
+    "allowSelling": true,
+    "allowMailing": true,
+    "allowAuction": false,
+    "maxSpendCopper": 100000
+  }
+}

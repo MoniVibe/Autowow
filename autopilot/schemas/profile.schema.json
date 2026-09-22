@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autowow://schemas/autopilot/profile/v1",
+  "title": "AutoWoW Autopilot character profile (autowow.autopilot.profile.v1)",
+  "description": "Strategic preference document for the Autopilot planner. A profile expresses preference ONLY - it is never execution authority and must not be able to override capability manifests, ownership leases, capability allow-lists, or game rules. Unknown schema or schema_version fails closed (the profile is rejected and treated as unavailable). Semantic validation in AutopilotProfiles.ps1 is authoritative; this schema is a second, additive check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "name",
+    "description",
+    "allowedJobKinds",
+    "priorityWeights",
+    "preferredZones",
+    "preferredMaterials",
+    "preferredProfessions",
+    "groupRole",
+    "groupingAllowed",
+    "pvpOptIn",
+    "riskTolerance",
+    "consumableReserve",
+    "bagSpaceReserveSlots",
+    "repairThresholdPct",
+    "maxDeathsBeforeBlock",
+    "schedule",
+    "economy"
+  ],
+  "$defs": {
+    "jobKind": {
+      "enum": [
+        "QuestLevel",
+        "Gather",
+        "Craft",
+        "TrainProfession",
+        "VendorRepair",
+        "BankDeposit",
+        "MailTransfer",
+        "FormParty",
+        "Travel",
+        "Dungeon",
+        "Raid",
+        "Battleground",
+        "OpenWorldPvp",
+        "Restock",
+        "Idle"
+      ]
+    },
+    "utcHourMinute": {
+      "type": "string",
+      "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+      "description": "UTC wall-clock time as 'HH:mm' (00:00-23:59)."
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "autowow.autopilot.profile.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Profile name; must match the profile file name (<name>.json)."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "allowedJobKinds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/jobKind"
+      },
+      "description": "Closed subset of Autopilot job kinds this profile prefers. Allowing a kind grants no execution authority."
+    },
+    "priorityWeights": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/jobKind"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -20,
+        "maximum": 20
+      },
+      "description": "Per-kind additive bias applied to a base priority; the result is clamped to the planner's 0..100 range."
+    },
+    "preferredZones": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "preferredMaterials": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemId"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "preferredProfessions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "groupRole": {
+      "enum": [
+        "tank",
+        "healer",
+        "dps",
+        "flex",
+        null
+      ]
+    },
+    "groupingAllowed": {
+      "type": "boolean"
+    },
+    "pvpOptIn": {
+      "type": "boolean"
+    },
+    "riskTolerance": {
+      "enum": [
+        "low",
+        "normal",
+        "high"
+      ]
+    },
+    "consumableReserve": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemId",
+          "minCount"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "minCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "bagSpaceReserveSlots": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "repairThresholdPct": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "maxDeathsBeforeBlock": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "playWindowsUtc"
+      ],
+      "properties": {
+        "playWindowsUtc": {
+          "type": "array",
+          "description": "UTC play windows; a window may wrap midnight (start greater than end). Empty array = always active.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start",
+              "end"
+            ],
+            "properties": {
+              "start": {
+                "$ref": "#/$defs/utcHourMinute"
+              },
+              "end": {
+                "$ref": "#/$defs/utcHourMinute"
+              }
+            }
+          }
+        }
+      }
+    },
+    "economy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowSpending",
+        "allowSelling",
+        "allowMailing",
+        "allowAuction",
+        "maxSpendCopper"
+      ],
+      "properties": {
+        "allowSpending": {
+          "type": "boolean"
+        },
+        "allowSelling": {
+          "type": "boolean"
+        },
+        "allowMailing": {
+          "type": "boolean"
+        },
+        "allowAuction": {
+          "type": "boolean"
+        },
+        "maxSpendCopper": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

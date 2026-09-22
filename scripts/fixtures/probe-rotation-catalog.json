@@ -1,0 +1,89 @@
+{
+  "schema": "autowow.probe-rotation.catalog.v1",
+  "description": "Breadth-first Probe Lab rotation. PASS retires a lane; unchanged failures stay quarantined.",
+  "candidates": [
+    {
+      "id": "dtk-party",
+      "label": "Drak'Tharon Keep",
+      "kind": "party",
+      "probe_id": "dtk-party",
+      "manifest_path": "probe-lab-live-three-lane.json",
+      "mechanics": ["party", "linear-dungeon", "boss-sequence", "shared-regroup"],
+      "priority": 10,
+      "build_id": "ca44",
+      "fix_id": "ca44",
+      "history": [
+        {
+          "summary_path": "..\\..\\logs\\autowow-lab\\ca44-dtk-party-20260717-150321-summary.json",
+          "receipt_path": "..\\..\\logs\\autowow-lab\\ca44-dtk-party-20260717-150321.jsonl",
+          "build_id": "ca44",
+          "fix_id": "ca44"
+        }
+      ]
+    },
+    {
+      "id": "nexus-party",
+      "label": "The Nexus",
+      "kind": "party",
+      "probe_id": "nexus-party",
+      "manifest_path": "probe-lab-live-three-lane.json",
+      "mechanics": ["party", "linear-dungeon", "multi-boss", "shared-regroup"],
+      "priority": 9,
+      "build_id": "ca44",
+      "fix_id": "ca44",
+      "history": [
+        {
+          "summary_path": "..\\..\\logs\\autowow-lab\\ca44-nexus-party-20260717-150504-summary.json",
+          "receipt_path": "..\\..\\logs\\autowow-lab\\ca44-nexus-party-20260717-150504.jsonl",
+          "build_id": "ca44",
+          "fix_id": "ca44"
+        }
+      ]
+    },
+    {
+      "id": "onyxia-raid",
+      "label": "Onyxia's Lair",
+      "kind": "raid",
+      "probe_id": "onyxia-raid",
+      "manifest_path": "probe-lab-live-three-lane.json",
+      "mechanics": ["raid", "adds", "air-phase", "deep-breath", "wipe-recovery"],
+      "priority": 8,
+      "build_id": "ca44",
+      "fix_id": "ca44",
+      "history": [
+        {
+          "summary_path": "..\\..\\logs\\autowow-lab\\ca44-onyxia-raid-20260717-150321-summary.json",
+          "receipt_path": "..\\..\\logs\\autowow-lab\\ca44-onyxia-raid-20260717-150321.jsonl",
+          "build_id": "ca44",
+          "fix_id": "ca44"
+        }
+      ]
+    },
+    {
+      "id": "uk-party",
+      "label": "Utgarde Keep breadth probe",
+      "description": "New dungeon lane: ordinary entry and generic deployment; exercises vertical navigation and a different boss sequence.",
+      "kind": "party",
+      "probe_id": "uk-party",
+      "manifest_path": "probe-lab-live-utgarde-keep.json",
+      "mechanics": ["party", "linear-dungeon", "multi-boss", "vertical-navigation", "boss-sequence"],
+      "priority": 10,
+      "build_id": "ca44",
+      "fix_id": "ca44",
+      "history": []
+    },
+    {
+      "id": "voa-raid",
+      "label": "Vault of Archavon remaining-wing exploration",
+      "description": "New raid breadth lane. Existing Archavon evidence does not retire this candidate; explore the remaining wings with the exact Onyxia ten.",
+      "kind": "raid",
+      "probe_id": "voa-raid",
+      "manifest_path": "probe-lab-live-voa.json",
+      "mechanics": ["raid", "multi-wing", "portal-entry", "boss-branching", "add-control"],
+      "priority": 9,
+      "build_id": "ca44",
+      "fix_id": "ca44",
+      "history": []
+    }
+  ]
+}

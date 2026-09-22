@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "order": "questobjective",
+  "guid": 10,
+  "quest_id": 792,
+  "quest_status": "incomplete",
+  "rewarded": false,
+  "objectives": [
+    { "slot": 0, "family": "NpcOrGameObject", "required_entry": 3101, "current": 3, "required": 8, "complete": false }
+  ],
+  "_fixture_note": "Scenario A step 2: objective progressed 3/8."
+}

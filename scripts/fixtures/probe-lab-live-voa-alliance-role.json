@@ -1,0 +1,28 @@
+{
+  "schema": "autowow.probe-lab.manifest.v1",
+  "lab_id": "live-voa-alliance-role",
+  "probes": [
+    {
+      "id": "voa-alliance-role-raid",
+      "kind": "raid",
+      "size": 10,
+      "leader_guid": 17392,
+      "expected_map_id": 624,
+      "raid_difficulty": 0,
+      "exterior_route": "voa-exterior",
+      "advance_waypoint": "voa-portal",
+      "members": [
+        { "guid": 17392, "name": "Roleaflag", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17393, "name": "Roleapriest", "level": 80, "spec_index": 3, "quality": 3 },
+        { "guid": 17394, "name": "Rolearesto", "level": 80, "spec_index": 5, "quality": 3 },
+        { "guid": 17395, "name": "Rolearogue", "level": 80, "spec_index": 5, "quality": 3 },
+        { "guid": 17396, "name": "Roleawarrior", "level": 80, "spec_index": 3, "quality": 3 },
+        { "guid": 17397, "name": "Roleahunter", "level": 80, "spec_index": 4, "quality": 3 },
+        { "guid": 17398, "name": "Roleamage", "level": 80, "spec_index": 6, "quality": 3 },
+        { "guid": 17399, "name": "Roleawarlock", "level": 80, "spec_index": 3, "quality": 3 },
+        { "guid": 17400, "name": "Roleaele", "level": 80, "spec_index": 3, "quality": 3 },
+        { "guid": 17401, "name": "Roleapaladin", "level": 80, "spec_index": 5, "quality": 3 }
+      ]
+    }
+  ]
+}

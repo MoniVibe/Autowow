@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "bots": [
+    { "guid": 10, "name": "Brandreas" },
+    { "guid": 7, "name": "Saewash" }
+  ],
+  "_fixture_note": "Recorded-shape approximation of the bridge `list` response for dry-run use only. Replace with a captured live response before relying on exact field names."
+}

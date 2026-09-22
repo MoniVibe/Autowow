@@ -1,0 +1,60 @@
+diff --git a/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp b/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
+index 1147fdf04..7a0547af9 100644
+--- a/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
++++ b/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
+@@ -114,7 +114,7 @@ public:
+             if (npc_escortAI* pEscortAI = CAST_AI(npc_deathstalker_erland::npc_deathstalker_erlandAI, creature->AI()))
+             {
+                 creature->SetWalk(true);
+-                pEscortAI->Start(true, player->GetGUID());
++                pEscortAI->Start(true, player->GetGUID(), quest);
+             }
+         }
+ 
+diff --git a/src/test/CMakeLists.txt b/src/test/CMakeLists.txt
+index 6a143748c..5fd3166f7 100644
+--- a/src/test/CMakeLists.txt
++++ b/src/test/CMakeLists.txt
+@@ -34,6 +34,7 @@ target_link_libraries(
+ # Add module test sources if any modules registered tests
+ get_property(MODULE_TEST_SOURCES GLOBAL PROPERTY ACORE_MODULE_TEST_SOURCES)
+ get_property(MODULE_TEST_INCLUDES GLOBAL PROPERTY ACORE_MODULE_TEST_INCLUDES)
++get_property(MODULE_TEST_LIBRARIES GLOBAL PROPERTY ACORE_MODULE_TEST_LIBRARIES)
+ 
+ if(MODULE_TEST_SOURCES)
+     target_sources(unit_tests PRIVATE ${MODULE_TEST_SOURCES})
+@@ -51,6 +52,12 @@ if(TARGET modules)
+     target_link_libraries(unit_tests modules)
+ endif()
+ 
++if(MODULE_TEST_LIBRARIES)
++    list(REMOVE_DUPLICATES MODULE_TEST_LIBRARIES)
++    target_link_libraries(unit_tests ${MODULE_TEST_LIBRARIES})
++    message(STATUS "Added module test libraries to unit_tests target")
++endif()
++
+ add_test(
+         NAME
+         unit
+diff --git a/src/test/mocks/WorldMock.h b/src/test/mocks/WorldMock.h
+index e96e38b47..01b12afc9 100644
+--- a/src/test/mocks/WorldMock.h
++++ b/src/test/mocks/WorldMock.h
+@@ -76,6 +76,9 @@ public:
+     MOCK_METHOD(LocaleConstant, GetAvailableDbcLocale, (LocaleConstant locale), (const));
+     MOCK_METHOD(void, LoadDBVersion, ());
+     MOCK_METHOD(char const *, GetDBVersion, (), (const));
++#ifdef MOD_PLAYERBOTS
++    MOCK_METHOD(char const *, GetPlayerbotsDBRevision, (), (const));
++#endif
+     MOCK_METHOD(void, UpdateAreaDependentAuras, ());
+     MOCK_METHOD(uint32, GetCleaningFlags, (), (const));
+     MOCK_METHOD(void, SetCleaningFlags, (uint32 flags), ());
+@@ -84,6 +87,7 @@ public:
+     MOCK_METHOD(time_t, GetNextTimeWithMonthAndHour, (int8 month, int8 hour), ());
+     MOCK_METHOD(std::string const&, GetRealmName, (), (const));
+     MOCK_METHOD(void, SetRealmName, (std::string name), ());
++    MOCK_METHOD(SQLQueryHolderCallback&, AddQueryHolderCallback, (SQLQueryHolderCallback&& callback), ());
+     MOCK_METHOD(void, RemoveOldCorpses, ());
+     MOCK_METHOD(void, ReloadRBAC, ());
+ };

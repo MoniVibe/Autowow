@@ -1,0 +1,105 @@
+{
+  "schema": "autowow.micro-scenario.manifest.v1",
+  "id": "quest-progression-accelerated-fixture-v1",
+  "title": "Accelerated fixture-only quest progression",
+  "version": 1,
+  "fixture_only": true,
+  "status": "blocked_until_adapter",
+  "identity": {
+    "affiliation_semantics": "wayfarer",
+    "roster_semantics": "out-of-roster",
+    "neutral_faction_claim": false,
+    "party_members": 0,
+    "purpose": "fast deterministic test fixture; never a persistent campaign character"
+  },
+  "fixture_inputs": {
+    "quest": {
+      "id": 789,
+      "giver_entry": 0,
+      "giver_stable_spawn_id": 0,
+      "objective_kind": "fixture-supplied",
+      "target_entry": 0,
+      "target_stable_spawn_id": 0,
+      "values_are_fixture_inputs_not_live_claims": true
+    },
+    "character": {
+      "level": 10,
+      "class": "fixture-supplied",
+      "spec": "fixture-supplied",
+      "fresh_quest_log_required": true
+    }
+  },
+  "acceleration": {
+    "scope": "fixture-only",
+    "pacing_percent_of_baseline": 1000,
+    "pacing_multiplier": 10,
+    "meaning": "1000% of baseline pacing, exactly 10x; this is not a production XP-rate change",
+    "production_or_campaign_allowed": false,
+    "exact_target_instant_kill": {
+      "requested_for_kill_objectives": true,
+      "supported_only_when": "a server capability probe and fixture adapter both report exact_target_fixture_kill=true",
+      "target_must_match": ["map_id", "instance_id", "entry", "stable_spawn_id", "fixture_lease"],
+      "fallback_when_unsupported": "blocked",
+      "does_not_replace_native_credit": true
+    }
+  },
+  "preparation": {
+    "purpose": "Seed a fresh quest fixture and acceleration policy without touching quest status or reward state.",
+    "allowed_mutations": ["activate", "fixture-init", "route"],
+    "adapter_required": ["fixture_pacing_10x", "exact_fixture_quest_and_route_seed", "exact_target_instant_kill_if_kill_objective"],
+    "steps": [
+      "Allocate one wayfarer/out-of-roster character with no campaign ownership.",
+      "Seed only level/spec/gear, quest giver context, exact objectives, and the fixture pacing lease.",
+      "Seed a position only as setup; native route and interaction remain the proof surface.",
+      "Require questlog absence, no rewarded row, and zero objective progress before operation.",
+      "Refuse the run if the server cannot attest to the requested 10x fixture pacing and exact target capability."
+    ],
+    "baseline_observations": ["bridge.questlog", "bridge.questobjective", "bridge.acceptance", "bridge.snapshot", "read_only_quest_status", "fixture_capability_probe"]
+  },
+  "operation": {
+    "purpose": "Run normal quest acquisition and objective execution at accelerated fixture pacing.",
+    "allowed_mutations": ["quest-acquire", "quest", "engage"],
+    "bridge_verbs": ["quest-acquire", "quest", "engage", "questlog", "questobjective", "acceptance", "snapshot"],
+    "route_policy": "native_route_only",
+    "priority_policy": "the exact quest may be leased as highest priority only; the lease cannot grant, complete, or reward it",
+    "bounded_attempt": {
+      "max_minutes": 10,
+      "max_quest_directives": 2,
+      "random_grind_fallback_allowed": false,
+      "synthetic_quest_completion_allowed": false,
+      "direct_database_quest_write_allowed": false,
+      "teleport_proof_allowed": false
+    },
+    "native_evidence_required": [
+      "normal acceptance through the giver and positive acceptance evidence",
+      "questlog contains the exact quest after acceptance",
+      "objective counters increase only after native kill, loot, or interaction evidence",
+      "exact-target instant-kill, if used, is followed by native combat/loot/quest credit receipts",
+      "completion and reward remain native questlog/acceptance observations; XP or movement alone is insufficient"
+    ]
+  },
+  "postconditions": [
+    {
+      "id": "accelerated-policy-isolated",
+      "observable": "fixture capability and lease receipt",
+      "predicate": "10x pacing is present only under the fixture lease and is absent from campaign/runtime configuration"
+    },
+    {
+      "id": "objective-progress-native",
+      "observable": "questobjective plus combat/loot/interaction receipts",
+      "predicate": "progress delta is attributable to the exact objective and native event"
+    },
+    {
+      "id": "quest-milestone-native",
+      "observable": "questlog and acceptance",
+      "predicate": "accepted, complete, and rewarded states are observed from the server; none are inserted or inferred"
+    }
+  ],
+  "adapter_boundary": {
+    "current_bridge_can_prove": ["normal quest directives", "questlog, acceptance, and questobjective reads", "native combat and interaction receipts when emitted"],
+    "adapter_still_needed": ["fixture-only 10x pacing", "fresh exact quest/giver/objective setup", "exact-target instant-kill capability for kill objectives"],
+    "native_evidence_remains_mandatory": ["questlog state transitions", "objective event attribution", "native completion and reward evidence"],
+    "not_an_adapter_goal": "A direct quest-status or reward writer must never be introduced as a proof shortcut."
+  },
+  "cleanup": ["expire the fixture pacing lease", "leave quest state native or reset only through a separate fixture reset protocol", "verify campaign configuration is unchanged"]
+}

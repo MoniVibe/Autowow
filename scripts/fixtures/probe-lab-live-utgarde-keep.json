@@ -1,0 +1,21 @@
+{
+  "schema": "autowow.probe-lab.manifest.v1",
+  "lab_id": "live-utgarde-keep-breadth",
+  "probes": [
+    {
+      "id": "uk-party",
+      "kind": "party",
+      "size": 5,
+      "leader_guid": 17402,
+      "expected_map_id": 574,
+      "exterior_route": "uk-exterior",
+      "members": [
+        { "guid": 17402, "name": "Rolehflag", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17403, "name": "Rolehpriest", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 17405, "name": "Rolehrogue", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 17407, "name": "Rolehhunter", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 17408, "name": "Rolehmage", "level": 80, "spec_index": 1, "quality": 3 }
+      ]
+    }
+  ]
+}

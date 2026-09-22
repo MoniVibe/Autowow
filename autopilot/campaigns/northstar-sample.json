@@ -1,0 +1,30 @@
+{
+  "schema": "autowow.autopilot.campaign.v1",
+  "schema_version": 1,
+  "campaign": "northstar",
+  "description": "Sample campaign matching the V1.2 work-order example: Brandreas quests toward 20 and learns Mining; Kurl stockpiles copper ore.",
+  "team": { "faction": "alliance", "name": "Northstar" },
+  "characters": [
+    {
+      "guid": 10,
+      "profile": "quester",
+      "priority": 60,
+      "goals": [
+        { "kind": "ReachLevel", "level": 20 },
+        { "kind": "LearnProfession", "profession": "Mining" }
+      ]
+    },
+    {
+      "guid": 6,
+      "profile": "gatherer",
+      "priority": 50,
+      "goals": [
+        { "kind": "Stockpile", "itemId": 2770, "count": 100 }
+      ]
+    }
+  ],
+  "permittedActivities": ["QuestLevel", "Gather", "TrainProfession", "VendorRepair", "Restock", "Travel", "Dungeon"],
+  "pvp": { "optIn": false, "battlegrounds": [] },
+  "spendingLimits": { "maxSpendCopperPerCharacter": 50000 },
+  "stopConditions": [ { "kind": "all-goals-complete" } ]
+}

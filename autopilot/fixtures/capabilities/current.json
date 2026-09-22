@@ -1,0 +1,62 @@
+{
+  "schema": "autowow.oracle.capabilities.v1",
+  "schema_version": 1,
+  "server_build": "maintenance-build-pending",
+  "session_id": null,
+  "contract_schema_version": 1,
+  "runtime_enabled": false,
+  "generated_at": "2026-07-18T12:00:00.0000000Z",
+  "bridge": { "deployed": false },
+  "sql_read_deployed": false,
+  "operations": [
+    {
+      "operation": "quest_objective",
+      "deployed": false,
+      "native_adapter_available": true,
+      "runtime_authorized": true,
+      "receipt_export_available": false,
+      "constraints": { "note": "runtime exists and is being whole-module compiled; worldserver intentionally stopped during the maintenance build" }
+    },
+    {
+      "operation": "gather_source",
+      "deployed": false,
+      "native_adapter_available": true,
+      "runtime_authorized": false,
+      "receipt_export_available": false,
+      "constraints": { "note": "native exact gathering integrated; focused authoritative tests pass; runtime authorization still isolated, not deployed" }
+    },
+    {
+      "operation": "gather_route",
+      "deployed": false,
+      "native_adapter_available": false,
+      "runtime_authorized": false,
+      "receipt_export_available": false,
+      "constraints": null
+    },
+    {
+      "operation": "craft",
+      "deployed": false,
+      "native_adapter_available": false,
+      "runtime_authorized": false,
+      "receipt_export_available": false,
+      "constraints": { "note": "exact crafting executor passes 14/14 authoritative tests; native adapter and runtime authorization not deployed" }
+    },
+    {
+      "operation": "pvp_objective",
+      "deployed": false,
+      "native_adapter_available": false,
+      "runtime_authorized": false,
+      "receipt_export_available": false,
+      "constraints": { "note": "exact hostile-player PvP executor passes 9/9 authoritative tests; native adapter and runtime authorization not deployed" }
+    },
+    {
+      "operation": "navigate",
+      "deployed": false,
+      "native_adapter_available": false,
+      "runtime_authorized": false,
+      "receipt_export_available": false,
+      "constraints": { "note": "same-map travel being developed in isolation" }
+    }
+  ],
+  "_fixture_note": "Static fixture reflecting Sol's 2026-07-18 V1.1 current-state correction. Passing unit tests never flip availability; every operation here remains blocked."
+}

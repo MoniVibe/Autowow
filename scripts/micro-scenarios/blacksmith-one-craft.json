@@ -1,0 +1,94 @@
+{
+  "schema": "autowow.micro-scenario.manifest.v1",
+  "id": "blacksmith-one-craft-v1",
+  "title": "Blacksmith one craft from seeded reagents",
+  "version": 1,
+  "fixture_only": true,
+  "status": "partial",
+  "identity": {
+    "affiliation_semantics": "wayfarer",
+    "roster_semantics": "out-of-roster",
+    "neutral_faction_claim": false,
+    "party_members": 0,
+    "purpose": "isolated crafting worker fixture"
+  },
+  "fixture_inputs": {
+    "character": {
+      "level": 20,
+      "profession": "Blacksmithing",
+      "skill_minimum": 1,
+      "free_bag_slots_minimum": 4,
+      "example_values_are_live_claim": false
+    },
+    "recipe": {
+      "spell_id": 2660,
+      "name": "Rough Sharpening Stone",
+      "output_item_id": 2862,
+      "output_quantity": 1,
+      "reagents": [{"item_id": 2835, "quantity": 1}],
+      "values_are_fixture_examples": true
+    },
+    "workstation": {
+      "required": false,
+      "if_required": "stage by native route to a legitimate forge; do not count a seeded position as travel proof"
+    }
+  },
+  "preparation": {
+    "purpose": "Seed the exact profession and reagent state, then capture a stable inventory baseline.",
+    "allowed_mutations": ["activate", "fixture-init", "route"],
+    "adapter_required": ["exact_fixture_profession_and_inventory_seed"],
+    "steps": [
+      "Allocate one dedicated wayfarer/out-of-roster character with no campaign ownership.",
+      "Seed Blacksmithing, the recipe spell, exactly the declared reagents, enough free bag space, and no pre-existing output item if possible.",
+      "Verify professioneconomy reports the recipe and that immediately_craftable is true before the operation.",
+      "Capture read-only inventory, skills, professioneconomy, snapshot, and craft-status baselines.",
+      "If a forge is required by the native recipe, route to it using a legitimate native route before the operation window."
+    ],
+    "baseline_observations": ["bridge.professioneconomy", "read_only_inventory", "read_only_skills", "bridge.snapshot", "bridge.craft-status"]
+  },
+  "operation": {
+    "purpose": "Issue exactly one native craft and wait for the server's completion receipt.",
+    "allowed_mutations": ["craft"],
+    "bridge_verbs": ["craft", "craft-status", "professioneconomy"],
+    "recipe_binding": {
+      "spell_id_must_match_fixture": true,
+      "one_cast_only": true,
+      "random_recipe_selection": false
+    },
+    "bounded_attempt": {
+      "max_seconds": 30,
+      "max_casts": 1,
+      "synthetic_item_grant_allowed": false,
+      "direct_database_write_allowed": false
+    },
+    "native_evidence_required": [
+      "craft response accepts the exact spell id",
+      "craft-status reports completed=true and a native proof field",
+      "read-only inventory shows the exact output delta",
+      "read-only inventory shows reagent consumption consistent with the recipe"
+    ]
+  },
+  "postconditions": [
+    {
+      "id": "native-craft-completed",
+      "observable": "bridge.craft-status",
+      "predicate": "completed is true, pending is false, and proof is a server-native completion receipt"
+    },
+    {
+      "id": "exact-output-persisted",
+      "observable": "read-only character inventory after a stable save boundary",
+      "predicate": "output_item_id increases by output_quantity and the delta follows the accepted spell"
+    },
+    {
+      "id": "reagent-accounted",
+      "observable": "read-only character inventory",
+      "predicate": "reagent count decreases by the recipe requirement, allowing native failure rules"
+    }
+  ],
+  "adapter_boundary": {
+    "current_bridge_can_prove": ["recipe discovery", "one exact craft request", "native craft completion status"],
+    "adapter_still_needed": ["seed exact profession, recipe, reagents, and free bag state", "durable inventory delta when craft-status does not include it"],
+    "native_evidence_remains_mandatory": ["craft-status completion", "output inventory delta", "reagent accounting"]
+  },
+  "cleanup": ["do not refund or fabricate output in the proof path", "deactivate the fixture", "record the final inventory for fixture reset"]
+}

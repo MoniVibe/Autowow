@@ -1,0 +1,35 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "dungeon",
+  "description": "Five-man dungeon preference: form a full party, run instances, repair and restock between runs. Fills whatever role the group is missing. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["FormParty", "Dungeon", "VendorRepair", "Restock"],
+  "priorityWeights": {
+    "Dungeon": 10,
+    "FormParty": 8,
+    "VendorRepair": 4,
+    "Restock": 3
+  },
+  "preferredZones": ["The Deadmines", "Shadowfang Keep", "The Stockade"],
+  "preferredMaterials": [],
+  "preferredProfessions": [],
+  "groupRole": "flex",
+  "groupingAllowed": true,
+  "pvpOptIn": false,
+  "riskTolerance": "normal",
+  "consumableReserve": [
+    { "itemId": 929, "minCount": 5 },
+    { "itemId": 1179, "minCount": 10 }
+  ],
+  "bagSpaceReserveSlots": 8,
+  "repairThresholdPct": 50,
+  "maxDeathsBeforeBlock": 10,
+  "schedule": { "playWindowsUtc": [] },
+  "economy": {
+    "allowSpending": true,
+    "allowSelling": true,
+    "allowMailing": false,
+    "allowAuction": false,
+    "maxSpendCopper": 100000
+  }
+}

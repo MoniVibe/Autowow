@@ -1,0 +1,28 @@
+{
+  "schema": "autowow.probe-lab.manifest.v1",
+  "lab_id": "live-onyxia",
+  "probes": [
+    {
+      "id": "onyxia-raid",
+      "kind": "raid",
+      "size": 10,
+      "leader_guid": 2,
+      "expected_map_id": 249,
+      "raid_difficulty": 0,
+      "exterior_route": "ony-exterior",
+      "advance_waypoint": "ony-portal",
+      "members": [
+        { "guid": 2, "name": "Nathalis", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 72, "name": "Marinor", "level": 80, "spec_index": 2, "quality": 3 },
+        { "guid": 26, "name": "Baeil", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 68, "name": "Urohke", "level": 80, "spec_index": 2, "quality": 3 },
+        { "guid": 41, "name": "Liguhku", "level": 80, "spec_index": 2, "quality": 3 },
+        { "guid": 8, "name": "Teleane", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 24, "name": "Usta", "level": 80, "spec_index": 0, "quality": 3 },
+        { "guid": 45, "name": "Xahran", "level": 80, "spec_index": 1, "quality": 3 },
+        { "guid": 60, "name": "Mutel", "level": 80, "spec_index": 2, "quality": 3 },
+        { "guid": 83, "name": "Bemarnin", "level": 80, "spec_index": 2, "quality": 3 }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+# AutoWoW ops repo: allowlist. Engine source/builds/runtime/evidence live outside git.
+/*
+!/.gitignore
+!/*.md
+!/*.json
+!/scripts/
+!/docs/
+!/contracts/
+!/autopilot/
+!/leagues/
+!/core-patches/
+/leagues/results/
+*.pid.json
+*.gcno
+*.gcda
+*.log

@@ -1,0 +1,35 @@
+{
+  "schema": "autowow.autopilot.profile.v1",
+  "schema_version": 1,
+  "name": "crafter",
+  "description": "Workshop preference: craft queued recipes, train profession ranks, restock reagents, and mail finished goods onward. Spending allowed under a hard copper cap. Strategic preference only - never execution authority.",
+  "allowedJobKinds": ["Craft", "TrainProfession", "Restock", "MailTransfer"],
+  "priorityWeights": {
+    "Craft": 12,
+    "TrainProfession": 6,
+    "Restock": 4,
+    "MailTransfer": 2
+  },
+  "preferredZones": ["Stormwind City", "Ironforge"],
+  "preferredMaterials": [
+    { "itemId": 2840, "name": "Copper Bar" },
+    { "itemId": 2589, "name": "Linen Cloth" }
+  ],
+  "preferredProfessions": ["Blacksmithing", "Tailoring"],
+  "groupRole": null,
+  "groupingAllowed": false,
+  "pvpOptIn": false,
+  "riskTolerance": "low",
+  "consumableReserve": [],
+  "bagSpaceReserveSlots": 6,
+  "repairThresholdPct": 30,
+  "maxDeathsBeforeBlock": 2,
+  "schedule": { "playWindowsUtc": [] },
+  "economy": {
+    "allowSpending": true,
+    "allowSelling": true,
+    "allowMailing": true,
+    "allowAuction": false,
+    "maxSpendCopper": 250000
+  }
+}

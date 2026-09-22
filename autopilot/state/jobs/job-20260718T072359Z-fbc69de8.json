@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "jobId": "job-20260718T072359Z-fbc69de8",
+  "idempotencyKey": "fbc69de8cd9c2c35a62459690df8e041e07f53ace2f2aa88ed7db64b12987889",
+  "kind": "QuestLevel",
+  "owner": {
+    "campaign": "live-supervised",
+    "requestedBy": "operator",
+    "team": "northstar"
+  },
+  "characters": {
+    "eligibleGuids": [
+      10
+    ],
+    "assignedGuids": [
+      10
+    ],
+    "maxConcurrent": 1
+  },
+  "priority": 70,
+  "createdAt": "2026-07-18T07:23:59.62307Z",
+  "updatedAt": "2026-07-18T17:40:07.5838534Z",
+  "startedAt": "2026-07-18T07:24:14.850116Z",
+  "completedAt": null,
+  "notBefore": null,
+  "prerequisites": [],
+  "successCriteria": {
+    "counters": {
+      "questsTurnedIn": 1
+    },
+    "measure": "quest-turnins"
+  },
+  "timeoutPolicy": {
+    "noProgressSeconds": 120,
+    "jobTimeoutMinutes": 480,
+    "phaseTimeoutMinutes": 60
+  },
+  "retryPolicy": {
+    "backoffSeconds": 60,
+    "maxAttempts": 3,
+    "maxRecoveriesPerObjective": 2,
+    "onExhaust": "block"
+  },
+  "cancellation": {
+    "requested": false,
+    "requestedAt": null,
+    "reason": null,
+    "acknowledgedAt": null
+  },
+  "permittedCapabilities": [
+    "bridge.snapshot",
+    "bridge.questlog",
+    "bridge.questobjective",
+    "bridge.acceptance",
+    "bridge.quest",
+    "bridge.quest.acquire",
+    "bridge.recover",
+    "sql.read"
+  ],
+  "progress": {
+    "counters": {},
+    "lastProgressAt": null,
+    "attempt": 1,
+    "recoveriesUsed": 2,
+    "evidence": []
+  },
+  "phase": "Blocked",
+  "phaseEnteredAt": "2026-07-18T17:40:07.5838534Z",
+  "blockedReason": {
+    "code": "job-timeout",
+    "detail": "job exceeded jobTimeoutMinutes=480 (started 7/18/2026 7:24:14 AM)",
+    "since": "2026-07-18T17:40:07.5838534Z",
+    "nextAction": "operator review: cancel the job or resubmit with a larger timeout"
+  },
+  "leaseRef": null,
+  "receiptLog": {
+    "file": "D:\\Games\\wowstuff\\AutoWoW\\logs\\autopilot\\run-20260718T072359Z-b968\\job-20260718T072359Z-fbc69de8.jsonl",
+    "lastSeq": 46,
+    "runId": "run-20260718T072359Z-b968"
+  },
+  "executionMode": "live",
+  "spec": {
+    "partyLeaderGuid": 10
+  },
+  "metadata": {
+    "suspendedFromPhase": "Verifying"
+  }
+}

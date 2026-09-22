@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "order": "questobjective",
+  "guid": 10,
+  "quest_id": 792,
+  "quest_status": "incomplete",
+  "rewarded": false,
+  "objectives": [
+    { "slot": 0, "family": "NpcOrGameObject", "required_entry": 3101, "current": 0, "required": 8, "complete": false }
+  ],
+  "_fixture_note": "Baseline: quest 792 (the objective-completion reference from QUEST_TYPE_COVERAGE_REPORT.md), objective 0/8."
+}

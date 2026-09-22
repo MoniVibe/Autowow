@@ -1,0 +1,12 @@
+{
+  "schema": "autowow.gathering-proof.fixture-roster.v1",
+  "purpose": "gathering-proof",
+  "allow_campaign_characters": true,
+  "members": [
+    {
+      "guid": 25,
+      "name": "Chelleney",
+      "profession": "Herbalism"
+    }
+  ]
+}

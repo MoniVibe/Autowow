@@ -1,0 +1,26 @@
+{
+  "schema": "autowow.overnight-probe-sequencer.queue.v1",
+  "entries": [
+    {
+      "manifest_path": "D:\\Games\\wowstuff\\AutoWoW\\scripts\\fixtures\\probe-lab-live-three-lane.json",
+      "probe_id": "nexus-party",
+      "duration_seconds": 7200,
+      "poll_seconds": 5,
+      "stall_seconds": 300
+    },
+    {
+      "manifest_path": "D:\\Games\\wowstuff\\AutoWoW\\scripts\\fixtures\\probe-lab-live-three-lane.json",
+      "probe_id": "dtk-party",
+      "duration_seconds": 7200,
+      "poll_seconds": 5,
+      "stall_seconds": 300
+    },
+    {
+      "manifest_path": "D:\\Games\\wowstuff\\AutoWoW\\scripts\\fixtures\\probe-lab-live-three-lane.json",
+      "probe_id": "onyxia-raid",
+      "duration_seconds": 7200,
+      "poll_seconds": 5,
+      "stall_seconds": 300
+    }
+  ]
+}
