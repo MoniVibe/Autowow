@@ -5,8 +5,10 @@
 #include "../src/AutoWow/AutoWowOracleQuestSelectionPolicy.h"
 #include "../src/Ai/World/Rpg/QuestObjectiveContext.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -271,6 +273,110 @@ TEST(AutoWowOracleRuntimePolicyTest, ConfigBoundsAreStrictWhenEnabled)
     config.cadenceMs = 1000;
     config.botGuidCount = 0;
     EXPECT_FALSE(ValidateConfig(config));
+}
+
+// Mirrors Runtime::UpdateSliced: drain the old pass under the old tick, then advance the tick,
+// then run the current slice. Returns per-(tick, bot) run counts.
+std::vector<std::vector<int>> SimulateSlices(std::size_t bots, std::uint32_t sliceBots,
+                                             std::uint32_t cadenceMs,
+                                             std::vector<std::uint32_t> const& diffs,
+                                             std::size_t* maxPerUpdate = nullptr)
+{
+    CadenceClock clock;
+    SlicePass pass;
+    std::size_t tick = 0;
+    std::vector<std::vector<int>> runs(diffs.size() + 2, std::vector<int>(bots, 0));
+    for (std::uint32_t diff : diffs)
+    {
+        bool const edge = AdvanceCadence(clock, diff, cadenceMs);
+        SliceStep const step = PlanSliceStep(pass, edge, bots, sliceBots);
+        std::size_t ran = 0;
+        for (std::size_t index = step.drainBegin; index < step.drainEnd; ++index, ++ran)
+            ++runs[tick][index];
+        if (step.newTick)
+            ++tick;
+        for (std::size_t index = step.begin; index < step.end; ++index, ++ran)
+            ++runs[tick][index];
+        if (maxPerUpdate)
+            *maxPerUpdate = std::max(*maxPerUpdate, ran);
+    }
+    runs.resize(tick + 1);
+    return runs;
+}
+
+TEST(AutoWowOracleRuntimePolicyTest, SliceSchedulerRunsEveryBotExactlyOncePerCadenceTick)
+{
+    struct Case
+    {
+        std::size_t bots;
+        std::uint32_t slice;
+        std::uint32_t diffMs;
+    };
+    // Plenty of world updates per window, exact fit, too few updates (drain path), and huge diffs.
+    for (Case const c : {Case{12, 2, 50}, Case{7, 3, 100}, Case{10, 1, 400}, Case{5, 2, 1500},
+                         Case{100, 7, 37}, Case{1, 1, 10}})
+    {
+        std::vector<std::uint32_t> const diffs(400, c.diffMs);
+        std::size_t maxPerUpdate = 0;
+        auto const runs = SimulateSlices(c.bots, c.slice, 1000, diffs, &maxPerUpdate);
+        ASSERT_GE(runs.size(), 3u);
+        // Tick 0 precedes the first cadence edge; the last tick may still be mid-pass.
+        for (std::size_t tick = 0; tick + 1 < runs.size(); ++tick)
+            for (std::size_t bot = 0; bot < c.bots; ++bot)
+                EXPECT_EQ(runs[tick][bot], tick == 0 ? 0 : 1)
+                    << "bots=" << c.bots << " slice=" << c.slice << " diff=" << c.diffMs
+                    << " tick=" << tick << " bot=" << bot;
+        for (std::size_t bot = 0; bot < c.bots; ++bot)
+            EXPECT_LE(runs.back()[bot], 1);
+        // Budget holds whenever the pass fits the window (no drain needed).
+        if (static_cast<std::uint64_t>(c.slice) * (1000 / c.diffMs) >= c.bots)
+            EXPECT_LE(maxPerUpdate, c.slice) << "bots=" << c.bots << " slice=" << c.slice;
+    }
+}
+
+TEST(AutoWowOracleRuntimePolicyTest, SliceSchedulerIsDeterministicAndOrdered)
+{
+    SlicePass pass;
+    SliceStep step = PlanSliceStep(pass, false, 5, 2);
+    EXPECT_FALSE(step.newTick);
+    EXPECT_EQ(step.begin, step.end); // nothing before the first edge
+
+    step = PlanSliceStep(pass, true, 5, 2);
+    EXPECT_TRUE(step.newTick);
+    EXPECT_EQ(step.drainBegin, step.drainEnd);
+    EXPECT_EQ(step.begin, 0u);
+    EXPECT_EQ(step.end, 2u);
+    step = PlanSliceStep(pass, false, 5, 2);
+    EXPECT_EQ(step.begin, 2u);
+    EXPECT_EQ(step.end, 4u);
+    // Edge arrives with bot 4 unfinished: it drains under the old tick before the new pass.
+    step = PlanSliceStep(pass, true, 5, 2);
+    EXPECT_EQ(step.drainBegin, 4u);
+    EXPECT_EQ(step.drainEnd, 5u);
+    EXPECT_EQ(step.begin, 0u);
+    EXPECT_EQ(step.end, 2u);
+
+    // sliceBots 0 means the whole pass in one update.
+    SlicePass all;
+    step = PlanSliceStep(all, true, 9, 0);
+    EXPECT_EQ(step.begin, 0u);
+    EXPECT_EQ(step.end, 9u);
+}
+
+TEST(AutoWowOracleRuntimePolicyTest, SlicingRequiresMultiTickLeases)
+{
+    RuntimeConfig config;
+    config.enabled = true;
+    config.botGuidCount = 1;
+    config.botGuids[0] = 42;
+    config.sliceBots = 4;
+    config.leaseTtlTicks = 1;
+    EXPECT_FALSE(ValidateConfig(config));
+    config.leaseTtlTicks = 2;
+    EXPECT_TRUE(ValidateConfig(config));
+    config.sliceBots = 0;
+    config.leaseTtlTicks = 1;
+    EXPECT_TRUE(ValidateConfig(config));
 }
 
 TEST(AutoWowOracleRuntimePolicyTest, StateAndReceiptStorageStayBounded)

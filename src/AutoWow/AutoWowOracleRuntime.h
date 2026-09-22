@@ -65,6 +65,9 @@ struct RuntimeConfig
     std::uint32_t cadenceMs = 1000;
     std::uint32_t maxBots = 1;
     std::uint32_t leaseTtlTicks = 3;
+    // 0 = drive every managed bot on the cadence edge (legacy). N > 0 = round-robin slices of at
+    // most N bots per world update; see PlanSliceStep.
+    std::uint32_t sliceBots = 0;
     std::array<Guid, kMaxRuntimeBots> botGuids{};
     std::size_t botGuidCount = 0;
 };
@@ -120,6 +123,29 @@ struct CadenceClock
 
 bool AdvanceCadence(CadenceClock& clock, std::uint32_t diffMs,
                     std::uint32_t cadenceMs) noexcept;
+
+// Round-robin slice scheduler (AutoWow.OracleRuntime.SliceBots > 0). One pass covers the
+// eligible bots of one cadence tick in ascending-guid order. Every world update advances the
+// pass cursor by at most sliceBots. A cadence edge first drains the unfinished previous pass
+// (still under the old tick), then starts a new pass under the new tick, so each bot runs
+// exactly once per cadence tick: no starvation, no double run. Lease TTLs stay in cadence ticks.
+struct SlicePass
+{
+    std::size_t cursor = 0;
+    std::size_t count = 0;
+};
+
+struct SliceStep
+{
+    std::size_t drainBegin = 0; // [drainBegin, drainEnd) of the previous pass, old tick
+    std::size_t drainEnd = 0;
+    bool newTick = false;       // advance the cadence tick after the drain
+    std::size_t begin = 0;      // [begin, end) of the current pass, current tick
+    std::size_t end = 0;
+};
+
+[[nodiscard]] SliceStep PlanSliceStep(SlicePass& pass, bool cadenceEdge, std::size_t eligibleCount,
+                                      std::uint32_t sliceBots) noexcept;
 
 bool ValidateConfig(RuntimeConfig const& config) noexcept;
 
@@ -289,6 +315,7 @@ private:
 
     void LoadConfig();
     void ProcessConfiguredBot(Guid botGuid);
+    void UpdateSliced(std::uint32_t diffMs);
     bool EnsureQuestDirective(Guid botGuid, BotState& state);
     bool BuildLiveQuestFrame(Guid botGuid, Tick tick, AutoWowOracle::FactVersion version,
                              AutoWowOracle::Epoch epoch,
@@ -321,6 +348,8 @@ private:
     bool configLoaded_ = false;
     bool warnedMissingGate_ = false;
     CadenceClock cadence_;
+    SlicePass slicePass_;
+    std::array<Guid, kMaxRuntimeBots> sliceGuids_{};
     Tick tick_ = 0;
     AutoWowOracle::FactVersion frameVersion_ = 0;
     AutoWowOracle::Epoch epoch_ = 1;

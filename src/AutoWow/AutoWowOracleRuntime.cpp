@@ -469,12 +469,37 @@ bool AdvanceCadence(CadenceClock& clock, std::uint32_t diffMs,
     return true;
 }
 
+SliceStep PlanSliceStep(SlicePass& pass, bool cadenceEdge, std::size_t eligibleCount,
+                        std::uint32_t sliceBots) noexcept
+{
+    SliceStep step;
+    if (cadenceEdge)
+    {
+        step.drainBegin = pass.cursor;
+        step.drainEnd = pass.count;
+        step.newTick = true;
+        pass.cursor = 0;
+        pass.count = eligibleCount;
+    }
+
+    step.begin = pass.cursor;
+    step.end = sliceBots == 0 ? pass.count
+                              : std::min<std::size_t>(pass.count, pass.cursor + sliceBots);
+    pass.cursor = step.end;
+    return step;
+}
+
 bool ValidateConfig(RuntimeConfig const& config) noexcept
 {
     if (config.cadenceMs < kMinCadenceMs || config.cadenceMs > kMaxCadenceMs ||
         config.maxBots == 0 || config.maxBots > AutoWowOracle::kMaxBotLeases ||
         config.leaseTtlTicks < kMinLeaseTtlTicks || config.leaseTtlTicks > kMaxLeaseTtlTicks ||
         config.botGuidCount > config.botGuids.size())
+        return false;
+
+    // Sliced passes renew a bot's lease up to one cadence window after the tick edge; a one-tick
+    // TTL would expire in that gap.
+    if (config.sliceBots != 0 && config.leaseTtlTicks < 2)
         return false;
 
     for (std::size_t index = 0; index < config.botGuidCount; ++index)
@@ -799,6 +824,7 @@ void Runtime::LoadConfig()
     config_.maxBots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.OracleRuntime.MaxBots", 1);
     config_.leaseTtlTicks = sConfigMgr->GetOption<std::uint32_t>(
         "AutoWow.OracleRuntime.LeaseTtlTicks", 3);
+    config_.sliceBots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.OracleRuntime.SliceBots", 0);
 
     std::string const allowlist = sConfigMgr->GetOption<std::string>(
         "AutoWow.OracleRuntime.BotGuids", "");
@@ -2320,6 +2346,12 @@ void Runtime::Update(std::uint32_t diffMs)
     if (!config_.enabled)
         return;
 
+    if (config_.sliceBots != 0)
+    {
+        UpdateSliced(diffMs);
+        return;
+    }
+
     if (!AdvanceCadence(cadence_, diffMs, config_.cadenceMs))
         return;
 
@@ -2333,6 +2365,37 @@ void Runtime::Update(std::uint32_t diffMs)
         ++driven;
         ProcessConfiguredBot(guid);
     }
+}
+
+void Runtime::UpdateSliced(std::uint32_t diffMs)
+{
+    bool const edge = AdvanceCadence(cadence_, diffMs, config_.cadenceMs);
+
+    // Same selection and ascending-guid order as the legacy all-bots pass. Config is fixed after
+    // LoadConfig, so every pass lists the same bots.
+    std::size_t eligible = slicePass_.count;
+    std::array<Guid, kMaxRuntimeBots> next{};
+    if (edge)
+    {
+        eligible = 0;
+        for (std::size_t index = 0; index < config_.botGuidCount && eligible < config_.maxBots; ++index)
+        {
+            Guid const guid = config_.botGuids[index];
+            if (IsGuidAllowed(config_.botGuids, config_.botGuidCount, guid))
+                next[eligible++] = guid;
+        }
+    }
+
+    SliceStep const step = PlanSliceStep(slicePass_, edge, eligible, config_.sliceBots);
+    for (std::size_t index = step.drainBegin; index < step.drainEnd; ++index)
+        ProcessConfiguredBot(sliceGuids_[index]);
+    if (step.newTick)
+    {
+        sliceGuids_ = next;
+        ++tick_;
+    }
+    for (std::size_t index = step.begin; index < step.end; ++index)
+        ProcessConfiguredBot(sliceGuids_[index]);
 }
 
 void Update(std::uint32_t diffMs)
