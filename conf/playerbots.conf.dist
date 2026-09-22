@@ -2212,6 +2212,17 @@ AutoWow.FixtureGuids = ""
 # gather credit directly and always uses native server hooks.
 AutoWow.MicroScenarioGuids = ""
 
+# AutoWow per-quest ledger. When enabled, playerbots (never real players) emit one single-line JSON
+# event (schema v1) per quest lifecycle step to logger `autowow.ledger`: accepted, rewarded,
+# abandoned, blocked (typed executor reason + phase), deferred (set aside / dropped) and
+# contaminated (randombot revive/randomize/teleport, Oracle ZoneTravelAssist teleport).
+# Route the logger to its own file appender in worldserver.conf, on a native (ext4) filesystem.
+# Read once at world init. Default 0 = disabled (one cached bool check per call site, nothing logged).
+AutoWow.Ledger.Enable = 0
+# Free-form run label copied into every line's "run" field so the offline reducer keys rows by
+# (run, bot, quest). Default empty.
+AutoWow.Ledger.RunId = ""
+
 #
 #
 ####################################################################################################

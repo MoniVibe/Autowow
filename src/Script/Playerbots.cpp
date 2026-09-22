@@ -19,6 +19,7 @@
 
 #include "AutoWowBridge.h"
 #include "AutoWowOracleRuntime.h"
+#include "AutoWowQuestLedger.h"
 #include "CombatPerformanceTelemetry.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
@@ -111,7 +112,10 @@ public:
         PLAYERHOOK_ON_GIVE_EXP,
         PLAYERHOOK_ON_BEFORE_TELEPORT,
         PLAYERHOOK_ON_PLAYER_RESURRECT,
-        PLAYERHOOK_ON_GROUP_ROLL_REWARD_ITEM
+        PLAYERHOOK_ON_GROUP_ROLL_REWARD_ITEM,
+        PLAYERHOOK_ON_PLAYER_QUEST_ACCEPT,
+        PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
+        PLAYERHOOK_ON_QUEST_ABANDON
     }) {}
 
     void OnPlayerLogin(Player* player) override
@@ -201,6 +205,26 @@ public:
         {
             playerbotMgr->UpdateAI(diff);
         }
+    }
+
+    // AutoWoW quest ledger (AutoWow.Ledger.Enable, default off). Emit() filters to playerbots.
+    void OnPlayerQuestAccept(Player* player, Quest const* quest) override
+    {
+        if (AutoWowQuestLedger::Enabled() && quest)
+            AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Accepted, quest->GetQuestId());
+    }
+
+    // Fires at the end of Player::RewardQuest, i.e. on turn-in reward (not on objective completion).
+    void OnPlayerCompleteQuest(Player* player, Quest const* quest) override
+    {
+        if (AutoWowQuestLedger::Enabled() && quest)
+            AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Rewarded, quest->GetQuestId());
+    }
+
+    void OnPlayerQuestAbandon(Player* player, uint32 questId) override
+    {
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Abandoned, questId);
     }
 
     void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
@@ -421,6 +445,7 @@ public:
         LOG_INFO("server.loading", "Load Playerbots Config...");
 
         sPlayerbotAIConfig.Initialize();
+        AutoWowQuestLedger::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));

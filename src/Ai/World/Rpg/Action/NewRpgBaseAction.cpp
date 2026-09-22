@@ -1,5 +1,7 @@
 #include "NewRpgBaseAction.h"
 
+#include "AutoWowQuestLedger.h"
+
 #include <algorithm>
 #include <limits>
 #include <optional>
@@ -1297,6 +1299,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
         if (!IsQuestWorthDoing(quest) || !IsQuestCapableDoing(quest) ||
             bot->GetQuestStatus(questId) == QUEST_STATUS_FAILED)
         {
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, questId, "drop_unworthy_or_failed");
             LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
@@ -1329,6 +1333,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
 
         if (quest->GetZoneOrSort() < 0 || (quest->GetZoneOrSort() > 0 && quest->GetZoneOrSort() != botZoneId))
         {
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, questId, "drop_off_zone");
             LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
             WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
             packet << (uint8)i;
@@ -1356,6 +1362,8 @@ bool NewRpgBaseAction::OrganizeQuestLog()
             continue;
 
         const Quest* quest = sObjectMgr->GetQuestTemplate(questId);
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, questId, "drop_log_clear");
         LOG_DEBUG("playerbots", "[New RPG] {} drop quest {}", bot->GetName(), questId);
         WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
         packet << (uint8)i;

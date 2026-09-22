@@ -6,6 +6,8 @@
 
 #include "RandomPlayerbotMgr.h"
 
+#include "AutoWowQuestLedger.h"
+
 #include <WorldSessionMgr.h>
 
 #include <algorithm>
@@ -1567,6 +1569,8 @@ void RandomPlayerbotMgr::Revive(Player* player)
 {
     uint32 bot = player->GetGUID().GetCounter();
 
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Contaminated, 0, "rndbot_revive");
     // LOG_INFO("playerbots", "Bot {} revived", player->GetName().c_str());
     SetEventValue(bot, "dead", 0, 0);
     SetEventValue(bot, "revive", 0, 0);
@@ -1703,6 +1707,8 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>&
         if (botAI)
             botAI->Reset(true);
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "rndbot_teleport");
         bot->TeleportTo(loc.GetMapId(), x, y, z, 0);
         bot->SendMovementFlagUpdate();
 
@@ -1842,6 +1848,9 @@ void RandomPlayerbotMgr::Randomize(Player* bot)
 {
     if (bot->InBattleground())
         return;
+
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "rndbot_randomize");
 
     if (bot->GetLevel() < 3 || (bot->GetLevel() < 56 && bot->getClass() == CLASS_DEATH_KNIGHT))
     {

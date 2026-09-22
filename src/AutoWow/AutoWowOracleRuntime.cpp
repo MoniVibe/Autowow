@@ -7,6 +7,7 @@
 #include "AutoWowOracleExactHandoffPolicy.h"
 #include "AutoWowOracleFinisherIntent.h"
 #include "AutoWowOracleQuestSelectionPolicy.h"
+#include "AutoWowQuestLedger.h"
 #include "AiObjectContext.h"
 #include "Config.h"
 #include "Creature.h"
@@ -928,6 +929,9 @@ bool Runtime::EnsureQuestDirective(Guid botGuid, BotState& state)
             if (ShouldDeferUnrunnableQuest(selectionFacts))
             {
                 uint32 const deferredQuestId = current->questId;
+                if (AutoWowQuestLedger::Enabled())
+                    AutoWowQuestLedger::Emit(ai->GetBot(), AutoWowQuestLedger::Event::Deferred, deferredQuestId,
+                        "oracle_unrunnable", AutoWowQuestLedger::PhaseName(current->objectiveRuntime.phase));
                 if (state.lease.valid)
                     ReleaseLease(state, MakeCleanupFrame(botGuid, state.lease));
                 ai->lowPriorityQuest.insert(deferredQuestId);
@@ -1053,6 +1057,9 @@ bool Runtime::EnsureQuestDirective(Guid botGuid, BotState& state)
 
             if (!hasMatchingRouteBlock)
             {
+                if (AutoWowQuestLedger::Enabled())
+                    AutoWowQuestLedger::Emit(ai->GetBot(), AutoWowQuestLedger::Event::Deferred, current->questId,
+                        "oracle_blocked_parked", AutoWowQuestLedger::PhaseName(current->objectiveRuntime.phase));
                 ai->lowPriorityQuest.insert(current->questId);
                 LOG_DEBUG("playerbots",
                     "[AutoWow Oracle] parked blocked quest bot={} quest={} after bounded re-arm",

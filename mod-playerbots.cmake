@@ -9,6 +9,7 @@
 if (BUILD_TESTING)
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/tests/QuestObjectiveResolutionTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/AutoWowQuestLedgerTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ExactQuestAttackRecoveryPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/QuestFinisherTransitionPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/QuestFinisherPartyContractTest.cpp"

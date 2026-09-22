@@ -16,6 +16,7 @@
 #include "AutoWowOracleOwnershipGate.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowOracleZoneTravelAssistPolicy.h"
+#include "AutoWowQuestLedger.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
 #include "Config.h"
@@ -719,13 +720,20 @@ void NewRpgDoQuestAction::EnterQuestPhase(NewRpgInfo::DoQuest& data, QuestAction
 bool NewRpgDoQuestAction::BlockQuest(NewRpgInfo::DoQuest& data, QuestFailureReason reason, bool unsupported)
 {
     QuestObjectiveRuntime& rt = data.objectiveRuntime;
+    QuestActionPhase const priorPhase = rt.phase;
     rt.failure = reason;
     rt.phase = QuestActionPhase::Blocked;
     LOG_DEBUG("playerbots", "[New RPG] {} quest {} blocked (reason {}, unsupported {})", bot->GetName(), data.questId,
               static_cast<uint32>(reason), unsupported);
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Blocked, data.questId,
+                                 AutoWowQuestLedger::ReasonName(reason), AutoWowQuestLedger::PhaseName(priorPhase));
 
     if (unsupported)
     {
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, data.questId, "executor_unsupported",
+                                     AutoWowQuestLedger::PhaseName(priorPhase));
         // Genuinely un-runnable by this Phase-1 executor: deprioritize so this
         // bot won't reselect it, and return to Idle. The Director still owns the
         // real abandon decision; we do NOT touch the questAbandoned statistic.
@@ -1568,6 +1576,9 @@ bool NewRpgDoQuestAction::DriveOracleQuestRoute(NewRpgInfo::DoQuest& data,
         WorldPosition const exactDestination(stable);
         if (!bot->TeleportTo(exactDestination))
             return false;
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, data.questId,
+                                     "zone_travel_assist", AutoWowQuestLedger::PhaseName(rt.phase));
         state->routeKey = routeKey;
         state->lastAt = now;
         state->used = true;
