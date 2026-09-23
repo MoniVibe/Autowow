@@ -1,0 +1,329 @@
+From 2d5433a2596c099d4eefedcf32196da24f4448e8 Mon Sep 17 00:00:00 2001
+From: Monivibe <shonhay@gmail.com>
+Date: Wed, 23 Sep 2026 04:00:33 +0300
+Subject: [PATCH 2/2] AutoWoW perf R1+R2: creature terrain refresh throttle,
+ cached creature script id
+
+R1 (flagged, default OFF): Map::CreatureRelocation re-ran the full vmap
+terrain query (UpdatePositionData -> ProcessTerrainStatusUpdate ->
+UpdateMovementFlags) on every spline step (~33.5% + 9.6% + 8.7% in
+soak-s2-80-r1). New worldserver.conf keys
+AutoWow.Perf.CreatureTerrainRefreshMs / ...Yards (both 0 = legacy,
+early-return, refresh every step). When enabled, only mid-spline steps
+of AI-driven creatures are throttled; refresh is forced on cell change,
+first refresh, phase change, spline end / teleport / non-spline
+relocation, falling, vehicle / passenger / transport, and player-
+controlled or player-charmed creatures. Players untouched. Pure
+predicate in CreatureTerrainRefresh.h with gtest coverage.
+
+R2: Creature::GetScriptId caches the resolved id keyed on
+(entry, m_creatureData), so UpdateEntry / script SetEntry / LoadFromDB
+re-resolve automatically. Same result as before for every key.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../apps/worldserver/worldserver.conf.dist    | 18 ++++++
+ .../game/Entities/Creature/Creature.cpp       | 53 +++++++++++++++--
+ src/server/game/Entities/Creature/Creature.h  | 15 +++++
+ .../Creature/CreatureTerrainRefresh.h         | 45 +++++++++++++++
+ src/server/game/Maps/Map.cpp                  |  4 +-
+ src/server/game/World/WorldConfig.cpp         |  4 ++
+ src/server/game/World/WorldConfig.h           |  2 +
+ .../Entities/CreatureTerrainRefreshTest.cpp   | 57 +++++++++++++++++++
+ 8 files changed, 191 insertions(+), 7 deletions(-)
+ create mode 100644 src/server/game/Entities/Creature/CreatureTerrainRefresh.h
+ create mode 100644 src/test/server/game/Entities/CreatureTerrainRefreshTest.cpp
+
+diff --git a/src/server/apps/worldserver/worldserver.conf.dist b/src/server/apps/worldserver/worldserver.conf.dist
+index 6f0e0a9f8..15a8b6b01 100644
+--- a/src/server/apps/worldserver/worldserver.conf.dist
++++ b/src/server/apps/worldserver/worldserver.conf.dist
+@@ -3006,6 +3006,24 @@ CreatureFamilyFleeAssistanceRadius = 30
+ 
+ CreatureLeashRadius = 30
+ 
++#
++#    AutoWow.Perf.CreatureTerrainRefreshMs
++#    AutoWow.Perf.CreatureTerrainRefreshYards
++#        Description: AutoWoW perf throttle for the full terrain query (zone/area, floor Z,
++#                     liquid, outdoors) a creature re-runs on every movement step. When either
++#                     value is > 0, a mid-spline creature step re-queries terrain only if it
++#                     crossed a grid cell, moved >= Yards since the last query, or >= Ms passed.
++#                     Always re-queried: spline end/teleport/direct set-position, phase change,
++#                     falling, vehicles/passengers/transports, player-controlled creatures.
++#                     Players are never throttled. Swim/fly flag and zone changes on moving
++#                     creatures can lag by up to the thresholds.
++#        Default:     0 - (Both 0 = disabled, query on every step - legacy behavior)
++#        Example:     AutoWow.Perf.CreatureTerrainRefreshMs = 400
++#                     AutoWow.Perf.CreatureTerrainRefreshYards = 1.5
++
++AutoWow.Perf.CreatureTerrainRefreshMs = 0
++AutoWow.Perf.CreatureTerrainRefreshYards = 0
++
+ #
+ #    CreatureFamilyAssistanceRadius
+ #        Description: Distance for creatures calling for assistance from other creatures without
+diff --git a/src/server/game/Entities/Creature/Creature.cpp b/src/server/game/Entities/Creature/Creature.cpp
+index 0c1e8b75f..2f506ce66 100644
+--- a/src/server/game/Entities/Creature/Creature.cpp
++++ b/src/server/game/Entities/Creature/Creature.cpp
+@@ -22,6 +22,7 @@
+ #include "CreatureAI.h"
+ #include "CreatureAISelector.h"
+ #include "CreatureGroups.h"
++#include "CreatureTerrainRefresh.h"
+ #include "MoveSpline.h"
+ #include "DatabaseEnv.h"
+ #include "Formulas.h"
+@@ -3175,14 +3176,54 @@ std::string Creature::GetScriptName() const
+ 
+ uint32 Creature::GetScriptId() const
+ {
++    // AutoWoW perf R2: re-resolve only when entry or creature data changed (UpdateEntry, SetEntry, LoadFromDB).
++    uint32 const entry = GetEntry();
++    if (entry == _scriptIdCacheEntry && m_creatureData == _scriptIdCacheData)
++        return _scriptIdCache;
++
++    uint32 scriptId = 0;
+     if (CreatureData const* creatureData = GetCreatureData())
+-    {
+-        uint32 scriptId = creatureData->ScriptId;
+-        if (scriptId && GetEntry() == creatureData->id)
+-            return scriptId;
+-    }
++        if (creatureData->ScriptId && entry == creatureData->id)
++            scriptId = creatureData->ScriptId;
++
++    if (!scriptId)
++        scriptId = sObjectMgr->GetCreatureTemplate(entry)->ScriptID;
++
++    _scriptIdCache = scriptId;
++    _scriptIdCacheData = m_creatureData;
++    _scriptIdCacheEntry = entry;
++    return scriptId;
++}
++
++bool Creature::ShouldRefreshTerrainOnRelocation(bool cellChanged) const
++{
++    uint32 const refreshMs = sWorld->getIntConfig(CONFIG_AUTOWOW_PERF_CREATURE_TERRAIN_REFRESH_MS);
++    float const refreshYards = sWorld->getFloatConfig(CONFIG_AUTOWOW_PERF_CREATURE_TERRAIN_REFRESH_YARDS);
++    if (!refreshMs && refreshYards <= 0.0f)
++        return true; // throttle OFF: legacy behavior, refresh on every relocation
++
++    // Only mid-spline steps of AI-driven creatures are throttled; everything that must be exact refreshes.
++    bool const forced = cellChanged
++        || !_terrainRefreshValid
++        || _terrainRefreshPhase != GetPhaseMask()
++        || movespline->Finalized() // spline arrival, teleport, direct SetPosition / non-spline relocation
++        || IsFalling()
++        || IsVehicle() || GetVehicle() || GetTransport()
++        || IsControlledByPlayer() || IsCharmedOwnedByPlayerOrPlayer();
++
++    uint32 const msSinceRefresh = uint32(GameTime::GetGameTimeMS().count()) - _terrainRefreshMs;
++    return Acore::AutoWowPerf::ShouldRefreshCreatureTerrain(refreshMs, refreshYards, forced, GetExactDistSq(&_terrainRefreshPos), msSinceRefresh);
++}
++
++void Creature::ProcessPositionDataChanged(PositionFullTerrainStatus const& data)
++{
++    Unit::ProcessPositionDataChanged(data);
+ 
+-    return sObjectMgr->GetCreatureTemplate(GetEntry())->ScriptID;
++    // AutoWoW perf R1: every full terrain refresh (any path: relocation, Create, lazy getters) restamps the throttle.
++    _terrainRefreshPos.Relocate(GetPositionX(), GetPositionY(), GetPositionZ());
++    _terrainRefreshMs = uint32(GameTime::GetGameTimeMS().count());
++    _terrainRefreshPhase = GetPhaseMask();
++    _terrainRefreshValid = true;
+ }
+ 
+ VendorItemData const* Creature::GetVendorItems() const
+diff --git a/src/server/game/Entities/Creature/Creature.h b/src/server/game/Entities/Creature/Creature.h
+index b492bd6c8..7d6c0b49a 100644
+--- a/src/server/game/Entities/Creature/Creature.h
++++ b/src/server/game/Entities/Creature/Creature.h
+@@ -174,6 +174,10 @@ public:
+     [[nodiscard]] bool HasSpell(uint32 spellID) const override;
+ 
+     void UpdateMovementFlags();
++
++    // AutoWoW perf R1: throttle for the terrain refresh done by Map::CreatureRelocation.
++    [[nodiscard]] bool ShouldRefreshTerrainOnRelocation(bool cellChanged) const;
++    void ProcessPositionDataChanged(PositionFullTerrainStatus const& data) override;
+     uint32 GetRandomId(uint32 id1, uint32 id2, uint32 id3);
+     bool UpdateEntry(uint32 entry, const CreatureData* data = nullptr, bool changelevel = true, bool updateAI = false);
+     bool UpdateEntry(uint32 entry, bool updateAI) { return UpdateEntry(entry, nullptr, true, updateAI); }
+@@ -525,6 +529,17 @@ protected:
+     bool IsAlwaysDetectableFor(WorldObject const* seer) const override;
+ 
+ private:
++    // AutoWoW perf R1: stamp of the last full terrain refresh (set in ProcessPositionDataChanged).
++    Position _terrainRefreshPos;
++    uint32 _terrainRefreshMs = 0;
++    uint32 _terrainRefreshPhase = 0;
++    bool _terrainRefreshValid = false;
++
++    // AutoWoW perf R2: GetScriptId cache; the resolved id depends only on entry + m_creatureData.
++    mutable uint32 _scriptIdCacheEntry = 0; // 0 = empty (no creature has entry 0)
++    mutable CreatureData const* _scriptIdCacheData = nullptr;
++    mutable uint32 _scriptIdCache = 0;
++
+     void ForcedDespawn(Milliseconds timeMSToDespawn = 0ms, Seconds forcedRespawnTimer = 0s);
+ 
+     [[nodiscard]] bool CanPeriodicallyCallForAssistance() const;
+diff --git a/src/server/game/Entities/Creature/CreatureTerrainRefresh.h b/src/server/game/Entities/Creature/CreatureTerrainRefresh.h
+new file mode 100644
+index 000000000..8fcf5bb22
+--- /dev/null
++++ b/src/server/game/Entities/Creature/CreatureTerrainRefresh.h
+@@ -0,0 +1,45 @@
++/*
++ * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program. If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#ifndef ACORE_CREATURE_TERRAIN_REFRESH_H
++#define ACORE_CREATURE_TERRAIN_REFRESH_H
++
++#include "Define.h"
++
++namespace Acore::AutoWowPerf
++{
++    // AutoWoW perf R1: pure throttle predicate for the creature terrain/position-data refresh
++    // done by Map::CreatureRelocation (AutoWow.Perf.CreatureTerrainRefreshMs / ...Yards).
++    // refreshMs == 0 && refreshYards <= 0 -> throttle OFF, always refresh (legacy behavior).
++    // Otherwise refresh when forced, when moved >= refreshYards (squared compare, yards > 0),
++    // or when >= refreshMs elapsed since the last full refresh (ms > 0).
++    inline bool ShouldRefreshCreatureTerrain(uint32 refreshMs, float refreshYards, bool forced, float distSqSinceRefresh, uint32 msSinceRefresh)
++    {
++        if (!refreshMs && refreshYards <= 0.0f)
++            return true;
++
++        if (forced)
++            return true;
++
++        if (refreshYards > 0.0f && distSqSinceRefresh >= refreshYards * refreshYards)
++            return true;
++
++        return refreshMs && msSinceRefresh >= refreshMs;
++    }
++}
++
++#endif
+diff --git a/src/server/game/Maps/Map.cpp b/src/server/game/Maps/Map.cpp
+index 33fa36b9d..116fc15bd 100644
+--- a/src/server/game/Maps/Map.cpp
++++ b/src/server/game/Maps/Map.cpp
+@@ -831,7 +831,9 @@ void Map::CreatureRelocation(Creature* creature, float x, float y, float z, floa
+     creature->Relocate(x, y, z, o);
+     if (creature->IsVehicle())
+         creature->GetVehicleKit()->RelocatePassengers();
+-    creature->UpdatePositionData();
++    // AutoWoW perf R1: always true when AutoWow.Perf.CreatureTerrainRefresh* are 0 (default)
++    if (creature->ShouldRefreshTerrainOnRelocation(old_cell.DiffGrid(new_cell) || old_cell.DiffCell(new_cell)))
++        creature->UpdatePositionData();
+     creature->UpdateObjectVisibility(false);
+ }
+ 
+diff --git a/src/server/game/World/WorldConfig.cpp b/src/server/game/World/WorldConfig.cpp
+index 7f6b51e98..f8f08e0cf 100644
+--- a/src/server/game/World/WorldConfig.cpp
++++ b/src/server/game/World/WorldConfig.cpp
+@@ -705,4 +705,8 @@ void WorldConfig::BuildConfigCache()
+     // Achievement
+     SetConfigValue<uint32>(CONFIG_ACHIEVEMENT_REALM_FIRST_KILL_WINDOW, "Achievement.RealmFirstKillWindow", 60);
+     SetConfigValue<bool>(CONFIG_ACHIEVEMENT_REALM_FIRST_RACE_LIMIT_ONE_PER_CHARACTER, "Achievement.RealmFirstRaceLimitOnePerCharacter", true);
++
++    // AutoWoW perf R1: creature terrain refresh throttle (0/0 = legacy: refresh on every relocation)
++    SetConfigValue<uint32>(CONFIG_AUTOWOW_PERF_CREATURE_TERRAIN_REFRESH_MS, "AutoWow.Perf.CreatureTerrainRefreshMs", 0);
++    SetConfigValue<float>(CONFIG_AUTOWOW_PERF_CREATURE_TERRAIN_REFRESH_YARDS, "AutoWow.Perf.CreatureTerrainRefreshYards", 0.0f);
+ }
+diff --git a/src/server/game/World/WorldConfig.h b/src/server/game/World/WorldConfig.h
+index bdeddd3a1..64ffdc009 100644
+--- a/src/server/game/World/WorldConfig.h
++++ b/src/server/game/World/WorldConfig.h
+@@ -511,6 +511,8 @@ enum ServerConfigs
+     CONFIG_TRIAL_LEVEL_CAP,
+     CONFIG_TRIAL_MONEY_CAP,
+     CONFIG_TRIAL_TRADE_SKILL_CAP,
++    CONFIG_AUTOWOW_PERF_CREATURE_TERRAIN_REFRESH_MS,
++    CONFIG_AUTOWOW_PERF_CREATURE_TERRAIN_REFRESH_YARDS,
+ 
+     MAX_NUM_SERVER_CONFIGS
+ };
+diff --git a/src/test/server/game/Entities/CreatureTerrainRefreshTest.cpp b/src/test/server/game/Entities/CreatureTerrainRefreshTest.cpp
+new file mode 100644
+index 000000000..0f08efbce
+--- /dev/null
++++ b/src/test/server/game/Entities/CreatureTerrainRefreshTest.cpp
+@@ -0,0 +1,57 @@
++/*
++ * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful, but WITHOUT
++ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
++ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
++ * more details.
++ *
++ * You should have received a copy of the GNU General Public License along
++ * with this program. If not, see <http://www.gnu.org/licenses/>.
++ */
++
++#include "CreatureTerrainRefresh.h"
++#include "gtest/gtest.h"
++
++using Acore::AutoWowPerf::ShouldRefreshCreatureTerrain;
++
++TEST(CreatureTerrainRefreshTest, OffAlwaysRefreshes)
++{
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(0, 0.0f, false, 0.0f, 0));
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(0, 0.0f, false, 0.01f, 1));
++}
++
++TEST(CreatureTerrainRefreshTest, SmallStepWithinWindowSkips)
++{
++    // 1 yd moved (dist^2 = 1), 100 ms elapsed, thresholds 1.5 yd / 400 ms
++    EXPECT_FALSE(ShouldRefreshCreatureTerrain(400, 1.5f, false, 1.0f, 100));
++}
++
++TEST(CreatureTerrainRefreshTest, DistanceTriggers)
++{
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(400, 1.5f, false, 2.25f, 0));      // exactly 1.5 yd
++    EXPECT_FALSE(ShouldRefreshCreatureTerrain(400, 1.5f, false, 2.24f, 0));
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(0, 1.5f, false, 100.0f, 0));       // yards-only mode
++    EXPECT_FALSE(ShouldRefreshCreatureTerrain(0, 1.5f, false, 1.0f, 999999));   // no time trigger when ms == 0
++}
++
++TEST(CreatureTerrainRefreshTest, TimeTriggers)
++{
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(400, 1.5f, false, 0.0f, 400));
++    EXPECT_FALSE(ShouldRefreshCreatureTerrain(400, 1.5f, false, 0.0f, 399));
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(250, 0.0f, false, 1.0e6f, 250));   // ms-only mode
++    EXPECT_FALSE(ShouldRefreshCreatureTerrain(250, 0.0f, false, 1.0e6f, 10));   // no distance trigger when yards == 0
++}
++
++TEST(CreatureTerrainRefreshTest, ForcedAlwaysRefreshes)
++{
++    // cell change, spline end/teleport, phase change, falling, vehicle/transport, player-controlled => forced
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(400, 1.5f, true, 0.0f, 0));
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(0, 1.5f, true, 0.0f, 0));
++    EXPECT_TRUE(ShouldRefreshCreatureTerrain(400, 0.0f, true, 0.0f, 0));
++}
+-- 
+2.43.0
+
