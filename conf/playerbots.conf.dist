@@ -2242,6 +2242,12 @@ AutoWow.Ledger.BlockedDedupeMs = 0
 # Default 0 = legacy behavior (vendor relief, else hold Blocked).
 AutoWow.QuestFullBagRelief.Enable = 0
 
+# PvP realms (GameType 1/6/8): random bots normally get SetPvP(true) at login and on every
+# refresh/revive, which flags them in every zone. 1 = skip that forced write on PvP realms so the
+# core zone rules decide (hostile/contested territory flags, own territory does not). PvE realms
+# are unchanged either way (SetPvP(false)). Default 0 = legacy forced flag on every realm type.
+AutoWow.PvpRealmZoneRules.Enable = 0
+
 #
 #
 ####################################################################################################

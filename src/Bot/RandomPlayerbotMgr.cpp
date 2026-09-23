@@ -7,6 +7,7 @@
 #include "RandomPlayerbotMgr.h"
 
 #include "AutoWowQuestLedger.h"
+#include "AutoWowRandomBotPolicy.h"
 
 #include <WorldSessionMgr.h>
 
@@ -2088,7 +2089,9 @@ void RandomPlayerbotMgr::Refresh(Player* bot)
 
     bot->DurabilityRepairAll(false, 1.0f, false);
     bot->SetFullHealth();
-    bot->SetPvP(sWorld->IsPvPRealm());
+    if (AutoWowRandomBotPolicy::ShouldForceRandomBotPvpFlag(sWorld->IsPvPRealm(),
+                                                           sPlayerbotAIConfig.autoWowPvpRealmZoneRules))
+        bot->SetPvP(sWorld->IsPvPRealm());
     PlayerbotFactory factory(bot, bot->GetLevel());
     factory.Refresh();
 
@@ -2654,7 +2657,9 @@ void RandomPlayerbotMgr::OnPlayerLogin(Player* player)
     {
         // ObjectGuid::LowType guid = player->GetGUID().GetCounter(); //not used, conditional could be rewritten for
         // simplicity. line marked for removal.
-        player->SetPvP(sWorld->IsPvPRealm());
+        if (AutoWowRandomBotPolicy::ShouldForceRandomBotPvpFlag(sWorld->IsPvPRealm(),
+                                                               sPlayerbotAIConfig.autoWowPvpRealmZoneRules))
+            player->SetPvP(sWorld->IsPvPRealm());
     }
     else
     {

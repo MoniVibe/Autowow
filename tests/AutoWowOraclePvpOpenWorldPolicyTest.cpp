@@ -405,3 +405,14 @@ TEST(AutoWowOraclePvpOpenWorldPolicyTest, NamesAndIntentBoundsAreStable)
     EXPECT_EQ(ReasonName(Reason::ChallengeDeclined), "challenge_declined");
     EXPECT_EQ(kIntentTtlTicks, 3U);
 }
+
+#include "AutoWowRandomBotPolicy.h"
+
+TEST(AutoWowRandomBotPolicyTest, PvpFlagForcedExceptOnPvpRealmWithZoneRules)
+{
+    using AutoWowRandomBotPolicy::ShouldForceRandomBotPvpFlag;
+    EXPECT_TRUE(ShouldForceRandomBotPvpFlag(false, false));  // PvE, legacy
+    EXPECT_TRUE(ShouldForceRandomBotPvpFlag(false, true));   // PvE unchanged by the flag
+    EXPECT_TRUE(ShouldForceRandomBotPvpFlag(true, false));   // PvP, legacy forced flag
+    EXPECT_FALSE(ShouldForceRandomBotPvpFlag(true, true));   // PvP + zone rules: no forced write
+}
