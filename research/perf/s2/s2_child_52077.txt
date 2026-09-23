@@ -1,0 +1,40 @@
+     0.69%     0.01%  [.] boost::asio::detail::scheduler::run(boost::system::error_code&) [clone .isra.0]
+     0.69%     0.00%  [.] NetworkThread<WorldSocket>::Run()
+     0.68%     0.02%  [.] boost::asio::detail::scheduler::do_run_one(boost::asio::detail::conditionally_enabled_mutex::scoped_lock&, boost::asio::detail::scheduler_thread_info&, boost::system::error_code const&)
+     0.53%     0.04%  [.] boost::asio::detail::epoll_reactor::run(long, boost::asio::detail::op_queue<boost::asio::detail::scheduler_operation>&)
+     0.28%     0.03%  [.] epoll_wait
+     0.23%     0.00%  [k] __x64_sys_epoll_wait
+     0.21%     0.02%  [k] __schedule
+     0.19%     0.03%  [k] do_epoll_wait
+     0.18%     0.18%  [k] finish_task_switch.isra.0
+     0.13%     0.04%  [.] boost::asio::detail::wait_handler<NetworkThread<WorldSocket>::Update()::{lambda(boost::system::error_code const&)#1}, boost::asio::any_io_executor>::do_complete(void*, boost::asio::detail::scheduler_opera
+     0.13%     0.01%  [.] timerfd_settime
+     0.10%     0.00%  [k] __x64_sys_timerfd_settime
+     0.09%     0.02%  [.] NetworkThread<WorldSocket>::Update()
+     0.09%     0.01%  [k] schedule_hrtimeout_range_clock
+     0.09%     0.00%  [k] do_timerfd_settime
+     0.09%     0.00%  [k] schedule_hrtimeout_range
+     0.08%     0.03%  [.] boost::asio::detail::timer_queue<boost::asio::detail::chrono_time_traits<std::chrono::_V2::steady_clock, boost::asio::wait_traits<std::chrono::_V2::steady_clock> > >::get_ready_timers(boost::asio::detail:
+     0.06%     0.06%  [k] _raw_spin_unlock_irq
+     0.06%     0.03%  [k] ep_item_poll.isra.0
+     0.06%     0.01%  [k] exit_to_user_mode_prepare
+     0.05%     0.00%  [k] syscall_exit_to_user_mode
+     0.05%     0.00%  [.] void boost::asio::detail::epoll_reactor::schedule_timer<boost::asio::detail::chrono_time_traits<std::chrono::_V2::steady_clock, boost::asio::wait_traits<std::chrono::_V2::steady_clock> > >(boost::asio::de
+     0.04%     0.04%  [k] _raw_write_unlock_irq
+     0.03%     0.01%  [k] __fdget
+     0.03%     0.01%  [k] timerfd_poll
+     0.02%     0.02%  [k] __fget_light
+     0.02%     0.02%  [.] clock_gettime@plt
+     0.02%     0.02%  [.] pthread_mutex_lock@plt
+     0.02%     0.01%  [k] get_itimerspec64
+     0.01%     0.01%  [k] __put_user_nocheck_4
+     0.01%     0.01%  [k] __rseq_handle_notify_resume
+     0.01%     0.01%  [k] _copy_from_user
+     0.01%     0.01%  [k] blkcg_maybe_throttle_current
+     0.01%     0.01%  [.] boost::asio::detail::handler_work_base<boost::asio::any_io_executor, void, boost::asio::io_context, boost::asio::executor, void>::handler_work_base(int, int, boost::asio::any_io_executor const&)
+     0.01%     0.01%  [k] mutex_unlock
+     0.01%     0.00%  [.] boost::asio::detail::timer_queue<boost::asio::detail::chrono_time_traits<std::chrono::_V2::steady_clock, boost::asio::wait_traits<std::chrono::_V2::steady_clock> > >::wait_duration_usec(long) const
+     0.01%     0.00%  [k] get_timespec64
+     0.01%     0.00%  [.] unsigned long boost::asio::detail::epoll_reactor::cancel_timer<boost::asio::detail::chrono_time_traits<std::chrono::_V2::steady_clock, boost::asio::wait_traits<std::chrono::_V2::steady_clock> > >(boost::a
+
+

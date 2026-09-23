@@ -1,0 +1,9 @@
+    92.64%  worldserver        
+     2.56%  [kernel.kallsyms]  
+     2.14%  libstdc++.so.6.0.33
+     2.05%  libc.so.6          
+     0.52%  libm.so.6          
+     0.09%  [vdso]             
+     0.01%  libssl.so.3        
+
+

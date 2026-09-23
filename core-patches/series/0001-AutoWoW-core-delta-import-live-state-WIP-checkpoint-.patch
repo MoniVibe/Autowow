@@ -1,0 +1,720 @@
+From 456c24806f2fa6c802a30f632a452f4a092ab58f Mon Sep 17 00:00:00 2001
+From: Monivibe <shonhay@gmail.com>
+Date: Wed, 23 Sep 2026 03:00:13 +0300
+Subject: [PATCH] AutoWoW core delta: import live state (WIP checkpoint
+ 2026-09-23)
+
+On pinned mod-playerbots/azerothcore-wotlk 52f58186. Silverpine
+script tweak, unit-test CMake/mock hooks, BossApproach policy headers
++ tests. Previously unversioned; history before this is unrecoverable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/AutoWow/BossApproachAggroPolicy.h         | 117 +++++++++
+ src/AutoWow/BossApproachPolicy.h              | 245 ++++++++++++++++++
+ .../zone_silverpine_forest.cpp                |   2 +-
+ src/test/CMakeLists.txt                       |   7 +
+ src/test/mocks/WorldMock.h                    |   4 +
+ tests/BossApproachAggroPolicyTest.cpp         | 100 +++++++
+ tests/BossApproachPolicyTest.cpp              | 146 +++++++++++
+ 7 files changed, 620 insertions(+), 1 deletion(-)
+ create mode 100644 src/AutoWow/BossApproachAggroPolicy.h
+ create mode 100644 src/AutoWow/BossApproachPolicy.h
+ create mode 100644 tests/BossApproachAggroPolicyTest.cpp
+ create mode 100644 tests/BossApproachPolicyTest.cpp
+
+diff --git a/src/AutoWow/BossApproachAggroPolicy.h b/src/AutoWow/BossApproachAggroPolicy.h
+new file mode 100644
+index 000000000..58ea64036
+--- /dev/null
++++ b/src/AutoWow/BossApproachAggroPolicy.h
+@@ -0,0 +1,117 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the
++ * License.
++ */
++
++#ifndef MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_AGGRO_POLICY_H
++#define MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_AGGRO_POLICY_H
++
++#include <cmath>
++#include <cstddef>
++#include <cstdint>
++#include <limits>
++#include <string>
++#include <vector>
++
++namespace AutoWowBossApproachAggroPolicy
++{
++inline constexpr float kUnknownHoldMargin = 8.0f;
++inline constexpr float kFormationFootprintBuffer = 3.0f;
++inline constexpr float kPetFootprintBuffer = 4.0f;
++
++struct HazardFacts
++{
++    std::uint64_t guid = 0;
++    bool knownHostile = false;
++    bool currentlyEngagedByCohort = false;
++    bool canStartAttack = false;
++    bool detectionUnknown = false;
++    bool scriptedUnknown = false;
++    bool socialAssistPossible = false;
++    bool intentionalTarget = false;
++    bool tankProbe = false;
++    bool petFootprint = false;
++    float distanceToCorridor = std::numeric_limits<float>::infinity();
++    float aggroRadius = 0.0f; // Core Creature::GetAggroRange result for the nearest cohort unit.
++    float combatReach = 0.0f;
++    float footprintBuffer = 0.0f;
++};
++
++struct RiskResult
++{
++    bool safe = true;
++    bool unknownBlocks = false;
++    std::string reason = "clear";
++    std::size_t hazardsInCorridor = 0;
++    std::size_t predictedHazards = 0;
++    std::size_t unknownHazards = 0;
++    std::size_t accidentalPullCount = 0;
++    std::size_t socialAssistCandidates = 0;
++    std::size_t tankProbeHazards = 0;
++    std::size_t petHazards = 0;
++    std::size_t intentionalExemptions = 0;
++    float closestMargin = std::numeric_limits<float>::infinity();
++};
++
++inline RiskResult Evaluate(std::vector<HazardFacts> const& hazards, bool pullAuthorized)
++{
++    RiskResult result;
++    for (HazardFacts const& hazard : hazards)
++    {
++        if (!std::isfinite(hazard.distanceToCorridor))
++            continue;
++
++        bool const intentional = hazard.intentionalTarget && pullAuthorized;
++        if (intentional)
++        {
++            ++result.intentionalExemptions;
++            continue;
++        }
++
++        float const margin = hazard.distanceToCorridor -
++            (hazard.aggroRadius + hazard.combatReach + hazard.footprintBuffer);
++        result.closestMargin = std::min(result.closestMargin, margin);
++
++        bool const corridorRelevant = margin <= kUnknownHoldMargin;
++        if (!corridorRelevant)
++            continue;
++        ++result.hazardsInCorridor;
++
++        bool const unknown = hazard.detectionUnknown || hazard.scriptedUnknown;
++        if (unknown)
++        {
++            ++result.unknownHazards;
++            if (margin <= kUnknownHoldMargin)
++            {
++                result.safe = false;
++                result.unknownBlocks = true;
++                result.reason = "hazard_visibility_or_script_unknown";
++            }
++        }
++
++        bool const likelyAggro = hazard.knownHostile && (hazard.canStartAttack || margin <= 0.0f);
++        if (likelyAggro && margin <= 0.0f)
++        {
++            ++result.predictedHazards;
++            if (!hazard.currentlyEngagedByCohort)
++                ++result.accidentalPullCount;
++            if (hazard.socialAssistPossible)
++                ++result.socialAssistCandidates;
++            if (hazard.tankProbe)
++                ++result.tankProbeHazards;
++            if (hazard.petFootprint)
++                ++result.petHazards;
++            result.safe = false;
++            if (!result.unknownBlocks)
++                result.reason = "predicted_aggro_or_assist";
++        }
++    }
++
++    if (result.safe && result.unknownHazards)
++        result.reason = "unknown_near_corridor_but_outside_hold_margin";
++    return result;
++}
++}
++
++#endif  // MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_AGGRO_POLICY_H
+diff --git a/src/AutoWow/BossApproachPolicy.h b/src/AutoWow/BossApproachPolicy.h
+new file mode 100644
+index 000000000..61e54350f
+--- /dev/null
++++ b/src/AutoWow/BossApproachPolicy.h
+@@ -0,0 +1,245 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the
++ * License.
++ */
++
++#ifndef MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_POLICY_H
++#define MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_POLICY_H
++
++#include <algorithm>
++#include <cstddef>
++#include <cstdint>
++#include <string>
++#include <vector>
++
++namespace AutoWowBossApproachPolicy
++{
++inline constexpr float kCohesionRadius = 36.0f;
++inline constexpr float kSlotTolerance = 6.0f;
++inline constexpr std::uint32_t kMaxStalledPolls = 4;
++
++enum class Role
++{
++    MainTank,
++    Tank,
++    Melee,
++    Ranged,
++    Healer
++};
++
++enum class Phase
++{
++    Blocked,
++    Advancing,
++    Assembling,
++    Ready,
++    Stalled
++};
++
++struct MemberFacts
++{
++    std::uint64_t guid = 0;
++    bool alive = false;
++    bool mainTank = false;
++    bool tank = false;
++    bool healer = false;
++    bool ranged = false;
++};
++
++struct FormationSlot
++{
++    std::uint64_t memberGuid = 0;
++    Role role = Role::Melee;
++    std::uint32_t roleIndex = 0;
++    float trailing = 0.0f;
++    float lateral = 0.0f;
++};
++
++inline char const* RoleName(Role role)
++{
++    switch (role)
++    {
++        case Role::MainTank: return "main_tank";
++        case Role::Tank: return "tank";
++        case Role::Melee: return "melee";
++        case Role::Ranged: return "ranged";
++        case Role::Healer: return "healer";
++        default: return "unknown";
++    }
++}
++
++inline char const* PhaseName(Phase phase)
++{
++    switch (phase)
++    {
++        case Phase::Blocked: return "blocked";
++        case Phase::Advancing: return "advancing";
++        case Phase::Assembling: return "assembling";
++        case Phase::Ready: return "ready";
++        case Phase::Stalled: return "stalled";
++        default: return "unknown";
++    }
++}
++
++inline FormationSlot MakeSlot(std::uint64_t guid, Role role, std::uint32_t roleIndex)
++{
++    FormationSlot slot{guid, role, roleIndex, 0.0f, 0.0f};
++    std::uint32_t const row = roleIndex / 2u;
++    float const side = (roleIndex % 2u) ? 1.0f : -1.0f;
++
++    switch (role)
++    {
++        case Role::MainTank:
++            break;
++        case Role::Tank:
++            slot.trailing = 3.0f + 2.5f * static_cast<float>(row);
++            slot.lateral = side * (3.0f + 2.0f * static_cast<float>(row));
++            break;
++        case Role::Melee:
++            slot.trailing = 6.0f + 2.5f * static_cast<float>(row);
++            slot.lateral = side * (4.0f + 2.5f * static_cast<float>(row));
++            break;
++        case Role::Ranged:
++            slot.trailing = 13.0f + 2.5f * static_cast<float>(row);
++            slot.lateral = side * (7.0f + 3.0f * static_cast<float>(row));
++            break;
++        case Role::Healer:
++            slot.trailing = 16.0f + 2.5f * static_cast<float>(row);
++            slot.lateral = side * (9.0f + 3.0f * static_cast<float>(row));
++            break;
++    }
++    return slot;
++}
++
++// Slots are chosen from role facts only. Input order is deliberately ignored so that a raid and a
++// party receive the same layout for the same GUID/role set, independent of GroupReference order.
++inline std::vector<FormationSlot> BuildFormationSlots(std::vector<MemberFacts> members)
++{
++    std::sort(members.begin(), members.end(), [](MemberFacts const& left, MemberFacts const& right)
++    {
++        return left.guid < right.guid;
++    });
++
++    std::uint64_t mainTankGuid = 0;
++    for (MemberFacts const& member : members)
++    {
++        if (member.alive && member.tank && member.mainTank)
++        {
++            mainTankGuid = member.guid;
++            break;
++        }
++    }
++    if (!mainTankGuid)
++    {
++        for (MemberFacts const& member : members)
++        {
++            if (member.alive && member.tank)
++            {
++                mainTankGuid = member.guid;
++                break;
++            }
++        }
++    }
++
++    std::vector<FormationSlot> slots;
++    slots.reserve(members.size());
++    auto appendRole = [&slots, &members](std::uint64_t guid, Role role, std::uint32_t roleIndex)
++    {
++        (void)members;
++        slots.push_back(MakeSlot(guid, role, roleIndex));
++    };
++
++    if (mainTankGuid)
++        appendRole(mainTankGuid, Role::MainTank, 0);
++
++    auto appendCategory = [&members, &slots, mainTankGuid](Role role, auto predicate)
++    {
++        std::uint32_t roleIndex = 0;
++        for (MemberFacts const& member : members)
++        {
++            if (!member.alive || member.guid == mainTankGuid || !predicate(member))
++                continue;
++            slots.push_back(MakeSlot(member.guid, role, roleIndex++));
++        }
++    };
++
++    appendCategory(Role::Tank, [](MemberFacts const& member) { return member.tank; });
++    appendCategory(Role::Melee, [](MemberFacts const& member)
++    {
++        return !member.tank && !member.healer && !member.ranged;
++    });
++    appendCategory(Role::Ranged, [](MemberFacts const& member)
++    {
++        return !member.tank && !member.healer && member.ranged;
++    });
++    appendCategory(Role::Healer, [](MemberFacts const& member) { return !member.tank && member.healer; });
++    return slots;
++}
++
++struct CohesionFacts
++{
++    std::size_t rosterMembers = 0;
++    std::size_t livingMembers = 0;
++    std::size_t onlinePlayerbots = 0;
++    std::size_t tankMembers = 0;
++    std::size_t sameContext = 0;
++    std::size_t transientFree = 0;
++    std::size_t withinCohesion = 0;
++    std::size_t slotReady = 0;
++    std::size_t exactRangeAndLos = 0;
++    bool targetVisible = false;
++    bool pathsSafe = true;
++    bool aggroSafe = true;
++    bool unknownHazard = false;
++    bool movementIssued = false;
++    bool progressMade = false;
++    std::uint32_t stalledPolls = 0;
++};
++
++struct Decision
++{
++    Phase phase = Phase::Blocked;
++    std::string reason = "uninitialized";
++};
++
++inline Decision Evaluate(CohesionFacts const& facts,
++                         float cohesionRadius = kCohesionRadius,
++                         float slotTolerance = kSlotTolerance,
++                         std::uint32_t maxStalledPolls = kMaxStalledPolls)
++{
++    (void)cohesionRadius;
++    (void)slotTolerance;
++
++    if (!facts.rosterMembers)
++        return {Phase::Blocked, "empty_roster"};
++    if (facts.livingMembers < 2)
++        return {Phase::Blocked, "insufficient_living_cohort"};
++    if (!facts.tankMembers)
++        return {Phase::Blocked, "no_tank_forward_probe"};
++    if (!facts.targetVisible)
++        return {Phase::Blocked, "no_eligible_boss"};
++    if (facts.livingMembers != facts.rosterMembers)
++        return {Phase::Assembling, "dead_party_member"};
++    if (facts.onlinePlayerbots != facts.rosterMembers)
++        return {Phase::Assembling, "member_unavailable"};
++    if (facts.sameContext != facts.rosterMembers)
++        return {Phase::Assembling, "member_wrong_map_or_instance"};
++    if (facts.transientFree != facts.rosterMembers)
++        return {Phase::Assembling, "member_teleporting_or_falling"};
++    if (!facts.pathsSafe)
++        return {Phase::Stalled, "formation_path_rejected"};
++    if (!facts.aggroSafe)
++        return {Phase::Stalled, facts.unknownHazard ? "hazard_visibility_or_script_unknown" : "predicted_aggro_or_assist"};
++    if (facts.stalledPolls >= maxStalledPolls && !facts.progressMade)
++        return {Phase::Stalled, "cohort_no_progress"};
++    if (facts.slotReady != facts.rosterMembers || facts.withinCohesion != facts.rosterMembers)
++        return {facts.movementIssued && facts.progressMade ? Phase::Advancing : Phase::Assembling,
++                facts.movementIssued ? "cohort_assembling" : "formation_not_ready"};
++    if (facts.exactRangeAndLos != facts.rosterMembers)
++        return {Phase::Assembling, "cohort_not_in_exact_engage_range"};
++    return {Phase::Ready, "cohort_ready"};
++}
++}
++
++#endif  // MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_POLICY_H
+diff --git a/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp b/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
+index 1147fdf04..7a0547af9 100644
+--- a/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
++++ b/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
+@@ -114,7 +114,7 @@ public:
+             if (npc_escortAI* pEscortAI = CAST_AI(npc_deathstalker_erland::npc_deathstalker_erlandAI, creature->AI()))
+             {
+                 creature->SetWalk(true);
+-                pEscortAI->Start(true, player->GetGUID());
++                pEscortAI->Start(true, player->GetGUID(), quest);
+             }
+         }
+ 
+diff --git a/src/test/CMakeLists.txt b/src/test/CMakeLists.txt
+index 6a143748c..5fd3166f7 100644
+--- a/src/test/CMakeLists.txt
++++ b/src/test/CMakeLists.txt
+@@ -34,6 +34,7 @@ target_link_libraries(
+ # Add module test sources if any modules registered tests
+ get_property(MODULE_TEST_SOURCES GLOBAL PROPERTY ACORE_MODULE_TEST_SOURCES)
+ get_property(MODULE_TEST_INCLUDES GLOBAL PROPERTY ACORE_MODULE_TEST_INCLUDES)
++get_property(MODULE_TEST_LIBRARIES GLOBAL PROPERTY ACORE_MODULE_TEST_LIBRARIES)
+ 
+ if(MODULE_TEST_SOURCES)
+     target_sources(unit_tests PRIVATE ${MODULE_TEST_SOURCES})
+@@ -51,6 +52,12 @@ if(TARGET modules)
+     target_link_libraries(unit_tests modules)
+ endif()
+ 
++if(MODULE_TEST_LIBRARIES)
++    list(REMOVE_DUPLICATES MODULE_TEST_LIBRARIES)
++    target_link_libraries(unit_tests ${MODULE_TEST_LIBRARIES})
++    message(STATUS "Added module test libraries to unit_tests target")
++endif()
++
+ add_test(
+         NAME
+         unit
+diff --git a/src/test/mocks/WorldMock.h b/src/test/mocks/WorldMock.h
+index e96e38b47..01b12afc9 100644
+--- a/src/test/mocks/WorldMock.h
++++ b/src/test/mocks/WorldMock.h
+@@ -76,6 +76,9 @@ public:
+     MOCK_METHOD(LocaleConstant, GetAvailableDbcLocale, (LocaleConstant locale), (const));
+     MOCK_METHOD(void, LoadDBVersion, ());
+     MOCK_METHOD(char const *, GetDBVersion, (), (const));
++#ifdef MOD_PLAYERBOTS
++    MOCK_METHOD(char const *, GetPlayerbotsDBRevision, (), (const));
++#endif
+     MOCK_METHOD(void, UpdateAreaDependentAuras, ());
+     MOCK_METHOD(uint32, GetCleaningFlags, (), (const));
+     MOCK_METHOD(void, SetCleaningFlags, (uint32 flags), ());
+@@ -84,6 +87,7 @@ public:
+     MOCK_METHOD(time_t, GetNextTimeWithMonthAndHour, (int8 month, int8 hour), ());
+     MOCK_METHOD(std::string const&, GetRealmName, (), (const));
+     MOCK_METHOD(void, SetRealmName, (std::string name), ());
++    MOCK_METHOD(SQLQueryHolderCallback&, AddQueryHolderCallback, (SQLQueryHolderCallback&& callback), ());
+     MOCK_METHOD(void, RemoveOldCorpses, ());
+     MOCK_METHOD(void, ReloadRBAC, ());
+ };
+diff --git a/tests/BossApproachAggroPolicyTest.cpp b/tests/BossApproachAggroPolicyTest.cpp
+new file mode 100644
+index 000000000..86ce50828
+--- /dev/null
++++ b/tests/BossApproachAggroPolicyTest.cpp
+@@ -0,0 +1,100 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the
++ * License.
++ */
++
++#include "../src/AutoWow/BossApproachAggroPolicy.h"
++
++#include <limits>
++#include <vector>
++
++#include "gtest/gtest.h"
++
++namespace
++{
++using namespace AutoWowBossApproachAggroPolicy;
++
++HazardFacts KnownHazard()
++{
++    HazardFacts hazard;
++    hazard.guid = 101;
++    hazard.knownHostile = true;
++    hazard.canStartAttack = true;
++    hazard.socialAssistPossible = true;
++    hazard.tankProbe = true;
++    hazard.petFootprint = true;
++    hazard.distanceToCorridor = 4.0f;
++    hazard.aggroRadius = 8.0f;
++    hazard.combatReach = 2.0f;
++    hazard.footprintBuffer = 1.0f;
++    return hazard;
++}
++}
++
++TEST(BossApproachAggroPolicy, FormationCorridorHazardBlocksAndReportsPullRisk)
++{
++    RiskResult const result = Evaluate({KnownHazard()}, false);
++
++    EXPECT_FALSE(result.safe);
++    EXPECT_EQ(result.hazardsInCorridor, 1u);
++    EXPECT_EQ(result.predictedHazards, 1u);
++    EXPECT_EQ(result.accidentalPullCount, 1u);
++    EXPECT_EQ(result.socialAssistCandidates, 1u);
++    EXPECT_EQ(result.tankProbeHazards, 1u);
++    EXPECT_EQ(result.petHazards, 1u);
++    EXPECT_EQ(result.reason, "predicted_aggro_or_assist");
++    EXPECT_FLOAT_EQ(result.closestMargin, -7.0f);
++}
++
++TEST(BossApproachAggroPolicy, IntentionalTargetIsExemptOnlyAfterPullAuthorization)
++{
++    HazardFacts target = KnownHazard();
++    target.intentionalTarget = true;
++
++    RiskResult const beforeAuthorization = Evaluate({target}, false);
++    EXPECT_FALSE(beforeAuthorization.safe);
++    EXPECT_EQ(beforeAuthorization.predictedHazards, 1u);
++    EXPECT_EQ(beforeAuthorization.intentionalExemptions, 0u);
++
++    RiskResult const afterAuthorization = Evaluate({target}, true);
++    EXPECT_TRUE(afterAuthorization.safe);
++    EXPECT_EQ(afterAuthorization.hazardsInCorridor, 0u);
++    EXPECT_EQ(afterAuthorization.predictedHazards, 0u);
++    EXPECT_EQ(afterAuthorization.intentionalExemptions, 1u);
++    EXPECT_EQ(afterAuthorization.closestMargin, std::numeric_limits<float>::infinity());
++}
++
++TEST(BossApproachAggroPolicy, ScriptedOrDetectionUnknownNearCorridorHoldsConservatively)
++{
++    HazardFacts unknown;
++    unknown.guid = 202;
++    unknown.scriptedUnknown = true;
++    unknown.distanceToCorridor = 5.0f;
++    unknown.combatReach = 1.0f;
++    unknown.footprintBuffer = 1.0f;
++
++    RiskResult const result = Evaluate({unknown}, false);
++
++    EXPECT_FALSE(result.safe);
++    EXPECT_TRUE(result.unknownBlocks);
++    EXPECT_EQ(result.unknownHazards, 1u);
++    EXPECT_EQ(result.predictedHazards, 0u);
++    EXPECT_EQ(result.reason, "hazard_visibility_or_script_unknown");
++}
++
++TEST(BossApproachAggroPolicy, PositiveMarginOutsideHoldBandIsNotClaimedAsCorridorHazard)
++{
++    HazardFacts distant = KnownHazard();
++    distant.distanceToCorridor = 30.0f;
++
++    RiskResult const result = Evaluate({distant}, false);
++
++    EXPECT_TRUE(result.safe);
++    EXPECT_EQ(result.hazardsInCorridor, 0u);
++    EXPECT_EQ(result.predictedHazards, 0u);
++    EXPECT_EQ(result.accidentalPullCount, 0u);
++    // Margin is distance-to-corridor minus the hazard's aggro, reach, and footprint:
++    // 30 - (8 + 2 + 1) = 19. It remains outside the 8-unit unknown hold band.
++    EXPECT_FLOAT_EQ(result.closestMargin, 19.0f);
++}
+diff --git a/tests/BossApproachPolicyTest.cpp b/tests/BossApproachPolicyTest.cpp
+new file mode 100644
+index 000000000..0b00c0892
+--- /dev/null
++++ b/tests/BossApproachPolicyTest.cpp
+@@ -0,0 +1,146 @@
++/*
++ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
++ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the
++ * License.
++ */
++
++#include "../src/AutoWow/BossApproachPolicy.h"
++
++#include <algorithm>
++#include <set>
++#include <vector>
++
++#include "gtest/gtest.h"
++
++namespace
++{
++using namespace AutoWowBossApproachPolicy;
++
++CohesionFacts ReadyFacts()
++{
++    CohesionFacts facts;
++    facts.rosterMembers = 5;
++    facts.livingMembers = 5;
++    facts.onlinePlayerbots = 5;
++    facts.tankMembers = 1;
++    facts.sameContext = 5;
++    facts.transientFree = 5;
++    facts.withinCohesion = 5;
++    facts.slotReady = 5;
++    facts.exactRangeAndLos = 5;
++    facts.targetVisible = true;
++    facts.pathsSafe = true;
++    return facts;
++}
++}
++
++TEST(BossApproachPolicy, RoleSlotsAreDeterministicAndPutTheMainTankFirst)
++{
++    std::vector<MemberFacts> input = {
++        {40, true, false, false, true, false},
++        {30, true, false, false, false, true},
++        {20, true, false, false, false, false},
++        {11, true, false, true, false, false},
++        {10, true, true, true, false, false},
++    };
++
++    std::vector<FormationSlot> first = BuildFormationSlots(input);
++    std::reverse(input.begin(), input.end());
++    std::vector<FormationSlot> second = BuildFormationSlots(input);
++
++    ASSERT_EQ(first.size(), 5u);
++    ASSERT_EQ(first.size(), second.size());
++    for (std::size_t index = 0; index < first.size(); ++index)
++    {
++        EXPECT_EQ(first[index].memberGuid, second[index].memberGuid);
++        EXPECT_EQ(first[index].role, second[index].role);
++        EXPECT_FLOAT_EQ(first[index].trailing, second[index].trailing);
++        EXPECT_FLOAT_EQ(first[index].lateral, second[index].lateral);
++    }
++
++    EXPECT_EQ(first[0].memberGuid, 10u);
++    EXPECT_EQ(first[0].role, Role::MainTank);
++    EXPECT_LT(first[1].trailing, first[2].trailing);
++    EXPECT_LT(first[2].trailing, first[3].trailing);
++    EXPECT_LT(first[3].trailing, first[4].trailing);
++}
++
++TEST(BossApproachPolicy, FortyMemberRaidReceivesUniqueBoundedRoleSlots)
++{
++    std::vector<MemberFacts> input;
++    for (std::uint64_t guid = 1; guid <= 40; ++guid)
++        input.push_back({guid, true, guid == 1, guid <= 2, guid > 30, guid > 20 && guid <= 30});
++
++    std::vector<FormationSlot> slots = BuildFormationSlots(input);
++    std::set<std::uint64_t> guids;
++    for (FormationSlot const& slot : slots)
++    {
++        guids.insert(slot.memberGuid);
++        EXPECT_GE(slot.trailing, 0.0f);
++        EXPECT_LE(slot.trailing, 70.0f);
++    }
++    EXPECT_EQ(slots.size(), 40u);
++    EXPECT_EQ(guids.size(), 40u);
++    EXPECT_EQ(slots.front().role, Role::MainTank);
++}
++
++TEST(BossApproachPolicy, ALeaderAloneCannotBecomeReady)
++{
++    CohesionFacts facts = ReadyFacts();
++    facts.rosterMembers = 1;
++    facts.livingMembers = 1;
++    facts.onlinePlayerbots = 1;
++    facts.sameContext = 1;
++    facts.transientFree = 1;
++    facts.withinCohesion = 1;
++    facts.slotReady = 1;
++    facts.exactRangeAndLos = 1;
++
++    Decision const decision = Evaluate(facts);
++    EXPECT_EQ(decision.phase, Phase::Blocked);
++    EXPECT_EQ(decision.reason, "insufficient_living_cohort");
++}
++
++TEST(BossApproachPolicy, CohortWithoutLivingTankCannotPull)
++{
++    CohesionFacts facts = ReadyFacts();
++    facts.tankMembers = 0;
++
++    Decision const decision = Evaluate(facts);
++    EXPECT_EQ(decision.phase, Phase::Blocked);
++    EXPECT_EQ(decision.reason, "no_tank_forward_probe");
++}
++
++TEST(BossApproachPolicy, DeadOrTransientMembersHoldTheCohortAtTheGate)
++{
++    CohesionFacts facts = ReadyFacts();
++    facts.livingMembers = 4;
++    Decision dead = Evaluate(facts);
++    EXPECT_EQ(dead.phase, Phase::Assembling);
++    EXPECT_EQ(dead.reason, "dead_party_member");
++
++    facts = ReadyFacts();
++    facts.transientFree = 4;
++    Decision transient = Evaluate(facts);
++    EXPECT_EQ(transient.phase, Phase::Assembling);
++    EXPECT_EQ(transient.reason, "member_teleporting_or_falling");
++}
++
++TEST(BossApproachPolicy, ProgressAndStallPhasesAreExplicit)
++{
++    CohesionFacts facts = ReadyFacts();
++    facts.slotReady = 2;
++    facts.withinCohesion = 2;
++    facts.movementIssued = true;
++    facts.progressMade = true;
++    EXPECT_EQ(Evaluate(facts).phase, Phase::Advancing);
++
++    facts.progressMade = false;
++    facts.stalledPolls = kMaxStalledPolls;
++    Decision const stalled = Evaluate(facts);
++    EXPECT_EQ(stalled.phase, Phase::Stalled);
++    EXPECT_EQ(stalled.reason, "cohort_no_progress");
++
++    facts = ReadyFacts();
++    EXPECT_EQ(Evaluate(facts).phase, Phase::Ready);
++}
+-- 
+2.43.0
+

@@ -1,0 +1,274 @@
+     4.75%     0.00%  [.] 0xffffffffffffffff
+     2.15%     0.00%  [.] AutoWowQuestGiverTravel::SelectTravelMgrWalkProbe(Player*, WorldPosition const&)
+     2.05%     0.01%  [.] TravelNodeMap::getFullPath(WorldPosition, WorldPosition, Player*, bool)
+     2.04%     0.00%  [.] TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Player*, bool)
+     2.02%     0.00%  [.] NewRpgDoQuestAction::DriveOracleQuestRoute(NewRpgInfo::DoQuest&, QuestObjectiveSpec const*, int, bool)
+     1.89%     0.00%  [.] WorldUpdateLoop()
+     1.89%     0.00%  [.] __libc_start_call_main
+     1.89%     0.00%  [.] main
+     1.88%     0.00%  [.] World::Update(unsigned int)
+     1.70%     0.00%  [.] NewRpgDoQuestAction::DriveOracleQuestRoute(NewRpgInfo::DoQuest&, QuestObjectiveSpec const*, int, bool)::{lambda()#2}::operator()() const
+     1.42%     0.08%  [.] MapMgr::Update(unsigned int)
+     1.30%     0.09%  [.] WorldPosition::fDist(WorldPosition*)
+     1.30%     0.05%  [.] WorldPosition::fDist(WorldPosition)
+     1.29%     0.01%  [.] TravelNode::fDist(WorldPosition)
+     1.20%     0.09%  [.] TravelMgr::fastMapTransDistance(WorldPosition, WorldPosition)
+     1.12%     0.06%  [.] pthread_cond_signal@@GLIBC_2.3.2
+     0.71%     0.02%  [.] mapTransfer::fDist(WorldPosition, WorldPosition)
+     0.70%     0.02%  [.] bool __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Player*, bool)::{lambda(TravelNode*, TravelNode*)#
+     0.70%     0.00%  [.] void std::__heap_select<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, WorldP
+     0.70%     0.00%  [.] void std::__partial_sort<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, World
+     0.70%     0.00%  [.] void std::partial_sort<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition,
+     0.68%     0.00%  [.] TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Player*, bool)::{lambda(TravelNode*, TravelNode*)#1}::operator()(TravelNode*, TravelNode*
+     0.65%     0.00%  [.] void std::__heap_select<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, WorldP
+     0.65%     0.00%  [.] void std::__partial_sort<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, World
+     0.65%     0.00%  [.] void std::partial_sort<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition,
+     0.63%     0.01%  [.] bool __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Player*, bool)::{lambda(TravelNode*, TravelNode*)#
+     0.63%     0.00%  [.] TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Player*, bool)::{lambda(TravelNode*, TravelNode*)#2}::operator()(TravelNode*, TravelNode*
+     0.59%     0.15%  [.] __gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > > std::__find_if<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<Travel
+     0.59%     0.01%  [.] TravelNode::getNodeMap(bool, std::vector<TravelNode*, std::allocator<TravelNode*> >)
+     0.59%     0.00%  [.] TravelNode::hasRouteTo(TravelNode*)
+     0.57%     0.00%  [.] __gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > > std::__find_if<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<Travel
+     0.57%     0.00%  [.] __gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > > std::find<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*
+     0.42%     0.00%  [.] AutoWowDungeonPath::ProbeFrom(Player const*, float, float, float, float, float, float)
+     0.39%     0.12%  [.] WorldPosition::WorldPosition(WorldPosition const&)
+     0.38%     0.09%  [.] Position::GetExactDist2d(float, float) const
+     0.32%     0.18%  [.] dtNavMeshQuery::findPath(unsigned long, unsigned long, float const*, float const*, dtQueryFilter const*, unsigned long*, int*, int) const
+     0.30%     0.00%  [.] (anonymous namespace)::SelectOracleRouteAnchorPaths(Player*, WorldPosition const&)
+     0.29%     0.01%  [.] ScriptMgr::OnPlayerbotUpdate(unsigned int)
+     0.29%     0.00%  [.] AutoWowDungeonPath::(anonymous namespace)::ProbeNavmeshFrom(Player const*, float, float, float, float, float, float)
+     0.27%     0.01%  [.] PlayerbotHolder::UpdateSessions()
+     0.27%     0.00%  [.] PlayerbotsScript::OnPlayerbotUpdate(unsigned int)
+     0.26%     0.11%  [.] WorldLocation::WorldLocation(WorldLocation const&)
+     0.26%     0.16%  [.] bool __gnu_cxx::__ops::_Iter_equals_val<TravelNode* const>::operator()<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > > >(__gnu_cxx::__normal_iterator<Tr
+     0.24%     0.24%  [.] std::_Rb_tree_increment(std::_Rb_tree_node_base const*)
+     0.23%     0.00%  [.] Map::GetLiquidData(unsigned int, float, float, float, float, std::optional<unsigned char>)
+     0.19%     0.19%  [.] __gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >::operator++()
+     0.17%     0.07%  [.] Position::Position(Position const&)
+     0.17%     0.07%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, UntypedVal
+     0.17%     0.04%  [.] je_arena_tcache_fill_small
+     0.16%     0.06%  [.] std::sqrt(float)
+     0.14%     0.14%  [.] Position::GetExactDist2dSq(float, float) const
+     0.13%     0.01%  [.] Map::IsInWater(unsigned int, float, float, float, float) const
+     0.12%     0.00%  [.] AutoWowDungeonPath::(anonymous namespace)::ProbeGroundLineFrom(Player const*, float, float, float, float, float, float)
+     0.11%     0.01%  [.] GridObjectLoader::LoadAllCellsInGrid()
+     0.11%     0.01%  [.] arena_bin_malloc_hard
+     0.11%     0.00%  [.] Map::EnsureGridLoaded(Cell const&)
+     0.11%     0.00%  [.] MapGridManager::LoadGrid(unsigned short, unsigned short)
+     0.11%     0.00%  [.] std::_Rb_tree_const_iterator<std::pair<ObjectGuid const, Player*> >::operator++()
+     0.10%     0.10%  [.] Position::Relocate(Position const&)
+     0.09%     0.09%  [.] __gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >::operator*() const
+     0.09%     0.09%  [.] je_extent_heap_remove_first
+     0.09%     0.02%  [.] MapUpdater::schedule_update(Map&, unsigned int, unsigned int)
+     0.09%     0.01%  [.] std::__detail::_Hashtable_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > co
+     0.09%     0.00%  [.] AutoWowOracleRuntime::Runtime::BuildLiveQuestFrame(unsigned long, unsigned long, unsigned long, unsigned long, AutoWowOracle::ActiveLeaseSnapshot const&, AutoWowOracleRuntime::Runtime::LiveQuestFrame&) co
+     0.09%     0.01%  [.] GuidPosition* std::__do_uninit_copy<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*>(__gnu_cxx::__normal_iterator<GuidPosition c
+     0.09%     0.01%  [.] std::_Hashtable<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::allocator<std::pair<std::pair<u
+     0.09%     0.00%  [.] Engine::Init()
+     0.09%     0.00%  [.] GuidPosition* std::__uninitialized_copy<false>::__uninit_copy<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*>(__gnu_cxx::__norm
+     0.09%     0.00%  [.] GuidPosition* std::__uninitialized_copy_a<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*, GuidPosition>(__gnu_cxx::__normal_ite
+     0.09%     0.00%  [.] GuidPosition* std::uninitialized_copy<__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >, GuidPosition*>(__gnu_cxx::__normal_iterator<GuidPosition
+     0.09%     0.00%  [.] std::unordered_map<std::pair<unsigned int, unsigned int>, std::vector<mapTransfer, std::allocator<mapTransfer> >, boost::hash<std::pair<unsigned int, unsigned int> >, std::equal_to<std::pair<unsigned int,
+     0.08%     0.00%  [.] AutoWowOracleRuntime::Runtime::ProcessConfiguredBot(unsigned long)
+     0.08%     0.00%  [.] Engine::ExecuteAction(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Event, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.08%     0.00%  [.] LockedQueue<WorldPacket*, std::deque<WorldPacket*, std::allocator<WorldPacket*> > >::next(WorldPacket*&)
+     0.08%     0.00%  [.] PlayerbotAI::DoSpecificAction(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Event, bool, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.08%     0.00%  [.] PlayerbotHolder::HandleBotPackets(WorldSession*)
+     0.08%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::basic_string<std::allocator<char> >(char const*, std::allocator<char> const&)
+     0.07%     0.07%  [.] Map::DelayedUpdate(unsigned int)
+     0.07%     0.06%  [.] Player::IsBeingTeleported() const
+     0.07%     0.01%  [.] ScriptMgr::OnWorldUpdate(unsigned int)
+     0.07%     0.00%  [.] ActiveQuestFinisherValue::Calculate()
+     0.07%     0.00%  [.] AutoWowOracleRuntime::Runtime::EnsureQuestDirective(unsigned long, AutoWowOracleRuntime::BotState&)
+     0.07%     0.00%  [.] CalculatedValue<QuestFinisherRef>::Get()
+     0.07%     0.00%  [.] Map::GetHeight(unsigned int, float, float, float, bool, float) const
+     0.06%     0.03%  [.] MapUpdater::schedule_task(UpdateRequest*)
+     0.06%     0.03%  [.] std::_Hashtable<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::allocator<std::pair<std::pair<u
+     0.06%     0.00%  [.] AutoWowOracleRuntime::Runtime::NativeDispatch(void*, AutoWowOracleQuestExecutor::NativeObjectiveStepRequest const&)
+     0.06%     0.00%  [.] std::_Hashtable<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::allocator<std::pair<std::pair<u
+     0.05%     0.03%  [.] bool __gnu_cxx::operator==<mapTransfer*, std::vector<mapTransfer, std::allocator<mapTransfer> > >(__gnu_cxx::__normal_iterator<mapTransfer*, std::vector<mapTransfer, std::allocator<mapTransfer> > > const&
+     0.05%     0.02%  [.] dtQueryFilterExt::getCost(float const*, float const*, unsigned long, dtMeshTile const*, dtPoly const*, unsigned long, dtMeshTile const*, dtPoly const*, unsigned long, dtMeshTile const*, dtPoly const*) con
+     0.05%     0.00%  [.] AutoWowOracleReceiptStore::Store::Publish(AutoWowOracle::Receipt const&, unsigned long, unsigned long)
+     0.05%     0.00%  [.] AutoWowOracleRuntime::Runtime::Record(AutoWowOracle::Receipt const&)
+     0.05%     0.00%  [.] AutoWowQuestGiverTravel::SelectCompleteWalkProbe(Player*, WorldPosition const&)
+     0.05%     0.00%  [.] Engine::ChangeStrategy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.05%     0.00%  [.] Engine::addStrategy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, bool)
+     0.05%     0.00%  [.] PlayerbotAI::ChangeStrategy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, BotState)
+     0.04%     0.04%  [.] __sqrtf
+     0.04%     0.00%  [.] BattlegroundMgr::Update(unsigned int)
+     0.04%     0.00%  [.] PathGenerator::IsSwimmableSegment(float, float, float, float, float, float, bool) const
+     0.04%     0.00%  [.] PlayerbotsWorldScript::OnUpdate(unsigned int)
+     0.04%     0.00%  [.] Value<unsigned int>* AiObjectContext::GetValue<unsigned int>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::
+     0.04%     0.00%  [.] std::__detail::_Map_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, s
+     0.04%     0.00%  [.] std::__str_hash_base<char, std::allocator<char>, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >::operator()(std::__cxx11::basic_string<char, std::char_traits<char>, std:
+     0.04%     0.00%  [.] std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::function<ActionNode* (PlayerbotAI*)>, std::hash<std::__cxx11::basic_string<char, std::char_traits<c
+     0.03%     0.03%  [.] std::_Hash_bytes(void const*, unsigned long, unsigned long)
+     0.03%     0.03%  [.] std::_Rb_tree_increment(std::_Rb_tree_node_base*)@plt
+     0.03%     0.02%  [.] std::unordered_map<std::pair<unsigned int, unsigned int>, std::vector<mapTransfer, std::allocator<mapTransfer> >, boost::hash<std::pair<unsigned int, unsigned int> >, std::equal_to<std::pair<unsigned int,
+     0.03%     0.01%  [.] NewRpgBaseAction::TryRelieveInventoryAtVendor(NewRpgInfo::DoQuest&, bool)
+     0.03%     0.01%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::funct
+     0.03%     0.01%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::data() const
+     0.03%     0.00%  [.] Engine::removeStrategy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, bool)
+     0.03%     0.00%  [.] MapUpdater::wait()
+     0.03%     0.00%  [.] TravelNodeMap::getNode(WorldPosition, Unit*, float)
+     0.03%     0.00%  [.] TravelNodeMap::getNode(WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Unit*, float)
+     0.03%     0.00%  [.] TravelNodeMap::getNodes(WorldPosition, float)
+     0.03%     0.00%  [.] Value<unsigned int>* AiObjectContext::GetValue<unsigned int>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.03%     0.00%  [.] Value<unsigned int>* AiObjectContext::GetValue<unsigned int>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, int)
+     0.03%     0.00%  [.] std::_Hash_impl::hash(void const*, unsigned long, unsigned long)
+     0.03%     0.00%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::funct
+     0.03%     0.00%  [.] std::_Rb_tree_iterator<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, Strategy*> >::operator++(int)
+     0.03%     0.00%  [.] std::__detail::_Hashtable_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > co
+     0.02%     0.02%  [.] AutoWowOracleRuntime::Runtime::UpdateSliced(unsigned int)
+     0.02%     0.02%  [.] BotGuildCacheWorldScript::OnUpdate(unsigned int)
+     0.02%     0.02%  [.] InstanceSaveMgr::Update()
+     0.02%     0.02%  [.] __gnu_cxx::__normal_iterator<mapTransfer*, std::vector<mapTransfer, std::allocator<mapTransfer> > >::base() const
+     0.02%     0.02%  [k] __raw_callee_save___pv_queued_spin_unlock
+     0.02%     0.02%  [.] bool __gnu_cxx::operator==<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >(__gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPo
+     0.02%     0.02%  [.] dtNodeQueue::trickleDown(int, dtNode*)
+     0.02%     0.02%  [.] float const& std::max<float>(float const&, float const&)
+     0.02%     0.01%  [.] AutoWowOracleRuntime::Runtime::BuildLiveGatherFrame(unsigned long, unsigned long, unsigned long, unsigned long, AutoWowOracle::ActiveLeaseSnapshot const&, AutoWowOracleRuntime::Runtime::LiveGatherFrame&) 
+     0.02%     0.01%  [.] PlayerbotAIBase::UpdateAI(unsigned int, bool)
+     0.02%     0.01%  [k] _raw_spin_lock
+     0.02%     0.00%  [.] AutoWowOracleRuntime::Runtime::EnsureQuestDirective(unsigned long, AutoWowOracleRuntime::BotState&)::{lambda()#2}::operator()() const
+     0.02%     0.00%  [.] AutoWowOracleRuntime::Runtime::Update(unsigned int)
+     0.02%     0.00%  [.] AutoWowOracleRuntime::Update(unsigned int)
+     0.02%     0.00%  [.] Engine::HasStrategy(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.02%     0.00%  [.] PathGenerator::BuildShortcut()
+     0.02%     0.00%  [.] PossibleNewRpgTargetsValue::Calculate()
+     0.02%     0.00%  [.] TravelNodePath::getCost(Player*, unsigned int)
+     0.02%     0.00%  [k] _raw_spin_unlock
+     0.02%     0.00%  [.] decltype ((__char_traits_cmp_cat<std::char_traits<char> >)(0)) std::operator<=><char, std::char_traits<char>, std::allocator<char> >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator
+     0.02%     0.00%  [.] lfg::LFGMgr::UpdateRaidBrowser(unsigned int)
+     0.02%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::compare(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) const
+     0.02%     0.00%  [.] std::__detail::_Hashtable_base<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::__detail::_Selec
+     0.02%     0.00%  [.] std::less<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >::operator()(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::__cxx11
+     0.02%     0.00%  [.] void std::__adjust_heap<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, long, TravelNode*, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(Wo
+     0.01%     0.01%  [.] AuctionHouseMgr::instance()
+     0.01%     0.01%  [.] AutoWowDungeonPath::ProbeResult::ProbeResult(AutoWowDungeonPath::ProbeResult&&)
+     0.01%     0.01%  [.] AutoWowOracle::Detail::SaturatingAdd(unsigned long, unsigned long)
+     0.01%     0.01%  [.] AutoWowOracleReceiptStore::Store::PushQuery(AutoWowOracleReceiptStore::ReceiptRecord const&)
+     0.01%     0.01%  [.] AutoWowOracleReceiptStore::Store::TryPush(AutoWowOracleReceiptStore::ReceiptRecord const&)
+     0.01%     0.01%  [.] AutoWowQuestLedger::EventName(AutoWowQuestLedger::Event)
+     0.01%     0.01%  [.] DBCStorage<FactionTemplateEntry>::LookupEntry(unsigned int) const
+     0.01%     0.01%  [.] OutdoorPvPMgr::instance()
+     0.01%     0.01%  [.] Position::GetExactDistSq(float, float, float) const
+     0.01%     0.01%  [.] ScriptMgr::OnWorldObjectDestroy(WorldObject*)
+     0.01%     0.01%  [.] WorldLocation::WorldRelocate(WorldLocation const&)
+     0.01%     0.01%  [.] WorldState::Update(unsigned int)
+     0.01%     0.01%  [.] __gnu_cxx::__normal_iterator<GuidPosition const*, std::vector<GuidPosition, std::allocator<GuidPosition> > >::operator++()
+     0.01%     0.01%  [.] __gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >::__normal_iterator(TravelNode** const&)
+     0.01%     0.01%  [.] __gnu_cxx::__normal_iterator<TravelNodeStub**, std::vector<TravelNodeStub*, std::allocator<TravelNodeStub*> > >::operator+(long) const
+     0.01%     0.01%  [.] __nanosleep
+     0.01%     0.01%  [k] __pv_queued_spin_lock_slowpath
+     0.01%     0.01%  [.] arena_slab_reg_alloc
+     0.01%     0.01%  [k] check_preemption_disabled
+     0.01%     0.01%  [.] dtNavMeshQuery::appendVertex(float const*, unsigned char, unsigned long, float*, unsigned char*, unsigned long*, int*, int) const
+     0.01%     0.01%  [.] dtNodeQueue::bubbleUp(int, dtNode*)
+     0.01%     0.01%  [k] in_lock_functions
+     0.01%     0.01%  [.] std::_Function_handler<void (PlayerbotScript*), ScriptMgr::OnPlayerbotUpdate(unsigned int)::{lambda(PlayerbotScript*)#1}>::_M_invoke(std::_Any_data const&, PlayerbotScript*&&)
+     0.01%     0.01%  [.] std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > > >, std:
+     0.01%     0.01%  [.] std::_Hashtable<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::allocator<std::pair<std::pair<u
+     0.01%     0.01%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to
+     0.01%     0.01%  [.] std::_Rb_tree<ObjectGuid, ObjectGuid, std::_Identity<ObjectGuid>, std::less<ObjectGuid>, std::allocator<ObjectGuid> >::_M_erase(std::_Rb_tree_node<ObjectGuid>*) [clone .isra.0]
+     0.01%     0.01%  [.] std::__detail::_Hash_code_base<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::__detail::_Selec
+     0.01%     0.01%  [.] std::__detail::_Hashtable_base<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::__detail::_Selec
+     0.01%     0.01%  [.] std::__detail::_Hashtable_base<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::__detail::_Selec
+     0.01%     0.01%  [.] std::__detail::_Hashtable_ebo_helper<1, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, true>::_M_cget() const
+     0.01%     0.01%  [.] std::__is_constant_evaluated()
+     0.01%     0.01%  [.] std::__new_allocator<ObjectGuid>::deallocate(ObjectGuid*, unsigned long)
+     0.01%     0.01%  [.] std::locale::id::_M_id() const
+     0.01%     0.01%  [.] std::vector<G3D::Vector3, std::allocator<G3D::Vector3> >::operator[](unsigned long)
+     0.01%     0.01%  [.] std::vector<GuidPosition, std::allocator<GuidPosition> >::push_back(GuidPosition const&)
+     0.01%     0.01%  [.] std::vector<TravelNode*, std::allocator<TravelNode*> >::push_back(TravelNode* const&)
+     0.01%     0.01%  [.] std::vector<mapTransfer, std::allocator<mapTransfer> >::end()
+     0.01%     0.01%  [.] std::vector<unsigned char, std::allocator<unsigned char> >::operator[](unsigned long)
+     0.01%     0.01%  [.] void std::_Construct<PathNodePoint, PathNodePoint const&>(PathNodePoint*, PathNodePoint const&)
+     0.01%     0.01%  [.] void std::vector<QuestFinisherSpawnCandidate, std::allocator<QuestFinisherSpawnCandidate> >::_M_realloc_insert<QuestFinisherSpawnCandidate const&>(__gnu_cxx::__normal_iterator<QuestFinisherSpawnCandidate*
+     0.01%     0.00%  [.] AutoWowDungeonPath::(anonymous namespace)::PrepareCollisionCorridor(Player const*, float, float, float, float)
+     0.01%     0.00%  [.] AutoWowDungeonPath::ProbeResult::ProbeResult()
+     0.01%     0.00%  [.] AutoWowGather::GetRouteSnapshot(unsigned int)
+     0.01%     0.00%  [.] AutoWowGather::RouteSnapshot::RouteSnapshot()
+     0.01%     0.00%  [.] AutoWowOracle::OracleArbiter<256ul, 64ul, 512ul, 512ul>::Renew(AutoWowOracle::WorldReadFrame const&, AutoWowOracle::IntentLease const&)
+     0.01%     0.00%  [.] AutoWowOracle::OracleArbiter<256ul, 64ul, 512ul, 512ul>::RenewImpl(AutoWowOracle::WorldReadFrame const&, AutoWowOracle::IntentLease const&, AutoWowOracle::Detail::ValidationMode)
+     0.01%     0.00%  [.] AutoWowQuestGiverTravel::SelectTravelMgrSegmentCandidate(std::vector<AutoWowQuestGiverTravel::TravelMgrReanchorCandidateFacts, std::allocator<AutoWowQuestGiverTravel::TravelMgrReanchorCandidateFacts> > co
+     0.01%     0.00%  [.] AutoWowQuestLedger::Emit(Player*, AutoWowQuestLedger::Event, unsigned int, char const*, char const*)
+     0.01%     0.00%  [.] AutoWowQuestLedger::FormatLine[abi:cxx11](std::basic_string_view<char, std::char_traits<char> >, AutoWowQuestLedger::Row const&)
+     0.01%     0.00%  [.] ChatCommandHandlerStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] Creature::~Creature()
+     0.01%     0.00%  [.] DefaultQuestStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] Map::RemoveAllObjectsInRemoveList()
+     0.01%     0.00%  [.] Movement::MoveSplineInit::MoveTo(G3D::Vector3 const&, bool, bool)
+     0.01%     0.00%  [.] NewRpgDoQuestAction::BlockQuest(NewRpgInfo::DoQuest&, QuestFailureReason, bool)
+     0.01%     0.00%  [.] NextAction::NextAction(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, float)
+     0.01%     0.00%  [.] PassThroughStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] PathNodePoint* std::__do_uninit_copy<PathNodePoint const*, PathNodePoint*>(PathNodePoint const*, PathNodePoint const*, PathNodePoint*)
+     0.01%     0.00%  [.] PlayerbotAI::GetWorldObject(ObjectGuid)
+     0.01%     0.00%  [.] PlayerbotAI::HandleTeleportAck()
+     0.01%     0.00%  [.] Position::GetExactDist(float, float, float) const
+     0.01%     0.00%  [.] PossibleNewRpgTargetsValue::AcceptUnit(Unit*)
+     0.01%     0.00%  [.] QuestStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] TravelNode::getDistance(WorldPosition)
+     0.01%     0.00%  [.] Unit::HasNpcFlag(NPCFlags) const
+     0.01%     0.00%  [.] Value<std::vector<int, std::allocator<int> > >* SharedValueContext::getGlobalValue<std::vector<int, std::allocator<int> > >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >,
+     0.01%     0.00%  [.] Value<std::vector<int, std::allocator<int> > >* SharedValueContext::getGlobalValue<std::vector<int, std::allocator<int> > >(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >,
+     0.01%     0.00%  [.] WorldObject::~WorldObject()
+     0.01%     0.00%  [.] WorldPacketHandlerStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] WorldPosition::WorldPosition(WorldObject const*)
+     0.01%     0.00%  [.] WorldPosition::distance(WorldPosition)
+     0.01%     0.00%  [.] WorldPosition::distance(WorldPosition*)
+     0.01%     0.00%  [.] WorldPosition::set(WorldLocation const&)
+     0.01%     0.00%  [.] WorldSession::HandleMoveTeleportAck(WorldPacket&)
+     0.01%     0.00%  [.] __GI___lll_lock_wait
+     0.01%     0.00%  [.] __gthread_mutex_unlock(pthread_mutex_t*)
+     0.01%     0.00%  [k] asm_exc_page_fault
+     0.01%     0.00%  [.] bool __gnu_cxx::__ops::_Iter_comp_val<TravelNodeMap::getRoute(WorldPosition, WorldPosition, std::vector<WorldPosition, std::allocator<WorldPosition> >&, Player*, bool)::{lambda(TravelNode*, TravelNode*)#2
+     0.01%     0.00%  [k] debug_smp_processor_id
+     0.01%     0.00%  [.] decltype (::new ((void*)(0)) std::optional<AutoWowDungeonPath::ProbeResult>((declval<std::optional<AutoWowDungeonPath::ProbeResult> >)())) std::construct_at<std::optional<AutoWowDungeonPath::ProbeResult>,
+     0.01%     0.00%  [k] do_user_addr_fault
+     0.01%     0.00%  [k] down_read_trylock
+     0.01%     0.00%  [k] exc_page_fault
+     0.01%     0.00%  [k] lock_mm_and_find_vma
+     0.01%     0.00%  [.] std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > > >, std:
+     0.01%     0.00%  [.] std::_Hashtable<int, std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > >, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosition> > > >, std:
+     0.01%     0.00%  [.] std::_Hashtable<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::allocator<std::pair<std::pair<u
+     0.01%     0.00%  [.] std::_Optional_base<AutoWowDungeonPath::ProbeResult, false, false>::_Optional_base(std::_Optional_base<AutoWowDungeonPath::ProbeResult, false, false>&&)
+     0.01%     0.00%  [.] std::_Optional_base_impl<unsigned long, std::_Optional_base<unsigned long, true, true> >::_M_get()
+     0.01%     0.00%  [.] std::_Optional_payload<AutoWowDungeonPath::ProbeResult, false, false, false>::_Optional_payload_base(bool, std::_Optional_payload_base<AutoWowDungeonPath::ProbeResult>&&)
+     0.01%     0.00%  [.] std::_Optional_payload<AutoWowDungeonPath::ProbeResult, true, false, false>::_Optional_payload_base(bool, std::_Optional_payload_base<AutoWowDungeonPath::ProbeResult>&&)
+     0.01%     0.00%  [.] std::_Optional_payload_base<AutoWowDungeonPath::ProbeResult>::_Optional_payload_base(bool, std::_Optional_payload_base<AutoWowDungeonPath::ProbeResult>&&)
+     0.01%     0.00%  [.] std::_Vector_base<ObjectGuid, std::allocator<ObjectGuid> >::_M_deallocate(ObjectGuid*, unsigned long)
+     0.01%     0.00%  [.] std::_Vector_base<PathNodePoint, std::allocator<PathNodePoint> >::_M_deallocate(PathNodePoint*, unsigned long)
+     0.01%     0.00%  [.] std::_Vector_base<PathNodePoint, std::allocator<PathNodePoint> >::~_Vector_base()
+     0.01%     0.00%  [.] std::__cxx11::basic_ostringstream<char, std::char_traits<char>, std::allocator<char> >::basic_ostringstream()
+     0.01%     0.00%  [.] std::__detail::_Hash_code_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > co
+     0.01%     0.00%  [.] std::__detail::_Hash_code_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > co
+     0.01%     0.00%  [.] std::__detail::_Hashtable_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > co
+     0.01%     0.00%  [.] std::__detail::_Hashtable_base<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::__detail::_Selec
+     0.01%     0.00%  [.] std::__detail::_Map_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, A
+     0.01%     0.00%  [.] std::__new_allocator<PathNodePoint>::deallocate(PathNodePoint*, unsigned long)
+     0.01%     0.00%  [.] std::basic_ios<char, std::char_traits<char> >::_M_cache_locale(std::locale const&)
+     0.01%     0.00%  [.] std::basic_ios<char, std::char_traits<char> >::init(std::basic_streambuf<char, std::char_traits<char> >*)
+     0.01%     0.00%  [.] std::lock_guard<std::mutex>::~lock_guard()
+     0.01%     0.00%  [.] std::mutex::unlock()
+     0.01%     0.00%  [.] std::optional<AutoWowDungeonPath::ProbeResult>& std::vector<std::optional<AutoWowDungeonPath::ProbeResult>, std::allocator<std::optional<AutoWowDungeonPath::ProbeResult> > >::emplace_back<std::optional<Au
+     0.01%     0.00%  [.] std::optional<AutoWowDungeonPath::ProbeResult>::optional(std::optional<AutoWowDungeonPath::ProbeResult>&&)
+     0.01%     0.00%  [.] std::optional<unsigned long>::operator*() &
+     0.01%     0.00%  [.] std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator<std::pair<int const, std::vector<GuidPosition, std::allocator<GuidPosit
+     0.01%     0.00%  [.] std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Action*, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, st
+     0.01%     0.00%  [.] std::vector<ObjectGuid, std::allocator<ObjectGuid> >::push_back(ObjectGuid const&)
+     0.01%     0.00%  [.] std::vector<PathNodePoint, std::allocator<PathNodePoint> >::~vector()
+     0.01%     0.00%  [.] std::vector<QuestFinisherSpawnCandidate, std::allocator<QuestFinisherSpawnCandidate> >::push_back(QuestFinisherSpawnCandidate const&)
+     0.01%     0.00%  [.] std::vector<TravelNode*, std::allocator<TravelNode*> >::end()
+     0.01%     0.00%  [.] std::vector<std::optional<AutoWowDungeonPath::ProbeResult>, std::allocator<std::optional<AutoWowDungeonPath::ProbeResult> > >::push_back(std::optional<AutoWowDungeonPath::ProbeResult>&&)
+     0.01%     0.00%  [.] void std::_Construct<AutoWowDungeonPath::ProbeResult, AutoWowDungeonPath::ProbeResult>(AutoWowDungeonPath::ProbeResult*, AutoWowDungeonPath::ProbeResult&&)
+     0.01%     0.00%  [.] void std::_Optional_payload_base<AutoWowDungeonPath::ProbeResult>::_M_construct<AutoWowDungeonPath::ProbeResult>(AutoWowDungeonPath::ProbeResult&&)
+     0.01%     0.00%  [.] void std::__final_insertion_sort<__gnu_cxx::__normal_iterator<TravelNodeStub**, std::vector<TravelNodeStub*, std::allocator<TravelNodeStub*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(
+     0.01%     0.00%  [.] void std::__make_heap<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, WorldPos
+     0.01%     0.00%  [.] void std::__pop_heap<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(WorldPosition, WorldPosi
+     0.01%     0.00%  [.] void std::__push_heap<__gnu_cxx::__normal_iterator<TravelNode**, std::vector<TravelNode*, std::allocator<TravelNode*> > >, long, TravelNode*, __gnu_cxx::__ops::_Iter_comp_val<TravelNodeMap::getRoute(World
+     0.01%     0.00%  [.] void std::__sort<__gnu_cxx::__normal_iterator<TravelNodeStub**, std::vector<TravelNodeStub*, std::allocator<TravelNodeStub*> > >, __gnu_cxx::__ops::_Iter_comp_iter<TravelNodeMap::getRoute(TravelNode*, Tra
+     0.01%     0.00%  [.] void std::sort<__gnu_cxx::__normal_iterator<TravelNodeStub**, std::vector<TravelNodeStub*, std::allocator<TravelNodeStub*> > >, TravelNodeMap::getRoute(TravelNode*, TravelNode*, Player*)::{lambda(TravelNo
+     0.01%     0.00%  [.] void std::vector<ObjectGuid, std::allocator<ObjectGuid> >::_M_realloc_insert<ObjectGuid const&>(__gnu_cxx::__normal_iterator<ObjectGuid*, std::vector<ObjectGuid, std::allocator<ObjectGuid> > >, ObjectGuid
+
+

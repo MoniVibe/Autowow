@@ -1,0 +1,431 @@
+    94.85%     0.00%  [.] start_thread
+    94.85%     0.00%  [.] 0x00007447d30ecdb3
+    94.83%     0.00%  [.] clone3
+    94.10%     0.05%  [.] MapUpdater::WorkerThread()
+    93.11%     0.07%  [.] MapUpdateRequest::call()
+    92.65%     0.13%  [.] Map::Update(unsigned int, unsigned int, bool)
+    80.66%     2.40%  [.] Map::UpdateNonPlayerObjects(unsigned int)
+    68.23%     2.34%  [.] Creature::Update(unsigned int)
+    33.53%     0.26%  [.] Unit::UpdateSplinePosition()
+    33.22%     0.09%  [.] WorldObject::UpdatePositionData()
+    33.20%     0.22%  [.] Map::CreatureRelocation(Creature*, float, float, float, float)
+    21.24%     0.54%  [.] Map::GetFullTerrainStatusForPosition(unsigned int, float, float, float, float, PositionFullTerrainStatus&, std::optional<unsigned char>)
+    16.13%     0.09%  [.] StaticVMapCollisionData::GetAreaAndLiquidData(float, float, float, std::optional<unsigned char>, VMAP::AreaAndLiquidData&) const
+    15.88%     0.03%  [.] VMAP::StaticMapTree::GetLocationInfo(G3D::Vector3 const&, VMAP::LocationInfo&) const
+    15.85%     4.79%  [.] void BIH::intersectPoint<VMAP::LocationInfoCallback>(G3D::Vector3 const&, VMAP::LocationInfoCallback&) const
+     4.35%     0.06%  [.] TempSummon::Update(unsigned int)
+     3.12%     0.16%  [.] SmartAI::UpdateAI(unsigned int)
+     2.45%     0.76%  [.] SmartScript::OnUpdate(unsigned int)
+     1.91%     1.91%  [.] Movement::MoveSpline::_updateState(int&)
+     1.91%     1.89%  [.] ThreatManager::Update(unsigned int)
+     1.65%     1.30%  [.] SmartScript::UpdateTimer(SmartScriptHolder&, unsigned int)
+     1.28%     1.28%  [.] std::_Rb_tree_increment(std::_Rb_tree_node_base*)
+     1.24%     0.97%  [.] GameObject::Update(unsigned int)
+     0.99%     0.99%  [.] __memset_avx2_unaligned_erms
+     0.78%     0.20%  [.] Unit::ExecuteDelayedUnitRelocationEvent()
+     0.73%     0.73%  [.] Creature::CanAlwaysSee(WorldObject const*) const
+     0.72%     0.37%  [.] dtNavMeshQuery::queryPolygonsInTile(dtMeshTile const*, float const*, float const*, dtQueryFilter const*, dtPolyQuery*) const
+     0.72%     0.00%  [.] PathGenerator::GetPolyByLocation(float const*, float*) const
+     0.72%     0.00%  [.] dtNavMeshQuery::findNearestPoly(float const*, float const*, dtQueryFilter const*, unsigned long*, float*) const
+     0.72%     0.00%  [.] dtNavMeshQuery::queryPolygons(float const*, float const*, dtQueryFilter const*, dtPolyQuery*) const
+     0.70%     0.01%  [.] WorldObject::UpdateAllowedPositionZ(float, float, float&, float*) const [clone .part.0]
+     0.64%     0.00%  [.] PathGenerator::NormalizePath()
+     0.63%     0.01%  [.] Map::GetWaterOrGroundLevel(unsigned int, float, float, float, float*, bool, float) const
+     0.63%     0.01%  [.] StaticTransport::RelocateToProgress(unsigned int)
+     0.58%     0.02%  [.] BIH::buildHierarchy(std::vector<unsigned int, std::allocator<unsigned int> >&, BIH::buildData&, BIH::BuildStats&)
+     0.57%     0.02%  [.] Map::GetHeight(float, float, float, bool, float) const
+     0.56%     0.08%  [.] SpellEvent::Execute(unsigned long, unsigned int)
+     0.51%     0.03%  [.] AutoWowCombatPerformanceTelemetry::(anonymous namespace)::IsPlayerbotPlayer(Unit*, unsigned int&)
+     0.49%     0.40%  [.] BIH::subdivide(int, int, std::vector<unsigned int, std::allocator<unsigned int> >&, BIH::buildData&, AABound&, AABound&, int, int, BIH::BuildStats&)
+     0.49%     0.03%  [.] StaticVMapCollisionData::getHeight(float, float, float, float) const
+     0.44%     0.09%  [.] Unit::ProcessPositionDataChanged(PositionFullTerrainStatus const&)
+     0.44%     0.00%  [.] VMAP::StaticMapTree::getHeight(G3D::Vector3 const&, float) const
+     0.42%     0.01%  [.] GameObject::UpdateModelPosition()
+     0.41%     0.06%  [.] Spell::update(unsigned int)
+     0.35%     0.27%  [.] Acore::CreatureRelocationNotifier::Visit(GridRefMgr<Player>&)
+     0.35%     0.03%  [.] dtFindNearestPolyQuery::process(dtMeshTile const*, dtPoly**, unsigned long*, int)
+     0.33%     0.03%  [.] operator new(unsigned long)
+     0.33%     0.00%  [.] StaticTransport::UpdatePosition(float, float, float, float)
+     0.32%     0.09%  [.] dtNavMesh::closestPointOnPoly(unsigned long, float const*, float*, bool*) const
+     0.28%     0.27%  [.] pthread_mutex_lock@@GLIBC_2.2.5
+     0.27%     0.00%  [.] CombatAI::UpdateAI(unsigned int)
+     0.26%     0.26%  [.] ObjectMgr::GetCreatureMovementOverride(unsigned int) const
+     0.26%     0.06%  [.] FormationMovementGenerator::DoUpdate(Creature*, unsigned int)
+     0.26%     0.17%  [.] WorldSession::Update(unsigned int, PacketFilter&)
+     0.26%     0.00%  [.] Map::CheckCollisionAndGetValidCoords(WorldObject const*, float, float, float, float&, float&, float&, bool) const
+     0.26%     0.00%  [.] WorldObject::MovePositionToFirstCollision(Position&, float, float)
+     0.24%     0.02%  [.] MapUpdater::update_finished()
+     0.24%     0.01%  [.] std::_Hashtable<ObjectGuid, std::pair<ObjectGuid const, PlayerbotAIBase*>, std::allocator<std::pair<ObjectGuid const, PlayerbotAIBase*> >, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<O
+     0.23%     0.00%  [.] MapInstanced::Update(unsigned int, unsigned int, bool)
+     0.23%     0.00%  [.] std::unordered_map<ObjectGuid, PlayerbotAIBase*, std::hash<ObjectGuid>, std::equal_to<ObjectGuid>, std::allocator<std::pair<ObjectGuid const, PlayerbotAIBase*> > >::find(ObjectGuid const&)
+     0.22%     0.00%  [.] AiObjectContext::GetUntypedValue(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.22%     0.00%  [.] NamedObjectContextList<UntypedValue>::GetContextObject(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, PlayerbotAI*)
+     0.21%     0.00%  [.] FormationMovementGenerator::LaunchMovement(Creature*, Unit*)
+     0.21%     0.00%  [.] pthread_cond_broadcast@@GLIBC_2.3.2
+     0.20%     0.20%  [.] Creature::IsMovementPreventedByCasting() const
+     0.20%     0.17%  [.] Movement::SplineBase::EvaluateCatmullRom(int, float, G3D::Vector3&) const
+     0.20%     0.03%  [.] Unit::GetOwner() const
+     0.20%     0.01%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, UntypedVal
+     0.20%     0.00%  [.] Spell::prepare(SpellCastTargets const*, AuraEffect const*)
+     0.20%     0.00%  [.] std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, UntypedValue*, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >
+     0.19%     0.19%  [.] WorldObject::IsWithinSightRange(Position const&, float) const
+     0.19%     0.00%  [.] CalculatedValue<QuestObjectiveSpec>::Get()
+     0.18%     0.03%  [.] Spell::UpdatePointers()
+     0.18%     0.00%  [.] ActiveQuestObjectiveValue::Calculate()
+     0.17%     0.17%  [.] BoundsTrait<GameObjectModel>::GetBounds2(GameObjectModel const*, G3D::AABox&)
+     0.17%     0.09%  [.] je_tcache_bin_flush_small
+     0.17%     0.01%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, UntypedVal
+     0.16%     0.16%  [.] SpellInfo::IsChanneled() const
+     0.16%     0.16%  [.] Unit::UpdateReactives(unsigned int)
+     0.16%     0.06%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::basic_string(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.16%     0.01%  [.] UnitAI::DoMeleeAttackIfReady()
+     0.15%     0.15%  [.] SmartScript::SmartScriptFrame& std::deque<SmartScript::SmartScriptFrame, std::allocator<SmartScript::SmartScriptFrame> >::emplace_back<SmartScript::SmartScriptFrame>(SmartScript::SmartScriptFrame&&) [clon
+     0.15%     0.02%  [.] std::_Hashtable<ObjectGuid, std::pair<ObjectGuid const, PlayerbotAIBase*>, std::allocator<std::pair<ObjectGuid const, PlayerbotAIBase*> >, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<O
+     0.14%     0.14%  [.] __memmove_avx_unaligned_erms
+     0.14%     0.14%  [.] std::_Function_handler<void (AllCreatureScript*), ScriptMgr::OnCreatureUpdate(Creature*, unsigned int)::{lambda(AllCreatureScript*)#1}>::_M_invoke(std::_Any_data const&, AllCreatureScript*&&)
+     0.13%     0.13%  [.] PlayerbotAIBase::IsBotAI() const
+     0.13%     0.13%  [.] malloc
+     0.13%     0.08%  [.] std::_Hashtable<ObjectGuid, std::pair<ObjectGuid const, PlayerbotAIBase*>, std::allocator<std::pair<ObjectGuid const, PlayerbotAIBase*> >, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<O
+     0.12%     0.09%  [.] Unit::GetAuraApplication(unsigned int, ObjectGuid, ObjectGuid, unsigned char, AuraApplication*) const
+     0.11%     0.01%  [.] Event::Event(Event const&)
+     0.10%     0.07%  [.] Player::UpdateEnchantTime(unsigned int)
+     0.09%     0.03%  [.] Queue::Push(ActionBasket*)
+     0.08%     0.01%  [.] GridObjectLoader::LoadCreatures(std::set<unsigned int, std::less<unsigned int>, std::allocator<unsigned int> > const&, Map*)
+     0.07%     0.07%  [.] Creature::IsEngaged() const
+     0.07%     0.07%  [.] DynamicMapTree::contains(GameObjectModel const&) const
+     0.07%     0.01%  [.] LootTargetList::shrink(long)
+     0.07%     0.01%  [.] VMAP::ModelInstance::GetLiquidLevel(G3D::Vector3 const&, VMAP::LocationInfo&, float&) const
+     0.07%     0.01%  [.] std::vector<G3D::Vector3, std::allocator<G3D::Vector3> >::_M_default_append(unsigned long)
+     0.07%     0.00%  [.] je_tcache_event_hard
+     0.06%     0.06%  [.] ScriptMgr::OnWorldObjectUpdate(WorldObject*, unsigned int)
+     0.06%     0.03%  [.] PlayerbotAI::HasAura(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Unit*, bool, bool, int, bool)
+     0.06%     0.02%  [.] Cell::CalculateCellArea(float, float, float)
+     0.06%     0.00%  [.] Creature::LoadCreatureFromDB(unsigned int, Map*, bool, bool)
+     0.06%     0.00%  [.] Queue::Pop()
+     0.06%     0.00%  [.] Queue::extractAndDeleteBasket(ActionBasket*)
+     0.06%     0.00%  [.] Spell::DoAllEffectOnTarget(TargetInfo*) [clone .part.0]
+     0.06%     0.00%  [.] Value<Unit*>* AiObjectContext::GetValue<Unit*>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.06%     0.00%  [.] std::__detail::_Hashtable_base<ObjectGuid, std::pair<ObjectGuid const, PlayerbotAIBase*>, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<ObjectGuid>, std::__detail::_Mod_range_hashing, st
+     0.05%     0.05%  [.] GridReference<Creature>::targetObjectBuildLink()
+     0.05%     0.05%  [.] SpellInfo::IsPassive() const
+     0.05%     0.05%  [.] VMAP::WmoLiquid::GetLiquidHeight(G3D::Vector3 const&, float&) const
+     0.05%     0.05%  [.] std::__detail::_Hashtable_base<ObjectGuid, std::pair<ObjectGuid const, PlayerbotAIBase*>, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<ObjectGuid>, std::__detail::_Mod_range_hashing, st
+     0.05%     0.01%  [.] Object::GetGUID() const
+     0.05%     0.01%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, Trigger*>,
+     0.05%     0.01%  [.] std::vector<NextAction, std::allocator<NextAction> >::vector(std::vector<NextAction, std::allocator<NextAction> > const&)
+     0.05%     0.00%  [.] AiObjectContext::GetTrigger(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.05%     0.00%  [.] CalculatedValue<unsigned char>::Get()
+     0.05%     0.00%  [.] Creature::Create(unsigned int, Map*, unsigned int, unsigned int, unsigned int, float, float, float, float, CreatureData const*)
+     0.05%     0.00%  [.] Map::MoveAllCreaturesInMoveList()
+     0.05%     0.00%  [.] NamedObjectContextList<Trigger>::GetContextObject(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, PlayerbotAI*)
+     0.05%     0.00%  [.] PlayerbotAI::CanCastSpell(unsigned int, Unit*, bool, Item*, Item*)
+     0.05%     0.00%  [.] Unit::CastSpell(Unit*, unsigned int, TriggerCastFlags, Item*, AuraEffect const*, ObjectGuid)
+     0.05%     0.00%  [.] Unit::GetProcAurasTriggeredOnEvent(std::vector<std::pair<unsigned char, AuraApplication*>, std::allocator<std::pair<unsigned char, AuraApplication*> > >&, std::__cxx11::list<AuraApplication*, std::allocat
+     0.05%     0.00%  [.] std::_Rb_tree_const_iterator<LootTarget>::operator++()
+     0.05%     0.00%  [.] std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Trigger*, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, s
+     0.05%     0.00%  [.] void Map::AddToGrid<Creature>(Creature*, Cell const&)
+     0.04%     0.04%  [.] Creature::SetPosition(float, float, float, float)
+     0.04%     0.04%  [.] G3D::Vector4::operator*(G3D::Matrix4 const&) const
+     0.04%     0.04%  [.] Player::UpdateAfkReport(long)
+     0.04%     0.04%  [.] Position::GetPositionY() const
+     0.04%     0.04%  [.] Unit::_DeleteRemovedAuras()
+     0.04%     0.03%  [.] __cxxabiv1::__vmi_class_type_info::__do_dyncast(long, __cxxabiv1::__class_type_info::__sub_kind, __cxxabiv1::__class_type_info const*, void const*, __cxxabiv1::__class_type_info const*, void const*, __cxx
+     0.04%     0.03%  [k] futex_q_lock
+     0.04%     0.01%  [.] Creature::UpdateEntry(unsigned int, CreatureData const*, bool, bool) [clone .part.0]
+     0.04%     0.01%  [.] dtDistancePtPolyEdgesSqr(float const*, float const*, int, float*, float*)
+     0.04%     0.01%  [.] std::__detail::_Node_iterator<std::pair<Trigger* const, Event>, false, false>::_Node_iterator(std::__detail::_Hash_node<std::pair<Trigger* const, Event>, false>*)
+     0.04%     0.00%  [.] ActionNode::ActionNode(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::vector<NextAction, std::allocator<NextAction> >, std::vector<NextAction, std::allocator<NextAct
+     0.04%     0.00%  [.] AiNamedObject::getName[abi:cxx11]()
+     0.04%     0.00%  [.] HealthInRangeTrigger::GetValue()
+     0.04%     0.00%  [.] HealthInRangeTrigger::IsActive()
+     0.04%     0.00%  [.] PlayerbotAIConfig::IsInRandomAccountList(unsigned int)
+     0.04%     0.00%  [.] Unit::CalculateMeleeDamage(Unit*, CalcDamageInfo*, WeaponAttackType, bool)
+     0.04%     0.00%  [.] Unit::DealDamage(Unit*, Unit*, unsigned int, CleanDamage const*, DamageEffectType, SpellSchoolMask, SpellInfo const*, bool, bool, Spell const*)
+     0.04%     0.00%  [.] ValueInRangeTrigger::IsActive()
+     0.04%     0.00%  [.] __gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<unsigned int> > > std::find<__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<unsign
+     0.04%     0.00%  [k] futex_wait_setup
+     0.04%     0.00%  [.] je_arena_dalloc_bin_junked_locked
+     0.04%     0.00%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::funct
+     0.04%     0.00%  [.] std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::function<ActionNode* (PlayerbotAI*)>, std::hash<std::__cxx11::basic_string<char, std::char_traits<c
+     0.03%     0.03%  [.] Creature::IsInvisibleDueToDespawn() const
+     0.03%     0.03%  [.] EventMap::ExecuteEvent()
+     0.03%     0.03%  [.] G3D::MemoryManager::free(void*)
+     0.03%     0.03%  [.] GetTalentSpellPos(unsigned int)
+     0.03%     0.03%  [.] NullGameObjectAI::UpdateAI(unsigned int)
+     0.03%     0.03%  [.] SmartAI::CheckConditions(unsigned int)
+     0.03%     0.03%  [.] Trigger::needCheck(unsigned int)
+     0.03%     0.03%  [.] arena_dalloc_bin_locked_impl
+     0.03%     0.03%  [.] bool __gnu_cxx::__ops::_Iter_equals_val<unsigned int const>::operator()<std::_List_iterator<unsigned int> >(std::_List_iterator<unsigned int>)
+     0.03%     0.03%  [k] futex_wake_mark
+     0.03%     0.02%  [.] Player::HasSpell(unsigned int) const
+     0.03%     0.02%  [.] ReactorAI::UpdateAI(unsigned int)
+     0.03%     0.02%  [.] void LockedQueue<WorldPacket*, std::deque<WorldPacket*, std::allocator<WorldPacket*> > >::readd<__gnu_cxx::__normal_iterator<WorldPacket**, std::vector<WorldPacket*, std::allocator<WorldPacket*> > > >(__g
+     0.03%     0.01%  [.] ConditionMgr::IsObjectMeetToConditionList(ConditionSourceInfo&, std::__cxx11::list<Condition*, std::allocator<Condition*> > const&)
+     0.03%     0.01%  [.] G3D::Vector3* std::__uninitialized_default_n<G3D::Vector3*, unsigned long>(G3D::Vector3*, unsigned long)
+     0.03%     0.01%  [.] HunterAspectOfTheDragonhawkTrigger::IsActive()
+     0.03%     0.01%  [.] Player::UpdatePvPFlag(long)
+     0.03%     0.00%  [.] ActionNode* std::__invoke_impl<ActionNode*, ActionNode* (*&)(PlayerbotAI*), PlayerbotAI*>(std::__invoke_other, ActionNode* (*&)(PlayerbotAI*), PlayerbotAI*&&)
+     0.03%     0.00%  [.] G3D::Vector3* std::__uninitialized_default_n_a<G3D::Vector3*, unsigned long, G3D::Vector3>(G3D::Vector3*, unsigned long, std::allocator<G3D::Vector3>&)
+     0.03%     0.00%  [.] GetTalentSpellCost(unsigned int)
+     0.03%     0.00%  [.] GridRefMgr<Player>::begin()
+     0.03%     0.00%  [.] GridRefMgr<Player>::getFirst()
+     0.03%     0.00%  [.] HealthValue::Calculate()
+     0.03%     0.00%  [.] HealthValue::GetTarget()
+     0.03%     0.00%  [.] RefMgr<GridRefMgr<Player>, Player>::getFirst()
+     0.03%     0.00%  [.] Spell::SearchAreaTargets(std::__cxx11::list<WorldObject*, std::allocator<WorldObject*> >&, float, Position const*, Unit*, SpellTargetObjectTypes, SpellTargetCheckTypes, std::__cxx11::list<Condition*, std:
+     0.03%     0.00%  [.] Spell::handle_delayed(unsigned long)
+     0.03%     0.00%  [.] SpellInfo::CheckShapeshift(unsigned int) const
+     0.03%     0.00%  [.] Unit::RollMeleeOutcomeAgainst(Unit const*, WeaponAttackType) const
+     0.03%     0.00%  [.] Value<float>* AiObjectContext::GetValue<float>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.03%     0.00%  [.] dtNavMeshQuery::getEdgeMidPoint(unsigned long, dtPoly const*, dtMeshTile const*, unsigned long, dtPoly const*, dtMeshTile const*, float*) const
+     0.03%     0.00%  [.] std::_Function_handler<ActionNode* (PlayerbotAI*), ActionNode* (*)(PlayerbotAI*)>::_M_invoke(std::_Any_data const&, PlayerbotAI*&&)
+     0.03%     0.00%  [.] std::_List_iterator<unsigned int> std::__find_if<std::_List_iterator<unsigned int>, __gnu_cxx::__ops::_Iter_equals_val<unsigned int const> >(std::_List_iterator<unsigned int>, std::_List_iterator<unsigned
+     0.03%     0.00%  [.] std::_List_iterator<unsigned int> std::__find_if<std::_List_iterator<unsigned int>, __gnu_cxx::__ops::_Iter_equals_val<unsigned int const> >(std::_List_iterator<unsigned int>, std::_List_iterator<unsigned
+     0.03%     0.00%  [.] std::_List_iterator<unsigned int> std::find<std::_List_iterator<unsigned int>, unsigned int>(std::_List_iterator<unsigned int>, std::_List_iterator<unsigned int>, unsigned int const&)
+     0.03%     0.00%  [.] std::_Rb_tree_iterator<std::pair<Unit* const, unsigned char> > std::_Rb_tree<Unit*, std::pair<Unit* const, unsigned char>, std::_Select1st<std::pair<Unit* const, unsigned char> >, std::less<Unit*>, std::a
+     0.03%     0.00%  [.] std::enable_if<is_invocable_r_v<ActionNode*, ActionNode* (*&)(PlayerbotAI*), PlayerbotAI*>, ActionNode*>::type std::__invoke_r<ActionNode*, ActionNode* (*&)(PlayerbotAI*), PlayerbotAI*>(ActionNode* (*&)(P
+     0.03%     0.00%  [.] void VisitorHelper<Acore::WorldObjectListSearcher<Acore::WorldObjectSpellAreaTargetCheck>, GameObject, TypeList<Player, TypeList<Creature, TypeList<Corpse, TypeList<DynamicObject, TypeNull> > > > >(Acore:
+     0.02%     0.02%  [.] AuraEffect::GetSpellInfo() const
+     0.02%     0.02%  [.] BIH::BuildStats::updateLeaf(int, int)
+     0.02%     0.02%  [.] CoordPair<512u> Acore::Compute<CoordPair<512u>, 256>(float, float, float)
+     0.02%     0.02%  [.] Creature::SetSwim(bool)
+     0.02%     0.02%  [.] G3D::finf()
+     0.02%     0.02%  [.] Movement::PacketBuilder::WriteCommonMonsterMovePart(Movement::MoveSpline const&, ByteBuffer&)
+     0.02%     0.02%  [.] Object::HasByteFlag(unsigned short, unsigned char, unsigned char) const
+     0.02%     0.02%  [.] ScriptMgr::OnMapUpdate(Map*, unsigned int)
+     0.02%     0.02%  [.] SpellMgr::GetSpellProcEntry(unsigned int) const
+     0.02%     0.02%  [.] Unit::HasUnitState(unsigned int) const
+     0.02%     0.02%  [.] WorldObject::AddToObjectUpdate()
+     0.02%     0.02%  [.] __gnu_cxx::__ops::_Iter_equals_val<unsigned int const> __gnu_cxx::__ops::__iter_equals_val<unsigned int const>(unsigned int const&)
+     0.02%     0.02%  [.] boost::hash_detail::hash_mix_impl<64ul>::fn(unsigned long)
+     0.02%     0.02%  [.] std::_Hashtable<ObjectGuid, std::pair<ObjectGuid const, Player*>, std::allocator<std::pair<ObjectGuid const, Player*> >, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<ObjectGuid>, std::_
+     0.02%     0.02%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_data() const
+     0.02%     0.02%  [.] std::chrono::duration<long, std::ratio<1l, 1000000000l> >::duration<long, void>(long const&)
+     0.02%     0.01%  [.] ActionBasket::~ActionBasket()
+     0.02%     0.01%  [.] Item::GetTemplate() const
+     0.02%     0.01%  [.] LootTargetList::LootTargetList(LootTargetList const&)
+     0.02%     0.01%  [.] PossibleNewRpgGameObjectsValue::Calculate()
+     0.02%     0.01%  [.] __gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<unsigned int> > > std::__find_if<__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<u
+     0.02%     0.01%  [.] std::_Vector_base<NextAction, std::allocator<NextAction> >::_M_allocate(unsigned long)
+     0.02%     0.01%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::empty() const
+     0.02%     0.00%  [.] Acore::ComputeCellCoord(float, float)
+     0.02%     0.00%  [.] Aura::GetProcEffectMask(AuraApplication*, ProcEventInfo&, std::chrono::time_point<std::chrono::_V2::steady_clock, std::chrono::duration<long, std::ratio<1l, 1000000000l> > >) const
+     0.02%     0.00%  [.] Aura::_Remove(AuraRemoveMode)
+     0.02%     0.00%  [.] AuraEffect::HandleEffect(AuraApplication*, unsigned char, bool)
+     0.02%     0.00%  [.] AutoWowOracleRuntime::IsOwned(unsigned long, unsigned long)
+     0.02%     0.00%  [.] CheckMountStateAction::Execute(Event)
+     0.02%     0.00%  [.] Creature::AddToWorld()
+     0.02%     0.00%  [.] Creature::IsInEvadeMode() const
+     0.02%     0.00%  [.] Event::operator!() const
+     0.02%     0.00%  [.] FindCorpseAction::Execute(Event)
+     0.02%     0.00%  [.] Map::LoadGridsInRange(Position const&, float)
+     0.02%     0.00%  [.] Movement::PacketBuilder::WriteMonsterMove(Movement::MoveSpline const&, ByteBuffer&)
+     0.02%     0.00%  [.] NamedObjectContext<UntypedValue>::create(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, PlayerbotAI*)
+     0.02%     0.00%  [.] NewRpgBaseAction::ChooseNpcOrGameObjectToInteract(bool, float)
+     0.02%     0.00%  [.] NewRpgBaseAction::SearchQuestGiverAndAcceptOrReward()
+     0.02%     0.00%  [.] Object::SetUInt32Value(unsigned short, unsigned int)
+     0.02%     0.00%  [.] ObjectVisibilityContainer::UnlinkWorldObjectVisibility(WorldObject*)
+     0.02%     0.00%  [.] Player::IsPvP()
+     0.02%     0.00%  [.] PlayerbotFactory::InitAvailableSpells()
+     0.02%     0.00%  [.] RandomPlayerbotMgr::Refresh(Player*)
+     0.02%     0.00%  [.] RandomPlayerbotMgr::Revive(Player*)
+     0.02%     0.00%  [.] Trainer::Trainer::CanTeachSpell(Player const*, Trainer::Spell const*) const
+     0.02%     0.00%  [.] Trainer::Trainer::GetSpellState(Player const*, Trainer::Spell const*) const
+     0.02%     0.00%  [.] Unit::GetProcAurasTriggeredOnEvent(std::vector<std::pair<unsigned char, AuraApplication*>, std::allocator<std::pair<unsigned char, AuraApplication*> > >&, std::__cxx11::list<AuraApplication*, std::allocat
+     0.02%     0.00%  [.] Unit::ModifyHealth(int)
+     0.02%     0.00%  [.] Unit::RemoveOwnedAura(std::_Rb_tree_iterator<std::pair<unsigned int const, Aura*> >&, AuraRemoveMode)
+     0.02%     0.00%  [.] Unit::SetHealth(unsigned int)
+     0.02%     0.00%  [.] Unit::_UnapplyAura(AuraApplication*, AuraRemoveMode)
+     0.02%     0.00%  [.] Unit::_UnapplyAura(std::_Rb_tree_iterator<std::pair<unsigned int const, AuraApplication*> >&, AuraRemoveMode)
+     0.02%     0.00%  [.] UseItemAction::Execute(Event)
+     0.02%     0.00%  [.] UseItemAction::UseItem(Item*, ObjectGuid, Item*, Unit*)
+     0.02%     0.00%  [.] UseItemAction::UseItemAuto(Item*)
+     0.02%     0.00%  [.] Value<QuestObjectiveSpec>* AiObjectContext::GetValue<QuestObjectiveSpec>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.02%     0.00%  [.] Value<float>* AiObjectContext::GetValue<float>(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char
+     0.02%     0.00%  [.] Value<std::unordered_map<unsigned int, std::unordered_map<unsigned int, std::unordered_map<int, std::vector<GuidPosition, std::allocator<GuidPosition> >, std::hash<int>, std::equal_to<int>, std::allocator
+     0.02%     0.00%  [.] __gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<unsigned int> > > std::__find_if<__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int, std::allocator<u
+     0.02%     0.00%  [.] bool Map::AddToMap<Creature>(Creature*, bool)
+     0.02%     0.00%  [.] boost::hash<std::pair<unsigned int, unsigned int> >::operator()(std::pair<unsigned int, unsigned int> const&) const
+     0.02%     0.00%  [.] boost::hash_detail::hash_mix(unsigned long)
+     0.02%     0.00%  [.] std::_Hashtable<ObjectGuid, std::pair<ObjectGuid const, Player*>, std::allocator<std::pair<ObjectGuid const, Player*> >, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<ObjectGuid>, std::_
+     0.02%     0.00%  [.] std::_Hashtable<Trigger*, std::pair<Trigger* const, Event>, std::allocator<std::pair<Trigger* const, Event> >, std::__detail::_Select1st, std::equal_to<Trigger*>, std::hash<Trigger*>, std::__detail::_Mod_
+     0.02%     0.00%  [.] std::_Rb_tree<unsigned int, std::pair<unsigned int const, QuestStatusData>, std::_Select1st<std::pair<unsigned int const, QuestStatusData> >, std::less<unsigned int>, std::allocator<std::pair<unsigned int
+     0.02%     0.00%  [.] std::_Vector_base<NextAction, std::allocator<NextAction> >::_M_create_storage(unsigned long)
+     0.02%     0.00%  [.] std::_Vector_base<NextAction, std::allocator<NextAction> >::_Vector_base(unsigned long, std::allocator<NextAction> const&)
+     0.02%     0.00%  [.] std::__detail::_Hash_code_base<std::pair<unsigned int, unsigned int>, std::pair<std::pair<unsigned int, unsigned int> const, std::vector<mapTransfer, std::allocator<mapTransfer> > >, std::__detail::_Selec
+     0.02%     0.00%  [.] std::chrono::duration<long, std::ratio<1l, 1000000000l> >::zero()
+     0.02%     0.00%  [.] std::chrono::time_point<std::chrono::_V2::steady_clock, std::chrono::duration<long, std::ratio<1l, 1000000000l> > >::time_point()
+     0.02%     0.00%  [.] unsigned long boost::hash_value<unsigned int, unsigned int>(std::pair<unsigned int, unsigned int> const&)
+     0.02%     0.00%  [.] void boost::hash_combine<unsigned int>(unsigned long&, unsigned int const&)
+     0.01%     0.01%  [.] AuraEffect::GetAuraType() const
+     0.01%     0.01%  [.] AutoWowOracleRuntime::(anonymous namespace)::FindBot(unsigned long)
+     0.01%     0.01%  [.] AutoWowOracleRuntime::Runtime::HasActiveLease(unsigned long, unsigned long) const
+     0.01%     0.01%  [.] CinematicMgr::UpdateCinematic(unsigned int)
+     0.01%     0.01%  [.] Condition::Meets(ConditionSourceInfo&)
+     0.01%     0.01%  [.] ConditionMgr::GetConditionsForNotGroupedEntry[abi:cxx11](ConditionSourceType, unsigned int)
+     0.01%     0.01%  [.] CoordPair<512u>::CoordPair(CoordPair<512u> const&)
+     0.01%     0.01%  [.] Creature::HasWeaponForAttack(WeaponAttackType) const
+     0.01%     0.01%  [.] G3D::AABox::corner(int) const
+     0.01%     0.01%  [.] GameObjectModelOwnerImpl::GetDisplayId() const
+     0.01%     0.01%  [.] GuidPosition* std::__addressof<GuidPosition>(GuidPosition&)
+     0.01%     0.01%  [.] LinkedListHead::Iterator<GridReference<Creature> >::Iterator(GridReference<Creature>*)
+     0.01%     0.01%  [.] Map::MoveAllDynamicObjectsInMoveList()
+     0.01%     0.01%  [.] Player::UpdatePotionCooldown(Spell*)
+     0.01%     0.01%  [.] Position::GetPositionX() const
+     0.01%     0.01%  [.] RandomBotUpdateTrigger::IsActive()
+     0.01%     0.01%  [.] ScriptMgr::CanPrepare(Spell*, SpellCastTargets const*, AuraEffect const*)
+     0.01%     0.01%  [.] ScriptMgr::OnSpellCheckCast(Spell*, bool, SpellCastResult&)
+     0.01%     0.01%  [.] SmartAI::SmartAI(Creature*)
+     0.01%     0.01%  [.] Spell::~Spell()
+     0.01%     0.01%  [.] TrainCostValue::Calculate()
+     0.01%     0.01%  [.] Unit::CalcHealAbsorb(HealInfo&)
+     0.01%     0.01%  [.] Unit::GetCombatReach() const
+     0.01%     0.01%  [.] Unit::GetUnitDodgeChance() const
+     0.01%     0.01%  [.] Unit::ProcSkillsAndAuras(Unit*, Unit*, unsigned int, unsigned int, unsigned int, unsigned int, WeaponAttackType, SpellInfo const*, SpellInfo const*, signed char, Spell const*, DamageInfo*, HealInfo*, unsi
+     0.01%     0.01%  [.] Unit::RemoveAurasByType(AuraType, ObjectGuid, Aura*, bool, bool)
+     0.01%     0.01%  [.] VMAP::GroupModel::GetLiquidLevel(G3D::Vector3 const&, float&) const
+     0.01%     0.01%  [.] Value<LastMovement&>::operator LastMovement&()
+     0.01%     0.01%  [.] WorldObject::IsInMap(WorldObject const*) const
+     0.01%     0.01%  [.] __cxxabiv1::__class_type_info::__do_dyncast(long, __cxxabiv1::__class_type_info::__sub_kind, __cxxabiv1::__class_type_info const*, void const*, __cxxabiv1::__class_type_info const*, void const*, __cxxabiv
+     0.01%     0.01%  [.] __gnu_cxx::__normal_iterator<NextAction*, std::vector<NextAction, std::allocator<NextAction> > >::operator++()
+     0.01%     0.01%  [.] __gnu_cxx::__normal_iterator<unsigned char const*, std::vector<unsigned char, std::allocator<unsigned char> > >::__normal_iterator(unsigned char const* const&)
+     0.01%     0.01%  [.] __strcmp_avx2
+     0.01%     0.01%  [.] dtNavMesh::calcTileLoc(float const*, int*, int*) const
+     0.01%     0.01%  [.] dtNodePool::clear()
+     0.01%     0.01%  [.] go_heat::go_heatAI::UpdateAI(unsigned int)
+     0.01%     0.01%  [.] npc_llod_generic::npc_llod_genericAI::UpdateAI(unsigned int)
+     0.01%     0.01%  [.] npc_mageguard_dalaran::npc_mageguard_dalaranAI::UpdateAI(unsigned int)
+     0.01%     0.01%  [.] npc_wild_wyrm::UpdateAI(unsigned int)
+     0.01%     0.01%  [.] pthread_cond_broadcast@plt
+     0.01%     0.01%  [.] std::_Function_handler<void (PlayerbotScript*), ScriptMgr::OnPlayerbotPacketSent(Player*, WorldPacket const*)::{lambda(PlayerbotScript*)#1}>::_M_invoke(std::_Any_data const&, PlayerbotScript*&&)
+     0.01%     0.01%  [.] std::_Hashtable<ObjectGuid, std::pair<ObjectGuid const, CombatReference*>, std::allocator<std::pair<ObjectGuid const, CombatReference*> >, std::__detail::_Select1st, std::equal_to<ObjectGuid>, std::hash<O
+     0.01%     0.01%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, Action*>, 
+     0.01%     0.01%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, AutoWowCombatPerformanceTelemetry::RollingCounters>, std::allocator<std::pair<unsigned int const, AutoWowCombatPerformanceTelemetry::RollingCoun
+     0.01%     0.01%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, LootTemplate*>, std::allocator<std::pair<unsigned int const, LootTemplate*> >, std::__detail::_Select1st, std::equal_to<unsigned int>, std::hash
+     0.01%     0.01%  [.] std::_Hashtable<unsigned int, std::pair<unsigned int const, PlayerSpell*>, std::allocator<std::pair<unsigned int const, PlayerSpell*> >, std::__detail::_Select1st, std::equal_to<unsigned int>, std::hash<u
+     0.01%     0.01%  [.] std::_Rb_tree<unsigned int, std::pair<unsigned int const, bool>, std::_Select1st<std::pair<unsigned int const, bool> >, std::less<unsigned int>, std::allocator<std::pair<unsigned int const, bool> > >::_M_
+     0.01%     0.01%  [.] std::_Select1st<std::pair<unsigned int const, QuestStatusData> >::operator()(std::pair<unsigned int const, QuestStatusData> const&) const
+     0.01%     0.01%  [.] std::_Tuple_impl<0ul, AutoWowCampaignTravel::CampaignTravelMailbox*, std::default_delete<AutoWowCampaignTravel::CampaignTravelMailbox> >::_M_head(std::_Tuple_impl<0ul, AutoWowCampaignTravel::CampaignTrave
+     0.01%     0.01%  [.] std::_Vector_base<ObjectGuid, std::allocator<ObjectGuid> >::_M_create_storage(unsigned long)
+     0.01%     0.01%  [.] std::__cxx11::_List_base<Unit*, std::allocator<Unit*> >::_List_impl::_List_impl()
+     0.01%     0.01%  [.] std::__cxx11::list<Condition*, std::allocator<Condition*> >::operator=(std::__cxx11::list<Condition*, std::allocator<Condition*> > const&) [clone .part.0]
+     0.01%     0.01%  [.] std::__detail::_Hash_code_base<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > co
+     0.01%     0.01%  [.] std::__detail::_Prime_rehash_policy::_M_need_rehash(unsigned long, unsigned long, unsigned long) const
+     0.01%     0.01%  [.] std::__detail::_Select1st::__1st_type<std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, std::function<ActionNode* (PlayerbotAI*)> > const&>::type&& std::__de
+     0.01%     0.01%  [.] std::array<SpellEffectInfo, 3ul>::operator[](unsigned long) const
+     0.01%     0.01%  [.] std::remove_reference<ObjectGuid&>::type&& std::move<ObjectGuid&>(ObjectGuid&)
+     0.01%     0.01%  [.] std::set<LootTarget, std::less<LootTarget>, std::allocator<LootTarget> >::end() const
+     0.01%     0.01%  [.] std::unique_ptr<GridCell<TypeList<GameObject, TypeList<Player, TypeList<Creature, TypeList<Corpse, TypeList<DynamicObject, TypeNull> > > > >, TypeList<Creature, TypeList<GameObject, TypeNull> > >, std::de
+     0.01%     0.01%  [.] std::vector<G3D::Vector3, std::allocator<G3D::Vector3> >::size() const
+     0.01%     0.01%  [.] unsigned char* std::__copy_move_a1<false, unsigned char const*, unsigned char*>(unsigned char const*, unsigned char const*, unsigned char*)
+     0.01%     0.01%  [.] void std::_Destroy<GuidPosition*>(GuidPosition*, GuidPosition*)
+     0.01%     0.00%  [.] Acore::WorldObjectSpellTargetCheck::operator()(WorldObject*)
+     0.01%     0.00%  [.] ActionNodeFactoryInternal::attack_anything(PlayerbotAI*)
+     0.01%     0.00%  [.] AquaticFormTrigger::IsActive()
+     0.01%     0.00%  [.] AuraApplication::_HandleEffect(unsigned char, bool)
+     0.01%     0.00%  [.] AuraEffect::HandlePeriodicEnergizeAuraTick(Unit*, Unit*) const
+     0.01%     0.00%  [.] AuraEffect::HandlePeriodicHealAurasTick(Unit*, Unit*) const
+     0.01%     0.00%  [.] AutoWowCampaignTravel::CampaignTravelMailbox* const& std::__get_helper<0ul, AutoWowCampaignTravel::CampaignTravelMailbox*, std::default_delete<AutoWowCampaignTravel::CampaignTravelMailbox> >(std::_Tuple_i
+     0.01%     0.00%  [.] AutoWowGather::IsExplicitWorker(unsigned int)
+     0.01%     0.00%  [.] AutoWowOracleRuntime::HasActiveLease(unsigned long, unsigned long)
+     0.01%     0.00%  [.] BoostTrigger::IsActive()
+     0.01%     0.00%  [.] ByteBuffer::empty() const
+     0.01%     0.00%  [.] CallOfTheElementsTrigger::IsActive()
+     0.01%     0.00%  [.] CastAuraSpellAction::isUseful()
+     0.01%     0.00%  [.] CastUnstableAfflictionOnAttackerAction::isUseful()
+     0.01%     0.00%  [.] CheckMountStateAction::Mount()
+     0.01%     0.00%  [.] CombatManager::IsInCombatWith(ObjectGuid const&) const
+     0.01%     0.00%  [.] CombatManager::IsInCombatWith(Unit const*) const
+     0.01%     0.00%  [.] Creature::AIM_Initialize(CreatureAI*)
+     0.01%     0.00%  [.] Creature::RemoveFromWorld()
+     0.01%     0.00%  [.] CreatureAIFactory<SmartAI>::Create(Creature*) const
+     0.01%     0.00%  [.] DrinkAction::isUseful()
+     0.01%     0.00%  [.] DropTargetAction::Execute(Event)
+     0.01%     0.00%  [.] FindCorpseAction::isUseful()
+     0.01%     0.00%  [.] ForcedUnsummonDelayEvent::Execute(unsigned long, unsigned int)
+     0.01%     0.00%  [.] FreeMoneyForValue::Calculate()
+     0.01%     0.00%  [.] GameObject::CastSpell(Unit*, unsigned int)
+     0.01%     0.00%  [.] GridRefMgr<Creature>::end()
+     0.01%     0.00%  [.] LootItem::LootItem(LootStoreItem const&)
+     0.01%     0.00%  [.] LootStore::GetLootFor(unsigned int) const
+     0.01%     0.00%  [.] LootTargetList::~LootTargetList()
+     0.01%     0.00%  [.] MagePullMultiplier::GetValue(Action*)
+     0.01%     0.00%  [.] Map::AddObjectToRemoveList(WorldObject*)
+     0.01%     0.00%  [.] Map::ProcessCreatureRespawn(unsigned int)
+     0.01%     0.00%  [.] Map::ProcessRespawns()
+     0.01%     0.00%  [.] Map::_RemoveObjectFromUpdateList(WorldObject*)
+     0.01%     0.00%  [.] MapGrid<TypeList<GameObject, TypeList<Player, TypeList<Creature, TypeList<Corpse, TypeList<DynamicObject, TypeNull> > > > >, TypeList<Creature, TypeList<GameObject, TypeNull> > >::GetCell(unsigned short, 
+     0.01%     0.00%  [.] MoltenArmorTrigger::IsActive()
+     0.01%     0.00%  [.] MoneyNeededForValue::Calculate()
+     0.01%     0.00%  [.] MovementAction::IsWaitingForLastMove(MovementPriority)
+     0.01%     0.00%  [.] NextAction* std::__do_uninit_copy<__gnu_cxx::__normal_iterator<NextAction const*, std::vector<NextAction, std::allocator<NextAction> > >, NextAction*>(__gnu_cxx::__normal_iterator<NextAction const*, std::
+     0.01%     0.00%  [.] NextAction* std::__uninitialized_copy<false>::__uninit_copy<__gnu_cxx::__normal_iterator<NextAction const*, std::vector<NextAction, std::allocator<NextAction> > >, NextAction*>(__gnu_cxx::__normal_iterato
+     0.01%     0.00%  [.] NextAction* std::__uninitialized_copy_a<__gnu_cxx::__normal_iterator<NextAction const*, std::vector<NextAction, std::allocator<NextAction> > >, NextAction*, NextAction>(__gnu_cxx::__normal_iterator<NextAc
+     0.01%     0.00%  [.] NextAction* std::uninitialized_copy<__gnu_cxx::__normal_iterator<NextAction const*, std::vector<NextAction, std::allocator<NextAction> > >, NextAction*>(__gnu_cxx::__normal_iterator<NextAction const*, std
+     0.01%     0.00%  [.] PaladinCureStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] PathGenerator::ShortenPathUntilDist(G3D::Vector3 const&, float)
+     0.01%     0.00%  [.] Player::GetItemByGuid(ObjectGuid) const
+     0.01%     0.00%  [.] Player::IsFFAPvP()
+     0.01%     0.00%  [.] Player::UpdateFFAPvPFlag(long)
+     0.01%     0.00%  [.] PlayerbotAI::RemoveAura(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >)
+     0.01%     0.00%  [.] PlayerbotAI::RemoveShapeshift()
+     0.01%     0.00%  [.] PlayerbotAI::ResetStrategies(bool)
+     0.01%     0.00%  [.] PlayerbotFactory::Refresh()
+     0.01%     0.00%  [.] RacialsStrategy::InitTriggers(std::vector<TriggerNode*, std::allocator<TriggerNode*> >&)
+     0.01%     0.00%  [.] SmartScript::DoFindFriendlyMissingBuff(std::vector<Creature*, std::allocator<Creature*> >&, float, unsigned int) const
+     0.01%     0.00%  [.] Spell::finish(bool)
+     0.01%     0.00%  [.] TotalMoneyNeededForValue::Calculate()
+     0.01%     0.00%  [.] TriggerNode::TriggerNode(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, std::vector<NextAction, std::allocator<NextAction> >)
+     0.01%     0.00%  [.] TwoTriggers::IsActive()
+     0.01%     0.00%  [.] Unit::CastSpell(Unit*, SpellInfo const*, bool, Item*, AuraEffect const*, ObjectGuid)
+     0.01%     0.00%  [.] Unit::CleanupBeforeRemoveFromMap(bool)
+     0.01%     0.00%  [.] Unit::GetCharmerOrOwnerPlayerOrPlayerItself() const
+     0.01%     0.00%  [.] Unit::HasSpiritOfRedemptionAura() const
+     0.01%     0.00%  [.] Unit::RemoveCharmAuras()
+     0.01%     0.00%  [.] Unit::RemoveFromWorld()
+     0.01%     0.00%  [.] Unit::SendPeriodicAuraLog(SpellPeriodicAuraLogInfo*)
+     0.01%     0.00%  [.] Unit::_RegisterAuraEffect(AuraEffect*, bool)
+     0.01%     0.00%  [.] extent_recycle.isra.0
+     0.01%     0.00%  [.] extent_split_impl.isra.0
+     0.01%     0.00%  [.] extent_split_interior.isra.0
+     0.01%     0.00%  [.] je_extent_alloc
+     0.01%     0.00%  [.] npc_pet_dk_army_of_the_dead::UpdateAI(unsigned int)
+     0.01%     0.00%  [.] std::_Hashtable<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, std::pair<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const, UntypedVal
+     0.01%     0.00%  [.] std::_Rb_tree<LootTarget, LootTarget, std::_Identity<LootTarget>, std::less<LootTarget>, std::allocator<LootTarget> >::_M_drop_node(std::_Rb_tree_node<LootTarget>*)
+     0.01%     0.00%  [.] std::_Rb_tree<LootTarget, LootTarget, std::_Identity<LootTarget>, std::less<LootTarget>, std::allocator<LootTarget> >::_M_erase(std::_Rb_tree_node<LootTarget>*)
+     0.01%     0.00%  [.] std::_Rb_tree<LootTarget, LootTarget, std::_Identity<LootTarget>, std::less<LootTarget>, std::allocator<LootTarget> >::_M_put_node(std::_Rb_tree_node<LootTarget>*)
+     0.01%     0.00%  [.] std::_Rb_tree<LootTarget, LootTarget, std::_Identity<LootTarget>, std::less<LootTarget>, std::allocator<LootTarget> >::~_Rb_tree()
+     0.01%     0.00%  [.] std::_Rb_tree<unsigned int, std::pair<unsigned int const, QuestStatusData>, std::_Select1st<std::pair<unsigned int const, QuestStatusData> >, std::less<unsigned int>, std::allocator<std::pair<unsigned int
+     0.01%     0.00%  [.] std::_Rb_tree<unsigned int, std::pair<unsigned int const, QuestStatusData>, std::_Select1st<std::pair<unsigned int const, QuestStatusData> >, std::less<unsigned int>, std::allocator<std::pair<unsigned int
+     0.01%     0.00%  [.] std::_Rb_tree_iterator<std::pair<unsigned int const, bool> > std::_Rb_tree<unsigned int, std::pair<unsigned int const, bool>, std::_Select1st<std::pair<unsigned int const, bool> >, std::less<unsigned int>
+     0.01%     0.00%  [.] std::_Vector_base<ObjectGuid, std::allocator<ObjectGuid> >::_Vector_base(unsigned long, std::allocator<ObjectGuid> const&)
+     0.01%     0.00%  [.] std::__cxx11::_List_base<Unit*, std::allocator<Unit*> >::_List_base()
+     0.01%     0.00%  [.] std::__cxx11::_List_base<Unit*, std::allocator<Unit*> >::_M_clear()
+     0.01%     0.00%  [.] std::__cxx11::_List_base<Unit*, std::allocator<Unit*> >::_M_put_node(std::_List_node<Unit*>*)
+     0.01%     0.00%  [.] std::__cxx11::_List_base<Unit*, std::allocator<Unit*> >::~_List_base()
+     0.01%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_assign(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.01%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::assign(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.01%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::find(char const*, unsigned long) const
+     0.01%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::find(char const*, unsigned long, unsigned long) const
+     0.01%     0.00%  [.] std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::operator=(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)
+     0.01%     0.00%  [.] std::__cxx11::list<Unit*, std::allocator<Unit*> >::list()
+     0.01%     0.00%  [.] std::__cxx11::list<Unit*, std::allocator<Unit*> >::~list()
+     0.01%     0.00%  [.] std::__new_allocator<std::_List_node<Unit*> >::deallocate(std::_List_node<Unit*>*, unsigned long)
+     0.01%     0.00%  [.] std::__new_allocator<std::_Rb_tree_node<LootTarget> >::deallocate(std::_Rb_tree_node<LootTarget>*, unsigned long)
+     0.01%     0.00%  [.] std::__uniq_ptr_impl<AutoWowCampaignTravel::CampaignTravelMailbox, std::default_delete<AutoWowCampaignTravel::CampaignTravelMailbox> >::_M_ptr() const
+     0.01%     0.00%  [.] std::basic_string_view<char, std::char_traits<char> >::basic_string_view(char const*)
+     0.01%     0.00%  [.] std::map<unsigned int, QuestStatusData, std::less<unsigned int>, std::allocator<std::pair<unsigned int const, QuestStatusData> > >::lower_bound(unsigned int const&)
+     0.01%     0.00%  [.] std::map<unsigned int, QuestStatusData, std::less<unsigned int>, std::allocator<std::pair<unsigned int const, QuestStatusData> > >::operator[](unsigned int const&)
+     0.01%     0.00%  [.] std::set<LootTarget, std::less<LootTarget>, std::allocator<LootTarget> >::~set()
+     0.01%     0.00%  [.] std::tuple_element<0ul, std::tuple<AutoWowCampaignTravel::CampaignTravelMailbox*, std::default_delete<AutoWowCampaignTravel::CampaignTravelMailbox> > >::type const& std::get<0ul, AutoWowCampaignTravel::Ca
+     0.01%     0.00%  [.] std::unique_ptr<AutoWowCampaignTravel::CampaignTravelMailbox, std::default_delete<AutoWowCampaignTravel::CampaignTravelMailbox> >::get() const
+     0.01%     0.00%  [.] std::unique_ptr<AutoWowCampaignTravel::CampaignTravelMailbox, std::default_delete<AutoWowCampaignTravel::CampaignTravelMailbox> >::operator bool() const
+     0.01%     0.00%  [.] std::unordered_map<Trigger*, Event, std::hash<Trigger*>, std::equal_to<Trigger*>, std::allocator<std::pair<Trigger* const, Event> > >::end()
+     0.01%     0.00%  [.] std::unordered_map<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >, Action*, std::hash<std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > >, st
+     0.01%     0.00%  [.] std::unordered_map<unsigned int, AutoWowCombatPerformanceTelemetry::RollingCounters, std::hash<unsigned int>, std::equal_to<unsigned int>, std::allocator<std::pair<unsigned int const, AutoWowCombatPerform
+     0.01%     0.00%  [.] std::vector<ObjectGuid, std::allocator<ObjectGuid> >::push_back(ObjectGuid&&)
+     0.01%     0.00%  [.] std::vector<ObjectGuid, std::allocator<ObjectGuid> >::vector(std::vector<ObjectGuid, std::allocator<ObjectGuid> > const&)
+     0.01%     0.00%  [.] std::vector<unsigned char, std::allocator<unsigned char> >::empty() const
+     0.01%     0.00%  [.] std::vector<unsigned char, std::allocator<unsigned char> >::end() const
+
+
