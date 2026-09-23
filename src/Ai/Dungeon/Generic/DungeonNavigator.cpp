@@ -7,6 +7,7 @@
 
 #include "AutoWow/DungeonPathSafety.h"
 #include "AutoWow/DungeonPathWalkAction.h"
+#include "AutoWowQuestLedger.h"
 #include "CombatManager.h"
 #include "CreatureData.h"
 #include "Creature.h"
@@ -1200,6 +1201,8 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 float const fromZ = member->GetPositionZ();
                 if (MotionMaster* motion = member->GetMotionMaster())
                     motion->Clear();
+                if (AutoWowQuestLedger::Enabled())
+                    AutoWowQuestLedger::Emit(member, AutoWowQuestLedger::Event::Contaminated, 0, "dungeon_ground_reattach");
                 member->NearTeleportTo(member->GetPositionX(), member->GetPositionY(),
                     ground + GroundReattachOffset, member->GetOrientation());
                 nextScanTime = now + PartyCohesionBackoffMs;
@@ -1263,6 +1266,8 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     float const fromZ = member->GetPositionZ();
                     if (MotionMaster* motion = member->GetMotionMaster())
                         motion->Clear();
+                    if (AutoWowQuestLedger::Enabled())
+                        AutoWowQuestLedger::Emit(member, AutoWowQuestLedger::Event::Contaminated, 0, "dungeon_ground_reattach");
                     member->NearTeleportTo(assignedPoint.x, assignedPoint.y,
                         routeGround + GroundReattachOffset, member->GetOrientation());
                     nextScanTime = now + PartyCohesionBackoffMs;
@@ -2897,6 +2902,8 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             if (DungeonRouteReconnect::CanGroundReattach(groundValid, correction,
                     continuationReached, GroundReattachMinimum, GroundReattachMaximum))
             {
+                if (AutoWowQuestLedger::Enabled())
+                    AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "dungeon_ground_reattach");
                 bot->NearTeleportTo(bot->GetPositionX(), bot->GetPositionY(),
                     ground + GroundReattachOffset, bot->GetOrientation());
                 nextScanTime = now + SuccessfulMoveRescanDelayMs();

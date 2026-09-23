@@ -453,6 +453,8 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool*
         // real teleport. Counting here catches any regression that bypasses that hold.
         if (questNoTeleport || autoWowTravel || (policyNoTeleport && !allowLegacyTeleportRecovery))
             AutoWowAcceptance::NoteTeleport();
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "rpg_stuck_teleport");
         return bot->TeleportTo(dest);
     }
 

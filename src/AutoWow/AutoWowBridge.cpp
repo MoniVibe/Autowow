@@ -8,6 +8,7 @@
 #include "AutoWowCraftControl.h"
 #include "AutoWowGuildTradeControl.h"
 #include "AutoWowOracleRuntime.h"
+#include "AutoWowQuestLedger.h"
 #include "OracleQuestDispatchPolicy.h"
 #include "AdvanceFormation.h"
 #include "BossApproachControl.h"
@@ -3049,6 +3050,8 @@ private:
                 continue;
 
             memberAI->SetAutoWowIndependentParty(false);
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(member, AutoWowQuestLedger::Event::Contaminated, 0, "bridge_rally_teleport");
             member->TeleportTo(leader->GetMapId(), leader->GetPositionX(), leader->GetPositionY(),
                                leader->GetPositionZ(), leader->GetOrientation());
             memberAI->Reset();
@@ -3261,6 +3264,8 @@ private:
             bool const holdForSerialAdmission = exteriorTrigger && member != leader;
             if (holdForSerialAdmission)
                 memberAI->SetAutoWowPaused(true);
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(member, AutoWowQuestLedger::Event::Contaminated, 0, "bridge_route_teleport");
             member->TeleportTo(stagingMap, stagingX, stagingY, stagingZ, route->o);
             memberAI->Reset();
             if (holdForSerialAdmission)

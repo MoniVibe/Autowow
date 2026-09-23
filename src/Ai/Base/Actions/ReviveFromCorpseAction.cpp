@@ -7,6 +7,7 @@
 #include "ReviveFromCorpseAction.h"
 
 #include "AutoWowBridge.h"
+#include "AutoWowQuestLedger.h"
 #include "DungeonPathSafety.h"
 #include "Event.h"
 #include "FleeManager.h"
@@ -302,6 +303,8 @@ bool FindCorpseAction::Execute(Event /*event*/)
 
             bot->GetMotionMaster()->Clear();
             bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "corpse_run_teleport");
             bot->TeleportTo(moveToPos.GetMapId(), moveToPos.GetPositionX(), moveToPos.GetPositionY(), moveToPos.GetPositionZ(), 0);
         }
 
@@ -527,6 +530,8 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     // {
     context->GetValue<uint32>("death count")->Set(dCount + 1);
     bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "ghost_graveyard_teleport");
     return bot->TeleportTo(ClosestGrave->Map, ClosestGrave->x, ClosestGrave->y, ClosestGrave->z, 0.f);
     // }
 

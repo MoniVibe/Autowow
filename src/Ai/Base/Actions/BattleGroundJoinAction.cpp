@@ -8,6 +8,7 @@
 
 #include "ArenaTeam.h"
 #include "ArenaTeamMgr.h"
+#include "AutoWowQuestLedger.h"
 #include "BattlegroundMgr.h"
 #include "Event.h"
 #include "GroupMgr.h"
@@ -171,6 +172,8 @@ bool BGJoinAction::gatherArenaTeam(ArenaType type)
 
         memberBotAI->Reset();
         member->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(member, AutoWowQuestLedger::Event::Contaminated, 0, "arena_team_teleport");
         member->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), 0);
 
         LOG_INFO("playerbots", "Bot {} <{}>: Member of <{}>", member->GetGUID().ToString().c_str(),

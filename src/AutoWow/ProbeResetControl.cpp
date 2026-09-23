@@ -5,6 +5,8 @@
 #include "ProbeResetControl.h"
 #include "ProbeResetPolicy.h"
 
+#include "AutoWowQuestLedger.h"
+
 #include "CombatManager.h"
 #include "Group.h"
 #include "InstanceSaveMgr.h"
@@ -231,6 +233,8 @@ std::string Reset(std::string const& exteriorRoute, uint32 targetMap, uint32 tar
     {
         if (AtRoute(player, *route))
             continue;
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Contaminated, 0, "probe_reset_teleport");
         if (!player->TeleportTo(route->map, route->x, route->y, route->z, route->orientation))
             return Response(false, "REFUSED", "exterior_staging_failed", exteriorRoute,
                             targetMap, targetDifficulty, roster, pending,
