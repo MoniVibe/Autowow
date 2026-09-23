@@ -416,3 +416,27 @@ TEST(AutoWowRandomBotPolicyTest, PvpFlagForcedExceptOnPvpRealmWithZoneRules)
     EXPECT_TRUE(ShouldForceRandomBotPvpFlag(true, false));   // PvP, legacy forced flag
     EXPECT_FALSE(ShouldForceRandomBotPvpFlag(true, true));   // PvP + zone rules: no forced write
 }
+
+TEST(AutoWowRandomBotPolicyTest, GuidListContainsIsExactAndFailSafe)
+{
+    using AutoWowRandomBotPolicy::GuidListContains;
+    EXPECT_FALSE(GuidListContains("", 121));
+    EXPECT_TRUE(GuidListContains("121", 121));
+    EXPECT_TRUE(GuidListContains(" 5, 121\t9 ", 121));
+    EXPECT_FALSE(GuidListContains("1210,12,1121", 121));  // whole-token match only
+    EXPECT_TRUE(GuidListContains("5,,9", 9));
+    EXPECT_FALSE(GuidListContains("5,,9", 121));
+    EXPECT_TRUE(GuidListContains("5,x9", 121));            // malformed list excludes everyone
+    EXPECT_TRUE(GuidListContains("99999999999", 121));     // overflow excludes everyone
+}
+
+TEST(AutoWowRandomBotPolicyTest, RerollOnlyRandomUnlistedBotsAboveMax)
+{
+    using AutoWowRandomBotPolicy::ShouldRerollAboveMaxLevel;
+    EXPECT_TRUE(ShouldRerollAboveMaxLevel(true, true, false, 80, 60));
+    EXPECT_FALSE(ShouldRerollAboveMaxLevel(false, true, false, 80, 60));  // flag off
+    EXPECT_FALSE(ShouldRerollAboveMaxLevel(true, false, false, 80, 60));  // not a random bot
+    EXPECT_FALSE(ShouldRerollAboveMaxLevel(true, true, true, 80, 60));    // Oracle/fixture/micro GUID
+    EXPECT_FALSE(ShouldRerollAboveMaxLevel(true, true, false, 60, 60));   // at max is fine
+    EXPECT_FALSE(ShouldRerollAboveMaxLevel(true, true, false, 12, 60));
+}

@@ -8,6 +8,9 @@
 
 #include "AutoWowQuestLedger.h"
 #include "AutoWowRandomBotPolicy.h"
+#include "Config.h"
+#include "FixtureAccelerationControl.h"
+#include "FixtureFactoryControl.h"
 
 #include <WorldSessionMgr.h>
 
@@ -1870,6 +1873,30 @@ void RandomPlayerbotMgr::Randomize(Player* bot)
     }
 }
 
+// AutoWow.Soak.RerollAboveMaxLevel: one RandomizeFirst for a pool bot above RandomBotMaxLevel.
+static void RerollAboveMaxLevelAtLogin(RandomPlayerbotMgr& mgr, Player* bot)
+{
+    uint32 const guid = bot->GetGUID().GetCounter();
+    bool const listed =
+        AutoWowRandomBotPolicy::GuidListContains(
+            sConfigMgr->GetOption<std::string>("AutoWow.OracleRuntime.BotGuids", ""), guid) ||
+        AutoWowRandomBotPolicy::GuidListContains(
+            sConfigMgr->GetOption<std::string>(AutoWowFixture::kFixtureGuidsConfigKey, ""), guid) ||
+        AutoWowRandomBotPolicy::GuidListContains(
+            sConfigMgr->GetOption<std::string>(AutoWowFixtureAcceleration::kMicroScenarioGuidsConfigKey, ""), guid);
+    if (!AutoWowRandomBotPolicy::ShouldRerollAboveMaxLevel(true, mgr.IsRandomBot(bot), listed, bot->GetLevel(),
+                                                           sPlayerbotAIConfig.randomBotMaxLevel))
+        return;
+
+    LOG_INFO("playerbots", "Bot #{} <{}>: setup reroll from level {} (above RandomBotMaxLevel {})", guid,
+             bot->GetName(), bot->GetLevel(), sPlayerbotAIConfig.randomBotMaxLevel);
+    // Emitted before the reroll (and before any quest accept of this session) so the reducer
+    // attributes everything this bot had open to setup, not to play.
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "setup_reroll");
+    mgr.RandomizeFirst(bot);
+}
+
 void RandomPlayerbotMgr::IncreaseLevel(Player* bot)
 {
     uint32 maxLevel = sPlayerbotAIConfig.randomBotMaxLevel;
@@ -2660,6 +2687,8 @@ void RandomPlayerbotMgr::OnPlayerLogin(Player* player)
         if (AutoWowRandomBotPolicy::ShouldForceRandomBotPvpFlag(sWorld->IsPvPRealm(),
                                                                sPlayerbotAIConfig.autoWowPvpRealmZoneRules))
             player->SetPvP(sWorld->IsPvPRealm());
+        if (sConfigMgr->GetOption<bool>("AutoWow.Soak.RerollAboveMaxLevel", false))
+            RerollAboveMaxLevelAtLogin(*this, player);
     }
     else
     {

@@ -2248,6 +2248,14 @@ AutoWow.QuestFullBagRelief.Enable = 0
 # are unchanged either way (SetPvP(false)). Default 0 = legacy forced flag on every realm type.
 AutoWow.PvpRealmZoneRules.Enable = 0
 
+# Soak setup rule. 1 = when a RANDOM bot logs in above AiPlayerbot.RandomBotMaxLevel (legacy pool
+# entries whose randomize timers lie past the soak), re-roll it once through the normal
+# RandomizeFirst level path (level/gear/teleport for level) and emit ledger `contaminated` reason
+# setup_reroll first. Never applies to non-random bots or to GUIDs listed in
+# AutoWow.OracleRuntime.BotGuids / AutoWow.FixtureGuids / AutoWow.MicroScenarioGuids.
+# Default 0 = off.
+AutoWow.Soak.RerollAboveMaxLevel = 0
+
 #
 #
 ####################################################################################################
