@@ -114,3 +114,112 @@ TEST(CombatPerformanceTelemetry, TelemetryFlagDefaultsOff)
 {
     EXPECT_FALSE(AutoWowCombatPerformanceTelemetry::TelemetryEnabled());
 }
+
+namespace
+{
+using AutoWowCombatPerformanceTelemetry::LifetimeCounters;
+using AutoWowCombatPerformanceTelemetry::LifetimeTotals;
+}
+
+// C2: lifetime totals do not retire with the 30 s idle window.
+TEST(CombatLifetime, TotalsSurviveWindowIdleAndSplitWallTime)
+{
+    LifetimeCounters c;
+    c.RecordFight();
+    c.Update(1000, true, false, false);
+    c.RecordDamageDone(1000, 300, 0);
+    c.RecordDamageTaken(40);
+    c.RecordHealing(25);
+    c.Update(60000, false, false, false);   // long idle: well past kIdleTimeoutMs
+    c.Update(5000, false, true, false);     // dead / ghost
+    c.Update(2000, true, false, true);      // starved in combat
+    c.RecordDeath();
+    c.RecordCast(true);
+    c.RecordCast(false);
+
+    LifetimeTotals const& t = c.Totals();
+    EXPECT_EQ(t.wallMs, 68000U);
+    EXPECT_EQ(t.combatMs, 3000U);
+    EXPECT_EQ(t.deadMs, 5000U);
+    EXPECT_EQ(t.starvedMs, 2000U);
+    EXPECT_EQ(t.damageDone, 300U);
+    EXPECT_EQ(t.damageTaken, 40U);
+    EXPECT_EQ(t.healing, 25U);
+    EXPECT_EQ(t.fights, 1U);
+    EXPECT_EQ(t.deaths, 1U);
+    EXPECT_EQ(t.casts, 2U);
+    EXPECT_EQ(t.gcdCasts, 1U);
+}
+
+// C4: TTK runs from the bot's first damage on the creature to its killing blow; repeat hits do not restart it.
+TEST(CombatLifetime, TtkFromFirstDamageToKill)
+{
+    LifetimeCounters c;
+    c.RecordDamageDone(1000, 10, 77);
+    c.RecordDamageDone(4000, 10, 77);
+    c.RecordKill(9000, 77, 2);
+    c.RecordKill(9500, 88, 0);  // never engaged: a kill, no TTK sample
+
+    EXPECT_EQ(c.Totals().kills, 2U);
+    EXPECT_EQ(c.Totals().ttkCount, 1U);
+    EXPECT_EQ(c.PendingTtk(), 1U);
+
+    // The engagement closed on kill: a re-used key starts fresh.
+    c.RecordDamageDone(20000, 10, 77);
+    c.RecordKill(21000, 77, 0);
+    EXPECT_EQ(c.Totals().ttkCount, 2U);
+}
+
+TEST(CombatLifetime, TtkSlotsEvictOldestDeterministically)
+{
+    LifetimeCounters c;
+    for (std::uint64_t k = 1; k <= AutoWowCombatPerformanceTelemetry::kTtkTracked; ++k)
+        c.RecordDamageDone(1000 + k, 1, k);
+    c.RecordDamageDone(5000, 1, 999);  // table full: evicts key 1 (oldest)
+    c.RecordKill(6000, 1, 0);
+    EXPECT_EQ(c.Totals().ttkCount, 0U);
+    c.RecordKill(6000, 2, 0);
+    c.RecordKill(6000, 999, 0);
+    EXPECT_EQ(c.Totals().ttkCount, 2U);
+
+    // An engagement older than kTtkEngageExpiryMs (evade/leash, respawn with the same guid) yields no TTK.
+    LifetimeCounters d;
+    d.RecordDamageDone(1000, 1, 5);
+    d.RecordKill(1000 + AutoWowCombatPerformanceTelemetry::kTtkEngageExpiryMs, 5, 0);
+    EXPECT_EQ(d.Totals().kills, 1U);
+    EXPECT_EQ(d.Totals().ttkCount, 0U);
+}
+
+TEST(CombatLifetime, RecentDpsNeedsCombatAndDecays)
+{
+    LifetimeCounters c;
+    c.RecordDamageDone(0, 1000, 0);
+    c.Update(4000, true, false, false);
+    EXPECT_EQ(c.RecentDps(), 0U);  // < kRecentDpsMinMs of combat
+    c.Update(6000, true, false, false);
+    EXPECT_EQ(c.RecentDps(), 100U);  // 1000 dmg / 10 s
+    c.Update(51000, true, false, false);  // 61 s > window: halves damage and time
+    EXPECT_EQ(c.RecentDps(), 500U * 1000U / 30500U);
+}
+
+TEST(CombatLifetime, ResourceStarvedThresholds)
+{
+    using AutoWowCombatPerformanceTelemetry::IsResourceStarved;
+    EXPECT_TRUE(IsResourceStarved(0, 149, 1000));
+    EXPECT_FALSE(IsResourceStarved(0, 150, 1000));
+    EXPECT_FALSE(IsResourceStarved(0, 0, 0));
+    EXPECT_TRUE(IsResourceStarved(1, 99, 1000));
+    EXPECT_FALSE(IsResourceStarved(1, 100, 1000));
+    EXPECT_TRUE(IsResourceStarved(3, 19, 100));
+    EXPECT_FALSE(IsResourceStarved(6, 0, 1000));  // runic power: not measured
+}
+
+TEST(CombatLifetime, DotSkipCountsConsecutiveKeyOnce)
+{
+    LifetimeCounters c;
+    c.RecordDotSkip(5);
+    c.RecordDotSkip(5);
+    c.RecordDotSkip(6);
+    c.RecordDotSkip(5);
+    EXPECT_EQ(c.Totals().dotSkips, 3U);
+}

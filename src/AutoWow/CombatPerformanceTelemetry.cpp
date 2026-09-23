@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -19,6 +20,9 @@
 #include "Player.h"
 #include "PlayerScript.h"
 #include "Playerbots.h"
+#include "SharedDefines.h"
+#include "Spell.h"
+#include "SpellInfo.h"
 #include "ThreatManager.h"
 #include "Unit.h"
 #include "UnitScript.h"
@@ -306,6 +310,104 @@ CounterSnapshot RollingCounters::Snapshot(std::uint64_t nowMs) const
     return snapshot;
 }
 
+void LifetimeCounters::Update(std::uint64_t diffMs, bool inCombat, bool dead, bool starved)
+{
+    SaturatingAdd(totals.wallMs, diffMs);
+    if (dead)
+        SaturatingAdd(totals.deadMs, diffMs);
+    if (!inCombat)
+        return;
+    SaturatingAdd(totals.combatMs, diffMs);
+    if (starved)
+        SaturatingAdd(totals.starvedMs, diffMs);
+    SaturatingAdd(recentCombatMs, diffMs);
+    if (recentCombatMs > kRecentDpsWindowMs)
+    {
+        recentCombatMs /= 2;
+        recentDamage /= 2;
+    }
+}
+
+void LifetimeCounters::RecordFight() { SaturatingIncrement(totals.fights); }
+
+void LifetimeCounters::RecordDamageDone(std::uint64_t nowMs, std::uint64_t amount, std::uint64_t creatureKey)
+{
+    SaturatingAdd(totals.damageDone, amount);
+    SaturatingAdd(recentDamage, amount);
+    if (!creatureKey)
+        return;
+
+    // Deterministic slot choice: the existing engagement, else the first free or expired slot, else the
+    // oldest engagement (lowest index on ties).
+    std::size_t slot = kTtkTracked;
+    std::size_t oldest = 0;
+    for (std::size_t k = 0; k < kTtkTracked; ++k)
+    {
+        Engagement const& e = engaged[k];
+        if (e.key == creatureKey)
+            return;
+        bool const expired = !e.key || nowMs < e.firstMs || nowMs - e.firstMs >= kTtkEngageExpiryMs;
+        if (expired && slot == kTtkTracked)
+            slot = k;
+        if (e.firstMs < engaged[oldest].firstMs)
+            oldest = k;
+    }
+    if (slot == kTtkTracked)
+        slot = oldest;
+    engaged[slot] = Engagement{creatureKey, nowMs};
+}
+
+void LifetimeCounters::RecordDamageTaken(std::uint64_t amount) { SaturatingAdd(totals.damageTaken, amount); }
+
+void LifetimeCounters::RecordHealing(std::uint64_t amount) { SaturatingAdd(totals.healing, amount); }
+
+void LifetimeCounters::RecordDeath() { SaturatingIncrement(totals.deaths); }
+
+void LifetimeCounters::RecordCast(bool onGcd)
+{
+    SaturatingIncrement(totals.casts);
+    if (onGcd)
+        SaturatingIncrement(totals.gcdCasts);
+}
+
+void LifetimeCounters::RecordKill(std::uint64_t nowMs, std::uint64_t creatureKey, std::int32_t levelDelta)
+{
+    SaturatingIncrement(totals.kills);
+    for (Engagement& e : engaged)
+    {
+        if (!creatureKey || e.key != creatureKey)
+            continue;
+        std::uint64_t const ttk = nowMs >= e.firstMs ? nowMs - e.firstMs : 0;
+        e = Engagement{};
+        if (ttk >= kTtkEngageExpiryMs)
+            return;  // stale engagement (evade / respawn under the same guid): a kill, not a TTK sample
+        SaturatingIncrement(totals.ttkCount);
+        if (pendingCount < kTtkPendingMax)
+            pending[pendingCount++] = TtkSample{
+                static_cast<std::uint32_t>(std::min<std::uint64_t>(ttk, std::numeric_limits<std::uint32_t>::max())),
+                levelDelta};
+        else
+            SaturatingIncrement(totals.ttkDropped);
+        return;
+    }
+}
+
+void LifetimeCounters::RecordDotSkip(std::uint64_t skipKey)
+{
+    if (skipKey && skipKey == lastDotSkipKey)
+        return;
+    lastDotSkipKey = skipKey;
+    SaturatingIncrement(totals.dotSkips);
+}
+
+std::uint32_t LifetimeCounters::RecentDps() const
+{
+    if (recentCombatMs < kRecentDpsMinMs)
+        return 0;
+    return static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(recentDamage * 1000 / recentCombatMs, std::numeric_limits<std::uint32_t>::max()));
+}
+
 void RecordDamageDone(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t amount)
 {
     if (!amount)
@@ -374,6 +476,62 @@ void Forget(std::uint32_t botGuid)
     Store().erase(botGuid);
 }
 
+static_assert(kPowerMana == POWER_MANA && kPowerRage == POWER_RAGE && kPowerEnergy == POWER_ENERGY);
+
+namespace
+{
+// Lifetime store. Unit/Player updates run on map threads (MapUpdate.Threads), so unlike the v1 window
+// store this one is mutex-guarded. Touched only when AutoWow.CombatTelemetry.Enable is on.
+std::mutex gLifetimeLock;
+std::unordered_map<std::uint32_t, LifetimeCounters> gLifetime;
+
+// Runs fn on the bot's counters under the lock, creating them on first use (bounded; beyond
+// kMaxLifetimeBots new bots are simply not tracked - existing totals are never evicted).
+template <typename Fn>
+void WithLifetime(std::uint32_t botGuid, Fn&& fn)
+{
+    std::lock_guard<std::mutex> guard(gLifetimeLock);
+    auto it = gLifetime.find(botGuid);
+    if (it == gLifetime.end())
+    {
+        if (gLifetime.size() >= kMaxLifetimeBots)
+            return;
+        it = gLifetime.emplace(botGuid, LifetimeCounters{}).first;
+    }
+    fn(it->second);
+}
+
+std::uint64_t CreatureKey(Unit* unit)
+{
+    return unit && unit->IsCreature() ? unit->GetGUID().GetRawValue() : 0;
+}
+
+void UpdateLifetime(Player* bot, std::uint32_t botGuid, std::uint32_t diff)
+{
+    bool const inCombat = bot->IsInCombat();
+    bool const dead = !bot->IsAlive();
+    Powers const power = bot->getPowerType();
+    bool const starved = inCombat && IsResourceStarved(static_cast<std::uint8_t>(power), bot->GetPower(power),
+                                                       bot->GetMaxPower(power));
+    WithLifetime(botGuid, [&](LifetimeCounters& c) { c.Update(diff, inCombat, dead, starved); });
+}
+}  // namespace
+
+std::uint32_t RecentDpsFor(std::uint32_t botGuid)
+{
+    if (!TelemetryEnabled())
+        return 0;
+    std::lock_guard<std::mutex> guard(gLifetimeLock);
+    auto const it = gLifetime.find(botGuid);
+    return it == gLifetime.end() ? 0 : it->second.RecentDps();
+}
+
+void RecordDotSkip(std::uint32_t botGuid, std::uint64_t skipKey)
+{
+    if (TelemetryEnabled())
+        WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDotSkip(skipKey); });
+}
+
 class CombatPerformanceTelemetryScript : public UnitScript
 {
 public:
@@ -393,7 +551,11 @@ public:
     {
         std::uint32_t botGuid = 0;
         if (IsAttributedPlayerbot(healer, botGuid))
+        {
             RecordEffectiveHealing(botGuid, NowMs(), gain);
+            if (TelemetryEnabled())
+                WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordHealing(gain); });
+        }
     }
 
     void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
@@ -401,17 +563,29 @@ public:
         std::uint32_t botGuid = 0;
         std::uint64_t const nowMs = NowMs();
         if (IsAttributedPlayerbot(attacker, botGuid))
+        {
             RecordDamageDone(botGuid, nowMs, damage);
+            if (TelemetryEnabled() && damage)
+                WithLifetime(botGuid,
+                             [&](LifetimeCounters& c) { c.RecordDamageDone(nowMs, damage, CreatureKey(victim)); });
+        }
 
         if (IsPlayerbotPlayer(victim, botGuid))
+        {
             RecordDamageTaken(botGuid, nowMs, damage);
+            if (TelemetryEnabled() && damage)
+                WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDamageTaken(damage); });
+        }
     }
 
-    void OnUnitUpdate(Unit* unit, uint32 /*diff*/) override
+    void OnUnitUpdate(Unit* unit, uint32 diff) override
     {
         std::uint32_t botGuid = 0;
         if (!IsPlayerbotPlayer(unit, botGuid))
             return;
+
+        if (TelemetryEnabled())
+            UpdateLifetime(unit->ToPlayer(), botGuid, diff);
 
         std::uint64_t const nowMs = NowMs();
         ThreatSample const sample = ReadThreatSample(unit->ToPlayer());
@@ -442,11 +616,26 @@ public:
             RecordCombatExit(botGuid, NowMs());
     }
 
-    void OnUnitDeath(Unit* unit, Unit* /*killer*/) override
+    void OnUnitDeath(Unit* unit, Unit* killer) override
     {
         std::uint32_t botGuid = 0;
         if (IsPlayerbotPlayer(unit, botGuid))
+        {
             RecordDeath(botGuid, NowMs());
+            if (TelemetryEnabled())
+                WithLifetime(botGuid, [](LifetimeCounters& c) { c.RecordDeath(); });
+            return;
+        }
+
+        // C4: a creature killed by a bot's (or its pet's) killing blow closes that bot's engagement.
+        if (TelemetryEnabled() && unit && unit->IsCreature() && IsAttributedPlayerbot(killer, botGuid))
+        {
+            Player* const owner = killer->GetCharmerOrOwnerPlayerOrPlayerItself();
+            std::int32_t const levelDelta =
+                static_cast<std::int32_t>(unit->GetLevel()) - static_cast<std::int32_t>(owner->GetLevel());
+            std::uint64_t const nowMs = NowMs();
+            WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordKill(nowMs, CreatureKey(unit), levelDelta); });
+        }
     }
 };
 
@@ -457,7 +646,9 @@ class CombatTelemetryPlayerScript : public PlayerScript
 public:
     CombatTelemetryPlayerScript()
         : PlayerScript("AutoWowCombatTelemetryPlayer", {
-            PLAYERHOOK_ON_PLAYER_ENTER_COMBAT
+            PLAYERHOOK_ON_PLAYER_ENTER_COMBAT,
+            PLAYERHOOK_ON_SPELL_CAST,
+            PLAYERHOOK_ON_LOGOUT
         })
     {
     }
@@ -468,8 +659,31 @@ public:
         if (!TelemetryEnabled())
             return;
         std::uint32_t botGuid = 0;
-        if (IsPlayerbotPlayer(player, botGuid))
-            RecordCombatEntry(botGuid, NowMs());
+        if (!IsPlayerbotPlayer(player, botGuid))
+            return;
+        RecordCombatEntry(botGuid, NowMs());
+        WithLifetime(botGuid, [](LifetimeCounters& c) { c.RecordFight(); });
+    }
+
+    // C2 casts / GCD casts (reducer: GCD utilisation estimate). Triggered casts are not bot decisions.
+    void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
+    {
+        if (!TelemetryEnabled() || !spell || spell->IsTriggered())
+            return;
+        std::uint32_t botGuid = 0;
+        if (!IsPlayerbotPlayer(player, botGuid))
+            return;
+        bool const onGcd = spell->GetSpellInfo() && spell->GetSpellInfo()->StartRecoveryTime > 0;
+        WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordCast(onGcd); });
+    }
+
+    void OnPlayerLogout(Player* player) override
+    {
+        if (!TelemetryEnabled() || !player)
+            return;
+        std::uint32_t const botGuid = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
+        std::lock_guard<std::mutex> guard(gLifetimeLock);
+        gLifetime.erase(botGuid);
     }
 };
 

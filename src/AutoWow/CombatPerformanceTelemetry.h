@@ -138,6 +138,108 @@ inline bool TelemetryEnabled() { return detail::gTelemetryEnabled; }
 
 // Reads the AutoWow.CombatTelemetry.* / AutoWow.Combat.* keys. Called once at world init.
 void LoadConfig();
+
+// ---- C2/C4: per-bot lifetime totals (AutoWow.CombatTelemetry.Enable) ----------------------------
+// Unlike the v1 window these never retire: cumulative since login, cleared only on logout. Emitted as
+// the ledger `combat` event (C6); consumers fold deltas between lines (scripts/combat-reduce.py).
+// cv (kLifetimeSchemaVersion) bumps on any field meaning change; fields are append-only.
+inline constexpr std::uint32_t kLifetimeSchemaVersion = 1;
+inline constexpr std::size_t kTtkTracked = 16;              // concurrently engaged creatures per bot
+inline constexpr std::uint64_t kTtkEngageExpiryMs = 120000; // engagement forgotten after 2 min
+inline constexpr std::size_t kTtkPendingMax = 64;           // TTK samples per emit line; rest -> ttk_drop
+inline constexpr std::uint64_t kRecentDpsWindowMs = 60000;  // recent-DPS halves once combat ms exceeds it
+inline constexpr std::uint64_t kRecentDpsMinMs = 5000;      // below this much combat, recent DPS unknown (0)
+inline constexpr std::size_t kMaxLifetimeBots = 2048;       // hard cap; beyond it new bots are not tracked
+
+// Raw Powers values (SharedDefines.h; static_assert'ed in the .cpp) so this header stays value-only.
+inline constexpr std::uint8_t kPowerMana = 0;
+inline constexpr std::uint8_t kPowerRage = 1;
+inline constexpr std::uint8_t kPowerEnergy = 3;
+inline constexpr std::uint32_t kStarvedManaPct = 15;   // AiPlayerbot.LowMana default
+inline constexpr std::uint32_t kStarvedRage = 100;     // 10 rage (core stores rage x10)
+inline constexpr std::uint32_t kStarvedEnergy = 20;
+
+// Resource-starved = cannot afford a typical ability. Runic power / focus / others: not measured (false).
+inline bool IsResourceStarved(std::uint8_t powerType, std::uint32_t current, std::uint32_t maximum)
+{
+    switch (powerType)
+    {
+        case kPowerMana:
+            return maximum && std::uint64_t(current) * 100 < std::uint64_t(maximum) * kStarvedManaPct;
+        case kPowerRage:
+            return current < kStarvedRage;
+        case kPowerEnergy:
+            return current < kStarvedEnergy;
+        default:
+            return false;
+    }
+}
+
+struct TtkSample
+{
+    std::uint32_t ms = 0;
+    std::int32_t levelDelta = 0;  // creature level - bot level
+};
+
+struct LifetimeTotals
+{
+    std::uint64_t wallMs = 0;
+    std::uint64_t combatMs = 0;
+    std::uint64_t deadMs = 0;
+    std::uint64_t starvedMs = 0;
+    std::uint64_t damageDone = 0;
+    std::uint64_t damageTaken = 0;
+    std::uint64_t healing = 0;
+    std::uint32_t fights = 0;
+    std::uint32_t kills = 0;
+    std::uint32_t deaths = 0;
+    std::uint32_t casts = 0;
+    std::uint32_t gcdCasts = 0;
+    std::uint32_t dotSkips = 0;
+    std::uint32_t ttkCount = 0;
+    std::uint32_t ttkDropped = 0;
+};
+
+// Value-only per-bot accumulator (unit-tested). TTK = first damage by the bot (or its pet) on a creature
+// to that creature's death by the bot's (or pet's) killing blow.
+class LifetimeCounters
+{
+public:
+    void Update(std::uint64_t diffMs, bool inCombat, bool dead, bool starved);
+    void RecordFight();
+    void RecordDamageDone(std::uint64_t nowMs, std::uint64_t amount, std::uint64_t creatureKey);
+    void RecordDamageTaken(std::uint64_t amount);
+    void RecordHealing(std::uint64_t amount);
+    void RecordDeath();
+    void RecordCast(bool onGcd);
+    void RecordKill(std::uint64_t nowMs, std::uint64_t creatureKey, std::int32_t levelDelta);
+    // Counts one skipped DoT/debuff opportunity; consecutive skips of the same key count once.
+    void RecordDotSkip(std::uint64_t skipKey);
+
+    // Damage per second over roughly the last minute of combat; 0 = unknown (too little combat).
+    [[nodiscard]] std::uint32_t RecentDps() const;
+    [[nodiscard]] LifetimeTotals const& Totals() const { return totals; }
+    [[nodiscard]] std::size_t PendingTtk() const { return pendingCount; }
+
+private:
+    struct Engagement
+    {
+        std::uint64_t key = 0;
+        std::uint64_t firstMs = 0;
+    };
+
+    LifetimeTotals totals;
+    Engagement engaged[kTtkTracked] = {};
+    TtkSample pending[kTtkPendingMax] = {};
+    std::size_t pendingCount = 0;
+    std::uint64_t recentDamage = 0;
+    std::uint64_t recentCombatMs = 0;
+    std::uint64_t lastDotSkipKey = 0;
+};
+
+// Runtime (world/map-thread; the store is mutex-guarded). No-ops unless TelemetryEnabled().
+std::uint32_t RecentDpsFor(std::uint32_t botGuid);
+void RecordDotSkip(std::uint32_t botGuid, std::uint64_t skipKey);
 }
 
 #endif  // AUTOWOW_COMBAT_PERFORMANCE_TELEMETRY_H
