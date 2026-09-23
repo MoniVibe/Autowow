@@ -2260,6 +2260,23 @@ AutoWow.CombatTelemetry.Enable = 0
 # AutoWoW scripts/combat-reduce.py. 0 = never emit (totals still accumulate). Default 60000.
 AutoWow.CombatTelemetry.LogIntervalMs = 60000
 
+# AutoWoW DoT/debuff lifetime gate (C5). Default 0 = off (one cached bool per debuff trigger/action).
+# 1 = do not apply or refresh a DoT (corruption, curses of agony/doom, immolate, unstable affliction,
+# siphon life, seed, shadow word: pain, vampiric touch, devouring plague, moonfire, insect swarm, rake,
+# rip, lacerate, serpent sting, rupture, garrote, rend, frost fever/blood plague, icy touch, plague
+# strike, flame shock, living bomb) or a debuff (hunter's mark, curses of elements/weakness/exhaustion/
+# tongues, sunder armor, faerie fire, expose armor) on a normal/rare creature that is below
+# DotMinTargetHpPct, or - DoTs only - whose estimated time-to-kill is below DotMinDurationPct of the
+# DoT duration, or shorter than the bot's own running DoT (refresh). Never gated: elites, rare elites,
+# bosses, dungeon/world bosses, players. HP-floor exception: remaining HP >= bot level x
+# DotHighHpPerLevel. TTK = observed HP loss rate since the bot engaged the target, floored by the bot's
+# recent DPS; it needs AutoWow.CombatTelemetry.Enable = 1 (otherwise only the HP floor applies).
+# Skips are counted in the `combat` ledger event field dot_skips.
+AutoWow.Combat.DotLifetimeGate = 0
+AutoWow.Combat.DotMinTargetHpPct = 10
+AutoWow.Combat.DotMinDurationPct = 50
+AutoWow.Combat.DotHighHpPerLevel = 150
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,

@@ -23,6 +23,7 @@
 #include "PlayerbotAI.h"
 #include "Player.h"
 #include "Corpse.h"
+#include "DotLifetimeGate.h"
 
 bool LowManaTrigger::IsActive()
 {
@@ -166,7 +167,13 @@ bool BuffTrigger::IsActive()
 
     Aura* aura = botAI->GetAura(spell, target, checkIsOwner, checkDuration);
     if (!aura || (beforeDuration && uint32(aura->GetDuration()) < beforeDuration))
+    {
+        // AutoWow.Combat.DotLifetimeGate (default 0): one cached bool when off. Covers every DebuffTrigger
+        // descendant, including the overrides that call BuffTrigger::IsActive() directly.
+        if (AutoWowDotLifetimeGate::Enabled() && dynamic_cast<DebuffTrigger*>(this))
+            return AutoWowDotLifetimeGate::Allows(botAI, target, spell);
         return true;
+    }
 
     return false;
 }

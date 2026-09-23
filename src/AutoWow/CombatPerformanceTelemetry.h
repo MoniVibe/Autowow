@@ -227,6 +227,8 @@ public:
     [[nodiscard]] std::uint32_t RecentDps() const;
     [[nodiscard]] LifetimeTotals const& Totals() const { return totals; }
     [[nodiscard]] std::size_t PendingTtk() const { return pendingCount; }
+    // First-damage time of a live engagement with this creature; 0 = not engaged.
+    [[nodiscard]] std::uint64_t EngagedAtMs(std::uint64_t creatureKey) const;
 
 private:
     struct Engagement

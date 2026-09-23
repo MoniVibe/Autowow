@@ -16,7 +16,9 @@
 
 #include "AutoWowQuestLedger.h"
 #include "Config.h"
+#include "AiObjectContext.h"
 #include "Creature.h"
+#include "DotLifetimeGate.h"
 #include "GameTime.h"
 #include "Player.h"
 #include "PlayerScript.h"
@@ -24,6 +26,7 @@
 #include "SharedDefines.h"
 #include "Spell.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "ThreatManager.h"
 #include "Unit.h"
 #include "UnitScript.h"
@@ -461,6 +464,16 @@ std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
     return out;
 }
 
+std::uint64_t LifetimeCounters::EngagedAtMs(std::uint64_t creatureKey) const
+{
+    if (!creatureKey)
+        return 0;
+    for (Engagement const& e : engaged)
+        if (e.key == creatureKey)
+            return e.firstMs;
+    return 0;
+}
+
 std::uint32_t LifetimeCounters::RecentDps() const
 {
     if (recentCombatMs < kRecentDpsMinMs)
@@ -603,6 +616,77 @@ void RecordDotSkip(std::uint32_t botGuid, std::uint64_t skipKey)
         WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDotSkip(skipKey); });
 }
 
+}  // namespace AutoWowCombatPerformanceTelemetry
+
+namespace AutoWowDotLifetimeGate
+{
+bool Allows(PlayerbotAI* botAI, Unit* target, std::string_view spell)
+{
+    if (!Enabled() || !botAI || !target || !botAI->GetBot())
+        return true;
+    Kind const kind = Classify(spell);
+    if (kind == Kind::None)
+        return true;
+
+    Player* const bot = botAI->GetBot();
+    Creature* const creature = target->ToCreature();
+    std::uint32_t const rank = creature ? creature->GetCreatureTemplate()->rank : 0;
+    Input in;
+    in.kind = kind;
+    // Players (PvP) are never gated; elites, rare elites, bosses and dungeon/world bosses keep their DoTs.
+    in.bossOrElite = !creature || rank == CREATURE_ELITE_ELITE || rank == CREATURE_ELITE_RAREELITE ||
+                     rank == CREATURE_ELITE_WORLDBOSS || creature->IsDungeonBoss() || creature->isWorldBoss();
+    if (in.bossOrElite)
+        return true;
+
+    std::uint64_t const maxHp = target->GetMaxHealth();
+    in.hp = target->GetHealth();
+    in.hpPct = maxHp ? static_cast<std::uint32_t>(in.hp * 100 / maxHp) : 100;
+    in.botLevel = bot->GetLevel();
+
+    std::string const name(spell);
+    if (Aura* aura = botAI->GetAura(name, target, true))
+    {
+        in.remainingMs = aura->GetDuration() > 0 ? static_cast<std::uint32_t>(aura->GetDuration()) : 0;
+        in.durationMs = aura->GetMaxDuration() > 0 ? static_cast<std::uint32_t>(aura->GetMaxDuration()) : 0;
+    }
+    else if (std::uint32_t const spellId = botAI->GetAiObjectContext()->GetValue<uint32>("spell id", name)->Get())
+    {
+        if (SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId))
+            in.durationMs = info->GetMaxDuration() > 0 ? static_cast<std::uint32_t>(info->GetMaxDuration()) : 0;
+    }
+
+    // TTK inputs come from the combat telemetry store (AutoWow.CombatTelemetry.Enable). Without it the
+    // estimate is unknown and only the HP floor applies.
+    namespace T = AutoWowCombatPerformanceTelemetry;
+    std::uint32_t const botGuid = static_cast<std::uint32_t>(bot->GetGUID().GetCounter());
+    std::uint64_t const targetKey = target->GetGUID().GetRawValue();
+    std::uint32_t dps = 0;
+    std::uint64_t engagedMs = 0;
+    if (T::TelemetryEnabled())
+    {
+        std::uint64_t const nowMs = T::NowMs();
+        std::lock_guard<std::mutex> guard(T::gLifetimeLock);
+        auto const it = T::gLifetime.find(botGuid);
+        if (it != T::gLifetime.end())
+        {
+            dps = it->second.RecentDps();
+            std::uint64_t const first = it->second.EngagedAtMs(targetKey);
+            if (first && nowMs >= first)
+                engagedMs = nowMs - first;
+        }
+    }
+    in.estTtkMs = EstimateTtkMs(in.hp, maxHp, engagedMs, dps);
+
+    if (Evaluate(in, detail::gParams) == Verdict::Allow)
+        return true;
+    T::RecordDotSkip(botGuid, targetKey ^ std::hash<std::string_view>{}(spell));
+    return false;
+}
+}  // namespace AutoWowDotLifetimeGate
+
+namespace AutoWowCombatPerformanceTelemetry
+{
 class CombatPerformanceTelemetryScript : public UnitScript
 {
 public:
@@ -773,6 +857,11 @@ void LoadConfig()
 {
     detail::gTelemetryEnabled = sConfigMgr->GetOption<bool>("AutoWow.CombatTelemetry.Enable", false);
     detail::gLogIntervalMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.CombatTelemetry.LogIntervalMs", 60000);
+    AutoWowDotLifetimeGate::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Combat.DotLifetimeGate", false);
+    AutoWowDotLifetimeGate::Params& gate = AutoWowDotLifetimeGate::detail::gParams;
+    gate.minTargetHpPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Combat.DotMinTargetHpPct", 10);
+    gate.minDurationPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Combat.DotMinDurationPct", 50);
+    gate.highHpPerLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Combat.DotHighHpPerLevel", 150);
 }
 
 void AddAutoWowCombatPerformanceTelemetryScript()

@@ -5,6 +5,7 @@
  */
 
 #include "CombatPerformanceTelemetry.h"
+#include "DotLifetimeGate.h"
 
 #include "gtest/gtest.h"
 
@@ -259,4 +260,101 @@ TEST(CombatLifetime, TtkOverflowIsCountedNotLost)
     EXPECT_EQ(c.Totals().ttkCount, AutoWowCombatPerformanceTelemetry::kTtkPendingMax + 3);
     EXPECT_EQ(c.Totals().ttkDropped, 3U);
     EXPECT_EQ(c.PendingTtk(), AutoWowCombatPerformanceTelemetry::kTtkPendingMax);
+}
+
+// ---- C5 DoT/debuff lifetime gate (pure predicate) ----
+namespace
+{
+namespace G = AutoWowDotLifetimeGate;
+
+G::Input Trash(std::uint32_t hpPct, std::uint64_t hp)
+{
+    G::Input in;
+    in.kind = G::Kind::Dot;
+    in.hpPct = hpPct;
+    in.hp = hp;
+    in.botLevel = 20;          // high-HP floor = 20 x 150 = 3000
+    in.durationMs = 18000;
+    return in;
+}
+}
+
+TEST(DotLifetimeGate, TrashUnderHpFloorIsSkipped)
+{
+    G::Params const p;
+    EXPECT_EQ(G::Evaluate(Trash(9, 90), p), G::Verdict::SkipLowHp);
+    EXPECT_EQ(G::Evaluate(Trash(10, 100), p), G::Verdict::Allow);
+    G::Input mark = Trash(5, 50);
+    mark.kind = G::Kind::Debuff;
+    EXPECT_EQ(G::Evaluate(mark, p), G::Verdict::SkipLowHp);
+}
+
+TEST(DotLifetimeGate, BossAndEliteAreNeverGated)
+{
+    G::Params const p;
+    G::Input boss = Trash(3, 30);
+    boss.bossOrElite = true;
+    boss.estTtkMs = 500;
+    EXPECT_EQ(G::Evaluate(boss, p), G::Verdict::Allow);
+
+    G::Input elite = Trash(8, 400000);
+    elite.bossOrElite = true;
+    EXPECT_EQ(G::Evaluate(elite, p), G::Verdict::Allow);
+}
+
+TEST(DotLifetimeGate, HighAbsoluteHpOverridesHpFloorOnly)
+{
+    G::Params const p;
+    G::Input big = Trash(5, 3000);   // 5% but 3000 HP >= 20 x 150
+    EXPECT_EQ(G::Evaluate(big, p), G::Verdict::Allow);
+    big.estTtkMs = 2000;             // ... still dies in 2 s: TTK rule applies
+    EXPECT_EQ(G::Evaluate(big, p), G::Verdict::SkipShortTtk);
+    EXPECT_EQ(G::Evaluate(Trash(5, 2999), p), G::Verdict::SkipLowHp);
+}
+
+TEST(DotLifetimeGate, ShortTtkSkipsFirstApplication)
+{
+    G::Params const p;
+    G::Input in = Trash(60, 600);
+    in.estTtkMs = 8999;              // < 50% of 18 s
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::SkipShortTtk);
+    in.estTtkMs = 9000;
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::Allow);
+    in.estTtkMs = 0;                 // unknown TTK: HP floor only
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::Allow);
+    in.estTtkMs = 1000;
+    in.kind = G::Kind::Debuff;       // debuffs ignore the TTK rules
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::Allow);
+}
+
+TEST(DotLifetimeGate, RefreshSkippedWhenRunningAuraOutlivesTarget)
+{
+    G::Params const p;
+    G::Input in = Trash(60, 600);
+    in.estTtkMs = 10000;             // first application would be allowed (>= 9 s)
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::Allow);
+    in.remainingMs = 12000;          // refresh: the running DoT outlasts the target
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::SkipRefreshOutlives);
+    in.remainingMs = 3000;           // refresh near expiry on a target that lives on
+    EXPECT_EQ(G::Evaluate(in, p), G::Verdict::Allow);
+}
+
+TEST(DotLifetimeGate, ClassifyAndTtkEstimate)
+{
+    EXPECT_EQ(G::Classify("shadow word: pain"), G::Kind::Dot);
+    EXPECT_EQ(G::Classify("blood plague"), G::Kind::Dot);
+    EXPECT_EQ(G::Classify("hunter's mark"), G::Kind::Debuff);
+    EXPECT_EQ(G::Classify("arcane missiles"), G::Kind::None);
+    EXPECT_EQ(G::Classify("mangle (cat)"), G::Kind::None);
+
+    EXPECT_EQ(G::EstimateTtkMs(500, 1000, 0, 0), 0U);            // nothing known
+    EXPECT_EQ(G::EstimateTtkMs(500, 1000, 0, 50), 10000U);       // bot recent DPS only
+    EXPECT_EQ(G::EstimateTtkMs(500, 1000, 5000, 50), 5000U);     // observed 100/s beats 50/s
+    EXPECT_EQ(G::EstimateTtkMs(500, 1000, 1999, 50), 10000U);    // < 2 s observed: ignored
+    EXPECT_EQ(G::EstimateTtkMs(1000, 1000, 9000, 0), 0U);        // no HP loss observed yet
+}
+
+TEST(DotLifetimeGate, FlagDefaultsOff)
+{
+    EXPECT_FALSE(G::Enabled());
 }

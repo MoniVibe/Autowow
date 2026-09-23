@@ -26,6 +26,7 @@
 #include "Chat.h"
 #include "GenericBuffUtils.h"
 #include "PlayerbotAI.h"
+#include "DotLifetimeGate.h"
 
 using ai::buff::MakeAuraQualifierForBuff;
 using ai::spell::HasSpellOrCategoryCooldown;
@@ -864,6 +865,10 @@ bool CastDebuffSpellAction::isUseful()
     if (!target || !target->IsAlive() || !target->IsInWorld())
         return false;
 
-    return CastAuraSpellAction::isUseful() &&
-           (target->GetHealth() / AI_VALUE(float, "estimated group dps")) >= needLifeTime;
+    if (!CastAuraSpellAction::isUseful() ||
+        (target->GetHealth() / AI_VALUE(float, "estimated group dps")) < needLifeTime)
+        return false;
+
+    // AutoWow.Combat.DotLifetimeGate (default 0): one cached bool when off.
+    return !AutoWowDotLifetimeGate::Enabled() || AutoWowDotLifetimeGate::Allows(botAI, target, spell);
 }
