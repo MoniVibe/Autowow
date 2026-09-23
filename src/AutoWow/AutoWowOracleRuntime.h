@@ -8,6 +8,7 @@
 #define MOD_PLAYERBOTS_AUTOWOW_ORACLE_RUNTIME_H
 
 #include "AutoWowOracleContract.h"
+#include "AutoWowOracleQuestSelectionPolicy.h"
 #include "AutoWowOracleReceiptStore.h"
 #include "OracleGatherExecutor.h"
 #include "OracleQuestExecutor.h"
@@ -68,6 +69,9 @@ struct RuntimeConfig
     // 0 = drive every managed bot on the cadence edge (legacy). N > 0 = round-robin slices of at
     // most N bots per world update; see PlanSliceStep.
     std::uint32_t sliceBots = 0;
+    // 0 = legacy (a directive that yields no leasable candidate is kept forever). N > 0 = defer it
+    // after N consecutive lease-less cadence passes; see ShouldDeferNoCandidateQuest.
+    std::uint32_t deferNoCandidatePasses = 0;
     std::array<Guid, kMaxRuntimeBots> botGuids{};
     std::size_t botGuidCount = 0;
 };
@@ -167,6 +171,7 @@ struct BotState
         std::uint8_t slot = 0;
         std::uint32_t count = 0;
     } blockedObjective;
+    NoCandidateStreak noCandidate;
 };
 
 [[nodiscard]] inline bool KeepBlockedQuestRetry(

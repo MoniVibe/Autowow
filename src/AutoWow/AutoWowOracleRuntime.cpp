@@ -303,6 +303,18 @@ bool IsCompleteGatherPath(Player* bot, AutoWowGather::Candidate const& candidate
     return endpointDistance + 1.0f < currentDistance;
 }
 
+// Quest id of the bot's live DoQuest directive, or 0 when there is none or the bot is not alive
+// (a dead bot's missing frame is not evidence that the quest is unreachable).
+std::uint32_t DirectiveQuestId(Guid botGuid)
+{
+    Player* bot = ObjectAccessor::FindPlayer(ObjectGuid::Create<HighGuid::Player>(botGuid));
+    PlayerbotAI* ai = bot ? PlayerbotsMgr::instance().GetPlayerbotAI(bot) : nullptr;
+    if (!ai || !bot->IsAlive())
+        return 0;
+    auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&ai->rpgInfo.data);
+    return doQuest ? doQuest->questId : 0;
+}
+
 }  // namespace
 
 QuestBootstrapIdentity ResolveQuestBootstrapIdentity(
@@ -825,6 +837,8 @@ void Runtime::LoadConfig()
     config_.leaseTtlTicks = sConfigMgr->GetOption<std::uint32_t>(
         "AutoWow.OracleRuntime.LeaseTtlTicks", 3);
     config_.sliceBots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.OracleRuntime.SliceBots", 0);
+    config_.deferNoCandidatePasses = sConfigMgr->GetOption<std::uint32_t>(
+        "AutoWow.OracleRuntime.DeferNoCandidatePasses", 0);
 
     std::string const allowlist = sConfigMgr->GetOption<std::string>(
         "AutoWow.OracleRuntime.BotGuids", "");
@@ -952,12 +966,19 @@ bool Runtime::EnsureQuestDirective(Guid botGuid, BotState& state)
                 coreReadyForFinisher,
                 objective != nullptr,
                 resolved.hasLock() && resolved.key.questId == current->questId};
-            if (ShouldDeferUnrunnableQuest(selectionFacts))
+            bool const unrunnable = ShouldDeferUnrunnableQuest(selectionFacts);
+            bool const noCandidate = !unrunnable && !state.lease.valid &&
+                ShouldDeferNoCandidateQuest(state.noCandidate, current->questId,
+                    config_.deferNoCandidatePasses);
+            if (unrunnable || noCandidate)
             {
                 uint32 const deferredQuestId = current->questId;
                 if (AutoWowQuestLedger::Enabled())
                     AutoWowQuestLedger::Emit(ai->GetBot(), AutoWowQuestLedger::Event::Deferred, deferredQuestId,
-                        "oracle_unrunnable", AutoWowQuestLedger::PhaseName(current->objectiveRuntime.phase));
+                        unrunnable ? "oracle_unrunnable" : NoCandidateReasonName(state.noCandidate.kind),
+                        AutoWowQuestLedger::PhaseName(current->objectiveRuntime.phase));
+                if (noCandidate)
+                    state.noCandidate = {};
                 if (state.lease.valid)
                     ReleaseLease(state, MakeCleanupFrame(botGuid, state.lease));
                 ai->lowPriorityQuest.insert(deferredQuestId);
@@ -2000,6 +2021,8 @@ void Runtime::ProcessConfiguredBot(Guid botGuid)
     LiveQuestFrame live;
     if (!BuildLiveQuestFrame(botGuid, tick_, version, epoch_, proof, live))
     {
+        if (config_.deferNoCandidatePasses != 0 && !state->lease.valid)
+            ObserveNoCandidate(state->noCandidate, DirectiveQuestId(botGuid), NoCandidateKind::NoFrame);
         InvalidateOracleSnapshot(botGuid);
         if (state->lease.valid)
         {
@@ -2090,6 +2113,11 @@ void Runtime::ProcessConfiguredBot(Guid botGuid)
         Record(plan.receipt);
         if (!plan.hasDecision)
         {
+            // Only a live bot's empty frame is a structural miss; a dead bot legitimately has none.
+            if (config_.deferNoCandidatePasses != 0 && live.frame.bot.alive &&
+                live.frame.candidateCount == 0)
+                ObserveNoCandidate(state->noCandidate, live.observation.objective.questId,
+                    NoCandidateKind::NoCandidate);
             // No eligible quest objective is a terminal blocked tick. The separate gather path is
             // entered only from an invalid quest frame, never recursively from this branch. Keep
             // the bounded state slot so this diagnostic is rate-limited across blocked ticks.
@@ -2109,6 +2137,8 @@ void Runtime::ProcessConfiguredBot(Guid botGuid)
             return;
         }
         state->lastNoEligibleTelemetryTick = 0;
+        if (config_.deferNoCandidatePasses != 0)
+            state->noCandidate = {};
 
         AutoWowOracle::LeaseResult const acquired = arbiter_.Acquire(live.frame, plan.decision);
         Record(acquired.receipt);

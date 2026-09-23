@@ -2188,6 +2188,13 @@ AutoWow.OracleRuntime.LeaseTtlTicks = 3
 # runs exactly once per CadenceMs. Pick N >= ceil(MaxBots * worldDiffMs / CadenceMs) to avoid
 # drain bursts at the edge. Requires LeaseTtlTicks >= 2 (else the runtime disables itself).
 AutoWow.OracleRuntime.SliceBots = 0
+# Defer a managed quest directive that yields nothing the Oracle can lease: the quest frame cannot
+# be built (typically a completed quest whose finisher is only on another map) or it has zero
+# candidates (typically objective sources only on another map). Without this, such a directive is
+# kept forever and the bot idles silently. N > 0 = after N consecutive lease-less cadence passes,
+# set the quest aside like an unrunnable one (native low-priority set, ledger `deferred` with
+# reason oracle_no_frame / oracle_no_candidate); quest state is never touched. 0 (default) = legacy.
+AutoWow.OracleRuntime.DeferNoCandidatePasses = 0
 
 # Explicitly deployed worker_gather route seeking. Candidates are remembered static herb/ore
 # spawns; spawned state is checked only after the bot walks into sight. Movement uses mmap-backed
@@ -2221,7 +2228,10 @@ AutoWow.MicroScenarioGuids = ""
 # AutoWow per-quest ledger. When enabled, playerbots (never real players) emit one single-line JSON
 # event (schema v1) per quest lifecycle step to logger `autowow.ledger`: accepted, rewarded,
 # abandoned, blocked (typed executor reason + phase), deferred (set aside / dropped) and
-# contaminated (randombot revive/randomize/teleport, Oracle ZoneTravelAssist teleport), plus bot-level
+# contaminated (randombot revive/randomize/teleport, Oracle ZoneTravelAssist teleport, and every other
+# bot-initiated teleport: rpg_stuck_teleport, corpse_run_teleport, ghost_graveyard_teleport,
+# arena_team_teleport, bridge_rally_teleport, bridge_route_teleport, probe_reset_teleport,
+# dungeon_ground_reattach), plus bot-level
 # died (killer kind/id/level) and pvp_kill (victim guid/level, honorable).
 # Route the logger to its own file appender in worldserver.conf, on a native (ext4) filesystem.
 # Read once at world init. Default 0 = disabled (one cached bool check per call site, nothing logged).

@@ -41,6 +41,45 @@ TEST(AutoWowOracleRuntimePolicyTest, DefersOnlyAuthoritativelyUnrunnableActiveQu
     EXPECT_FALSE(ShouldDeferUnrunnableQuest(facts));
 }
 
+TEST(AutoWowOracleRuntimePolicyTest, NoCandidateDeferralIsOffByDefaultAndNeedsAFullStreak)
+{
+    NoCandidateStreak streak;
+    for (int pass = 0; pass < 100; ++pass)
+        ObserveNoCandidate(streak, 784, NoCandidateKind::NoCandidate);
+    // Threshold 0 is the legacy behavior: the directive is never deferred.
+    EXPECT_FALSE(ShouldDeferNoCandidateQuest(streak, 784, 0));
+
+    streak = {};
+    ObserveNoCandidate(streak, 784, NoCandidateKind::NoCandidate);
+    ObserveNoCandidate(streak, 784, NoCandidateKind::NoCandidate);
+    EXPECT_FALSE(ShouldDeferNoCandidateQuest(streak, 784, 3));
+    ObserveNoCandidate(streak, 784, NoCandidateKind::NoCandidate);
+    EXPECT_TRUE(ShouldDeferNoCandidateQuest(streak, 784, 3));
+    EXPECT_STREQ(NoCandidateReasonName(streak.kind), "oracle_no_candidate");
+    // The streak belongs to one quest; another directive is never deferred by it.
+    EXPECT_FALSE(ShouldDeferNoCandidateQuest(streak, 790, 3));
+}
+
+TEST(AutoWowOracleRuntimePolicyTest, NoCandidateStreakRestartsOnQuestChangeAndClearsOnZero)
+{
+    NoCandidateStreak streak;
+    ObserveNoCandidate(streak, 475, NoCandidateKind::NoFrame);
+    ObserveNoCandidate(streak, 475, NoCandidateKind::NoFrame);
+    ObserveNoCandidate(streak, 965, NoCandidateKind::NoFrame);
+    EXPECT_EQ(streak.questId, 965u);
+    EXPECT_EQ(streak.passes, 1u);
+    EXPECT_FALSE(ShouldDeferNoCandidateQuest(streak, 965, 2));
+    ObserveNoCandidate(streak, 965, NoCandidateKind::NoFrame);
+    EXPECT_TRUE(ShouldDeferNoCandidateQuest(streak, 965, 2));
+    EXPECT_STREQ(NoCandidateReasonName(streak.kind), "oracle_no_frame");
+
+    // No directive (or a dead bot) reports quest 0 and resets the streak.
+    ObserveNoCandidate(streak, 0, NoCandidateKind::NoFrame);
+    EXPECT_EQ(streak.questId, 0u);
+    EXPECT_EQ(streak.passes, 0u);
+    EXPECT_FALSE(ShouldDeferNoCandidateQuest(streak, 0, 1));
+}
+
 TEST(AutoWowOracleRuntimePolicyTest, BlockedRetrySurvivesPhaseChangesUntilCoreProgress)
 {
     BotState state;
