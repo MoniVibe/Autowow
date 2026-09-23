@@ -2424,6 +2424,10 @@ AutoWow.ZoneProgression.CheckIntervalMs = 60000
 AutoWow.ZoneProgression.TravelTimeoutMs = 3600000
 AutoWow.ZoneProgression.MaxReissues = 8
 AutoWow.ZoneProgression.GiveUpCooldownMs = 1800000
+# With AutoWow.Transports.Enable = 1 and Transports.Mode auto/portal: a walk leg that spent its stuck budget
+# (MaxReissues) or ran PortalAfterMs without reaching the destination zone portals to the hub (zone_move
+# mode/leg "portal"). 0 = time rule off. Walk legs follow built-in road points (ZoneProgressionPolicy.h).
+AutoWow.ZoneProgression.PortalAfterMs = 1200000
 AutoWow.ZoneProgression.Routes = ""
 
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).

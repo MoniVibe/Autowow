@@ -54,7 +54,7 @@ inline std::vector<Route> DefaultRoutes()
         {1, 12, 44, 15, 20, 0, -9224, -2158, 64, 6727, false},   // Elwynn -> Redridge (Lakeshire)
         {1, 1, 38, 9, 18, 0, -5378, -2974, 323, 6734, false},    // Dun Morogh -> Loch Modan (Thelsamar)
         {1, 141, 148, 9, 18, 1, 6406, 515, 8, 6737, true},       // Teldrassil -> Darkshore (Auberdine)
-        {1, 3524, 3525, 9, 18, 530, -175, 5529, 29, 18907, false},  // Azuremyst -> Bloodmyst (Blood Watch)
+        {1, 3524, 3525, 9, 18, 530, -2059, -11897, 45, 17553, false},  // Azuremyst -> Bloodmyst (Blood Watch)
         // Alliance 10-20 -> 20-30
         {1, 40, 10, 18, 30, 0, -10516, -1162, 28, 6790, false},  // Westfall -> Duskwood (Darkshire)
         {1, 44, 10, 18, 30, 0, -10516, -1162, 28, 6790, false},  // Redridge -> Duskwood
@@ -172,6 +172,7 @@ struct Params
     std::uint32_t travelTimeoutMs = 3600000; // AutoWow.ZoneProgression.TravelTimeoutMs
     std::uint32_t maxReissues = 8;           // AutoWow.ZoneProgression.MaxReissues
     std::uint32_t cooldownMs = 1800000;      // AutoWow.ZoneProgression.GiveUpCooldownMs
+    std::uint32_t portalAfterMs = 1200000;   // AutoWow.ZoneProgression.PortalAfterMs (0 = time rule off)
 };
 
 // zoneMax = high end of the current zone's bracket (0 = unbracketed: level rule off). hasRoute = a
@@ -199,7 +200,8 @@ enum class Mode : std::uint8_t
     Unreachable = 0,
     Walk = 1,
     Flight = 2,
-    Chain = 3  // AutoWow.Transports: walk -> travel object / transport -> walk (TransportCrossingPolicy.h)
+    Chain = 3,  // AutoWow.Transports: walk -> travel object / transport -> walk (TransportCrossingPolicy.h)
+    Portal = 4  // AutoWow.Transports (mode auto/portal): walk leg spent -> portal to the hub (owner ruling)
 };
 
 inline constexpr char const* ModeName(Mode m)
@@ -210,6 +212,7 @@ inline constexpr char const* ModeName(Mode m)
         case Mode::Walk: return "walk";
         case Mode::Flight: return "flight";
         case Mode::Chain: return "chain";
+        case Mode::Portal: return "portal";
     }
     return "none";
 }
@@ -223,6 +226,89 @@ inline constexpr char const* ModeName(Mode m)
     if (sameMap && !crossing)
         return Mode::Walk;
     return Mode::Unreachable;
+}
+
+// Road waypoints per route (world DB playerbots_travelnode positions, on the route's map), in travel
+// order. A straight hub walk cut through the wrong zone (soak-s11: Elwynn -> Westfall bot died in Duskwood
+// Raven Hill) or into cave/tunnel dead ends; a road keeps each leg short and on the roads.
+struct RoadPoint
+{
+    std::uint32_t from = 0;
+    std::uint32_t to = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+};
+
+inline std::vector<RoadPoint> DefaultRoads()
+{
+    return {
+        // Elwynn -> Westfall: Goldshire, Westbrook Garrison bridge, Jansen Stead.
+        {12, 40, -9473, 56, 61}, {12, 40, -9634, 674, 53}, {12, 40, -9789, 986, 29},
+        // Dun Morogh -> Loch Modan: Coldridge Valley/Pass, Kharanos, the east road, South Gate.
+        {1, 38, -6342, 482, 382}, {1, 38, -6123, 79, 417}, {1, 38, -5584, -486, 401}, {1, 38, -5351, -1041, 395},
+        {1, 38, -5525, -1354, 399}, {1, 38, -5721, -1891, 401}, {1, 38, -5620, -2205, 422},
+        {1, 38, -5537, -2392, 401},
+        // Durotar -> Barrens: Sen'jin, Razor Hill, Razormane Grounds, Southfury bridge, Far Watch Post.
+        {14, 17, -814, -4921, 19}, {14, 17, 313, -4759, 10}, {14, 17, 238, -4318, 38}, {14, 17, 421, -3843, 24},
+        {14, 17, 261, -3677, 48},
+        // Mulgore -> Barrens: Bloodhoof, Ravaged Caravan, Red Rocks.
+        {215, 17, -2307, -389, -9}, {215, 17, -1911, -727, 2}, {215, 17, -1040, -1078, 28},
+        // Tirisfal -> Silverpine: Brill, Cold Hearth Manor, Malden's Orchard, Valgan's Field.
+        {85, 130, 2268, 299, 34}, {85, 130, 2120, 621, 35}, {85, 130, 1421, 1027, 52}, {85, 130, 919, 1160, 47},
+        // Eversong -> Ghostlands: Falconwing Square, East Sanctum, Elrendar Crossing.
+        {3430, 3433, 9513, -6838, 17}, {3430, 3433, 8693, -7059, 48}, {3430, 3433, 7983, -6930, 60},
+        // Azuremyst -> Bloodmyst: Azure Watch, Moongraze Woods, Fairbridge Strand, Kessel's Crossing.
+        {3524, 3525, -4173, -12499, 45}, {3524, 3525, -3801, -12706, 11}, {3524, 3525, -2921, -12446, 5},
+        {3524, 3525, -2694, -12138, 14},
+    };
+}
+
+[[nodiscard]] inline std::vector<RoadPoint> RoadFor(std::vector<RoadPoint> const& roads, std::uint32_t from,
+                                                    std::uint32_t to)
+{
+    std::vector<RoadPoint> out;
+    for (RoadPoint const& p : roads)
+        if (p.from == from && p.to == to)
+            out.push_back(p);
+    return out;
+}
+
+inline std::int64_t RoadDist2(RoadPoint const& p, std::int32_t x, std::int32_t y)
+{
+    std::int64_t const dx = std::int64_t(p.x) - x;
+    std::int64_t const dy = std::int64_t(p.y) - y;
+    return dx * dx + dy * dy;
+}
+
+// Join: the nearest road point (lowest index on ties). Empty road -> 0 (== size: walk to the hub).
+[[nodiscard]] inline std::uint32_t JoinRoad(std::vector<RoadPoint> const& road, std::int32_t x, std::int32_t y)
+{
+    std::uint32_t best = 0;
+    for (std::uint32_t k = 1; k < road.size(); ++k)
+        if (RoadDist2(road[k], x, y) < RoadDist2(road[best], x, y))
+            best = k;
+    return best;
+}
+
+// Skips every road point already within reachYards; returns the index to walk to (== size: the hub).
+[[nodiscard]] inline std::uint32_t AdvanceRoad(std::vector<RoadPoint> const& road, std::uint32_t wp, std::int32_t x,
+                                               std::int32_t y, std::uint32_t reachYards)
+{
+    std::int64_t const reach2 = std::int64_t(reachYards) * reachYards;
+    while (wp < road.size() && RoadDist2(road[wp], x, y) <= reach2)
+        ++wp;
+    return wp;
+}
+
+// Portal fallback for a walk leg (AutoWow.Transports, mode auto/portal; owner ruling 2026-09-24): the
+// walk used up its stuck budget, or PortalAfterMs passed without the bot reaching the destination zone.
+[[nodiscard]] inline bool PortalFallback(bool allowed, Mode mode, bool inDestZone, std::uint32_t reissues,
+                                         std::uint32_t maxReissues, std::uint64_t travelMs, std::uint32_t portalAfterMs)
+{
+    if (!allowed || inDestZone || (mode != Mode::Walk && mode != Mode::Unreachable))
+        return false;
+    return reissues >= maxReissues || (portalAfterMs && travelMs >= portalAfterMs);
 }
 
 enum class Phase : std::uint8_t
@@ -246,6 +332,8 @@ struct BotState
     std::uint64_t startMs = 0;
     std::uint32_t reissues = 0;
     std::uint64_t cooldownUntilMs = 0;
+    bool roadJoined = false;  // road index chosen for this travel
+    std::uint32_t wp = 0;     // next road point (== road size: the hub)
 };
 
 // True when the travel leg is spent: past the timeout or out of reissues.

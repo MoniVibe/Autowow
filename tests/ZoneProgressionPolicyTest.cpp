@@ -131,6 +131,43 @@ TEST(ZoneProgression, OnlyStuckWalkTicksSpendReissues)
     EXPECT_TRUE(TravelExhausted(p, s, 37251));
 }
 
+// soak-s11: Corwick (Elwynn -> Westfall, from (-9306,-319)) walked straight and died in Duskwood Raven Hill.
+TEST(ZoneProgression, RoadJoinsNearestAndAdvances)
+{
+    std::vector<RoadPoint> const road = RoadFor(DefaultRoads(), 12, 40);
+    ASSERT_EQ(road.size(), 3U);
+    std::uint32_t wp = JoinRoad(road, -9306, -319);
+    EXPECT_EQ(wp, 0U);  // Goldshire first, not the hub across Duskwood
+    EXPECT_EQ(AdvanceRoad(road, wp, -9306, -319, 20), 0U);
+    EXPECT_EQ(AdvanceRoad(road, wp, -9470, 60, 20), 1U);    // at Goldshire -> Westbrook
+    EXPECT_EQ(AdvanceRoad(road, 2, -9789, 990, 20), 3U);    // past the last point -> hub
+    EXPECT_EQ(JoinRoad(road, -9700, 800), 1U);              // mid-route bot joins mid-road
+    EXPECT_TRUE(RoadFor(DefaultRoads(), 141, 148).empty());
+    EXPECT_EQ(RoadFor(DefaultRoads(), 85, 130).back().x, 919);
+}
+
+TEST(ZoneProgression, AzuremystHubIsBloodWatch)
+{
+    Route const* r = PickRoute(DefaultRoutes(), 1, 3524, 10, 1);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->inn, 17553U);  // Caregiver Topher Loaal, not the Outland innkeeper at (-174,5529)
+    EXPECT_EQ(r->y, -11897);
+}
+
+TEST(ZoneProgression, PortalFallbackDecision)
+{
+    EXPECT_FALSE(PortalFallback(true, Mode::Walk, false, 7, 8, 1199999, 1200000));
+    EXPECT_TRUE(PortalFallback(true, Mode::Walk, false, 8, 8, 0, 1200000));        // stuck budget spent
+    EXPECT_TRUE(PortalFallback(true, Mode::Walk, false, 0, 8, 1200000, 1200000));  // K minutes passed
+    EXPECT_TRUE(PortalFallback(true, Mode::Unreachable, false, 8, 8, 0, 1200000));
+    EXPECT_FALSE(PortalFallback(true, Mode::Walk, false, 0, 8, 99999999, 0));      // time rule off
+    EXPECT_FALSE(PortalFallback(false, Mode::Walk, false, 99, 8, 99999999, 1));    // Transports off / mode real
+    EXPECT_FALSE(PortalFallback(true, Mode::Walk, true, 99, 8, 99999999, 1));      // already in the zone
+    EXPECT_FALSE(PortalFallback(true, Mode::Flight, false, 99, 8, 99999999, 1));   // flight / chain own legs
+    EXPECT_FALSE(PortalFallback(true, Mode::Chain, false, 99, 8, 99999999, 1));
+    EXPECT_STREQ(ModeName(Mode::Portal), "portal");
+}
+
 TEST(ZoneProgression, LedgerFieldsAreStable)
 {
     EXPECT_EQ(LedgerFields(12, 40, 123456, true, Mode::Walk),

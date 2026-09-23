@@ -7,6 +7,7 @@
 // AutoWow.ZoneProgression runtime (policy: AutoWow/ZoneProgressionPolicy.h).
 
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <mutex>
 #include <unordered_map>
@@ -35,6 +36,7 @@ namespace
 // Bot AI updates run on map threads. Touched only with the flag on.
 std::mutex gLock;
 std::unordered_map<std::uint32_t, BotState> gStates;
+std::vector<RoadPoint> const gRoads = DefaultRoads();  // read-only after static init
 std::unordered_map<std::uint32_t, AutoWowTransports::ChainState> gChains;  // AutoWow.Transports only
 }  // namespace
 
@@ -48,6 +50,7 @@ void LoadConfig()
     p.travelTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.TravelTimeoutMs", 3600000);
     p.maxReissues = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.MaxReissues", 8);
     p.cooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.GiveUpCooldownMs", 1800000);
+    p.portalAfterMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.PortalAfterMs", 1200000);
     detail::gRoutes = DefaultRoutes();
     std::string const routes = sConfigMgr->GetOption<std::string>("AutoWow.ZoneProgression.Routes", "");
     if (!routes.empty() && !ParseRoutes(routes, detail::gRoutes))
@@ -419,6 +422,8 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         s.reissues = 0;
         s.stall = 0;
         s.mode = Mode::Unreachable;
+        s.roadJoined = false;
+        s.wp = 0;
         LOG_INFO("playerbots", "[ZoneProgression] bot={} graduate from={} to={} lvl={} trigger={}", bot->GetName(),
                  zone, route->to, bot->GetLevel(), TriggerName(trigger));
         if (transports)
@@ -429,6 +434,27 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     }
 
     WorldPosition const target(s.route.map, float(s.route.x), float(s.route.y), float(s.route.z));
+
+    // Next walk goal toward the hub: the route's road point (joined at the nearest, advanced within 20 yd),
+    // the hub itself once past the road, in the destination zone, or off the route's map. Updates s.wp.
+    auto walkTarget = [&]() -> WorldPosition
+    {
+        if (bot->GetMapId() != s.route.map || bot->GetZoneId() == s.route.to)
+            return target;
+        std::vector<RoadPoint> const road = RoadFor(gRoads, s.route.from, s.route.to);
+        std::int32_t const bx = static_cast<std::int32_t>(std::floor(bot->GetPositionX()));
+        std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
+        if (!s.roadJoined)
+        {
+            s.wp = JoinRoad(road, bx, by);
+            s.roadJoined = true;
+        }
+        s.wp = AdvanceRoad(road, s.wp, bx, by, 20);
+        if (s.wp >= road.size())
+            return target;
+        RoadPoint const& r = road[s.wp];
+        return WorldPosition(s.route.map, float(r.x), float(r.y), float(r.z));
+    };
 
     if (s.phase == Phase::Travel)
     {
@@ -446,6 +472,35 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             StoreState(guid, s);
             return true;
         }
+        // AutoWow.Transports (mode auto/portal; owner ruling 2026-09-24): a spent walk leg portals to the hub.
+        if (transports)
+        {
+            bool const allowed = AutoWowTransports::detail::gParams.mode != AutoWowTransports::TransportMode::Real;
+            bool const start = PortalFallback(allowed, s.mode, bot->GetZoneId() == s.route.to, s.reissues,
+                                              p.maxReissues, now >= s.startMs ? now - s.startMs : 0, p.portalAfterMs);
+            if (start || (s.mode == Mode::Portal && s.reissues <= p.maxReissues))
+            {
+                if (start)
+                {
+                    LOG_INFO("playerbots", "[ZoneProgression] bot={} portal fallback to={} after walk_ms={} reissues={}",
+                             bot->GetName(), s.route.to, now - s.startMs, s.reissues);
+                    s.mode = Mode::Portal;
+                    s.reissues = 0;
+                }
+                chain.legs.Open(AutoWowTransports::Leg::Portal, now);
+                if (!bot->IsBeingTeleported())
+                {
+                    ++s.reissues;
+                    if (info.GetStatus() != RPG_IDLE)
+                        info.ChangeToIdle();
+                    bot->TeleportTo(target.GetMapId(), target.GetPositionX(), target.GetPositionY(),
+                                    target.GetPositionZ(), bot->GetOrientation());
+                }
+                StoreState(guid, s);
+                StoreChain(guid, chain);
+                return true;
+            }
+        }
         if (TravelExhausted(p, s, now))
         {
             finish(false);
@@ -457,7 +512,8 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         }
         if (transports)
             return TransportsTravelStep(bot, botAI, s, chain, now, target,
-                                        [this](WorldPosition const& pos) { return WalkLeg(pos); });
+                                        [this, &target, &walkTarget](WorldPosition const& pos)
+                                        { return WalkLeg(pos == target ? walkTarget() : pos); });
         NewRpgStatus const status = info.GetStatus();
         if (status == RPG_TRAVEL_FLIGHT)
             return false;  // the flight status owns the leg; landing returns the bot to Idle
@@ -483,7 +539,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             return false;
         }
         s.mode = Mode::Walk;
-        NoteWalkTick(s, WalkLeg(target));
+        NoteWalkTick(s, WalkLeg(walkTarget()));
         StoreState(guid, s);
         return true;
     }
