@@ -118,7 +118,7 @@ function Get-CohortDb {
 
 function Invoke-CohortSql {
     param(
-        [Parameter(Mandatory = $true)][object]$Db,
+        [Parameter(Mandatory = $true)][object]$DbInfo,
         [Parameter(Mandatory = $true)][string[]]$Parts,
         [Parameter(Mandatory = $true)][string]$Sql,
         [switch]$Write
@@ -132,7 +132,7 @@ function Invoke-CohortSql {
     $prior = $env:MYSQL_PWD
     $env:MYSQL_PWD = $Parts[3]
     try {
-        $raw = & $Db.mysql --protocol=tcp "--host=$($Parts[0])" "--port=$($Parts[1])" "--user=$($Parts[2])" `
+        $raw = & $DbInfo.mysql --protocol=tcp "--host=$($Parts[0])" "--port=$($Parts[1])" "--user=$($Parts[2])" `
             "--database=$($Parts[4])" --default-character-set=utf8mb4 --batch --raw --skip-column-names "--execute=$Sql" 2>&1
         $exit = $LASTEXITCODE
     }
@@ -149,15 +149,15 @@ function Invoke-CohortSql {
 
 # Read-only snapshot of everything the cohort depends on, keyed for the manifest.
 function Get-CohortInventory {
-    param([Parameter(Mandatory = $true)][object]$Db, [Parameter(Mandatory = $true)][object[]]$Entries)
+    param([Parameter(Mandatory = $true)][object]$DbInfo, [Parameter(Mandatory = $true)][object[]]$Entries)
     $accountList = (@($Entries | ForEach-Object { [string]$_.account } | Sort-Object -Unique) | ForEach-Object { ConvertTo-CohortSqlLiteral $_ }) -join ','
     $nameList = (@($Entries | ForEach-Object { ConvertTo-CohortSqlLiteral ([string]$_.name) })) -join ','
     $accounts = @{}
-    foreach ($line in @(Invoke-CohortSql -Db $Db -Parts $Db.auth -Sql "SELECT id,username FROM account WHERE username IN ($accountList)")) {
+    foreach ($line in @(Invoke-CohortSql -DbInfo $DbInfo -Parts $DbInfo.auth -Sql "SELECT id,username FROM account WHERE username IN ($accountList)")) {
         $c = $line -split "`t"; $accounts[$c[1].ToUpperInvariant()] = [uint32]$c[0]
     }
     $characters = @{}
-    foreach ($line in @(Invoke-CohortSql -Db $Db -Parts $Db.characters -Sql "SELECT guid,account,name,race,class,gender,level FROM characters WHERE name IN ($nameList)")) {
+    foreach ($line in @(Invoke-CohortSql -DbInfo $DbInfo -Parts $DbInfo.characters -Sql "SELECT guid,account,name,race,class,gender,level FROM characters WHERE name IN ($nameList)")) {
         $c = $line -split "`t"
         $characters[$c[2].ToLowerInvariant()] = [pscustomobject]@{
             guid = [uint32]$c[0]; account = [uint32]$c[1]; name = $c[2]; race = [int]$c[3]; class = [int]$c[4]; gender = [int]$c[5]; level = [int]$c[6]
@@ -166,12 +166,12 @@ function Get-CohortInventory {
     $members = @{}
     $guids = @($characters.Values | ForEach-Object { $_.guid })
     if ($guids.Count) {
-        foreach ($line in @(Invoke-CohortSql -Db $Db -Parts $Db.playerbots -Sql "SELECT character_guid,COALESCE(team_id,''),IF(retired_at IS NULL,0,1) FROM autowow_league_member WHERE character_guid IN ($($guids -join ','))")) {
+        foreach ($line in @(Invoke-CohortSql -DbInfo $DbInfo -Parts $DbInfo.playerbots -Sql "SELECT character_guid,COALESCE(team_id,''),IF(retired_at IS NULL,0,1) FROM autowow_league_member WHERE character_guid IN ($($guids -join ','))")) {
             $c = $line -split "`t"; $members[[uint32]$c[0]] = [pscustomobject]@{ team_id = $c[1]; retired = ($c[2] -eq '1') }
         }
     }
     $teams = @{}
-    foreach ($line in @(Invoke-CohortSql -Db $Db -Parts $Db.playerbots -Sql "SELECT team_id,faction FROM autowow_league_team WHERE team_id IN ('cohort-alliance','cohort-horde')")) {
+    foreach ($line in @(Invoke-CohortSql -DbInfo $DbInfo -Parts $DbInfo.playerbots -Sql "SELECT team_id,faction FROM autowow_league_team WHERE team_id IN ('cohort-alliance','cohort-horde')")) {
         $c = $line -split "`t"; $teams[$c[0]] = $c[1]
     }
     $rows = foreach ($e in $Entries) {

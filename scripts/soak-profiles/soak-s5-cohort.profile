@@ -1,0 +1,42 @@
+# soak-s5-cohort: first persistent cohort (50 bots, 5 per race start, level 1, stock NewRpg + independent, AutoMaintenance=2 talents+spells) + 100 stock random background (L5-60). module main 4c3b6871, core 2d5433a2.
+# 27 Oracle-managed (prior 12 + 15 sub-80 random), rest stock = control. Legacy L80 random bots rerolled once at login (setup).
+# MapUpdateInterval 10 -> 50 (perf A/B vs S2 at 10; confounded by bot count, compare per-bot map-thread CPU).
+pb|AiPlayerbot.MinRandomBots|100
+pb|AiPlayerbot.MaxRandomBots|100
+pb|AiPlayerbot.RandomBotMinLevel|5
+pb|AiPlayerbot.RandomBotMaxLevel|60
+pb|AiPlayerbot.RandomBotMaxLevelChance|0.02
+pb|AiPlayerbot.RandomBotMaps|0,1,530
+pb|AiPlayerbot.MinRandomBotRandomizeTime|2592000
+pb|AiPlayerbot.MaxRandomBotRandomizeTime|2592000
+pb|AiPlayerbot.MinRandomBotTeleportInterval|2592000
+pb|AiPlayerbot.MaxRandomBotTeleportInterval|2592000
+pb|AiPlayerbot.MinRandomBotReviveTime|1800
+pb|AiPlayerbot.MaxRandomBotReviveTime|2400
+pb|AiPlayerbot.MinRandomBotInWorldTime|2592000
+pb|AiPlayerbot.MaxRandomBotInWorldTime|2592000
+pb|AiPlayerbot.BotActiveAlone|100
+pb|AiPlayerbot.botActiveAloneSmartScale|0
+pb|AutoWow.OracleRuntime.BotGuids|"7,10,101,112,121,123,139,144,154,166,236,244,3,4,5,6,9,11,12,14,15,16,17,18,19,25,35"
+pb|AutoWow.OracleRuntime.MaxBots|27
+pb|AutoWow.OracleRuntime.SliceBots|8
+pb|AutoWow.Ledger.Enable|1
+pb|AutoWow.Ledger.RunId|"soak-s5-cohort-r1"
+pb|AutoWow.Ledger.BlockedDedupeMs|60000
+pb|AutoWow.QuestFullBagRelief.Enable|1
+pb|AutoWow.PvpRealmZoneRules.Enable|1
+pb|AutoWow.Soak.RerollAboveMaxLevel|1
+pb|AutoWow.WarmQuestSpawnMap|1
+ws|GameType|1
+ws|MapUpdateInterval|50
+ws|LogsDir|"/root/autowow-soak/logs"
+ws|RecordUpdateTimeDiffInterval|60000
+ws|MinRecordUpdateTimeDiff|0
+ws|Logger.playerbots|4,Console Playerbots
+ws|Appender.Ledger|2,4,1,ledger.log,a
+ws|Logger.autowow.ledger|4,Ledger
+pb|AutoWow.OracleRuntime.DeferNoCandidatePasses|5
+pb|AutoWow.OracleRuntime.NoRandomTeleport|1
+ws|AutoWow.Perf.CreatureTerrainRefreshMs|400
+ws|AutoWow.Perf.CreatureTerrainRefreshYards|1.5
+pb|AutoWow.Independent.AutoMaintenance|2

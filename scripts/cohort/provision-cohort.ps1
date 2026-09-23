@@ -136,7 +136,7 @@ if ($Offline) {
 }
 
 $db = Get-CohortDb
-$inv = Get-CohortInventory -Db $db -Entries $entries
+$inv = Get-CohortInventory -DbInfo $db -Entries $entries
 $conflicts = @($inv.rows | Where-Object { $_.state -eq 'conflict' })
 $consoleRows = @($inv.rows | Where-Object { $_.state -in @('missing_account','missing_character') })
 $plan = [ordered]@{
@@ -160,11 +160,11 @@ if ($consoleRows.Count) {
         throw 'Set COHORT_ACCOUNT_PASSWORD (3-16 chars, no whitespace) in the process environment.'
     }
     $plan['console_log'] = Invoke-OneShotConsole -Lines @(Get-ConsoleLines -Rows $inv.rows)
-    $inv = Get-CohortInventory -Db $db -Entries $entries
+    $inv = Get-CohortInventory -DbInfo $db -Entries $entries
 }
 $enroll = Get-EnrollmentSql -Rows $inv.rows
-Invoke-CohortSql -Db $db -Parts $db.playerbots -Sql $enroll -Write | Out-Null
-$inv = Get-CohortInventory -Db $db -Entries $entries
+Invoke-CohortSql -DbInfo $db -Parts $db.playerbots -Sql $enroll -Write | Out-Null
+$inv = Get-CohortInventory -DbInfo $db -Entries $entries
 $plan['final'] = @($inv.rows | Select-Object id, name, guid, level, state, enrolled, control_arm, detail)
 $bad = @($inv.rows | Where-Object { $_.state -ne 'ok' -or -not $_.enrolled })
 $plan['verified'] = ($bad.Count -eq 0)

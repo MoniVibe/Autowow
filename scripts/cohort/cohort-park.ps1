@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 
 $manifest = Get-CohortManifest -Path $ManifestPath
 $entries = @(Select-CohortEntries -Manifest $manifest -Id $Id -Faction $Faction)
-$inv = Get-CohortInventory -Db (Get-CohortDb) -Entries $entries
+$inv = Get-CohortInventory -DbInfo (Get-CohortDb) -Entries $entries
 $online = @(Get-CohortOnlineGuids)
 $targets = @($inv.rows | Where-Object { $_.state -eq 'ok' -and $_.enrolled -and $_.guid -in $online })
 

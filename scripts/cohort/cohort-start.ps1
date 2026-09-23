@@ -36,7 +36,7 @@ $entries = @(Select-CohortEntries -Manifest $manifest -Id $Id -Faction $Faction)
 if ($entries.Count -eq 0) { throw 'No active manifest entries selected.' }
 
 $db = Get-CohortDb
-$inv = Get-CohortInventory -Db $db -Entries $entries
+$inv = Get-CohortInventory -DbInfo $db -Entries $entries
 $oracle = Get-CohortOracleAllowlist -WslDistro $WslDistro
 $online = @(Get-CohortOnlineGuids)
 
