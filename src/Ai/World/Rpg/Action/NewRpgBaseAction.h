@@ -106,6 +106,7 @@ protected:
     // AutoWow.ZoneProgression.Enable (ZoneProgressionPolicy.h): graduate an independent bot to the next
     // zone by walk/flight. True when it changed the RPG status this tick. Caller checks the flag.
     bool ZoneProgressionStep();
+    bool WalkLeg(WorldPosition const& dest);
 
 protected:
     /* FOR MOVE FAR */

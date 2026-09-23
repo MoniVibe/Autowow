@@ -451,25 +451,33 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         if (transports)
             return TransportsTravelStep(bot, botAI, s, chain, now, target);
         NewRpgStatus const status = info.GetStatus();
-        bool const ours = (status == RPG_GO_GRIND && std::get<NewRpgInfo::GoGrind>(info.data).pos == target) ||
-                          status == RPG_TRAVEL_FLIGHT;
-        if (ours)
-            return false;
-        ++s.reissues;
+        if (status == RPG_TRAVEL_FLIGHT)
+            return false;  // the flight status owns the leg; landing returns the bot to Idle
         uint32 fmEntry = 0;
         WorldPosition fmPos;
         std::vector<uint32> path;
-        bool const flight = bot->GetZoneId() != s.route.to && FindZoneFlight(bot, s.route.to, fmEntry, fmPos, path);
+        // Flight is looked up only while no walk leg is committed (start, after landing, after a stuck).
+        bool const flight = s.mode != Mode::Walk && bot->GetZoneId() != s.route.to &&
+                            FindZoneFlight(bot, s.route.to, fmEntry, fmPos, path);
         Mode const mode = SelectMode(flight, bot->GetMapId() == s.route.map, s.route.crossing && bot->GetZoneId() != s.route.to);
-        if (mode != Mode::Unreachable)
-            s.mode = mode;
-        StoreState(guid, s);
         if (mode == Mode::Flight)
+        {
+            ++s.reissues;
+            s.mode = mode;
+            StoreState(guid, s);
             info.ChangeToTravelFlight(fmEntry, fmPos, path);
-        else if (mode == Mode::Walk)
-            info.ChangeToGoGrind(target);
-        else
-            return false;  // counted; the next tick retries until TravelExhausted
+            return true;
+        }
+        if (mode == Mode::Unreachable)
+        {
+            ++s.reissues;  // counted; the next tick retries until TravelExhausted
+            StoreState(guid, s);
+            return false;
+        }
+        s.mode = Mode::Walk;
+        if (WalkLeg(target))
+            ++s.reissues;
+        StoreState(guid, s);
         return true;
     }
 
@@ -494,11 +502,23 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         info.ChangeToIdle();
         return true;
     }
-    NewRpgStatus const status = info.GetStatus();
-    if (status == RPG_GO_GRIND && std::get<NewRpgInfo::GoGrind>(info.data).pos == fm->pos)
-        return false;
-    ++s.reissues;
+    if (WalkLeg(fm->pos))
+        ++s.reissues;
     StoreState(guid, s);
-    info.ChangeToGoGrind(fm->pos);
     return true;
+}
+
+// Root cause of soak-s10-zoneprog-r1 (every trip gave up in 2-37 s): legs were handed to New RPG
+// GO_GRIND, whose MoveFarTo for an autonomous bot (watchDestination) rejects any destination the local
+// mmap cannot route to (an inter-zone hub is always beyond it) -> MarkTravelDestinationFailed + Idle on
+// the first tick, and each re-issue burned the budget. The leg is now walked here, in Idle, with the
+// quest-path no-teleport mover: TravelMgr re-anchored prepared walks and stepping stones, `stuck` only
+// after the ordinary no-progress window. Returns true when this tick reported stuck (one reissue).
+bool NewRpgBaseAction::WalkLeg(WorldPosition const& dest)
+{
+    if (botAI->rpgInfo.GetStatus() != RPG_IDLE)
+        botAI->rpgInfo.ChangeToIdle();
+    bool stuck = false;
+    MoveFarTo(dest, /*questNoTeleport*/ true, &stuck);
+    return stuck;
 }
