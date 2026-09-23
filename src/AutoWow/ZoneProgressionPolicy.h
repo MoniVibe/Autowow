@@ -254,6 +254,18 @@ struct BotState
     return (nowMs >= s.startMs && nowMs - s.startMs > p.travelTimeoutMs) || s.reissues > p.maxReissues;
 }
 
+// One tick of a committed walk leg. Only a reported stuck (the mover's no-progress window) consumes a
+// reissue and re-opens the flight/chain/walk choice; an ordinary tick costs nothing. soak-s10-zoneprog-r1
+// charged every tick whose status was not the GO_GRIND leg, and GO_GRIND dropped inter-zone hubs at once,
+// so all 9 trips hit maxReissues in 2-37 s.
+inline void NoteWalkTick(BotState& s, bool stuck)
+{
+    if (!stuck)
+        return;
+    ++s.reissues;
+    s.mode = Mode::Unreachable;
+}
+
 // Trailing fields of the ledger `zone_move` line (AutoWowQuestLedger.h documents them).
 inline std::string LedgerFields(std::uint32_t fromZone, std::uint32_t toZone, std::uint64_t travelMs, bool arrived,
                                 Mode mode)

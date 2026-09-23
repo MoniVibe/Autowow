@@ -112,6 +112,25 @@ TEST(ZoneProgression, TravelExhaustedByTimeoutOrReissues)
     EXPECT_TRUE(TravelExhausted(p, s, 5000));
 }
 
+// soak-s10-zoneprog-r1 regression: ordinary walk ticks must not spend the reissue budget.
+TEST(ZoneProgression, OnlyStuckWalkTicksSpendReissues)
+{
+    Params p;  // maxReissues 8, timeout 1 h
+    BotState s;
+    s.mode = Mode::Walk;
+    for (int tick = 0; tick < 1000; ++tick)
+        NoteWalkTick(s, false);
+    EXPECT_EQ(s.reissues, 0U);
+    EXPECT_EQ(s.mode, Mode::Walk);
+    EXPECT_FALSE(TravelExhausted(p, s, 37251));
+    NoteWalkTick(s, true);
+    EXPECT_EQ(s.reissues, 1U);
+    EXPECT_EQ(s.mode, Mode::Unreachable);  // next tick re-chooses flight / walk
+    for (int k = 0; k < 8; ++k)
+        NoteWalkTick(s, true);
+    EXPECT_TRUE(TravelExhausted(p, s, 37251));
+}
+
 TEST(ZoneProgression, LedgerFieldsAreStable)
 {
     EXPECT_EQ(LedgerFields(12, 40, 123456, true, Mode::Walk),

@@ -7,6 +7,7 @@
 // AutoWow.ZoneProgression runtime (policy: AutoWow/ZoneProgressionPolicy.h).
 
 #include <algorithm>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 
@@ -112,8 +113,12 @@ void AutoWowTransports::LoadConfig()
 // One tick of a crossing chain (AutoWow.Transports). Walks to each crossing, takes it by the game's own
 // mechanic (areatrigger / GameObject use / riding the transport), then walks to the hub. True when it
 // acted or holds the bot (waiting on a dock, riding); the caller consumes the RPG tick either way.
+// `walk` = NewRpgBaseAction::WalkLeg (one tick of the no-teleport long walk; true = stuck this tick).
+using WalkFn = std::function<bool(WorldPosition const&)>;
+
 static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::BotState& s,
-                      AutoWowTransports::ChainState& c, std::uint64_t now, WorldPosition const& hub)
+                      AutoWowTransports::ChainState& c, std::uint64_t now, WorldPosition const& hub,
+                      WalkFn const& walk)
 {
     using namespace AutoWowTransports;
     NewRpgInfo& info = botAI->rpgInfo;
@@ -133,10 +138,8 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
                 bot->GetMotionMaster()->MovePoint(0, x, y, z);
             return true;
         }
-        if (info.GetStatus() == RPG_GO_GRIND && std::get<NewRpgInfo::GoGrind>(info.data).pos == pos)
-            return true;
-        ++s.reissues;
-        info.ChangeToGoGrind(pos);
+        if (walk(pos))
+            ++s.reissues;
         return true;
     };
 
@@ -287,7 +290,8 @@ static bool FindZoneFlight(Player* bot, std::uint32_t toZone, uint32& fmEntry, W
 // AutoWow.Transports variant of the Travel-phase reissue: the same flight / walk choice, plus crossing
 // chains and the per-leg log. Stores both states.
 static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::BotState& s,
-                                 AutoWowTransports::ChainState& c, std::uint64_t now, WorldPosition const& target)
+                                 AutoWowTransports::ChainState& c, std::uint64_t now, WorldPosition const& target,
+                                 WalkFn const& walk)
 {
     using AutoWowZoneProgression::Mode;
     uint32 const guid = bot->GetGUID().GetCounter();
@@ -299,15 +303,18 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
     };
     if (s.mode == Mode::Chain)
     {
-        bool const acted = ChainStep(bot, botAI, s, c, now, target);
+        bool const acted = ChainStep(bot, botAI, s, c, now, target, walk);
         store();
         return acted;
     }
-    NewRpgStatus const status = info.GetStatus();
-    bool const ours = (status == RPG_GO_GRIND && std::get<NewRpgInfo::GoGrind>(info.data).pos == target) ||
-                      status == RPG_TRAVEL_FLIGHT;
-    if (ours)
-        return false;
+    if (info.GetStatus() == RPG_TRAVEL_FLIGHT)
+        return false;  // the flight status owns the leg; landing returns the bot to Idle
+    if (s.mode == Mode::Walk)
+    {
+        AutoWowZoneProgression::NoteWalkTick(s, walk(target));
+        store();
+        return true;
+    }
     ++s.reissues;
     uint32 fmEntry = 0;
     WorldPosition fmPos;
@@ -329,7 +336,7 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
         c.stepAt = now;
         LOG_INFO("playerbots", "[Transports] bot={} chain to={} crossings={} start_leg={}", bot->GetName(),
                  s.route.to, chain.size(), c.leg);
-        bool const acted = ChainStep(bot, botAI, s, c, now, target);
+        bool const acted = ChainStep(bot, botAI, s, c, now, target, walk);
         store();
         return acted;
     }
@@ -341,7 +348,7 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
     if (mode == Mode::Flight)
         info.ChangeToTravelFlight(fmEntry, fmPos, path);
     else if (mode == Mode::Walk)
-        info.ChangeToGoGrind(target);
+        walk(target);
     else
         return false;  // counted; the next tick retries until TravelExhausted
     return true;
@@ -449,7 +456,8 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             return true;
         }
         if (transports)
-            return TransportsTravelStep(bot, botAI, s, chain, now, target);
+            return TransportsTravelStep(bot, botAI, s, chain, now, target,
+                                        [this](WorldPosition const& pos) { return WalkLeg(pos); });
         NewRpgStatus const status = info.GetStatus();
         if (status == RPG_TRAVEL_FLIGHT)
             return false;  // the flight status owns the leg; landing returns the bot to Idle
@@ -475,8 +483,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             return false;
         }
         s.mode = Mode::Walk;
-        if (WalkLeg(target))
-            ++s.reissues;
+        NoteWalkTick(s, WalkLeg(target));
         StoreState(guid, s);
         return true;
     }
