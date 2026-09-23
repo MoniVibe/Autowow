@@ -103,6 +103,9 @@ protected:
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);
+    // AutoWow.ZoneProgression.Enable (ZoneProgressionPolicy.h): graduate an independent bot to the next
+    // zone by walk/flight. True when it changed the RPG status this tick. Caller checks the flag.
+    bool ZoneProgressionStep();
 
 protected:
     /* FOR MOVE FAR */

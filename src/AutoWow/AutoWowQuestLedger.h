@@ -42,6 +42,10 @@
 //     tacs_drop, mobs_max, adds, elite_n, lvl_dmax, load_max (centi mob-equivalents), pvp, dur_ms, kills,
 //     outcome (0 win, 1 died, 2 escaped, 3 died after escape, 4 no kill), hp0, hp1, mp0, mp1 (pct),
 //     mana_spent, hp_lost (absolute), casts, wand_ms, cc_n, shield_n, gap_ms, gap_rest_ms, pull_risk.
+//   - `zone_move` (AutoWow.ZoneProgression.Enable): one line per finished or abandoned zone graduation.
+//     reason = trigger (level|no_quests); quest is 0; lvl/zone/x/y at the end of the move. Trailing:
+//     from, to (zone ids), travel_ms (graduation to hub arrival or give-up), arrived (bool),
+//     mode (walk|flight|none: the last travel leg issued).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -74,7 +78,8 @@ enum class Event : std::uint8_t
     Progress = 9,
     DeathLoop = 10,
     SkillUp = 11,
-    Engage = 12
+    Engage = 12,
+    ZoneMove = 13
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -94,6 +99,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::SkillUp: return "skill_up";
         case Event::DeathLoop: return "death_loop";
         case Event::Engage: return "engage";
+        case Event::ZoneMove: return "zone_move";
     }
     return "unknown";
 }
@@ -362,7 +368,8 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += ",\"honorable\":";
         out += row.honorable ? "true" : "false";
     }
-    else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage)
+    else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
+             row.ev == Event::ZoneMove)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -411,6 +418,9 @@ void EmitCombat(Player* player, std::string_view fields);
 void EmitDeathLoop(Player* player, std::uint32_t questId, char const* reason, std::string_view fields);
 // `engage` (no-op unless the player is a recorded bot); fields from AutoWowTactics::FormatEngageFields.
 void EmitEngage(Player* player, std::string_view fields);
+// `zone_move` (no-op unless the player is a recorded bot); reason is a static literal (trigger name),
+// fields from AutoWowZoneProgression::LedgerFields.
+void EmitZoneMove(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

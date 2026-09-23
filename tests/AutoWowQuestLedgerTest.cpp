@@ -264,6 +264,24 @@ TEST(AutoWowQuestLedgerTest, DeathLoopEventIsAppendOnlyAndCarriesTrailingFields)
               "\"reason\":\"level_gap\",\"phase\":\"\",\"deaths\":1}");
 }
 
+TEST(AutoWowQuestLedgerTest, ZoneMoveEventIsAppendOnlyAndCarriesTrailingFields)
+{
+    EXPECT_EQ(static_cast<int>(Event::ZoneMove), 13);
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::ZoneMove), "zone_move");
+    Row row;
+    row.ev = Event::ZoneMove;
+    row.bot = 62955;
+    row.level = 10;
+    row.zone = 40;
+    row.reason = "level";
+    row.extra = ",\"from\":12,\"to\":40,\"travel_ms\":5000,\"arrived\":true,\"mode\":\"walk\"";
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row),
+              "{\"v\":1,\"run\":\"r\",\"ms\":0,\"ev\":\"zone_move\",\"bot\":62955,\"team\":0,\"lvl\":10,"
+              "\"quest\":0,\"map\":0,\"zone\":40,\"x\":0,\"y\":0,\"c\":[0,0,0,0],\"i\":[0,0,0,0,0,0],"
+              "\"reason\":\"level\",\"phase\":\"\",\"from\":12,\"to\":40,\"travel_ms\":5000,\"arrived\":true,"
+              "\"mode\":\"walk\"}");
+}
+
 TEST(AutoWowQuestLedgerTest, DiffProgressEmitsOnlyChangedKnownQuests)
 {
     using AutoWowQuestLedger::DiffProgress;

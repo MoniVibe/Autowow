@@ -2404,6 +2404,28 @@ AutoWow.DeathLoop.KillerLevelGap = 10
 AutoWow.DeathLoop.DangerCooldownMs = 3600000
 AutoWow.DeathLoop.RelocateLevelMargin = 5
 
+# Zone progression for independent AutoWoW bots (Oracle-managed bots and bots with a real master are
+# never moved). Every CheckIntervalMs an idle bot graduates when its level >= its zone's
+# AiPlayerbot.ZoneBracket max - LevelMargin, or when its quest log had nothing actionable for
+# StallChecks consecutive checks, provided a route leaves its zone for its team and level. It then
+# travels to the route's hub inn by normal means only: a flight path to an already-known node in the
+# destination zone (source node learned at the flight master), else a walk (New RPG go-grind, no
+# teleport). At the inn it binds its hearthstone, then walks to and learns the zone's flight master.
+# A leg that is not done within TravelTimeoutMs or MaxReissues re-issues is abandoned for
+# GiveUpCooldownMs. Ledger `zone_move` per finished/abandoned move. Routes overrides the built-in
+# table (ZoneProgressionPolicy.h): ';'-separated "team,from,to,minLevel,maxLevel,map,x,y,z,innEntry,
+# crossing" (team 0 any, 1 alliance, 2 horde; crossing 1 = sea between, flight only).
+# Known gaps: Bloodmyst -> Darkshore (Exodar boat), Ghostlands -> Eastern Kingdoms (orb/zeppelin),
+# Teldrassil -> Darkshore without Auberdine known (Rut'theran boat not ridden). Read once at world init.
+AutoWow.ZoneProgression.Enable = 0
+AutoWow.ZoneProgression.LevelMargin = 2
+AutoWow.ZoneProgression.StallChecks = 10
+AutoWow.ZoneProgression.CheckIntervalMs = 60000
+AutoWow.ZoneProgression.TravelTimeoutMs = 3600000
+AutoWow.ZoneProgression.MaxReissues = 8
+AutoWow.ZoneProgression.GiveUpCooldownMs = 1800000
+AutoWow.ZoneProgression.Routes = ""
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,

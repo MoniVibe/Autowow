@@ -23,6 +23,7 @@
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
 #include "DeathLoopBreaker.h"
+#include "ZoneProgressionPolicy.h"
 #include "TacticalRuntime.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
@@ -532,6 +533,7 @@ public:
         AutoWowQuestLedger::LoadConfig();
         AutoWowCombatPerformanceTelemetry::LoadConfig();
         AutoWowDeathLoop::LoadConfig();
+        AutoWowZoneProgression::LoadConfig();
         AutoWowTactics::LoadConfig();
         AutoWowBridge::instance().Start();
 

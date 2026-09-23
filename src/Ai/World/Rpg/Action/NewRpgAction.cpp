@@ -27,6 +27,7 @@
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DeathLoopBreaker.h"
+#include "ZoneProgressionPolicy.h"
 #include "DungeonPathWalkAction.h"
 #include "DungeonPullReadinessGuard.h"
 #include "ExactQuestAttackRecoveryPolicy.h"
@@ -381,6 +382,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             return true;
         }
     }
+
+    // AutoWow.ZoneProgression: independent bots graduate to the next zone by normal travel (no teleport).
+    if (AutoWowZoneProgression::Enabled() && ZoneProgressionStep())
+        return true;
 
     switch (status)
     {
