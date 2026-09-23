@@ -1595,6 +1595,15 @@ AiPlayerbot.PremadeSpecName.5.5 = shadow pvp
 AiPlayerbot.PremadeSpecGlyph.5.5 = 42407,43371,45753,43370,43374,42408
 AiPlayerbot.PremadeSpecLink.5.5.60 = --005323241223112003102311351
 AiPlayerbot.PremadeSpecLink.5.5.80 = 50332031003--005323241223112003102311351
+# Staged shadow leveling (docs/TACTICAL_COMBAT_PLAN.md 3.4; validated against Talent.dbc). Used only by
+# non-random priests with AutoWow.Tactics.PriestShadowLevelingSpec = 1 (RandomClassSpecProb.5.6 stays 0).
+AiPlayerbot.PremadeSpecName.5.6 = shadow leveling
+AiPlayerbot.PremadeSpecLink.5.6.20 = --325000001000000000000000000
+AiPlayerbot.PremadeSpecLink.5.6.30 = --325020251000010000000000000
+AiPlayerbot.PremadeSpecLink.5.6.40 = --325020251200012320100000000
+AiPlayerbot.PremadeSpecLink.5.6.50 = --325020251200012320152300000
+AiPlayerbot.PremadeSpecLink.5.6.60 = --325020251200012320152301351
+AiPlayerbot.PremadeSpecLink.5.6.80 = 0503203--325023051223010323152301351
 
 #
 #
@@ -2342,6 +2351,36 @@ AutoWow.Tactics.Priest.EmergencyHpPct = 30
 AutoWow.Tactics.Priest.EmergencyExitHpPct = 45
 AutoWow.Tactics.Priest.ScreamMinMelee = 2
 AutoWow.Tactics.Priest.ScreamHpPct = 60
+# Enable = 1 (T2): tracking as Observe, plus treatment-arm priests (arm 1) get the "tactical" combat and
+# "tactical nc" non-combat strategies. Control-arm priests run stock in the same soak (labelled only).
+# Tactics drive the stock engine through triggers and an action-factor multiplier (no strategy swaps):
+#   wand (10): SW:P then wand to the end (never re-cast while the wand is shooting the target); PW:S only
+#     above ShieldMinManaPct; Renew below RenewHpPct, Heal below HealHpPct.
+#   burst (11): stock nuke rotation; same Renew/Heal floors.
+#   multi (12): SW:P spread over attackers, Renew/Heal floors +10, Psychic Scream when >= ScreamMinMelee
+#     fearable melee are on the bot, (hp < ScreamHpPct or >= 3 attackers) and no idle adds are near.
+#   emergency (13): Desperate Prayer, Scream (any fearable melee), PW:S, Flash Heal (-> Greater/Heal/Lesser),
+#     Renew; damage spells x0 except the wand.
+#   escape (14): Scream if ready, flee step; all damage x0.
+# Factors.<Tactic> = "action:factor,..." (unlisted actions keep 1; 0 suppresses; the defaults are below).
+# Pre-pull readiness: no proactive grind/quest pull below PullMinManaPct / PullMinHpPct (0 = off); the bot
+# drinks / eats up to them instead (self-defence unaffected). Pack risk: a pull candidate with idle
+# hostiles within LinkRadius is rejected when candidate + neighbours > capacity x EscapeRatioPct%, else
+# sorted after lone candidates (quest branch: after party-shared, before distance; grind: + RiskYd yards
+# per whole mob-equivalent).
+AutoWow.Tactics.Enable = 0
+AutoWow.Tactics.PullMinManaPct = 50
+AutoWow.Tactics.PullMinHpPct = 60
+AutoWow.Tactics.RiskYd = 15
+AutoWow.Tactics.Priest.Factors.Wand = "smite:0,mind blast:0,holy fire:0,mana burn:0,mind flay:0,starshards:0,holy nova:0"
+AutoWow.Tactics.Priest.Factors.Burst = ""
+AutoWow.Tactics.Priest.Factors.Multi = "smite:0.5,mana burn:0"
+AutoWow.Tactics.Priest.Factors.Emergency = "smite:0,mind blast:0,holy fire:0,mana burn:0,mind flay:0,starshards:0,holy nova:0,shadow word: pain:0,shadow word: pain on attacker:0,devouring plague:0,vampiric touch:0,shadow word: death:0,mind sear:0"
+AutoWow.Tactics.Priest.Factors.Escape = "smite:0,mind blast:0,holy fire:0,mana burn:0,mind flay:0,starshards:0,holy nova:0,shadow word: pain:0,shadow word: pain on attacker:0,devouring plague:0,vampiric touch:0,shadow word: death:0,mind sear:0,shoot:0"
+# PriestShadowLevelingSpec = 1: non-random priests take premade spec 5.6 (above) on a first talent pick, a
+# reset (AutoMaintenance level-up respec) or while already shadow. Random bots are untouched. Note: shadow
+# priests have no stock self-heal; the tactical strategy (Enable, treatment arm) supplies Renew/Heal.
+AutoWow.Tactics.PriestShadowLevelingSpec = 0
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within

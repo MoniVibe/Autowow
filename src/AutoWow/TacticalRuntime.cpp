@@ -46,8 +46,23 @@ struct Settings
     std::uint32_t armPct = 50;
     std::uint32_t armSalt = 1;
     std::uint32_t linkRadiusYd = 12;
+    std::uint32_t pullMinManaPct = 50;  // T2 pre-pull readiness (0 = off)
+    std::uint32_t pullMinHpPct = 60;
+    std::uint32_t riskYd = 15;          // legacy grind: distance penalty per risk band
     PriestParams priest;
+    FactorTable factors[5];             // TacticId 10..14
 };
+
+// Default action -> factor tables (AutoWow.Tactics.Priest.Factors.<Tactic>). Unlisted actions keep 1.
+constexpr char kDefaultWandFactors[] =
+    "smite:0,mind blast:0,holy fire:0,mana burn:0,mind flay:0,starshards:0,holy nova:0";
+constexpr char kDefaultMultiFactors[] = "smite:0.5,mana burn:0";
+constexpr char kDefaultEmergencyFactors[] =
+    "smite:0,mind blast:0,holy fire:0,mana burn:0,mind flay:0,starshards:0,holy nova:0,shadow word: pain:0,"
+    "shadow word: pain on attacker:0,devouring plague:0,vampiric touch:0,shadow word: death:0,mind sear:0";
+constexpr char kDefaultEscapeFactors[] =
+    "smite:0,mind blast:0,holy fire:0,mana burn:0,mind flay:0,starshards:0,holy nova:0,shadow word: pain:0,"
+    "shadow word: pain on attacker:0,devouring plague:0,vampiric touch:0,shadow word: death:0,mind sear:0,shoot:0";
 Settings gSettings;
 
 struct BotState
@@ -202,6 +217,8 @@ EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, PriestParams c
 void LoadConfig()
 {
     detail::gObserve = sConfigMgr->GetOption<bool>("AutoWow.Tactics.Observe", false);
+    detail::gEnable = sConfigMgr->GetOption<bool>("AutoWow.Tactics.Enable", false);
+    detail::gShadowLevelingSpec = sConfigMgr->GetOption<bool>("AutoWow.Tactics.PriestShadowLevelingSpec", false);
 
     Settings s;
     s.reevalMs = std::max<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Tactics.ReevalMs", 500));
@@ -229,6 +246,15 @@ void LoadConfig()
     p.emergencyExitHpPct = u("AutoWow.Tactics.Priest.EmergencyExitHpPct", p.emergencyExitHpPct);
     p.screamMinMelee = u("AutoWow.Tactics.Priest.ScreamMinMelee", p.screamMinMelee);
     p.screamHpPct = u("AutoWow.Tactics.Priest.ScreamHpPct", p.screamHpPct);
+    s.pullMinManaPct = u("AutoWow.Tactics.PullMinManaPct", s.pullMinManaPct);
+    s.pullMinHpPct = u("AutoWow.Tactics.PullMinHpPct", s.pullMinHpPct);
+    s.riskYd = u("AutoWow.Tactics.RiskYd", s.riskYd);
+    auto f = [](char const* key, char const* def) { return ParseFactors(sConfigMgr->GetOption<std::string>(key, def)); };
+    s.factors[0] = f("AutoWow.Tactics.Priest.Factors.Wand", kDefaultWandFactors);
+    s.factors[1] = f("AutoWow.Tactics.Priest.Factors.Burst", "");
+    s.factors[2] = f("AutoWow.Tactics.Priest.Factors.Multi", kDefaultMultiFactors);
+    s.factors[3] = f("AutoWow.Tactics.Priest.Factors.Emergency", kDefaultEmergencyFactors);
+    s.factors[4] = f("AutoWow.Tactics.Priest.Factors.Escape", kDefaultEscapeFactors);
     gSettings = s;
 }
 
@@ -332,5 +358,126 @@ void Forget(std::uint32_t botGuid)
 {
     std::lock_guard<std::mutex> guard(gLock);
     gBots.erase(botGuid);
+}
+
+// ---- T2 --------------------------------------------------------------------------------------------
+
+namespace
+{
+bool IsPriest(Player* bot) { return bot && bot->getClass() == CLASS_PRIEST; }
+
+bool TreatmentEligible(PlayerbotAI* botAI)
+{
+    Player* bot = botAI ? botAI->GetBot() : nullptr;
+    return IsTreatment(bot) && Eligible(bot);
+}
+
+std::uint32_t ManaPct(Player* bot) { return Pct(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA)); }
+}  // namespace
+
+bool IsTreatment(Player* bot)
+{
+    return Enabled() && IsPriest(bot) &&
+           ArmOf(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()), gSettings.armSalt, gSettings.armPct) == 1;
+}
+
+TacticId Current(Player* bot, EngagementSnapshot* snap)
+{
+    if (!Enabled() || !IsPriest(bot))
+        return TacticId::None;
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gBots.find(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
+    if (it == gBots.end() || it->second.arm != 1)
+        return TacticId::None;
+    if (snap)
+        *snap = it->second.tracker.Last();
+    return it->second.tracker.Current();
+}
+
+PriestParams const& Priest() { return gSettings.priest; }
+
+std::uint32_t FactorPermille(TacticId id, std::string const& action)
+{
+    std::uint32_t const k = static_cast<std::uint32_t>(id);
+    std::uint32_t const first = static_cast<std::uint32_t>(TacticId::PriestWand);
+    if (k < first || k > static_cast<std::uint32_t>(TacticId::PriestEscape))
+        return 1000;
+    return FactorOf(gSettings.factors[k - first], action);
+}
+
+bool HoldProactivePull(PlayerbotAI* botAI)
+{
+    if (!Enabled() || !TreatmentEligible(botAI))
+        return false;
+    Player* bot = botAI->GetBot();
+    return AutoWowPackRisk::HoldPull(Pct(bot->GetHealth(), bot->GetMaxHealth()), ManaPct(bot),
+                                     bot->getPowerType() == POWER_MANA, gSettings.pullMinHpPct,
+                                     gSettings.pullMinManaPct);
+}
+
+bool NeedsRestMana(PlayerbotAI* botAI)
+{
+    if (!Enabled() || !gSettings.pullMinManaPct || !TreatmentEligible(botAI))
+        return false;
+    Player* bot = botAI->GetBot();
+    return !bot->IsInCombat() && bot->getPowerType() == POWER_MANA && ManaPct(bot) < gSettings.pullMinManaPct;
+}
+
+bool NeedsRestHealth(PlayerbotAI* botAI)
+{
+    if (!Enabled() || !gSettings.pullMinHpPct || !TreatmentEligible(botAI))
+        return false;
+    Player* bot = botAI->GetBot();
+    return !bot->IsInCombat() && Pct(bot->GetHealth(), bot->GetMaxHealth()) < gSettings.pullMinHpPct;
+}
+
+bool PullRiskActive(PlayerbotAI* botAI) { return Enabled() && gSettings.linkRadiusYd && TreatmentEligible(botAI); }
+
+std::uint32_t PullCapacity(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    EngagementSnapshot s;
+    s.hpPct = Pct(bot->GetHealth(), bot->GetMaxHealth());
+    s.manaPct = ManaPct(bot);
+    s.cds = ReadinessBits(botAI, bot);
+    return Capacity(s, gSettings.priest);
+}
+
+// ponytail: O(candidates x pool) per grind selection (tens of units); index by grid cell if it ever shows.
+AutoWowPackRisk::Verdict ScorePull(PlayerbotAI* botAI, Unit* candidate, std::vector<ObjectGuid> const& pool,
+                                   std::uint32_t capacity)
+{
+    Player* bot = botAI->GetBot();
+    std::int32_t const botLevel = static_cast<std::int32_t>(bot->GetLevel());
+    MobFacts const cf = FactsOf(candidate);
+    std::uint32_t const candidateWeight = MobWeight(cf.rank, static_cast<std::int32_t>(candidate->GetLevel()) - botLevel,
+                                                    cf.caster, gSettings.priest.load);
+    std::uint32_t neighbours = 0;
+    for (ObjectGuid const guid : pool)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || unit == candidate || !unit->IsAlive() || unit->IsInCombat() || !unit->IsCreature() ||
+            unit->GetCreatureType() == CREATURE_TYPE_CRITTER ||
+            unit->GetDistance(candidate) > float(gSettings.linkRadiusYd))
+            continue;
+        MobFacts const f = FactsOf(unit);
+        neighbours += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster,
+                                gSettings.priest.load);
+    }
+    return AutoWowPackRisk::Score(candidateWeight, neighbours, capacity, gSettings.priest.escapeRatioPct);
+}
+
+std::uint32_t RiskYd() { return gSettings.riskYd; }
+
+void NotePullChoice(Player* bot, Unit* target, std::uint32_t band)
+{
+    if (!bot || !target)
+        return;
+    std::lock_guard<std::mutex> guard(gLock);
+    if (auto it = gBots.find(static_cast<std::uint32_t>(bot->GetGUID().GetCounter())); it != gBots.end())
+    {
+        it->second.pullGuid = target->GetGUID().GetRawValue();
+        it->second.pullBand = static_cast<std::int32_t>(band);
+    }
 }
 }  // namespace AutoWowTactics

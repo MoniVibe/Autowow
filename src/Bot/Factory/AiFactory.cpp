@@ -25,6 +25,7 @@
 #include "SharedDefines.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "TacticalRuntime.h"
 #include "WarlockAiObjectContext.h"
 #include "WarriorAiObjectContext.h"
 
@@ -479,6 +480,10 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
     else
         engine->ChangeStrategy(sPlayerbotAIConfig.combatStrategies);
 
+    // AutoWow.Tactics.Enable (default 0): treatment-arm priests get the tactical layer (TacticalRuntime.h).
+    if (AutoWowTactics::Enabled() && AutoWowTactics::IsTreatment(player))
+        engine->addStrategy("tactical", false);
+
     // Battleground switch
     if (player->InBattleground() && player->GetBattleground())
     {
@@ -692,6 +697,10 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     }
     else
         nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.nonCombatStrategies);
+
+    // AutoWow.Tactics.Enable (default 0): pre-pull rest triggers for treatment-arm priests.
+    if (AutoWowTactics::Enabled() && AutoWowTactics::IsTreatment(player))
+        nonCombatEngine->addStrategy("tactical nc", false);
 
     // Battleground switch
     if (player->InBattleground() && player->GetBattleground())

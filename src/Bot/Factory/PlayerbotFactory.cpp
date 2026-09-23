@@ -38,6 +38,7 @@
 #include "ReputationMgr.h"
 #include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
+#include "TacticalRuntime.h"
 #include "World.h"
 #include "AiObjectContext.h"
 #include "ItemPackets.h"
@@ -1611,6 +1612,19 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
             LOG_ERROR("playerbots", "Fail to select spec num for bot {}! Set to 0.", bot->GetName());
         }
     }
+    // AutoWow.Tactics.PriestShadowLevelingSpec (default 0): a non-random priest levels with the staged shadow
+    // leveling template (spec 5.6: Spirit Tap / Improved Spirit Tap / Vampiric Embrace sustain) when it is
+    // configured - on a first pick, a reset, or an existing shadow tab. Random bots keep RandomClassSpecProb.
+    bool shadowLeveling = false;
+    if (AutoWowTactics::ShadowLevelingSpec() && cls == CLASS_PRIEST && !sRandomPlayerbotMgr.IsRandomBot(bot) &&
+        (reset || total_tabs == 0 || AiFactory::GetPlayerSpecTab(bot) == PRIEST_TAB_SHADOW))
+    {
+        uint32 const specNo = AutoWowTactics::kShadowLevelingSpecNo;
+        for (uint32 level = 0; level < MAX_LEVEL && !shadowLeveling; ++level)
+            shadowLeveling = !sPlayerbotAIConfig.parsedSpecLinkOrder[cls][specNo][level].empty();
+        if (shadowLeveling)
+            specTab = specNo;
+    }
     if (reset)
     {
         bot->resetTalents(true);
@@ -1621,11 +1635,12 @@ uint32 PlayerbotFactory::InitTalentsTree(bool increment /*false*/, bool use_temp
         InitTalentsByTemplate(specTab);
     }
     // if LimitTalentsExpansion = 1 there may be unused talent points
+    // (shadow leveling spec: spill like the shadow tab does, disc then holy)
     if (bot->GetFreeTalentPoints())
-        InitTalents((specTab + 1) % 3);
+        InitTalents(((shadowLeveling ? PRIEST_TAB_SHADOW : specTab) + 1) % 3);
 
     if (bot->GetFreeTalentPoints())
-        InitTalents((specTab + 2) % 3);
+        InitTalents(((shadowLeveling ? PRIEST_TAB_SHADOW : specTab) + 2) % 3);
 
     if (bot->getClass() == CLASS_SHAMAN && bot->HasSpell(SPELL_SHAMAN_DUAL_WIELD))
     {

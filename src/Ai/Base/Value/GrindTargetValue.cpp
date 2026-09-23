@@ -17,6 +17,7 @@
 #include "ReputationMgr.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
+#include "TacticalRuntime.h"
 
 Unit* GrindTargetValue::Calculate()
 {
@@ -66,6 +67,14 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
         return unit;
     }
+
+    // AutoWow.Tactics.Enable (default 0), treatment-arm solo priests: no proactive pull below the pull
+    // hp/mana thresholds (the "tactical nc" rest triggers drink/eat instead). Self-defence returned above.
+    if (AutoWowTactics::Enabled() && AutoWowTactics::HoldProactivePull(botAI))
+        return nullptr;
+    // Same arm: pack-risk pull choice (hard reject + risk band sort key / distance penalty).
+    bool const packRisk = AutoWowTactics::Enabled() && AutoWowTactics::PullRiskActive(botAI);
+    std::uint32_t const packCapacity = packRisk ? AutoWowTactics::PullCapacity(botAI) : 0;
 
     // A completed/transitioning/blocked Director quest has no objective lock, but it still owns the
     // bot. Do not let legacy grind proactively acquire a fresh mob while the phase machine is walking
@@ -143,6 +152,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         bool bestElite = false;
         uint32 bestTargeting = 0;
         uint32 bestGuidCounter = 0;
+        uint32 bestBand = 0;
 
         for (ObjectGuid const guid : targets)
         {
@@ -202,6 +212,15 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             if (!bot->IsWithinLOSInMap(unit))
                 continue;
 
+            uint32 band = 0;
+            if (packRisk)
+            {
+                AutoWowPackRisk::Verdict const risk = AutoWowTactics::ScorePull(botAI, unit, targets, packCapacity);
+                if (risk.reject)
+                    continue;
+                band = risk.band;
+            }
+
             // Deterministic score components.
             uint32 targetingCount = GetTargetingPlayerCount(unit);
             bool shared = targetingCount > 0;
@@ -236,6 +255,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             {
                 takeCandidate = shared;  // prefer a target a party member is already engaging
             }
+            else if (packRisk && band != bestBand)
+            {
+                takeCandidate = band < bestBand;  // AutoWow.Tactics: a lone mob before a pack
+            }
             else if (pathDist != bestPathDist)
             {
                 takeCandidate = pathDist < bestPathDist;
@@ -266,8 +289,12 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                 bestElite = isElite;
                 bestTargeting = targetingCount;
                 bestGuidCounter = guidCounter;
+                bestBand = band;
             }
         }
+
+        if (packRisk && bestTarget)
+            AutoWowTactics::NotePullChoice(bot, bestTarget, bestBand);
 
         // Violation guard only: strict selection above admits objective-whitelisted creature entries
         // exclusively. Self-defense returned before this branch and is deliberately not counted.
@@ -300,6 +327,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
     float distance = 0;
     Unit* result = nullptr;
+    uint32 resultBand = 0;
     std::unordered_map<uint32, bool> needForQuestMap;
 
     for (ObjectGuid const guid : targets)
@@ -367,6 +395,15 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                 continue;
         }
 
+        uint32 band = 0;
+        if (packRisk)
+        {
+            AutoWowPackRisk::Verdict const risk = AutoWowTactics::ScorePull(botAI, unit, targets, packCapacity);
+            if (risk.reject)
+                continue;
+            band = risk.band;
+        }
+
         if (group)
         {
             Group::MemberSlotList const& groupSlot = group->GetMemberSlots();
@@ -377,23 +414,32 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                     continue;
 
                 float d = member->GetDistance(unit);
+                if (packRisk)
+                    d += float(AutoWowTactics::RiskYd() * band);
                 if (!result || d < distance)
                 {
                     distance = d;
                     result = unit;
+                    resultBand = band;
                 }
             }
         }
         else
         {
             float newdistance = bot->GetDistance(unit);
+            if (packRisk)
+                newdistance += float(AutoWowTactics::RiskYd() * band);
             if (!result || (newdistance < distance))
             {
                 distance = newdistance;
                 result = unit;
+                resultBand = band;
             }
         }
     }
+
+    if (packRisk && result)
+        AutoWowTactics::NotePullChoice(bot, result, resultBand);
 
     return result;
 }

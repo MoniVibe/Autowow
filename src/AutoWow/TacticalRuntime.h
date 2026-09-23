@@ -8,16 +8,25 @@
 #define AUTOWOW_TACTICAL_RUNTIME_H
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
+#include "PackRisk.h"
 #include "TacticalPolicy.h"
 
+class ObjectGuid;
 class Player;
 class PlayerbotAI;
 class SpellInfo;
+class Unit;
 
 // Runtime adapter of the tactical combat layer (docs/TACTICAL_COMBAT_PLAN.md). All default off:
 //   AutoWow.Tactics.Observe (T1): assess every solo priest engagement, label the tactic it WOULD run, emit
 //     one ledger `engage` line per engagement and the `combat` cv=2 tac_ms/arm fields. No behaviour change.
+//   AutoWow.Tactics.Enable (T2): as Observe, plus the treatment arm (hash(guid) % 100 < ArmPct) gets the
+//     "tactical" / "tactical nc" priest strategies, the pre-pull readiness gate and pack-risk pull choice.
+//     Control-arm bots are tracked and labelled in the same run (same-soak A/B).
+//   AutoWow.Tactics.PriestShadowLevelingSpec: non-random priests level with premade spec 5.6.
 // Eligible = priest, not grouped, not in a dungeon/raid/battleground/arena. Per-bot state is keyed by guid
 // counter under one mutex (bots update on map threads); never held while calling other subsystems.
 namespace AutoWowTactics
@@ -26,10 +35,13 @@ namespace detail
 {
 inline bool gObserve = false;
 inline bool gEnable = false;  // T2 master; tracking also runs under it
+inline bool gShadowLevelingSpec = false;
 }  // namespace detail
 
 inline bool Tracking() { return detail::gObserve || detail::gEnable; }
 inline bool Enabled() { return detail::gEnable; }
+inline bool ShadowLevelingSpec() { return detail::gShadowLevelingSpec; }
+inline constexpr std::uint32_t kShadowLevelingSpecNo = 6;  // AiPlayerbot.PremadeSpec*.5.6
 
 // Reads AutoWow.Tactics.*. Called once at world init.
 void LoadConfig();
@@ -43,6 +55,29 @@ void NoteKill(std::uint32_t botGuid);
 void NoteCast(Player* player, SpellInfo const* spellInfo);
 void Forget(std::uint32_t botGuid);
 
+// ---- T2: treatment (AutoWow.Tactics.Enable) -------------------------------------------------------
+// Enable on, priest, treatment arm. Fixed per guid, so safe to consult when an engine is built.
+bool IsTreatment(Player* bot);
+// The running tactic of an eligible treatment bot (None otherwise) and the snapshot it was chosen on.
+TacticId Current(Player* bot, EngagementSnapshot* snap = nullptr);
+PriestParams const& Priest();
+// Permille multiplier of an action under a tactic (1000 = unchanged); AutoWow.Tactics.Priest.Factors.*.
+std::uint32_t FactorPermille(TacticId id, std::string const& action);
+// Pre-pull readiness gate: true = do not start a proactive pull now (rest first). Self-defence unaffected.
+bool HoldProactivePull(PlayerbotAI* botAI);
+// Out-of-combat rest triggers of "tactical nc" (eligible treatment bot, below the pull thresholds).
+bool NeedsRestMana(PlayerbotAI* botAI);
+bool NeedsRestHealth(PlayerbotAI* botAI);
+
+// Pack-risk pull selection. PullRiskActive: treatment + eligible + LinkRadius > 0. Capacity is taken once
+// per selection; ScorePull scores one candidate against the idle hostiles of `pool` near it.
+bool PullRiskActive(PlayerbotAI* botAI);
+std::uint32_t PullCapacity(PlayerbotAI* botAI);
+AutoWowPackRisk::Verdict ScorePull(PlayerbotAI* botAI, Unit* candidate, std::vector<ObjectGuid> const& pool,
+                                   std::uint32_t capacity);
+std::uint32_t RiskYd();
+// The proactive pull the selector chose; its band is stamped on the engagement it starts (pull_risk).
+void NotePullChoice(Player* bot, Unit* target, std::uint32_t band);
 }  // namespace AutoWowTactics
 
 #endif  // AUTOWOW_TACTICAL_RUNTIME_H

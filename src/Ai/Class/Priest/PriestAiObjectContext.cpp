@@ -15,6 +15,7 @@
 #include "PriestTriggers.h"
 #include "PullStrategy.h"
 #include "ShadowPriestStrategy.h"
+#include "TacticalPriestStrategy.h"
 
 class PriestStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -33,6 +34,8 @@ public:
         creators["rshadow"] = &PriestStrategyFactoryInternal::rshadow;
         creators["cc"] = &PriestStrategyFactoryInternal::cc;
         creators["healer dps"] = &PriestStrategyFactoryInternal::healer_dps;
+        creators["tactical"] = &PriestStrategyFactoryInternal::tactical;
+        creators["tactical nc"] = &PriestStrategyFactoryInternal::tactical_nc;
     }
 
 private:
@@ -46,6 +49,8 @@ private:
     static Strategy* shadow_debuff(PlayerbotAI* botAI) { return new ShadowPriestDebuffStrategy(botAI); }
     static Strategy* cure(PlayerbotAI* botAI) { return new PriestCureStrategy(botAI); }
     static Strategy* healer_dps(PlayerbotAI* botAI) { return new PriestHealerDpsStrategy(botAI); }
+    static Strategy* tactical(PlayerbotAI* botAI) { return new TacticalPriestStrategy(botAI); }
+    static Strategy* tactical_nc(PlayerbotAI* botAI) { return new TacticalPriestNonCombatStrategy(botAI); }
 };
 
 class PriestCombatStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -105,6 +110,16 @@ public:
         creators["silence on enemy healer"] = &PriestTriggerFactoryInternal::silence_on_enemy_healer;
         creators["shadowfiend"] = &PriestTriggerFactoryInternal::shadowfiend;
         creators["mind sear channel check"] = &PriestTriggerFactoryInternal::mind_sear_channel_check;
+        creators["tactic wand"] = &PriestTriggerFactoryInternal::tactic_wand;
+        creators["tactic renew"] = &PriestTriggerFactoryInternal::tactic_renew;
+        creators["tactic heal"] = &PriestTriggerFactoryInternal::tactic_heal;
+        creators["tactic multi"] = &PriestTriggerFactoryInternal::tactic_multi;
+        creators["tactic scream"] = &PriestTriggerFactoryInternal::tactic_scream;
+        creators["tactic emergency scream"] = &PriestTriggerFactoryInternal::tactic_emergency_scream;
+        creators["tactic emergency"] = &PriestTriggerFactoryInternal::tactic_emergency;
+        creators["tactic escape"] = &PriestTriggerFactoryInternal::tactic_escape;
+        creators["tactic rest mana"] = &PriestTriggerFactoryInternal::tactic_rest_mana;
+        creators["tactic rest health"] = &PriestTriggerFactoryInternal::tactic_rest_health;
     }
 
 private:
@@ -147,6 +162,16 @@ private:
     static Trigger* chastise(PlayerbotAI* botAI) { return new ChastiseTrigger(botAI); }
     static Trigger* binding_heal(PlayerbotAI* botAI) { return new BindingHealTrigger(botAI); }
     static Trigger* mind_sear_channel_check(PlayerbotAI* botAI) { return new MindSearChannelCheckTrigger(botAI); }
+    static Trigger* tactic_wand(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic wand", TacticCondition::Wand); }
+    static Trigger* tactic_renew(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic renew", TacticCondition::Renew); }
+    static Trigger* tactic_heal(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic heal", TacticCondition::Heal); }
+    static Trigger* tactic_multi(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic multi", TacticCondition::Multi); }
+    static Trigger* tactic_scream(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic scream", TacticCondition::Scream); }
+    static Trigger* tactic_emergency_scream(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic emergency scream", TacticCondition::EmergencyScream); }
+    static Trigger* tactic_emergency(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic emergency", TacticCondition::Emergency); }
+    static Trigger* tactic_escape(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic escape", TacticCondition::Escape); }
+    static Trigger* tactic_rest_mana(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic rest mana", TacticCondition::RestMana); }
+    static Trigger* tactic_rest_health(PlayerbotAI* botAI) { return new TacticTrigger(botAI, "tactic rest health", TacticCondition::RestHealth); }
 };
 
 class PriestAiObjectContextInternal : public NamedObjectContext<Action>
