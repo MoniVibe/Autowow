@@ -25,6 +25,7 @@
 
 #include "ObjectGuid.h"
 #include "OracleRouteExecutor.h"
+#include "QuestStallRecoveryPolicy.h"
 #include "TravelMgr.h"  // GuidPosition
 
 enum class QuestObjectiveFamily : uint8
@@ -188,7 +189,8 @@ enum class QuestFailureReason : uint16
     OracleRouteInvalidDescriptor,
     OracleRouteUnsupportedTransition,
     OracleRouteNoSafeAnchor,
-    OracleRouteBlocked
+    OracleRouteBlocked,
+    TravelNoProgress  // appended: AutoWow.QuestTravelProgressWatch.Enable budget spent
 };
 
 struct QuestFinisherRef
@@ -256,6 +258,12 @@ struct QuestObjectiveRuntime
     std::unordered_map<uint64, uint32> sourceRotationCooldownUntil;
 
     std::unordered_map<ObjectGuid, uint32> targetCooldownUntil;
+
+    // Starter-stall recovery (flag-gated consumers only). blockedAtMs is the Blocked entry time
+    // (0 = never blocked); travelWatch measures net approach to the current travel destination.
+    uint32 blockedAtMs = 0;
+    QuestStallRecoveryPolicy::TravelWatch travelWatch;
+    uint32 travelRotationCount = 0;  // travel-expiry rotations spent on this DoQuest
 
     QuestFinisherRef finisher;
     QuestFinisherReceipt finisherReceipt;

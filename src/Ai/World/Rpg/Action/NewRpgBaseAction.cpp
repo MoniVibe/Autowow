@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <mutex>
 #include <optional>
 #include <unordered_map>
 
@@ -42,6 +43,7 @@
 #include "QuestDef.h"
 #include "QuestInventoryReliefPolicy.h"
 #include "QuestPackets.h"
+#include "QuestStallRecoveryPolicy.h"
 #include "QuestTravelWalk.h"
 #include "Random.h"
 #include "RandomPlayerbotMgr.h"
@@ -67,6 +69,12 @@ struct FailedTravelDestination
 };
 std::unordered_map<uint32, std::vector<FailedTravelDestination>> failedTravelByBot;
 std::unordered_map<uint32, uint32> lastAutonomousTravelTickByBot;
+
+// Timed stall deferrals (AutoWow.QuestBlockedDefer.Enable). Outside NewRpgInfo so a status change or
+// a fresh DoQuest cannot clear them; bots update on map threads, hence the lock.
+// ponytail: one global lock; touched only when the flag is on (select + defer paths).
+std::mutex stallDeferralLock;
+std::unordered_map<uint32, QuestStallRecoveryPolicy::DeferralBook> stallDeferralsByBot;
 constexpr size_t maxFailedTravelDestinations = 8;
 
 struct VendorReliefCandidate
@@ -223,6 +231,19 @@ void NewRpgBaseAction::MarkTravelDestinationFailed(WorldPosition const& pos)
     LOG_INFO("playerbots", "[New RPG] AutoWow {} replans failed destination ({},{},{},{}) cooldown_ms={}",
              bot->GetName(), pos.GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(),
              AutonomousRpgTravelPolicy::kFailedDestinationCooldownMs);
+}
+
+void NewRpgBaseAction::DeferQuestForStall(uint32 questId)
+{
+    std::lock_guard<std::mutex> guard(stallDeferralLock);
+    stallDeferralsByBot[bot->GetGUID().GetCounter()].Defer(questId, getMSTime());
+}
+
+bool NewRpgBaseAction::IsQuestStallDeferred(uint32 questId)
+{
+    std::lock_guard<std::mutex> guard(stallDeferralLock);
+    auto it = stallDeferralsByBot.find(bot->GetGUID().GetCounter());
+    return it != stallDeferralsByBot.end() && it->second.IsDeferred(questId, getMSTime());
 }
 
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool* outStuck,
@@ -1864,6 +1885,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
                 if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
                     continue;
+                if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && IsQuestStallDeferred(questId))
+                    continue;
 
                 std::vector<POIInfo> poiInfo;
                 if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
@@ -1956,6 +1979,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
             {
                 uint32 questId = bot->GetQuestSlotQuestId(slot);
                 if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+                    continue;
+                if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && IsQuestStallDeferred(questId))
                     continue;
 
                 std::vector<POIInfo> poiInfo;

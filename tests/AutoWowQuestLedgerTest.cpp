@@ -240,4 +240,31 @@ TEST(AutoWowQuestLedgerTest, HonorableKillMirrorsCoreRewardHonorGate)
     EXPECT_TRUE(IsHonorableKill(true, true, 30, 40, false));     // same faction on an FFA realm
     EXPECT_FALSE(IsHonorableKill(false, false, 30, 40, true));   // honorless-target aura
 }
+
+TEST(AutoWowQuestLedgerTest, ProgressEventNameIsAppendOnly)
+{
+    EXPECT_EQ(static_cast<int>(Event::Progress), 9);  // 8 reserved for the combat lane
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Progress), "progress");
+}
+
+TEST(AutoWowQuestLedgerTest, DiffProgressEmitsOnlyChangedKnownQuests)
+{
+    using AutoWowQuestLedger::DiffProgress;
+    using AutoWowQuestLedger::QuestCounters;
+    std::vector<QuestCounters> last;
+
+    QuestCounters kill{170};
+    QuestCounters collect{3361};
+    EXPECT_TRUE(DiffProgress(last, {kill, collect}).empty());  // first sample: baseline only
+
+    kill.c[0] = 2;
+    EXPECT_EQ(DiffProgress(last, {kill, collect}), (std::vector<std::uint32_t>{170}));
+    EXPECT_TRUE(DiffProgress(last, {kill, collect}).empty());  // unchanged
+
+    collect.i[2] = 1;
+    QuestCounters talk{233};
+    EXPECT_EQ(DiffProgress(last, {collect, talk}), (std::vector<std::uint32_t>{3361}));  // 170 left the log
+    kill.c[0] = 3;
+    EXPECT_TRUE(DiffProgress(last, {kill}).empty());  // re-accepted 170 is a new baseline
+}
 }  // namespace

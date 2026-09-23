@@ -29,6 +29,7 @@ void LoadConfig()
     detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Ledger.Enable", false);
     detail::gRunId = sConfigMgr->GetOption<std::string>("AutoWow.Ledger.RunId", "");
     detail::gBlockedDedupeMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Ledger.BlockedDedupeMs", 0);
+    detail::gProgressSampleMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Ledger.ProgressSampleMs", 0);
 }
 
 char const* ReasonName(QuestFailureReason reason)
@@ -64,6 +65,7 @@ char const* ReasonName(QuestFailureReason reason)
         case QuestFailureReason::OracleRouteUnsupportedTransition: return "oracle_route_unsupported_transition";
         case QuestFailureReason::OracleRouteNoSafeAnchor: return "oracle_route_no_safe_anchor";
         case QuestFailureReason::OracleRouteBlocked: return "oracle_route_blocked";
+        case QuestFailureReason::TravelNoProgress: return "travel_no_progress";
     }
     return "unknown";
 }
@@ -145,7 +147,63 @@ struct PendingKiller
 // Killer noted by the kill hook until the victim's OnPlayerJustDied. Touched only on deaths.
 std::mutex gKillerLock;
 std::unordered_map<std::uint32_t, PendingKiller> gKillerByBot;
+
+struct ProgressSampler
+{
+    std::uint64_t nextAtMs = 0;
+    std::vector<QuestCounters> last;
+};
+// ponytail: one global lock; held for one short per-bot check each update while sampling is on.
+std::mutex gProgressLock;
+std::unordered_map<std::uint32_t, ProgressSampler> gProgressByBot;
 }  // namespace
+
+void SampleProgress(Player* player)
+{
+    if (!detail::gProgressSampleMs || !IsRecordedBot(player))
+        return;
+
+    std::uint64_t const nowMs = static_cast<std::uint64_t>(GameTime::GetGameTimeMS().count());
+    std::uint32_t const bot = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
+    {
+        std::lock_guard<std::mutex> guard(gProgressLock);
+        ProgressSampler& sampler = gProgressByBot[bot];
+        if (nowMs < sampler.nextAtMs)
+            return;
+        sampler.nextAtMs = nowMs + detail::gProgressSampleMs;
+    }
+
+    std::vector<QuestCounters> current;
+    QuestStatusMap& statusMap = player->getQuestStatusMap();
+    for (std::uint8_t slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        std::uint32_t const questId = player->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+        auto const it = statusMap.find(questId);
+        if (it == statusMap.end())
+            continue;
+        QuestCounters counters;
+        counters.quest = questId;
+        for (std::size_t k = 0; k < kCreatureCounters; ++k)
+            counters.c[k] = it->second.CreatureOrGOCount[k];
+        for (std::size_t k = 0; k < kItemCounters; ++k)
+            counters.i[k] = it->second.ItemCount[k];
+        current.push_back(counters);
+    }
+
+    std::vector<std::uint32_t> changed;
+    {
+        std::lock_guard<std::mutex> guard(gProgressLock);
+        changed = DiffProgress(gProgressByBot[bot].last, current);
+    }
+    for (std::uint32_t const questId : changed)
+    {
+        Row row;
+        FillRow(player, Event::Progress, questId, "", "", row);
+        LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+    }
+}
 
 void NoteKiller(Player* victim, KillerKind kind, std::uint32_t killerId, std::uint32_t killerLevel)
 {

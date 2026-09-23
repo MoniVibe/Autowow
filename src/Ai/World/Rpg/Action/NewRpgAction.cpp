@@ -22,6 +22,7 @@
 #include "Bag.h"
 #include "BroadcastHelper.h"
 #include "ChatHelper.h"
+#include "ConditionMgr.h"
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -57,6 +58,7 @@
 #include "QuestObjectiveContext.h"
 #include "QuestObjectiveTransitionPolicy.h"
 #include "QuestSourceStallPolicy.h"
+#include "QuestStallRecoveryPolicy.h"
 #include "QuestTravelWalk.h"
 #include "QuestSourceRotationPolicy.h"
 #include "QuestValues.h"
@@ -131,6 +133,26 @@ public:
 
     bool UseItemAuto(Item* item) { return UseItemAction::UseItemAuto(item); }
 };
+
+// AutoWow.QuestItemTargetConditions.Enable: the same explicit-target spell conditions the core
+// checks in Spell::CheckCast (caster, target). A target that fails them can never yield credit
+// (q5441: an awake peon lacks aura 17743), so it is not a candidate.
+bool QuestItemSpellTargetConditionsMet(Player* bot, uint32 itemId, WorldObject* target)
+{
+    ItemTemplate const* proto = itemId ? sObjectMgr->GetItemTemplate(itemId) : nullptr;
+    if (!proto)
+        return true;
+    for (auto const& itemSpell : proto->Spells)
+    {
+        if (itemSpell.SpellId <= 0 || itemSpell.SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
+            continue;
+        ConditionList const conditions = sConditionMgr->GetConditionsForNotGroupedEntry(
+            CONDITION_SOURCE_TYPE_SPELL, static_cast<uint32>(itemSpell.SpellId));
+        if (!conditions.empty() && !sConditionMgr->IsObjectMeetToConditions(bot, target, conditions))
+            return false;
+    }
+    return true;
+}
 
 bool OracleRouteV2Enabled()
 {
@@ -726,6 +748,8 @@ bool NewRpgDoQuestAction::BlockQuest(NewRpgInfo::DoQuest& data, QuestFailureReas
     QuestActionPhase const priorPhase = rt.phase;
     rt.failure = reason;
     rt.phase = QuestActionPhase::Blocked;
+    uint32 const blockedAt = getMSTime();
+    rt.blockedAtMs = blockedAt ? blockedAt : 1;  // 0 is the never-blocked sentinel
     LOG_DEBUG("playerbots", "[New RPG] {} quest {} blocked (reason {}, unsupported {})", bot->GetName(), data.questId,
               static_cast<uint32>(reason), unsupported);
     if (AutoWowQuestLedger::Enabled())
@@ -749,6 +773,75 @@ bool NewRpgDoQuestAction::BlockQuest(NewRpgInfo::DoQuest& data, QuestFailureReas
     // the Blocked phase so the external Director can observe objectiveRuntime and
     // decide. The RPG_DO_QUEST -> IDLE status timeout is the ultimate safety net.
     return ForceToWait(3000);
+}
+
+bool NewRpgDoQuestAction::DeferBlockedQuest(NewRpgInfo::DoQuest& data)
+{
+    QuestObjectiveRuntime const& rt = data.objectiveRuntime;
+    bool const oracleManaged = rt.oracleManaged || AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
+    if (!QuestStallRecoveryPolicy::ShouldDeferBlocked(oracleManaged, rt.blockedAtMs, getMSTime()))
+        return false;
+
+    LOG_INFO("playerbots", "[New RPG] {} quest {} deferred after blocked hold (reason {}) for {} ms",
+             bot->GetName(), data.questId, AutoWowQuestLedger::ReasonName(rt.failure),
+             QuestStallRecoveryPolicy::kDeferMs);
+    DeferQuestForStall(data.questId);
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, data.questId, "blocked_deferred",
+                                 AutoWowQuestLedger::PhaseName(rt.phase));
+    botAI->rpgInfo.ChangeToIdle();
+    return true;
+}
+
+bool NewRpgDoQuestAction::TravelProgressExpired(QuestObjectiveRuntime& rt, WorldPosition const& keyPos,
+                                                float distance)
+{
+    namespace Stall = QuestStallRecoveryPolicy;
+    return Stall::ObserveTravel(rt.travelWatch,
+                                Stall::MakeTravelKey(keyPos.GetMapId(), keyPos.GetPositionX(), keyPos.GetPositionY()),
+                                Stall::QuantizeYards(distance), getMSTime()) == Stall::TravelVerdict::Expired;
+}
+
+bool NewRpgDoQuestAction::ExpireUnreachableSource(NewRpgInfo::DoQuest& data, QuestObjectiveSpec const& spec)
+{
+    QuestObjectiveRuntime& rt = data.objectiveRuntime;
+    QuestStallRecoveryPolicy::ResetTravel(rt.travelWatch);
+    uint64 const failedSpawn = rt.selectedSourceSpawn.GetRawValue();
+    LOG_INFO("playerbots", "[New RPG] {} quest {} travel_no_progress toward ({},{},{}) spawn={} rotations={}",
+             bot->GetName(), data.questId, data.pos.GetPositionX(), data.pos.GetPositionY(),
+             data.pos.GetPositionZ(), failedSpawn, rt.travelRotationCount);
+    if (failedSpawn == 0 || rt.travelRotationCount >= QuestStallRecoveryPolicy::kMaxTravelRotations)
+        return BlockQuest(data, QuestFailureReason::TravelNoProgress, /*unsupported*/ false);
+
+    // Same shape as the exhausted-GO rotation in VerifyProgress: remember the unreachable spawn and
+    // continue only when the rotation policy names another resolved same-map spawn.
+    ++rt.travelRotationCount;
+    rt.exhaustedSourceSpawns.insert(failedSpawn);
+    rt.sourceRotationCooldownUntil[failedSpawn] = getMSTime() + QuestStallRecoveryPolicy::kDeferMs;
+    ++rt.sourceRotationCount;
+    std::vector<int32> objectiveEntries;
+    std::vector<QuestSourceRotationPolicy::Candidate> candidates;
+    for (QuestObjectiveSource const& source : spec.sources)
+    {
+        int32 const signedEntry = source.type == QuestObjectiveSource::Type::Creature
+            ? static_cast<int32>(source.entry)
+            : SignedGameObjectObjectiveEntry(source.entry);
+        if (signedEntry == 0)
+            continue;
+        objectiveEntries.push_back(signedEntry);
+        for (GuidPosition const& spawn : source.spawns)
+            candidates.push_back({signedEntry, spawn.GetMapId(), spawn.GetRawValue(),
+                bot->GetDistance2d(spawn.GetPositionX(), spawn.GetPositionY())});
+    }
+    std::vector<uint64> exhausted(rt.exhaustedSourceSpawns.begin(), rt.exhaustedSourceSpawns.end());
+    QuestSourceRotationPolicy::Request const request{
+        bot->GetMapId(), rt.selectedSourceEntry, failedSpawn, false,
+        rt.sourceRotationCount, maxSourceRotations, objectiveEntries, exhausted, candidates};
+    if (QuestSourceRotationPolicy::Decide(request).decision !=
+        QuestSourceRotationPolicy::Decision::RotateToNextSource)
+        return BlockQuest(data, QuestFailureReason::TravelNoProgress, /*unsupported*/ false);
+    EnterQuestPhase(data, QuestActionPhase::ResolveObjective);
+    return true;
 }
 
 namespace
@@ -1309,10 +1402,13 @@ bool NewRpgDoQuestAction::BindQuestItemTarget(QuestObjectiveSpec const& spec, Qu
 
     uint32 const entry = static_cast<uint32>(rt.selectedSourceEntry);
     uint32 const now = getMSTime();
+    bool const targetConditionGate = sPlayerbotAIConfig.autoWowQuestItemTargetConditions;
     auto eligible = [&](Creature* creature)
     {
         if (!creature || !creature->IsInWorld() || !creature->IsAlive() || creature->GetEntry() != entry ||
             bot->GetDistance(creature) > range)
+            return false;
+        if (targetConditionGate && !QuestItemSpellTargetConditionsMet(bot, spec.questItemId, creature))
             return false;
 
         auto cooldown = rt.targetCooldownUntil.find(creature->GetGUID());
@@ -2094,7 +2190,11 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
 
     // A prior tick raised a typed blocker: hold for the Director.
     if (rt.phase == QuestActionPhase::Blocked)
+    {
+        if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && DeferBlockedQuest(data))
+            return true;
         return ForceToWait(3000);
+    }
 
     bool const objectiveWorkWindow =
         rt.phase == QuestActionPhase::InteractSource ||
@@ -2246,6 +2346,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
                     EnterQuestPhase(data, QuestActionPhase::AcquireTarget);
                 return true;
             }
+            if (sPlayerbotAIConfig.autoWowQuestTravelProgressWatch && !rt.oracleManaged &&
+                TravelProgressExpired(rt, data.pos, bot->GetDistance(data.pos)))
+                return ExpireUnreachableSource(data, spec);
             bool stuck = false;
             if (MoveFarTo(data.pos, /*questNoTeleport*/ true, &stuck))
             {
@@ -3176,6 +3279,12 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
                 return ForceToWait(250);
             }
 
+            if (sPlayerbotAIConfig.autoWowQuestTravelProgressWatch && !rt.oracleManaged &&
+                TravelProgressExpired(rt, data.pos, bot->GetDistance(dest)))
+            {
+                QuestStallRecoveryPolicy::ResetTravel(rt.travelWatch);
+                return BlockQuest(data, QuestFailureReason::TravelNoProgress, /*unsupported*/ false);
+            }
             bool stuck = false;
             bool const strictOracleRoute = StrictFinisherMovementPolicy::IsEnabled(
                 rt.oracleFinisherAuthorized, rt.oracleFinisherDecisionId);
@@ -3369,6 +3478,8 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
             return true;
 
         case QuestActionPhase::Blocked:
+            if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && DeferBlockedQuest(data))
+                return true;
             return ForceToWait(3000);
 
         default:

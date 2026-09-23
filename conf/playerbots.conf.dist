@@ -2247,6 +2247,11 @@ AutoWow.Ledger.RunId = ""
 # emit `blocked` only when (quest, reason, phase) changes, plus one heartbeat line per N ms of
 # repeats carrying a count field `n` (occurrences the line stands for). 60000 is the soak value.
 AutoWow.Ledger.BlockedDedupeMs = 0
+# Objective-progress sampling (ms). 0 (default) = off. N > 0 (with AutoWow.Ledger.Enable) = every N ms
+# per bot, diff each quest-log entry's core counters (c[4] creature/GO, i[6] item) against the last
+# sample and emit one `progress` line per quest whose counters changed. The first sample of a quest
+# only records a baseline (its `accepted` line already carries the counters). 60000 is the soak value.
+AutoWow.Ledger.ProgressSampleMs = 0
 
 # AutoWoW combat telemetry (C1). Default 0 = inert: hooks early-return on one cached bool and the
 # bridge `combatlog` counters (autowow.combat-counters.v1) behave exactly as before.
@@ -2284,6 +2289,25 @@ AutoWow.Combat.DotHighHpPerLevel = 150
 # quest (ledger `deferred` reason inventory_full) and skip re-evaluation for 5/10/20/40/60 s.
 # Default 0 = legacy behavior (vendor relief, else hold Blocked).
 AutoWow.QuestFullBagRelief.Enable = 0
+
+# Starter-stall lane (soak-s5-cohort-r2). All default 0 = legacy behavior, byte-identical paths.
+# Travel no-progress watch for New RPG quest source/finisher travel (non-Oracle directives only).
+# MoveFarTo's stuck counter is re-armed by every prepared walk segment, so two alternating segments
+# (A -> B -> A, seen at Coldridge/Valley of Trials/Mulgore) never trip it and the bot burns the whole
+# 30-minute DO_QUEST window. 1 = if the best distance to the destination has not improved by 10 yd
+# within 150 s of observed out-of-combat travel, rotate to another resolved source spawn, else block
+# with reason travel_no_progress.
+AutoWow.QuestTravelProgressWatch.Enable = 0
+# Blocked-quest defer-and-return (non-Oracle directives only). 1 = a quest held in Blocked for 30 s is
+# deferred for 10 minutes (ledger `deferred` reason blocked_deferred) and the bot returns to Idle to pick
+# other work; the quest is eligible again after the deferral. 0 = hold Blocked until the 30-minute
+# DO_QUEST status timeout (legacy).
+AutoWow.QuestBlockedDefer.Enable = 0
+# Quest-item (CAST) targets honor the item spell's explicit-target conditions (conditions source 17).
+# 1 = skip creatures that fail them (q5441: only sleeping peons, aura 17743) and, when the credit
+# creature has no spawns, resolve the spell's CONDITION_OBJECT_ENTRY_GUID creature entries as the
+# travel/use targets (q9303: 16518 Nestlewood Owlkin for credit 16534). 0 = legacy.
+AutoWow.QuestItemTargetConditions.Enable = 0
 
 # PvP realms (GameType 1/6/8): random bots normally get SetPvP(true) at login and on every
 # refresh/revive, which flags them in every zone. 1 = skip that forced write on PvP realms so the

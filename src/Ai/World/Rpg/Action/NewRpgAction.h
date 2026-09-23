@@ -158,6 +158,14 @@ protected:
     // stalled on 100% bag occupancy (vendor relief -> destroy safe junk -> defer with backoff).
     // See QuestInventoryReliefPolicy. Never reached when the flag is off.
     bool RelieveFullBagsForQuest(NewRpgInfo::DoQuest& data);
+    // Starter-stall recovery (QuestStallRecoveryPolicy); never reached when the flags are off.
+    // AutoWow.QuestBlockedDefer.Enable: defer a non-Oracle quest held in Blocked and return to Idle.
+    bool DeferBlockedQuest(NewRpgInfo::DoQuest& data);
+    // AutoWow.QuestTravelProgressWatch.Enable: observe net approach to keyPos; true when the budget
+    // expired without a best-distance improvement.
+    bool TravelProgressExpired(QuestObjectiveRuntime& rt, WorldPosition const& keyPos, float distance);
+    // Objective-side expiry: rotate away from the unreachable source spawn (bounded), else block.
+    bool ExpireUnreachableSource(NewRpgInfo::DoQuest& data, QuestObjectiveSpec const& spec);
     // Keep a quest participant with its leader during ordinary non-combat travel. Combat, loot,
     // scripted interactions, and corpse recovery remain independent so the cohesion rule cannot
     // suppress legitimate work or rescue behavior.

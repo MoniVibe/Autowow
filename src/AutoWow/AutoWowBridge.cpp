@@ -771,6 +771,7 @@ std::string OracleFailureName(std::uint16_t value)
         case QuestFailureReason::RewardNotConfirmed: return "reward_not_confirmed";
         case QuestFailureReason::OracleFinisherLeaseExpired: return "oracle_finisher_lease_expired";
         case QuestFailureReason::OracleFinisherMismatch: return "oracle_finisher_mismatch";
+        case QuestFailureReason::TravelNoProgress: return "travel_no_progress";
     }
     return "unknown";
 }

@@ -4,6 +4,7 @@
  */
 
 #include "PlayerbotAI.h"
+#include "AutoWowQuestLedger.h"
 #include "AutoWow/AutoWowIndependentActivityPolicy.h"
 
 #include <cmath>
@@ -260,6 +261,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     if (!bot || !bot->GetSession() || !bot->IsInWorld() || bot->IsBeingTeleported() ||
         bot->GetSession()->isLogingOut() || bot->IsDuringRemoveFromWorld())
         return;
+
+    // Ledger `progress` sampling (AutoWow.Ledger.ProgressSampleMs); a no-op unless enabled.
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::SampleProgress(bot);
 
     if (autoWowPaused)
     {

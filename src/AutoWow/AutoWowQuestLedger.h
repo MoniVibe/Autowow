@@ -24,11 +24,15 @@
 //       victim, vlvl, honorable (pvp_kill): victim guid-low, victim level, core honor eligibility.
 //       cv, cls, ... (combat): bot-level cumulative combat totals, schema `cv`
 //          (AutoWowCombatPerformanceTelemetry::LifetimeCounters::DrainEmitFields). quest is 0.
+//   - `progress` (AutoWow.Ledger.ProgressSampleMs > 0): a per-bot periodic diff of every quest-log
+//     entry's c/i counters; one line per quest whose counters changed since the previous sample.
+//     A quest's first sample is a silent baseline. reason/phase are empty.
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 class Player;
 enum class QuestActionPhase : std::uint8_t;
@@ -51,7 +55,8 @@ enum class Event : std::uint8_t
     Contaminated = 5,
     Died = 6,
     PvpKill = 7,
-    Combat = 8
+    Combat = 8,
+    Progress = 9  // 10 DeathLoop, 11 SkillUp reserved by other lanes
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -67,6 +72,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Died: return "died";
         case Event::PvpKill: return "pvp_kill";
         case Event::Combat: return "combat";
+        case Event::Progress: return "progress";
     }
     return "unknown";
 }
@@ -189,11 +195,49 @@ inline BlockedDecision DedupeBlocked(BlockedDedupeState& s, BlockedKey const& ke
     return out;
 }
 
+// Progress sampling (pure; unit-tested). prev holds the last sample per quest-log entry. Returns the
+// quests of cur whose counters differ from their previous sample, in cur order; quests new to the
+// log are a baseline only (their `accepted` line carries the counters). prev becomes cur, so quests
+// that left the log are forgotten.
+struct QuestCounters
+{
+    std::uint32_t quest = 0;
+    std::uint16_t c[kCreatureCounters] = {};
+    std::uint16_t i[kItemCounters] = {};
+};
+
+inline bool SameCounters(QuestCounters const& a, QuestCounters const& b)
+{
+    for (std::size_t k = 0; k < kCreatureCounters; ++k)
+        if (a.c[k] != b.c[k])
+            return false;
+    for (std::size_t k = 0; k < kItemCounters; ++k)
+        if (a.i[k] != b.i[k])
+            return false;
+    return true;
+}
+
+inline std::vector<std::uint32_t> DiffProgress(std::vector<QuestCounters>& prev, std::vector<QuestCounters> const& cur)
+{
+    std::vector<std::uint32_t> changed;
+    for (QuestCounters const& now : cur)
+        for (QuestCounters const& before : prev)
+            if (before.quest == now.quest)
+            {
+                if (!SameCounters(before, now))
+                    changed.push_back(now.quest);
+                break;
+            }
+    prev = cur;
+    return changed;
+}
+
 namespace detail
 {
 inline bool gEnabled = false;
 inline std::string gRunId;
 inline std::uint64_t gBlockedDedupeMs = 0;
+inline std::uint64_t gProgressSampleMs = 0;
 
 inline void AppendEscaped(std::string& out, std::string_view text)
 {
@@ -320,6 +364,9 @@ void EmitDied(Player* victim);
 void EmitPvpKill(Player* killer, Player* victim, bool honorable);
 // `combat` (no-op unless the player is a recorded bot); fields from DrainEmitFields.
 void EmitCombat(Player* player, std::string_view fields);
+// Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
+// > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
+void SampleProgress(Player* player);
 }  // namespace AutoWowQuestLedger
 
 #endif

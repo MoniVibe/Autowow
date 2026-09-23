@@ -703,6 +703,9 @@ bool PlayerbotAIConfig::Initialize()
     autoDoQuests = sConfigMgr->GetOption<bool>("AiPlayerbot.AutoDoQuests", true);
     enableNewRpgStrategy = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableNewRpgStrategy", true);
     autoWowQuestFullBagRelief = sConfigMgr->GetOption<bool>("AutoWow.QuestFullBagRelief.Enable", false);
+    autoWowQuestTravelProgressWatch = sConfigMgr->GetOption<bool>("AutoWow.QuestTravelProgressWatch.Enable", false);
+    autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
+    autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
     autoWowPvpRealmZoneRules = sConfigMgr->GetOption<bool>("AutoWow.PvpRealmZoneRules.Enable", false);
     autoWowIndependentAutoMaintenance = sConfigMgr->GetOption<uint32>("AutoWow.Independent.AutoMaintenance", 0);
     autoWowChatBotSpeakerByAI = sConfigMgr->GetOption<bool>("AutoWow.Chat.BotSpeakerByAI", false);

@@ -83,6 +83,9 @@ protected:
     WorldPosition SelectRandomCampPos(Player* bot);
     bool IsAutoWowTravelBot() const;
     void MarkTravelDestinationFailed(WorldPosition const& pos);
+    // AutoWow.QuestBlockedDefer.Enable: timed per-bot quest deferral (QuestStallRecoveryPolicy).
+    void DeferQuestForStall(uint32 questId);
+    bool IsQuestStallDeferred(uint32 questId);
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);

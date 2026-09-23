@@ -7,7 +7,10 @@
 #include "QuestValues.h"
 
 #include <algorithm>
+#include <mutex>
+#include <unordered_map>
 
+#include "ConditionMgr.h"
 #include "GameObject.h"
 #include "ItemTemplate.h"
 #include "MapMgr.h"
@@ -16,6 +19,7 @@
 #include "Playerbots.h"
 #include "QuestFinisherTransitionPolicy.h"
 #include "QuestKillSourcePolicy.h"
+#include "QuestStallRecoveryPolicy.h"
 #include "SharedValueContext.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -331,6 +335,64 @@ std::vector<GuidPosition> ActiveQuestObjectivesValue::Calculate()
     return retQuestObjectives;
 }
 
+namespace
+{
+// Static world spawn data per creature entry, sorted by stable spawn key. Filled once per entry.
+// ponytail: global lock + unbounded per-entry cache; only CAST objectives whose credit creature has
+// no spawns reach it (AutoWow.QuestItemTargetConditions.Enable), a handful of entries per realm.
+std::vector<GuidPosition> CreatureSpawnsForEntry(uint32 entry)
+{
+    static std::mutex cacheLock;
+    static std::unordered_map<uint32, std::vector<GuidPosition>> cache;
+    std::lock_guard<std::mutex> guard(cacheLock);
+    auto const cached = cache.find(entry);
+    if (cached != cache.end())
+        return cached->second;
+
+    std::vector<GuidPosition>& spawns = cache[entry];
+    for (auto const& creatureData : sObjectMgr->GetAllCreatureData())
+        if (creatureData.second.id == entry)
+            spawns.emplace_back(creatureData.second);
+    std::sort(spawns.begin(), spawns.end(), [](GuidPosition const& left, GuidPosition const& right)
+              { return left.GetRawValue() < right.GetRawValue(); });
+    return spawns;
+}
+
+// The quest item's ON_USE spells name their real creature target in explicit-target conditions
+// (conditions source type 17). Append those creatures as additional exact sources.
+void AppendSpellTargetCreatureSources(uint32 questItemId, std::vector<QuestObjectiveSource>& sources)
+{
+    ItemTemplate const* item = questItemId ? sObjectMgr->GetItemTemplate(questItemId) : nullptr;
+    if (!item)
+        return;
+
+    std::vector<QuestStallRecoveryPolicy::SpellTargetConditionFact> facts;
+    for (auto const& itemSpell : item->Spells)
+    {
+        if (itemSpell.SpellId <= 0 || itemSpell.SpellTrigger != ITEM_SPELLTRIGGER_ON_USE)
+            continue;
+        for (Condition const* condition : sConditionMgr->GetConditionsForNotGroupedEntry(
+                 CONDITION_SOURCE_TYPE_SPELL, static_cast<uint32>(itemSpell.SpellId)))
+        {
+            if (condition)
+                facts.push_back({static_cast<uint32>(condition->ConditionType), condition->ConditionTarget,
+                                 condition->ConditionValue1, condition->ConditionValue2,
+                                 condition->NegativeCondition});
+        }
+    }
+
+    for (uint32 const entry : QuestStallRecoveryPolicy::SpellTargetCreatureEntries(facts))
+    {
+        QuestObjectiveSource source;
+        source.type = QuestObjectiveSource::Type::Creature;
+        source.entry = entry;
+        source.spawns = CreatureSpawnsForEntry(entry);
+        if (!source.spawns.empty())
+            sources.push_back(std::move(source));
+    }
+}
+}  // namespace
+
 QuestObjectiveSpec ActiveQuestObjectiveValue::Calculate()
 {
     // Default spec: hasLock() == false. Returned whenever the bot is not driving a quest through the
@@ -417,7 +479,10 @@ QuestObjectiveSpec ActiveQuestObjectiveValue::Calculate()
                         src.type = QuestObjectiveSource::Type::Creature;
                         src.entry = static_cast<uint32>(reqEntry);
                         src.spawns = resolveSpawns(reqEntry);
+                        bool const creditHasSpawns = !src.spawns.empty();
                         s.sources.push_back(std::move(src));
+                        if (sPlayerbotAIConfig.autoWowQuestItemTargetConditions && !creditHasSpawns)
+                            AppendSpellTargetCreatureSources(s.questItemId, s.sources);
                     }
                 }
                 else
