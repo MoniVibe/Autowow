@@ -67,7 +67,8 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/WorkerGatherDeathRecoveryPolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/tests/QuestSourceRotationPolicyTest.cpp"
-    "${CMAKE_CURRENT_LIST_DIR}/tests/QuestStallRecoveryPolicyTest.cpp")
+    "${CMAKE_CURRENT_LIST_DIR}/tests/QuestStallRecoveryPolicyTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/QuestSchedulerPolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/QuestGiverTravelPolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/QuestGiverTravelLifecycleTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/CampaignTravelPolicyTest.cpp")

@@ -19,6 +19,7 @@
 #include "DeathLoopBreaker.h"
 #include "DungeonPathSafety.h"
 #include "DungeonPathWalkAction.h"
+#include "Formulas.h"
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GossipDef.h"
@@ -44,6 +45,7 @@
 #include "QuestDef.h"
 #include "QuestInventoryReliefPolicy.h"
 #include "QuestPackets.h"
+#include "QuestSchedulerPolicy.h"
 #include "QuestStallRecoveryPolicy.h"
 #include "QuestTravelWalk.h"
 #include "Random.h"
@@ -77,6 +79,36 @@ std::unordered_map<uint32, uint32> lastAutonomousTravelTickByBot;
 std::mutex stallDeferralLock;
 std::unordered_map<uint32, QuestStallRecoveryPolicy::DeferralBook> stallDeferralsByBot;
 constexpr size_t maxFailedTravelDestinations = 8;
+
+// AutoWow.QuestScheduler.Enable: per-bot momentum / slice / rotation cooldown (QuestSchedulerPolicy).
+// ponytail: one global lock, held only for in-memory bookkeeping (never across world queries).
+std::mutex questSchedLock;
+std::unordered_map<uint32, QuestSchedulerPolicy::BotState> questSchedByBot;
+
+// Quest-log counters in slot order (same fields as the ledger `progress` sampler).
+std::vector<QuestSchedulerPolicy::Observation> ObserveQuestLog(Player* bot)
+{
+    std::vector<QuestSchedulerPolicy::Observation> out;
+    QuestStatusMap& statusMap = bot->getQuestStatusMap();
+    for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+    {
+        uint32 const questId = bot->GetQuestSlotQuestId(slot);
+        if (!questId)
+            continue;
+        auto const it = statusMap.find(questId);
+        if (it == statusMap.end())
+            continue;
+        QuestSchedulerPolicy::Observation obs;
+        obs.counters.quest = questId;
+        for (size_t k = 0; k < AutoWowQuestLedger::kCreatureCounters; ++k)
+            obs.counters.c[k] = it->second.CreatureOrGOCount[k];
+        for (size_t k = 0; k < AutoWowQuestLedger::kItemCounters; ++k)
+            obs.counters.i[k] = it->second.ItemCount[k];
+        obs.complete = it->second.Status == QUEST_STATUS_COMPLETE;
+        out.push_back(obs);
+    }
+    return out;
+}
 
 struct VendorReliefCandidate
 {
@@ -263,6 +295,135 @@ bool NewRpgBaseAction::IsQuestStallDeferred(uint32 questId)
     std::lock_guard<std::mutex> guard(stallDeferralLock);
     auto it = stallDeferralsByBot.find(bot->GetGUID().GetCounter());
     return it != stallDeferralsByBot.end() && it->second.IsDeferred(questId, getMSTime());
+}
+
+bool NewRpgBaseAction::ScheduleDoQuest(bool commit)
+{
+    uint32 const nowMs = getMSTime();
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    std::vector<QuestSchedulerPolicy::Observation> const log = ObserveQuestLog(bot);
+
+    // In-memory facts first (momentum, rotation cooldown), then world queries without the lock.
+    std::vector<std::pair<uint32, uint32>> lastProgress;  // questId -> lastProgressMs, eligible only
+    {
+        std::lock_guard<std::mutex> guard(questSchedLock);
+        QuestSchedulerPolicy::BotState& state = questSchedByBot[botGuid];
+        state.momentum.Observe(log, nowMs);
+        for (QuestSchedulerPolicy::Observation const& obs : log)
+            if (!state.cooldown.IsDeferred(obs.counters.quest, nowMs))
+                lastProgress.emplace_back(obs.counters.quest, state.momentum.LastProgressMs(obs.counters.quest));
+    }
+
+    uint32 const greyLevel = Acore::XP::GetGrayLevel(bot->GetLevel());
+    std::vector<QuestSchedulerPolicy::Candidate> candidates;
+    for (auto const& [questId, lastProgressMs] : lastProgress)
+    {
+        if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
+            continue;
+        if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && IsQuestStallDeferred(questId))
+            continue;
+        if (QuestSchedulerPolicy::ContainsQuestId(sPlayerbotAIConfig.autoWowQuestAvoidIds, questId))
+            continue;
+        Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+        std::vector<POIInfo> poiInfo;
+        if (!quest || !GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true) ||
+            (AutoWowDeathLoop::Enabled() && DeathLoopDefersQuest(bot, questId, poiInfo)))
+            continue;
+
+        uint32 distance = std::numeric_limits<uint32>::max();
+        for (POIInfo const& poi : poiInfo)
+            distance = std::min(distance, QuestStallRecoveryPolicy::QuantizeYards(bot->GetDistance2d(poi.pos.x, poi.pos.y)));
+        QuestSchedulerPolicy::Candidate candidate;
+        candidate.questId = questId;
+        candidate.complete = bot->GetQuestStatus(questId) == QUEST_STATUS_COMPLETE;
+        candidate.grey = bot->GetQuestLevel(quest) <= static_cast<int32>(greyLevel);
+        candidate.distanceYards = distance;
+        candidate.lastProgressMs = lastProgressMs;
+        candidates.push_back(candidate);
+    }
+
+    size_t const best = QuestSchedulerPolicy::PickBest(candidates, nowMs);
+    if (!commit)
+        return best != QuestSchedulerPolicy::npos;
+
+    // Outleveled grey work far from the bot is dropped (progression over completion).
+    for (QuestSchedulerPolicy::Candidate const& candidate : candidates)
+    {
+        if (!QuestSchedulerPolicy::IsDroppableGrey(candidate))
+            continue;
+        for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            if (bot->GetQuestSlotQuestId(slot) != candidate.questId)
+                continue;
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, candidate.questId, "sched_drop_grey");
+            LOG_DEBUG("playerbots", "[New RPG] {} scheduler drops grey quest {} ({} yd)", bot->GetName(),
+                      candidate.questId, candidate.distanceYards);
+            WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
+            packet << slot;
+            WorldPackets::Quest::QuestLogRemoveQuest removeQuest(std::move(packet));
+            removeQuest.Read();
+            bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
+            botAI->rpgStatistic.questDropped++;
+            break;
+        }
+    }
+
+    if (best == QuestSchedulerPolicy::npos)
+        return false;
+    QuestSchedulerPolicy::Candidate const& chosen = candidates[best];
+    Quest const* quest = sObjectMgr->GetQuestTemplate(chosen.questId);
+    {
+        std::lock_guard<std::mutex> guard(questSchedLock);
+        QuestSchedulerPolicy::BeginSlice(questSchedByBot[botGuid].slice, chosen.questId, chosen.complete, nowMs);
+    }
+    LOG_DEBUG("playerbots", "[New RPG] {} scheduler picks quest {} (complete {}, grey {}, {} yd, momentum {}) of {}",
+              bot->GetName(), chosen.questId, chosen.complete, chosen.grey, chosen.distanceYards,
+              QuestSchedulerPolicy::HasMomentum(chosen, nowMs), candidates.size());
+    botAI->rpgInfo.ChangeToDoQuest(chosen.questId, quest, AutoWowOracleRuntime::IsManagedBot(botGuid));
+    return true;
+}
+
+bool NewRpgBaseAction::RotateStaleDoQuest()
+{
+    auto* data = std::get_if<NewRpgInfo::DoQuest>(&botAI->rpgInfo.data);
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    // Oracle-managed directives keep their external arbiter (as AutoWow.QuestBlockedDefer does).
+    if (!data || !data->questId || data->objectiveRuntime.oracleManaged ||
+        AutoWowOracleRuntime::IsManagedBot(botGuid))
+        return false;
+
+    uint32 const nowMs = getMSTime();
+    uint32 const questId = data->questId;
+    std::vector<QuestSchedulerPolicy::Observation> const log = ObserveQuestLog(bot);
+    bool turnIn = false;
+    for (QuestSchedulerPolicy::Observation const& obs : log)
+        if (obs.counters.quest == questId)
+            turnIn = obs.complete;
+    {
+        std::lock_guard<std::mutex> guard(questSchedLock);
+        QuestSchedulerPolicy::BotState& state = questSchedByBot[botGuid];
+        state.momentum.Observe(log, nowMs);
+        if (state.slice.questId != questId)
+        {
+            // Directive started outside the scheduler (chat command, Oracle hand-off): slice from now.
+            QuestSchedulerPolicy::BeginSlice(state.slice, questId, turnIn, nowMs);
+            return false;
+        }
+        state.slice.turnIn = turnIn;
+        if (!QuestSchedulerPolicy::SliceExpired(state.slice, state.momentum.LastProgressMs(questId), nowMs))
+            return false;
+        state.cooldown.Defer(questId, nowMs, QuestSchedulerPolicy::kRotateCooldownMs);
+        state.slice = {};
+    }
+
+    LOG_INFO("playerbots", "[New RPG] {} quest {} rotated after a slice without progress (turn-in {}), cooldown {} ms",
+             bot->GetName(), questId, turnIn, QuestSchedulerPolicy::kRotateCooldownMs);
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Deferred, questId, "sched_rotate",
+                                 AutoWowQuestLedger::PhaseName(data->objectiveRuntime.phase));
+    botAI->rpgInfo.ChangeToIdle();
+    return true;
 }
 
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool* outStuck,
@@ -1311,6 +1472,10 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     if (quest->GetSuggestedPlayers() >= 2)
         return false;
 
+    // AutoWow.QuestAvoidIds / QuestAvoidFile (default empty): never accept, choose or keep these.
+    if (QuestSchedulerPolicy::ContainsQuestId(sPlayerbotAIConfig.autoWowQuestAvoidIds, quest->GetQuestId()))
+        return false;
+
     return true;
 }
 
@@ -1902,6 +2067,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
         }
         case RPG_DO_QUEST:
         {
+            if (sPlayerbotAIConfig.autoWowQuestScheduler)
+                return ScheduleDoQuest(true);
             std::vector<uint32> availableQuests;
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
@@ -1909,6 +2076,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                 if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
                     continue;
                 if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && IsQuestStallDeferred(questId))
+                    continue;
+                if (QuestSchedulerPolicy::ContainsQuestId(sPlayerbotAIConfig.autoWowQuestAvoidIds, questId))
                     continue;
 
                 std::vector<POIInfo> poiInfo;
@@ -1998,6 +2167,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
         }
         case RPG_DO_QUEST:
         {
+            if (sPlayerbotAIConfig.autoWowQuestScheduler)
+                return ScheduleDoQuest(false);
             std::vector<uint32> availableQuests;
             for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
             {
@@ -2005,6 +2176,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
                 if (botAI->lowPriorityQuest.find(questId) != botAI->lowPriorityQuest.end())
                     continue;
                 if (sPlayerbotAIConfig.autoWowQuestBlockedDefer && IsQuestStallDeferred(questId))
+                    continue;
+                if (QuestSchedulerPolicy::ContainsQuestId(sPlayerbotAIConfig.autoWowQuestAvoidIds, questId))
                     continue;
 
                 std::vector<POIInfo> poiInfo;

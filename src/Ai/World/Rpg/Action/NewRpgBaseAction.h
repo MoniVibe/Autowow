@@ -86,6 +86,13 @@ protected:
     // AutoWow.QuestBlockedDefer.Enable: timed per-bot quest deferral (QuestStallRecoveryPolicy).
     void DeferQuestForStall(uint32 questId);
     bool IsQuestStallDeferred(uint32 questId);
+    // AutoWow.QuestScheduler.Enable (QuestSchedulerPolicy.h): deterministic DO_QUEST choice over the quest
+    // log. commit=false only reports whether a quest is schedulable; commit=true also drops far grey
+    // quests and starts the chosen directive with a fresh slice.
+    bool ScheduleDoQuest(bool commit);
+    // Non-Oracle DO_QUEST whose slice passed without counter progress: cool it down, ledger `deferred`
+    // reason sched_rotate, return to Idle. True when it rotated.
+    bool RotateStaleDoQuest();
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);

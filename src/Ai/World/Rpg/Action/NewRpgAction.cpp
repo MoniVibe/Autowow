@@ -435,6 +435,9 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         }
         case RPG_DO_QUEST:
         {
+            // AutoWow.QuestScheduler: a directive that went a whole slice without progress rotates.
+            if (sPlayerbotAIConfig.autoWowQuestScheduler && RotateStaleDoQuest())
+                return true;
             // DO_QUEST -> IDLE
             if (info.HasStatusPersisted(statusDoQuestDuration))
             {

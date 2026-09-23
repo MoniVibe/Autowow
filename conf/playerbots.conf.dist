@@ -2337,6 +2337,23 @@ AutoWow.QuestBlockedDefer.Enable = 0
 # travel/use targets (q9303: 16518 Nestlewood Owlkin for credit 16534). 0 = legacy.
 AutoWow.QuestItemTargetConditions.Enable = 0
 
+# Quest-log scheduler (probe signature select:fixation_starved). 0 = legacy: DO_QUEST picks one quest-log
+# entry at random and works it until reward, an unsupported blocker or the 30-minute DO_QUEST timeout.
+# 1 = deterministic pick (QuestSchedulerPolicy.h): turn-ins first, then level-appropriate quests, then
+# grey quests within 100 yd; within a tier the nearest objective POI wins, with a 150 yd bonus for a quest
+# whose counters moved in the last 5 min; ties by quest id. Grey incomplete quests farther than 100 yd are
+# dropped (ledger `deferred` reason sched_drop_grey). A non-Oracle directive with no counter progress for
+# 5 min (10 min for a turn-in) rotates: 10-minute cooldown, ledger `deferred` reason sched_rotate, Idle.
+AutoWow.QuestScheduler.Enable = 0
+# Quest avoid list (default empty = off). Avoided quests fail IsQuestCapableDoing: never accepted, never
+# chosen for DO_QUEST, pruned when the log fills. Ids separated by commas or whitespace, '#' comments.
+# AutoWow.QuestAvoidFile names a file in the same format (read once at load; the union of both is used).
+# AutoWoW probe/render-avoid.ps1 renders either form from probe/avoid-quest-ids.txt.
+AutoWow.QuestAvoidIds = ""
+AutoWow.QuestAvoidFile = ""
+# Quests pre-inserted into every bot's lowPriorityQuest set (not chosen for DO_QUEST; still accepted).
+AutoWow.QuestLowPriorityIds = ""
+
 # PvP realms (GameType 1/6/8): random bots normally get SetPvP(true) at login and on every
 # refresh/revive, which flags them in every zone. 1 = skip that forced write on PvP realms so the
 # core zone rules decide (hostile/contested territory flags, own territory does not). PvE realms

@@ -5,7 +5,9 @@
  */
 
 #include "PlayerbotAIConfig.h"
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include "AutoWowTrainPolicy.h"
 #include "BisListMgr.h"
 #include "Config.h"
@@ -14,6 +16,7 @@
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
 #include "PlayerbotGuildMgr.h"
+#include "QuestSchedulerPolicy.h"
 #include "RandomItemMgr.h"
 #include "RandomPlayerbotFactory.h"
 #include "RandomPlayerbotMgr.h"
@@ -707,6 +710,33 @@ bool PlayerbotAIConfig::Initialize()
     autoWowQuestTravelProgressWatch = sConfigMgr->GetOption<bool>("AutoWow.QuestTravelProgressWatch.Enable", false);
     autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
     autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
+    autoWowQuestScheduler = sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.Enable", false);
+    {
+        std::string avoidText = sConfigMgr->GetOption<std::string>("AutoWow.QuestAvoidIds", "");
+        std::string const avoidFile = sConfigMgr->GetOption<std::string>("AutoWow.QuestAvoidFile", "");
+        if (!avoidFile.empty())
+        {
+            std::ifstream in(avoidFile);
+            if (in)
+                avoidText += "\n" + std::string(std::istreambuf_iterator<char>(in), {});
+            else
+                LOG_ERROR("server.loading", "AutoWow.QuestAvoidFile '{}' is unreadable; ignored", avoidFile);
+        }
+        if (!QuestSchedulerPolicy::ParseQuestIdList(avoidText, autoWowQuestAvoidIds))
+        {
+            autoWowQuestAvoidIds.clear();
+            LOG_ERROR("server.loading", "AutoWow.QuestAvoidIds/QuestAvoidFile is malformed; no quest is avoided");
+        }
+        if (!QuestSchedulerPolicy::ParseQuestIdList(
+                sConfigMgr->GetOption<std::string>("AutoWow.QuestLowPriorityIds", ""), autoWowQuestLowPriorityIds))
+        {
+            autoWowQuestLowPriorityIds.clear();
+            LOG_ERROR("server.loading", "AutoWow.QuestLowPriorityIds is malformed; no quest is pre-deprioritized");
+        }
+        if (!autoWowQuestAvoidIds.empty() || !autoWowQuestLowPriorityIds.empty())
+            LOG_INFO("server.loading", "AutoWow quest avoid list: {} ids, low-priority list: {} ids",
+                     autoWowQuestAvoidIds.size(), autoWowQuestLowPriorityIds.size());
+    }
     autoWowPvpRealmZoneRules = sConfigMgr->GetOption<bool>("AutoWow.PvpRealmZoneRules.Enable", false);
     autoWowIndependentAutoMaintenance = sConfigMgr->GetOption<uint32>("AutoWow.Independent.AutoMaintenance", 0);
     autoWowChatBotSpeakerByAI = sConfigMgr->GetOption<bool>("AutoWow.Chat.BotSpeakerByAI", false);

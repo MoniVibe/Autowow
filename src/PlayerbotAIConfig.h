@@ -391,6 +391,10 @@ public:
     bool autoWowQuestTravelProgressWatch;   // AutoWow.QuestTravelProgressWatch.Enable (default off)
     bool autoWowQuestBlockedDefer;          // AutoWow.QuestBlockedDefer.Enable (default off)
     bool autoWowQuestItemTargetConditions;  // AutoWow.QuestItemTargetConditions.Enable (default off)
+    bool autoWowQuestScheduler;             // AutoWow.QuestScheduler.Enable (default off; QuestSchedulerPolicy.h)
+    // AutoWow.QuestAvoidIds + AutoWow.QuestAvoidFile (union; sorted, unique; empty = off). Read once at load.
+    std::vector<uint32> autoWowQuestAvoidIds;
+    std::vector<uint32> autoWowQuestLowPriorityIds;  // AutoWow.QuestLowPriorityIds (sorted, unique)
     bool autoWowPvpRealmZoneRules;   // AutoWow.PvpRealmZoneRules.Enable (default off)
     uint32 autoWowIndependentAutoMaintenance;  // AutoWow.Independent.AutoMaintenance (0 off, 1 talents, 2 +class spells)
     bool autoWowChatBotSpeakerByAI;            // AutoWow.Chat.BotSpeakerByAI (default off)

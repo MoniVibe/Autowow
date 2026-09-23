@@ -158,6 +158,9 @@ PlayerbotAI::PlayerbotAI(Player* bot)
     }
 
     accountId = bot->GetSession()->GetAccountId();
+    // AutoWow.QuestLowPriorityIds (default empty): configured quests start deprioritized for every bot.
+    lowPriorityQuest.insert(sPlayerbotAIConfig.autoWowQuestLowPriorityIds.begin(),
+                            sPlayerbotAIConfig.autoWowQuestLowPriorityIds.end());
     aiObjectContext = AiFactory::createAiObjectContext(bot, this);
 
     engines[BOT_STATE_COMBAT] = AiFactory::createCombatEngine(bot, this, aiObjectContext);
