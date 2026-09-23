@@ -110,6 +110,8 @@ def fold(events):
     voided = Counter()               # setup reason -> open rows dropped (see SETUP_REASONS)
     moves = Counter()                # (from, to, trigger, arrived) -> zone_move events
     move_ms = Counter()              # same key -> summed travel_ms
+    legs = Counter()                 # zone_move leg mode (walk|flight|travel_object|transport|portal) -> legs
+    leg_ms = Counter()               # same key -> summed leg ms
 
     def get(run, bot, quest):
         key = (run, bot, quest)
@@ -176,6 +178,9 @@ def fold(events):
             key = (ev.get("from"), ev.get("to"), ev.get("reason") or "", bool(ev.get("arrived")))
             moves[key] += 1
             move_ms[key] += int(ev.get("travel_ms", 0))
+            for leg in ev.get("legs") or []:  # AutoWow.Transports: [[mode, ms], ...]
+                legs[leg[0]] += 1
+                leg_ms[leg[0]] += int(leg[1])
             continue
 
         if kind not in QUEST_EVENTS:
@@ -216,7 +221,7 @@ def fold(events):
             continue  # unknown future event name: ignore, never guess
         touch(row, ev)
 
-    return rows, run_end, deaths, pvp, voided, (moves, move_ms)
+    return rows, run_end, deaths, pvp, voided, (moves, move_ms, legs, leg_ms)
 
 
 def outcome(row, run_end, stall_ms):
@@ -327,13 +332,17 @@ def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None):
         lines.append("| %s | %d |" % (name, deaths.get(name, 0)))
     lines.append("| **total** | **%d** |" % sum(deaths.values()))
     lines += ["", "PvP kills by bots: %d (honorable %d)." % (pvp.get("kills", 0), pvp.get("honorable", 0))]
-    moves, move_ms = zone_moves or (Counter(), Counter())
+    moves, move_ms, legs, leg_ms = zone_moves or (Counter(), Counter(), Counter(), Counter())
     lines += ["", "## Zone moves", "", "| from | to | trigger | arrived | moves | mean travel_ms |",
               "|---:|---:|---|---|---:|---:|"]
     for k in sorted(moves, key=lambda k: tuple(str(x) for x in k)):
         lines.append("| %s | %s | %s | %s | %d | %d |" % (k[0], k[1], k[2], "yes" if k[3] else "no", moves[k],
                                                         move_ms[k] // moves[k]))
     lines.append("| **total** | | | | **%d** | |" % sum(moves.values()))
+    if legs:  # only ledgers written with AutoWow.Transports carry legs
+        lines += ["", "## Zone move legs", "", "| leg | legs | total ms | mean ms |", "|---|---:|---:|---:|"]
+        for k in sorted(legs):
+            lines.append("| %s | %d | %d | %d |" % (k, legs[k], leg_ms[k], leg_ms[k] // legs[k]))
     return "\n".join(lines) + "\n"
 
 
@@ -394,7 +403,10 @@ def selftest():
                                                                      "arrived": True, "mode": "walk"}),
             line(9000, "zone_move", 14, 0, reason="no_quests", zone=141, **{"from": 141, "to": 148,
                                                                           "travel_ms": 3600001, "arrived": False,
-                                                                          "mode": "none"})]
+                                                                          "mode": "chain",
+                                                                          "legs": [["walk", 1000],
+                                                                                   ["travel_object", 5],
+                                                                                   ["walk", 2000]]})]
     catalog = {"quests": [{"id": 100, "family": "KILL", "zoneName": "Elwynn Forest", "title": "A"},
                           {"id": 200, "family": "KILL", "zoneName": "Elwynn Forest", "title": "B"}]}
     with tempfile.TemporaryDirectory() as td:
@@ -433,6 +445,7 @@ def selftest():
         assert "| 12 | 40 | level | yes | 1 | 600000 |" in md, md
         assert "| 141 | 148 | no_quests | no | 1 | 3600001 |" in md, md
         assert "| **total** | | | | **2** | |" in md, md
+        assert "| walk | 2 | 3000 | 1500 |" in md and "| travel_object | 1 | 5 | 5 |" in md, md
         # Idempotent: same input -> identical bytes.
         first = open(os.path.join(td, "ledger-rows.jsonl"), "rb").read()
         run([lp], td, cp, 600000)
