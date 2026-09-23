@@ -1,0 +1,34 @@
+{
+    "schema":  "autowow.quest-probe.v1",
+    "quest":  808,
+    "bot":  36,
+    "mode":  "Probe",
+    "started":  "2026-09-23T04:24:56.4014738Z",
+    "budget_minutes":  1,
+    "setup":  [
+
+              ],
+    "polls":  0,
+    "ledger":  [
+
+               ],
+    "verdict":  "BLOCKED_PREFLIGHT",
+    "reason":  "bot_level_14_hides_quest_level_9",
+    "final_questlog":  null,
+    "quest_facts":  {
+                        "title":  "Minshina\u0027s Skull",
+                        "family":  "GAMEOBJECT_COLLECT",
+                        "level":  9,
+                        "faction":  "Horde",
+                        "zone":  "Durotar",
+                        "available":  true
+                    },
+    "bot_facts":  {
+                      "name":  "Balenno",
+                      "class":  "priest",
+                      "faction":  "Horde",
+                      "level":  14,
+                      "free_slots":  62
+                  },
+    "finished":  "2026-09-23T04:24:57.4135978Z"
+}

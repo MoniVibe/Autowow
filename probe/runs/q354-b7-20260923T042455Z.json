@@ -1,0 +1,27 @@
+{
+    "schema":  "autowow.quest-probe.v1",
+    "quest":  354,
+    "bot":  7,
+    "mode":  "Probe",
+    "started":  "2026-09-23T04:24:54.1591012Z",
+    "budget_minutes":  1,
+    "setup":  [
+
+              ],
+    "polls":  0,
+    "ledger":  [
+
+               ],
+    "verdict":  "BLOCKED_PREFLIGHT",
+    "reason":  "bot_not_in_AutoWow.FixtureGuids",
+    "final_questlog":  null,
+    "quest_facts":  {
+                        "title":  "Deaths in the Family",
+                        "family":  "COLLECT_DROP",
+                        "level":  11,
+                        "faction":  "Horde",
+                        "zone":  "Tirisfal Glades",
+                        "available":  true
+                    },
+    "finished":  "2026-09-23T04:24:55.1083823Z"
+}

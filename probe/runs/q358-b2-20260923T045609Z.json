@@ -1,0 +1,36 @@
+{
+    "schema":  "autowow.quest-probe.v1",
+    "run_label":  "soak-s6-cohort-r1",
+    "quest":  358,
+    "bot":  2,
+    "mode":  "Probe",
+    "started":  "2026-09-23T04:56:08.2585292Z",
+    "budget_minutes":  5,
+    "setup":  [
+
+              ],
+    "polls":  0,
+    "ledger":  [
+
+               ],
+    "verdict":  "BLOCKED_PREFLIGHT",
+    "reason":  "bot_level_80_hides_quest_level_8",
+    "final_questlog":  null,
+    "quest_facts":  {
+                        "title":  "Graverobbers",
+                        "family":  "COLLECT_DROP",
+                        "level":  8,
+                        "faction":  "Horde",
+                        "zone":  "Tirisfal Glades",
+                        "available":  true
+                    },
+    "bot_facts":  {
+                      "name":  "Nathalis",
+                      "class":  "paladin",
+                      "faction":  "Horde",
+                      "level":  80,
+                      "free_slots":  104
+                  },
+    "baseline_in_log":  false,
+    "finished":  "2026-09-23T04:56:09.3667850Z"
+}

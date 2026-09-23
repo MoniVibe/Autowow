@@ -1,0 +1,35 @@
+{
+    "schema":  "autowow.quest-probe.v1",
+    "quest":  356,
+    "bot":  36,
+    "mode":  "Probe",
+    "started":  "2026-09-23T04:31:27.0939295Z",
+    "budget_minutes":  5,
+    "setup":  [
+
+              ],
+    "polls":  0,
+    "ledger":  [
+
+               ],
+    "verdict":  "BLOCKED_PREFLIGHT",
+    "reason":  "no_giver_destination_supplied",
+    "final_questlog":  null,
+    "quest_facts":  {
+                        "title":  "Rear Guard Patrol",
+                        "family":  "KILL",
+                        "level":  11,
+                        "faction":  "Horde",
+                        "zone":  "Tirisfal Glades",
+                        "available":  true
+                    },
+    "bot_facts":  {
+                      "name":  "Balenno",
+                      "class":  "priest",
+                      "faction":  "Horde",
+                      "level":  15,
+                      "free_slots":  56
+                  },
+    "baseline_in_log":  false,
+    "finished":  "2026-09-23T04:31:28.1888854Z"
+}

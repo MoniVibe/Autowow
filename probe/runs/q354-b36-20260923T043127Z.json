@@ -1,0 +1,70 @@
+{
+    "schema":  "autowow.quest-probe.v1",
+    "quest":  354,
+    "bot":  36,
+    "mode":  "Probe",
+    "started":  "2026-09-23T04:26:25.5530744Z",
+    "budget_minutes":  5,
+    "setup":  [
+
+              ],
+    "polls":  10,
+    "ledger":  [
+
+               ],
+    "verdict":  "STALLED",
+    "reason":  "no_counter_change",
+    "final_questlog":  {
+                           "id":  354,
+                           "title":  "Deaths in the Family",
+                           "level":  11,
+                           "quest_type":  0,
+                           "suggested_players":  0,
+                           "status":  3,
+                           "is_complete":  false,
+                           "objectives_all_done":  false,
+                           "capability_class":  "loot",
+                           "supported":  true,
+                           "objectives":  [
+                                              {
+                                                  "kind":  "item",
+                                                  "entry":  2829,
+                                                  "required":  1,
+                                                  "current":  0,
+                                                  "done":  false
+                                              },
+                                              {
+                                                  "kind":  "item",
+                                                  "entry":  2828,
+                                                  "required":  1,
+                                                  "current":  0,
+                                                  "done":  false
+                                              },
+                                              {
+                                                  "kind":  "item",
+                                                  "entry":  2830,
+                                                  "required":  1,
+                                                  "current":  0,
+                                                  "done":  false
+                                              }
+                                          ]
+                       },
+    "quest_facts":  {
+                        "title":  "Deaths in the Family",
+                        "family":  "COLLECT_DROP",
+                        "level":  11,
+                        "faction":  "Horde",
+                        "zone":  "Tirisfal Glades",
+                        "available":  true
+                    },
+    "bot_facts":  {
+                      "name":  "Balenno",
+                      "class":  "priest",
+                      "faction":  "Horde",
+                      "level":  15,
+                      "free_slots":  59
+                  },
+    "baseline_in_log":  true,
+    "baseline_status":  3,
+    "finished":  "2026-09-23T04:31:27.0825534Z"
+}

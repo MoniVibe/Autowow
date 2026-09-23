@@ -12,6 +12,7 @@
 !/census/
 !/research/
 !/jev-shadow/
+!/probe/
 /leagues/results/
 *.pid.json
 *.gcno

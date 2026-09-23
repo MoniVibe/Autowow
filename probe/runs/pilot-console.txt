@@ -1,0 +1,2 @@
+Probe q354 bot 36: STALLED no_counter_change -> D:\Games\wowstuff\AutoWoW\probe\runs\q354-b36-20260923T043127Z.json
+Probe q356 bot 36: BLOCKED_PREFLIGHT no_giver_destination_supplied -> D:\Games\wowstuff\AutoWoW\probe\runs\q356-b36-20260923T043128Z.json

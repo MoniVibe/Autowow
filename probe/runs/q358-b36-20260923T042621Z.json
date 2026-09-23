@@ -1,0 +1,70 @@
+{
+    "schema":  "autowow.quest-probe.v1",
+    "quest":  358,
+    "bot":  36,
+    "mode":  "Observe",
+    "started":  "2026-09-23T04:25:19.6756075Z",
+    "budget_minutes":  1,
+    "setup":  [
+
+              ],
+    "polls":  3,
+    "ledger":  [
+
+               ],
+    "verdict":  "COMPLETE_NOT_TURNED_IN",
+    "reason":  "",
+    "final_questlog":  {
+                           "id":  358,
+                           "title":  "Graverobbers",
+                           "level":  8,
+                           "quest_type":  0,
+                           "suggested_players":  0,
+                           "status":  1,
+                           "is_complete":  true,
+                           "objectives_all_done":  true,
+                           "capability_class":  "turnin",
+                           "supported":  true,
+                           "objectives":  [
+                                              {
+                                                  "kind":  "npc",
+                                                  "entry":  1941,
+                                                  "required":  8,
+                                                  "current":  8,
+                                                  "done":  true
+                                              },
+                                              {
+                                                  "kind":  "npc",
+                                                  "entry":  1675,
+                                                  "required":  5,
+                                                  "current":  5,
+                                                  "done":  true
+                                              },
+                                              {
+                                                  "kind":  "item",
+                                                  "entry":  2834,
+                                                  "required":  8,
+                                                  "current":  8,
+                                                  "done":  true
+                                              }
+                                          ]
+                       },
+    "quest_facts":  {
+                        "title":  "Graverobbers",
+                        "family":  "COLLECT_DROP",
+                        "level":  8,
+                        "faction":  "Horde",
+                        "zone":  "Tirisfal Glades",
+                        "available":  true
+                    },
+    "bot_facts":  {
+                      "name":  "Balenno",
+                      "class":  "priest",
+                      "faction":  "Horde",
+                      "level":  14,
+                      "free_slots":  62
+                  },
+    "baseline_in_log":  true,
+    "baseline_status":  1,
+    "finished":  "2026-09-23T04:26:21.0664845Z"
+}
