@@ -27,6 +27,7 @@
 #include "Spell.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "TacticalRuntime.h"
 #include "ThreatManager.h"
 #include "Unit.h"
 #include "UnitScript.h"
@@ -436,7 +437,7 @@ std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
         out += "\":";
         out += std::to_string(value);
     };
-    field("cv", kLifetimeSchemaVersion);
+    field("cv", tacticsTracked ? kLifetimeSchemaVersionTactics : kLifetimeSchemaVersion);
     field("cls", classId);
     field("wall_ms", totals.wallMs);
     field("combat_ms", totals.combatMs);
@@ -466,7 +467,35 @@ std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
     }
     out.push_back(']');
     pendingCount = 0;
+    if (tacticsTracked)
+    {
+        out += ",\"tac_ms\":[";
+        bool first = true;
+        for (std::size_t id = 0; id < kTacticSlots; ++id)
+        {
+            if (!tacticMs[id])
+                continue;
+            if (!first)
+                out.push_back(',');
+            first = false;
+            out.push_back('[');
+            out += std::to_string(id);
+            out.push_back(',');
+            out += std::to_string(tacticMs[id]);
+            out.push_back(']');
+        }
+        out += "],\"arm\":";
+        out += std::to_string(tacticArm);
+    }
     return out;
+}
+
+void LifetimeCounters::RecordTactic(std::uint8_t tacticId, std::uint32_t ms, std::uint8_t arm)
+{
+    tacticsTracked = true;
+    tacticArm = arm;
+    if (tacticId < kTacticSlots)
+        SaturatingAdd(tacticMs[tacticId], ms);
 }
 
 std::uint64_t LifetimeCounters::EngagedAtMs(std::uint64_t creatureKey) const
@@ -628,6 +657,12 @@ void RecordDotSkip(std::uint32_t botGuid, std::uint64_t skipKey)
 {
     if (TelemetryEnabled())
         WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDotSkip(skipKey); });
+}
+
+void RecordTactic(std::uint32_t botGuid, std::uint8_t tacticId, std::uint32_t ms, std::uint8_t arm)
+{
+    if (TelemetryEnabled())
+        WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordTactic(tacticId, ms, arm); });
 }
 
 }  // namespace AutoWowCombatPerformanceTelemetry
@@ -798,6 +833,10 @@ public:
             return;
         }
 
+        // AutoWow.Tactics.Observe/Enable (default 0): engagement kill count. One cached bool when off.
+        if (AutoWowTactics::Tracking() && unit && unit->IsCreature() && IsAttributedPlayerbot(killer, botGuid))
+            AutoWowTactics::NoteKill(botGuid);
+
         // C4: a creature killed by a bot's (or its pet's) killing blow closes that bot's engagement.
         if (TelemetryEnabled() && unit && unit->IsCreature() && IsAttributedPlayerbot(killer, botGuid))
         {
@@ -839,6 +878,9 @@ public:
     // C2 casts / GCD casts (reducer: GCD utilisation estimate). Triggered casts are not bot decisions.
     void OnPlayerSpellCast(Player* player, Spell* spell, bool /*skipCheck*/) override
     {
+        // AutoWow.Tactics.Observe/Enable (default 0): engagement shield / scream / cast counts.
+        if (AutoWowTactics::Tracking() && spell && !spell->IsTriggered())
+            AutoWowTactics::NoteCast(player, spell->GetSpellInfo());
         if (!TelemetryEnabled() || !spell || spell->IsTriggered())
             return;
         std::uint32_t botGuid = 0;
@@ -850,6 +892,8 @@ public:
 
     void OnPlayerLogout(Player* player) override
     {
+        if (AutoWowTactics::Tracking() && player)
+            AutoWowTactics::Forget(static_cast<std::uint32_t>(player->GetGUID().GetCounter()));
         if (!TelemetryEnabled() || !player)
             return;
         std::uint32_t const botGuid = static_cast<std::uint32_t>(player->GetGUID().GetCounter());

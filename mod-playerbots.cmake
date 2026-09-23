@@ -21,6 +21,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/EscortQuestContractTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/CombatTelemetryContractTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/CombatPerformanceTelemetryTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/TacticalPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/DeathLoopBreakerTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ExactBossTargetingTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/FixtureFactoryContractTest.cpp"

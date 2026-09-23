@@ -23,6 +23,7 @@
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
 #include "DeathLoopBreaker.h"
+#include "TacticalRuntime.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -531,6 +532,7 @@ public:
         AutoWowQuestLedger::LoadConfig();
         AutoWowCombatPerformanceTelemetry::LoadConfig();
         AutoWowDeathLoop::LoadConfig();
+        AutoWowTactics::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));

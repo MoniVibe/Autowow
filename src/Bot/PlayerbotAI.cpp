@@ -5,6 +5,7 @@
 
 #include "PlayerbotAI.h"
 #include "AutoWowQuestLedger.h"
+#include "TacticalRuntime.h"
 #include "AutoWow/AutoWowIndependentActivityPolicy.h"
 
 #include <cmath>
@@ -268,6 +269,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
     // Ledger `progress` sampling (AutoWow.Ledger.ProgressSampleMs); a no-op unless enabled.
     if (AutoWowQuestLedger::Enabled())
         AutoWowQuestLedger::SampleProgress(bot);
+
+    // Tactical layer assessment / engagement ledger (AutoWow.Tactics.Observe/Enable); one cached bool when off.
+    if (AutoWowTactics::Tracking())
+        AutoWowTactics::Update(this);
 
     if (autoWowPaused)
     {

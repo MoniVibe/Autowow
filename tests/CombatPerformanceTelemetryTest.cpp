@@ -252,6 +252,23 @@ TEST(CombatLifetime, EmitIntervalAndFieldFormat)
     EXPECT_NE(second.find("\"ttk\":[]"), std::string::npos);
 }
 
+TEST(CombatLifetime, TacticsSwitchLineToCv2AndKeepCv1Fields)
+{
+    LifetimeCounters c;
+    c.Update(2000, true, false, false);
+    std::string const cv1 = c.DrainEmitFields(5);
+    EXPECT_EQ(cv1.rfind(",\"cv\":1,\"cls\":5,", 0), 0u);
+    EXPECT_EQ(cv1.find("tac_ms"), std::string::npos);  // untouched by the tactical layer: byte-identical cv=1
+
+    c.RecordTactic(12, 500, 1);
+    c.RecordTactic(10, 1500, 1);
+    c.RecordTactic(10, 500, 1);
+    c.RecordTactic(99, 700, 1);  // beyond kTacticSlots: ignored
+    std::string const cv2 = c.DrainEmitFields(5);
+    std::string expectedCv1Body = cv1.substr(std::string(",\"cv\":1").size());
+    EXPECT_EQ(cv2, ",\"cv\":2" + expectedCv1Body + ",\"tac_ms\":[[10,2000],[12,500]],\"arm\":1");
+}
+
 TEST(CombatLifetime, TtkOverflowIsCountedNotLost)
 {
     LifetimeCounters c;

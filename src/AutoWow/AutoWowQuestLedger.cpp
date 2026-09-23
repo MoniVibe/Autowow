@@ -262,6 +262,16 @@ void EmitCombat(Player* player, std::string_view fields)
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
 }
 
+void EmitEngage(Player* player, std::string_view fields)
+{
+    if (!IsRecordedBot(player))
+        return;
+    Row row;
+    FillRow(player, Event::Engage, 0, "", "", row);
+    row.extra = fields;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
 void EmitSkillUp(Player* player, std::uint32_t skill, std::uint32_t oldValue, std::uint32_t newValue,
                  std::uint32_t maxValue, char const* cause)
 {

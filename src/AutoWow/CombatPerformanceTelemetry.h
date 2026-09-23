@@ -145,7 +145,13 @@ void LoadConfig();
 // Unlike the v1 window these never retire: cumulative since login, cleared only on logout. Emitted as
 // the ledger `combat` event (C6); consumers fold deltas between lines (scripts/combat-reduce.py).
 // cv (kLifetimeSchemaVersion) bumps on any field meaning change; fields are append-only.
+// cv=2 (kLifetimeSchemaVersionTactics) = every cv=1 field unchanged, then tac_ms=[[tactic id, ms], ...]
+// (cumulative in-engagement ms per AutoWowTactics::TacticId, ascending id) and arm (0 control, 1 treatment).
+// A bot emits cv=2 only once the tactical layer (AutoWow.Tactics.Observe/Enable) has credited it; otherwise
+// its lines stay byte-identical cv=1.
 inline constexpr std::uint32_t kLifetimeSchemaVersion = 1;
+inline constexpr std::uint32_t kLifetimeSchemaVersionTactics = 2;
+inline constexpr std::size_t kTacticSlots = 32;  // AutoWowTactics::kMaxTacticId
 inline constexpr std::size_t kTtkTracked = 16;              // concurrently engaged creatures per bot
 inline constexpr std::uint64_t kTtkEngageExpiryMs = 120000; // engagement forgotten after 2 min
 inline constexpr std::size_t kTtkPendingMax = 64;           // TTK samples per emit line; rest -> ttk_drop
@@ -217,6 +223,9 @@ public:
     void RecordKill(std::uint64_t nowMs, std::uint64_t creatureKey, std::int32_t levelDelta);
     // Counts one skipped DoT/debuff opportunity; consecutive skips of the same key count once.
     void RecordDotSkip(std::uint64_t skipKey);
+    // Tactical layer: ms spent in a tactic (id < kTacticSlots; others ignored) and the bot's A/B arm.
+    // The first call switches this bot's `combat` lines to cv=2.
+    void RecordTactic(std::uint8_t tacticId, std::uint32_t ms, std::uint8_t arm);
 
     // C6. First call arms the interval (returns false); then true once per intervalMs (0 = never).
     bool EmitDue(std::uint64_t nowMs, std::uint64_t intervalMs);
@@ -246,11 +255,15 @@ private:
     std::uint64_t lastDotSkipKey = 0;
     std::uint64_t lastEmitMs = 0;
     bool emitArmed = false;
+    bool tacticsTracked = false;
+    std::uint8_t tacticArm = 0;
+    std::uint64_t tacticMs[kTacticSlots] = {};
 };
 
 // Runtime (world/map-thread; the store is mutex-guarded). No-ops unless TelemetryEnabled().
 std::uint32_t RecentDpsFor(std::uint32_t botGuid);
 void RecordDotSkip(std::uint32_t botGuid, std::uint64_t skipKey);
+void RecordTactic(std::uint32_t botGuid, std::uint8_t tacticId, std::uint32_t ms, std::uint8_t arm);
 }
 
 #endif  // AUTOWOW_COMBAT_PERFORMANCE_TELEMETRY_H

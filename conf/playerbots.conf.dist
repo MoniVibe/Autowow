@@ -2299,6 +2299,50 @@ AutoWow.Combat.DotMinTargetHpPct = 10
 AutoWow.Combat.DotMinDurationPct = 50
 AutoWow.Combat.DotHighHpPerLevel = 150
 
+# AutoWoW tactical combat layer (docs/TACTICAL_COMBAT_PLAN.md; TacticalPolicy.h). Default 0 = off: the
+# bot AI tick and the telemetry hooks early-return on one cached bool. Solo priests only (not grouped,
+# not in a dungeon/raid/battleground/arena). Read once at world init.
+# Observe = 1 (T1, no behaviour change): every ReevalMs (and on every combat-state change) the bot's
+# engagement is assessed (attackers, melee, idle adds within LinkRadius yards of an attacker, levels,
+# elites, casters, hp/mana, hp-slope death eta, Scream/Shield/wand readiness) and labelled with the
+# tactic it WOULD run (10 wand, 11 burst, 12 multi, 13 emergency, 14 escape). One ledger `engage` line
+# per engagement (needs AutoWow.Ledger.Enable = 1). With AutoWow.CombatTelemetry.Enable = 1 the bot's
+# `combat` lines become cv=2 (cv=1 fields unchanged + tac_ms, arm). arm = hash(guid, ArmSalt) % 100 <
+# ArmPct (1 = treatment); in Observe mode it is a label only.
+AutoWow.Tactics.Observe = 0
+AutoWow.Tactics.ArmPct = 50
+AutoWow.Tactics.ArmSalt = 1
+AutoWow.Tactics.ReevalMs = 500
+AutoWow.Tactics.LinkRadius = 12
+# Tactic choice (integer percent / ms). Load and capacity are centi mob-equivalents: a lone same-level
+# normal mob = 100; w = rankMul x clamp(1 + LvlStepPct% x dlvl, 0.4, 2.0) x (mana-class ? CasterMulPct%).
+# Capacity = (BasePct + 100 if Scream ready + 50 if Shield ready) x hp% x (0.5 + 0.5 mana%).
+# Single (load <= SingleMaxPct): wand-cycle for a cheap fight (lone normal mob, not a caster, <= +1 level)
+# or when mana < WandManaPct, else burst (burst hands off to the wand below BurstExitManaPct); no wand
+# equipped = burst. Multi above SingleMaxPct. Emergency below EmergencyHpPct or when the hp-slope death
+# eta < DeathEtaMs; leaves above EmergencyExitHpPct. Escape (one attempt per engagement, EscapeMaxMs):
+# load > capacity x EscapeRatioPct%, hp below EmergencyExitHpPct, >= 2 attackers and the known control
+# tools on cooldown. Escalation is immediate; any other switch waits MinDwellMs.
+AutoWow.Tactics.MinDwellMs = 3000
+AutoWow.Tactics.DeathEtaMs = 6000
+AutoWow.Tactics.EscapeRatioPct = 160
+AutoWow.Tactics.EscapeMaxMs = 8000
+AutoWow.Tactics.Load.EliteMulPct = 300
+AutoWow.Tactics.Load.RareMulPct = 150
+AutoWow.Tactics.Load.LvlStepPct = 15
+AutoWow.Tactics.Load.CasterMulPct = 120
+AutoWow.Tactics.Priest.SingleMaxPct = 120
+AutoWow.Tactics.Priest.BasePct = 100
+AutoWow.Tactics.Priest.WandManaPct = 60
+AutoWow.Tactics.Priest.BurstExitManaPct = 50
+AutoWow.Tactics.Priest.ShieldMinManaPct = 20
+AutoWow.Tactics.Priest.RenewHpPct = 70
+AutoWow.Tactics.Priest.HealHpPct = 45
+AutoWow.Tactics.Priest.EmergencyHpPct = 30
+AutoWow.Tactics.Priest.EmergencyExitHpPct = 45
+AutoWow.Tactics.Priest.ScreamMinMelee = 2
+AutoWow.Tactics.Priest.ScreamHpPct = 60
+
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within
 # WindowMs within RadiusYards (same map), or the killer is >= KillerLevelGap levels above the bot
