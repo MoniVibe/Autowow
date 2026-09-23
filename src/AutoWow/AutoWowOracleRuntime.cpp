@@ -2448,6 +2448,12 @@ bool IsManagedBot(Guid botGuid)
     return Runtime::instance().IsManagedBot(botGuid);
 }
 
+bool BlocksRandomTeleport(Guid botGuid)
+{
+    static bool const enabled = sConfigMgr->GetOption<bool>("AutoWow.OracleRuntime.NoRandomTeleport", false);
+    return enabled && Runtime::instance().IsManagedBot(botGuid);
+}
+
 DecisionId ActiveDecisionId(Guid botGuid) noexcept
 {
     return Runtime::instance().ActiveDecisionId(botGuid);

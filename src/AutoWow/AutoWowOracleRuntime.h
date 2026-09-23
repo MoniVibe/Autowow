@@ -371,6 +371,9 @@ void Update(std::uint32_t diffMs);
 bool RequiresTaggedDispatch(Guid botGuid) noexcept;
 bool HasActiveLease(Guid botGuid, DecisionId decisionId = 0) noexcept;
 bool IsManagedBot(Guid botGuid);
+// AutoWow.OracleRuntime.NoRandomTeleport (default 0, read once): true only for an Oracle-managed bot
+// while the flag is on. With the flag off it never touches the runtime.
+bool BlocksRandomTeleport(Guid botGuid);
 DecisionId ActiveDecisionId(Guid botGuid) noexcept;
 bool GetOracleSnapshot(Guid botGuid, OracleBotSnapshot& out);
 AutoWowOracleReceiptStore::StreamStatus GetOracleStreamStatus();

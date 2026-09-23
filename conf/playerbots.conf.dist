@@ -2195,6 +2195,10 @@ AutoWow.OracleRuntime.SliceBots = 0
 # set the quest aside like an unrunnable one (native low-priority set, ledger `deferred` with
 # reason oracle_no_frame / oracle_no_candidate); quest state is never touched. 0 (default) = legacy.
 AutoWow.OracleRuntime.DeferNoCandidatePasses = 0
+# Keep Oracle-managed bots out of RandomPlayerbotMgr random relocations (level-up
+# AutoTeleportForLevel, scheduled teleport-for-level, revive grind teleport, rpg teleport). Those
+# move a managed bot away from the zone its quest log belongs to. Read once. 0 (default) = legacy.
+AutoWow.OracleRuntime.NoRandomTeleport = 0
 
 # Explicitly deployed worker_gather route seeking. Candidates are remembered static herb/ore
 # spawns; spawned state is checked only after the bot walks into sight. Movement uses mmap-backed

@@ -6,6 +6,7 @@
 
 #include "RandomPlayerbotMgr.h"
 
+#include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
 #include "AutoWowRandomBotPolicy.h"
 #include "Config.h"
@@ -1592,6 +1593,11 @@ void RandomPlayerbotMgr::Revive(Player* player)
 
 void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth)
 {
+    // Every random/level/revive/rpg relocation routes through here. An Oracle-managed bot keeps its
+    // position (and so the zone its quest log belongs to) when AutoWow.OracleRuntime.NoRandomTeleport.
+    if (AutoWowOracleRuntime::BlocksRandomTeleport(bot->GetGUID().GetCounter()))
+        return;
+
     // ignore when alrdy teleported or not in the world yet.
     if (bot->IsBeingTeleported() || !bot->IsInWorld())
         return;
