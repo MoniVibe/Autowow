@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('list','activate','deactivate','independent','party','rally','deploy','route','advance','advance-point','engage','boss','boss-status','scout','pathprobe','quest','quest-acquire','questlog','questobjective','acceptance','combatlog','encounterlog','professioneconomy','craft','craft-status','guild-trade','guild-trade-status','probe-reset','fixture-init','fixture-status','fixture-accelerate','fixture-accelerate-off','fixture-kill','raid-create','raid-status','raid-leave','wsg-queue','wsg-status','wsg-leave','destinations','snapshot','pause','resume','travel','recover')][string]$Action = 'list',
+    [ValidateSet('list','activate','deactivate','independent','party','rally','deploy','route','advance','advance-point','engage','boss','boss-status','scout','pathprobe','quest','quest-acquire','questlog','questobjective','acceptance','combatlog','encounterlog','professioneconomy','craft','craft-status','guild-trade','guild-trade-status','probe-reset','probe-login','probe-setlevel','probe-place','probe-status','fixture-init','fixture-status','fixture-accelerate','fixture-accelerate-off','fixture-kill','raid-create','raid-status','raid-leave','wsg-queue','wsg-status','wsg-leave','destinations','snapshot','pause','resume','travel','recover')][string]$Action = 'list',
     [uint32]$BotGuid = 0,
     [uint32]$QuestId = 0,
     [uint32]$RecipeSpellId = 0,
@@ -30,6 +30,7 @@ param(
     [ValidateRange(0,3)][uint32]$ExpectedDifficulty = 0,
     [uint32[]]$MemberGuid = @(),
     [string]$Destination = '',
+    [switch]$DropOtherQuests,
     [ValidateSet('127.0.0.1')][string]$BridgeHost = '127.0.0.1',
     [ValidateRange(1,65535)][int]$Port = 18787,
     [ValidateRange(1000,120000)][int]$TimeoutMs = 5000,
@@ -48,8 +49,17 @@ if ($Action -eq 'party' -and $MemberGuid.Count -eq 0) {
 if ($Action -eq 'travel' -and [string]::IsNullOrWhiteSpace($Destination)) {
     throw 'Destination is required for travel.'
 }
-if ($QuestId -ne 0 -and $Action -notin @('quest','acceptance')) {
-    throw 'QuestId is valid only with the quest or acceptance action.'
+if ($QuestId -ne 0 -and $Action -notin @('quest','acceptance','probe-place','probe-status')) {
+    throw 'QuestId is valid only with the quest, acceptance, probe-place or probe-status action.'
+}
+if ($Action -eq 'probe-place' -and $QuestId -eq 0) {
+    throw 'probe-place requires QuestId.'
+}
+if ($DropOtherQuests -and $Action -ne 'probe-place') {
+    throw 'DropOtherQuests is valid only with probe-place.'
+}
+if ($Action -eq 'probe-setlevel' -and -not $PSBoundParameters.ContainsKey('Level')) {
+    throw 'probe-setlevel requires an explicit Level (up or down).'
 }
 if ($RecipeSpellId -ne 0 -and $Action -ne 'craft') {
     throw 'RecipeSpellId is valid only with the craft action.'
@@ -178,6 +188,10 @@ $request = switch ($Action) {
     'guild-trade' { "guild-trade $BotGuid $BuyerGuid $ItemGuid $ItemEntry $Quantity $PriceCopper" }
     'guild-trade-status' { "guild-trade-status $BotGuid" }
     'probe-reset' { "probe-reset $Destination $ExpectedMapId $ExpectedDifficulty $BotGuid $($MemberGuid -join ' ')".TrimEnd() }
+    'probe-login' { "probe-login $BotGuid" }
+    'probe-setlevel' { "probe-setlevel $BotGuid $Level $SpecIndex $Quality" }
+    'probe-place' { if ($DropOtherQuests) { "probe-place $BotGuid $QuestId drop-others" } else { "probe-place $BotGuid $QuestId" } }
+    'probe-status' { if ($QuestId -ne 0) { "probe-status $BotGuid $QuestId" } else { "probe-status $BotGuid" } }
     'fixture-init' { "fixture init $BotGuid $Level $SpecIndex $Quality" }
     'fixture-status' { "fixture status $BotGuid" }
     'fixture-accelerate' { "fixture accelerate $BotGuid $PacingPercent" }

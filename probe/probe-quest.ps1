@@ -6,11 +6,16 @@
     Modes
       Observe  read-only. Watches the bot for the quest (bridge questlog + live ledger lines appended
                after the probe starts). Sends only fixture-status, snapshot, questlog reads.
-      Probe    Observe plus recorded SETUP, only for a fixture bot:
-                 fixture-init <Level>  when the bot is below the quest level (server refuses downlevel)
-                 travel <Destination>  when the quest is not in the log and a giver destination title
-                                       is supplied (native walk to a TravelMgr destination, no teleport)
-               Accept / progress / turn-in stay with the bot's normal NewRpg play.
+      Probe    Observe plus recorded SETUP, only for a fixture bot (bridge verbs gated server-side by
+               AutoWow.Probe.Enable + AutoWow.FixtureGuids, never cohort / Oracle):
+                 probe-login           when the fixture bot is offline (normal Playerbots login)
+                 probe-setlevel <L>    when the bot level is outside the accept window; sets EXACTLY the
+                                       quest level, up or down (talents/spells rebuilt, XP 0, fixture gear)
+                 probe-place <quest>   clears the quest (status, reward, quest items) and teleports to the
+                                       quest starter spawn; ledger contaminated reason probe_setup.
+                                       -DropOtherQuests also abandons every other quest in the log.
+               Setup completes before the ledger offset is taken, so setup lines never enter the
+               verdict window. Accept / progress / turn-in stay with the bot's normal NewRpg play.
 
     Safety gates (refuse before any mutation): bot must be listed in the live AutoWow.FixtureGuids key,
     must not be in the Oracle allowlist, the cohort (62955-63004) or the scouts; must be online; faction
@@ -33,7 +38,8 @@ param(
     [Parameter(Mandatory = $true)][uint32]$QuestId,
     [Parameter(Mandatory = $true)][uint32]$BotGuid,
     [ValidateSet('Observe', 'Probe')][string]$Mode = 'Observe',
-    [string]$Destination = '',
+    [switch]$DropOtherQuests,
+    [ValidateRange(10, 300)][int]$SetupWaitSeconds = 60,
     [ValidateRange(1, 60)][int]$BudgetMinutes = 15,
     [ValidateRange(5, 300)][int]$PollSeconds = 30,
     [ValidateRange(5, 60)][int]$SampleSeconds = 10,
@@ -113,6 +119,11 @@ function Read-LedgerSince([long]$Offset) {
     return $out
 }
 
+function Get-Dist($a, $b) {
+    if ($null -eq $a -or $null -eq $b) { return $null }
+    return [Math]::Round([Math]::Sqrt([Math]::Pow($a.x - $b.x, 2) + [Math]::Pow($a.y - $b.y, 2)), 1)
+}
+
 function Get-QuestEntry {
     $log = Invoke-Bridge 'questlog'
     return @($log.quests | Where-Object { $_.id -eq $QuestId }) | Select-Object -First 1
@@ -137,6 +148,17 @@ if ($Mode -eq 'Probe') {
 if ($cohort -contains $BotGuid -or $scouts -contains $BotGuid) { Finish 'BLOCKED_PREFLIGHT' 'bot_is_cohort_or_scout' }
 
 $status = Invoke-Bridge 'fixture-status'
+if (-not $status.ok -and $status.error -eq 'fixture_target_not_online' -and $Mode -eq 'Probe') {
+    # SETUP: log the offline fixture in (server gate: AutoWow.Probe.Enable + FixtureGuids).
+    $r = Invoke-Bridge 'probe-login'
+    $receipt.setup += [ordered]@{ verb = 'probe-login'; ok = $r.ok; state = $(if ($r.ok) { $r.state } else { '' }); error = $(if ($r.ok) { '' } else { $r.error }) }
+    if (-not $r.ok) { Finish 'BLOCKED_PREFLIGHT' ('probe_login:' + $r.error) }
+    $until = (Get-Date).AddSeconds($SetupWaitSeconds)
+    while (-not $status.ok -and (Get-Date) -lt $until) {
+        Start-Sleep -Seconds 5
+        $status = Invoke-Bridge 'fixture-status'
+    }
+}
 if (-not $status.ok) { Finish 'BLOCKED_PREFLIGHT' ('fixture_status:' + $status.error) }
 $level = [int]$status.level
 $faction = [string]$status.identity.faction
@@ -145,24 +167,40 @@ if ($quest.faction -ne 'Both' -and $quest.faction -ne $faction) { Finish 'BLOCKE
 $entry = Get-QuestEntry
 $receipt.baseline_in_log = [bool]$entry
 if ($entry) { $receipt.baseline_status = $entry.status }
-# NewRpg IsQuestWorthDoing: a giver's quest is skipped when bot level > questLevel + LowLevelHideDiff.
-# Only gates acceptance; a quest already in the log is still worked and turned in.
-if (-not $entry -and $level -gt $qlevel + $LowLevelHideDiff) { Finish 'BLOCKED_PREFLIGHT' ('bot_level_{0}_hides_quest_level_{1}' -f $level, $qlevel) }
 
 # ---- recorded setup (Probe only) ----
 if ($Mode -eq 'Probe') {
-    if ($level + 3 -lt $qlevel) {
-        $r = Invoke-Bridge 'fixture-init' @{ Level = [uint32]$qlevel; SpecIndex = $SpecIndex; Quality = $Quality }
-        $receipt.setup += [ordered]@{ verb = 'fixture-init'; level = $qlevel; ok = $r.ok; error = $(if ($r.ok) { '' } else { $r.error }) }
-        if (-not $r.ok) { Finish 'BLOCKED_PREFLIGHT' ('fixture_init:' + $r.error) }
+    # Exact quest level, up or down, when outside the NewRpg accept window.
+    $target = [Math]::Min(80, [Math]::Max(1, $qlevel))
+    if ($level -gt $qlevel + $LowLevelHideDiff -or $level + 3 -lt $qlevel) {
+        $r = Invoke-Bridge 'probe-setlevel' @{ Level = [uint32]$target; SpecIndex = $SpecIndex; Quality = $Quality }
+        $receipt.setup += [ordered]@{ verb = 'probe-setlevel'; from = $level; level = $target; ok = $r.ok; error = $(if ($r.ok) { '' } else { $r.error }) }
+        if (-not $r.ok) { Finish 'BLOCKED_PREFLIGHT' ('probe_setlevel:' + $r.error) }
+        $level = [int]$r.level
+        $receipt.bot_facts.level = $level
     }
-    if (-not $entry) {
-        if (-not $Destination) { Finish 'BLOCKED_PREFLIGHT' 'no_giver_destination_supplied' }
-        $r = Invoke-Bridge 'travel' @{ Destination = $Destination }
-        $receipt.setup += [ordered]@{ verb = 'travel'; destination = $Destination; ok = $r.ok; error = $(if ($r.ok) { '' } else { $r.error }) }
-        if (-not $r.ok) { Finish 'BLOCKED_PREFLIGHT' ('travel:' + $r.error) }
+    # Fresh accept at the starter: the quest is cleared server-side, then the bot is teleported there.
+    $placeArgs = @{ QuestId = $QuestId }
+    if ($DropOtherQuests) { $placeArgs.DropOtherQuests = $true }
+    $r = Invoke-Bridge 'probe-place' $placeArgs
+    $receipt.setup += [ordered]@{ verb = 'probe-place'; drop_others = [bool]$DropOtherQuests; ok = $r.ok
+        starter = $(if ($r.ok) { $r.starter } else { $null }); dropped_others = $(if ($r.ok) { @($r.dropped_others) } else { @() })
+        error = $(if ($r.ok) { '' } else { $r.error }) }
+    if (-not $r.ok) { Finish 'BLOCKED_PREFLIGHT' ('probe_place:' + $r.error) }
+    $starter = $r.starter.position
+    $until = (Get-Date).AddSeconds($SetupWaitSeconds)
+    $arrived = $false
+    while (-not $arrived -and (Get-Date) -lt $until) {
+        $ps = Invoke-Bridge 'probe-status' @{ QuestId = $QuestId }
+        $arrived = $ps.ok -and [int]$ps.position.map -eq [int]$starter.map -and (Get-Dist $ps.position $starter) -lt 30
+        if (-not $arrived) { Start-Sleep -Seconds 2 }
     }
+    if (-not $arrived) { Finish 'BLOCKED_PREFLIGHT' 'probe_place:not_at_starter_after_teleport' }
+    $entry = $null
 }
+# NewRpg IsQuestWorthDoing: a giver's quest is skipped when bot level > questLevel + LowLevelHideDiff.
+# Only gates acceptance; a quest already in the log is still worked and turned in.
+if (-not $entry -and $level -gt $qlevel + $LowLevelHideDiff) { Finish 'BLOCKED_PREFLIGHT' ('bot_level_{0}_hides_quest_level_{1}' -f $level, $qlevel) }
 
 # ---- bounded observation with phase timeline ----
 # Stage vocabulary shared with build_registry.py (PHASE_STAGE): select, accept, travel_to_source,
@@ -182,10 +220,6 @@ function Get-Prop($o, [string]$path) {
         $o = $pp.Value
     }
     return $o
-}
-function Get-Dist($a, $b) {
-    if ($null -eq $a -or $null -eq $b) { return $null }
-    return [Math]::Round([Math]::Sqrt([Math]::Pow($a.x - $b.x, 2) + [Math]::Pow($a.y - $b.y, 2)), 1)
 }
 $offset = Get-LedgerLength
 $t0 = Get-Date
@@ -271,6 +305,11 @@ while ((Get-Date) -lt $deadline) {
 }
 Close-Phase ([Math]::Round(((Get-Date) - $t0).TotalSeconds, 1))
 Save-Timeline
+if ($Mode -eq 'Probe') {
+    # Server-side counters for the probed quest (level, position, status, objective current/required).
+    $ps = Invoke-Bridge 'probe-status' @{ QuestId = $QuestId }
+    if ($ps.ok) { $receipt.final_probe_status = $ps }
+}
 
 # ---- failure point: stage with the longest dwell, plus the evidence that pins it ----
 $dwell = @{}

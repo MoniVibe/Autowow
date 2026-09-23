@@ -44,6 +44,11 @@ foreach ($linuxPath in @($binary, $config, '/usr/local/etc/modules/playerbots.co
 
 New-Item -ItemType Directory -Path $logRoot,(Split-Path -Parent $statePath) -Force | Out-Null
 Remove-Item -LiteralPath $relayStatusPath -Force -ErrorAction SilentlyContinue
+# A relay left behind by a crashed/killed world holds the port; no world runs here (checked above), so stop it.
+Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -match 'phase1-wsl-mysql-relay\.ps1' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Milliseconds 500
 $relay = Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-File',$relayScript) `
     -RedirectStandardOutput $relayStdout -RedirectStandardError $relayStderr `
     -WindowStyle Hidden -PassThru
