@@ -110,7 +110,9 @@ void AutoMaintenanceOnLevelupAction::LearnTrainerSpells(std::ostringstream* /*ou
     PlayerbotFactory factory(bot, bot->GetLevel());
     factory.InitSkills();
     factory.InitClassSpells();
-    factory.InitAvailableSpells();
+    // AutoWow.Professions.Enable: a planned bot gets no free tradeskill-trainer spells (first ranks,
+    // rank-ups, recipes); InitSkills already skips its InitTradeSkills.
+    factory.InitAvailableSpells(sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter()) != nullptr);
     factory.InitPet();
 }
 

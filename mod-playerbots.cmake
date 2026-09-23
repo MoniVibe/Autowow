@@ -80,6 +80,7 @@ if (BUILD_TESTING)
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/CorpseRouteRetryPolicyTest.cpp")
  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/PersistentCorpseApproachPolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/AutoWowCohortPolicyTest.cpp")
+  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/AutoWowTrainPolicyTest.cpp")
  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/PlayerbotCommandServerContractTest.cpp")
  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES
    "${CMAKE_CURRENT_LIST_DIR}/tests/BossApproachPolicyTest.cpp"

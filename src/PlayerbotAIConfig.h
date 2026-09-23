@@ -395,6 +395,21 @@ public:
     uint32 autoWowIndependentAutoMaintenance;  // AutoWow.Independent.AutoMaintenance (0 off, 1 talents, 2 +class spells)
     bool autoWowChatBotSpeakerByAI;            // AutoWow.Chat.BotSpeakerByAI (default off)
     uint32 autoWowChatMinReplyIntervalMs;      // AutoWow.Chat.MinReplyIntervalMs (default 5000, 0 = unbounded)
+    // Cohort professions (docs/PROFESSIONS_PLAN.md P1; formats in AutoWowTrainPolicy.h). All default off.
+    bool autoWowProfessionsEnable;             // AutoWow.Professions.Enable
+    bool autoWowProfessionsTrainOnArrival;     // AutoWow.Professions.TrainOnArrival (needs Enable)
+    bool autoWowProfessionsCraftPriorityFix;   // AutoWow.Professions.CraftPriorityFix
+    std::unordered_map<uint32, std::vector<uint32>> autoWowProfessionAssignments;  // guid -> primaries
+    std::vector<uint32> autoWowProfessionSecondaries;                              // AutoWow.Professions.Secondaries
+    // Planned primaries of a bot, or nullptr when AutoWow.Professions.Enable is off or the guid has no
+    // assignment. Non-null = the bot pays for professions at trainers and never gets them free.
+    std::vector<uint32> const* GetAutoWowProfessionPlan(uint32 guidLow) const
+    {
+        if (!autoWowProfessionsEnable)
+            return nullptr;
+        auto const it = autoWowProfessionAssignments.find(guidLow);
+        return it == autoWowProfessionAssignments.end() ? nullptr : &it->second;
+    }
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;

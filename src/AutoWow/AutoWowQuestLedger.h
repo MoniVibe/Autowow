@@ -27,6 +27,10 @@
 //   - `progress` (AutoWow.Ledger.ProgressSampleMs > 0): a per-bot periodic diff of every quest-log
 //     entry's c/i counters; one line per quest whose counters changed since the previous sample.
 //     A quest's first sample is a silent baseline. reason/phase are empty.
+//   - `skill_up` (AutoWow.Ledger.SkillUp = 1): a profession skill value/max change of a bot.
+//       skill, old, new, max, cause: skill line id, value before and after, max after, and
+//       cause update (core UpdateSkill/UpdateSkillPro) | learn (first rank, old 0) | rank (rank-up,
+//       old == new, max grew). quest is 0. Sum(new - old) per team is the profession KPI delta.
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -56,7 +60,8 @@ enum class Event : std::uint8_t
     Died = 6,
     PvpKill = 7,
     Combat = 8,
-    Progress = 9  // 10 DeathLoop, 11 SkillUp reserved by other lanes
+    Progress = 9,  // 10 DeathLoop reserved by the death-loop lane
+    SkillUp = 11   // explicit: 10 is reserved (DeathLoop), never reuse it here
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -73,6 +78,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::PvpKill: return "pvp_kill";
         case Event::Combat: return "combat";
         case Event::Progress: return "progress";
+        case Event::SkillUp: return "skill_up";
     }
     return "unknown";
 }
@@ -132,6 +138,12 @@ struct Row
     bool honorable = false;
     // combat: pre-formatted trailing fields (",\"cv\":1,..."), appended verbatim
     std::string_view extra;
+    // skill_up
+    std::uint32_t skill = 0;
+    std::uint32_t skillOld = 0;
+    std::uint32_t skillNew = 0;
+    std::uint32_t skillMax = 0;
+    char const* cause = "";  // static literal: update | learn | rank
 };
 
 // Blocked-row dedupe (pure; unit-tested). A (quest, reason, phase) key emits on change; repeats of
@@ -238,6 +250,7 @@ inline bool gEnabled = false;
 inline std::string gRunId;
 inline std::uint64_t gBlockedDedupeMs = 0;
 inline std::uint64_t gProgressSampleMs = 0;
+inline bool gSkillUpEnabled = false;
 
 inline void AppendEscaped(std::string& out, std::string_view text)
 {
@@ -336,6 +349,20 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
     }
     else if (row.ev == Event::Combat)
         out += row.extra;
+    else if (row.ev == Event::SkillUp)
+    {
+        out += ",\"skill\":";
+        out += std::to_string(row.skill);
+        out += ",\"old\":";
+        out += std::to_string(row.skillOld);
+        out += ",\"new\":";
+        out += std::to_string(row.skillNew);
+        out += ",\"max\":";
+        out += std::to_string(row.skillMax);
+        out += ",\"cause\":\"";
+        out += row.cause ? row.cause : "";
+        out += "\"";
+    }
     out += "}";
     return out;
 }
@@ -367,6 +394,14 @@ void EmitCombat(Player* player, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);
+
+// ---- skill_up (AutoWow.Ledger.SkillUp, default 0; also needs AutoWow.Ledger.Enable) ----
+
+inline bool SkillUpEnabled() { return detail::gSkillUpEnabled; }
+
+// `skill_up` for a recorded bot; no-op for a non-profession skill line or when disabled.
+void EmitSkillUp(Player* player, std::uint32_t skill, std::uint32_t oldValue, std::uint32_t newValue,
+                 std::uint32_t maxValue, char const* cause);
 }  // namespace AutoWowQuestLedger
 
 #endif

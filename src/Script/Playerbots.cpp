@@ -20,6 +20,7 @@
 #include "AutoWowBridge.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
+#include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
@@ -38,6 +39,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "QuestValues.h"
 #include "RandomPlayerbotMgr.h"
+#include "SpellMgr.h"
 #include "ScriptMgr.h"
 #include "SharedValueContext.h"
 #include "World.h"
@@ -136,7 +138,9 @@ public:
         PLAYERHOOK_ON_QUEST_ABANDON,
         PLAYERHOOK_ON_PLAYER_JUST_DIED,
         PLAYERHOOK_ON_PVP_KILL,
-        PLAYERHOOK_ON_PLAYER_KILLED_BY_CREATURE
+        PLAYERHOOK_ON_PLAYER_KILLED_BY_CREATURE,
+        PLAYERHOOK_ON_UPDATE_SKILL,
+        PLAYERHOOK_ON_LEARN_SPELL
     }) {}
 
     void OnPlayerLogin(Player* player) override
@@ -279,6 +283,29 @@ public:
     {
         if (AutoWowQuestLedger::Enabled())
             AutoWowQuestLedger::EmitDied(player);
+    }
+
+    // skill_up (AutoWow.Ledger.SkillUp + AutoWow.Ledger.Enable, default off). Profession lines only.
+    void OnPlayerUpdateSkill(Player* player, uint32 skillId, uint32 value, uint32 max, uint32 /*step*/,
+                             uint32 newValue) override
+    {
+        if (AutoWowQuestLedger::Enabled() && AutoWowQuestLedger::SkillUpEnabled())
+            AutoWowQuestLedger::EmitSkillUp(player, skillId, value, newValue, max, "update");
+    }
+
+    // A skill-granting spell (profession rank): the core sets the skill before this hook fires.
+    // First rank = a new line (old 0); a later rank keeps the value and raises max.
+    void OnPlayerLearnSpell(Player* player, uint32 spellId) override
+    {
+        if (!AutoWowQuestLedger::Enabled() || !AutoWowQuestLedger::SkillUpEnabled() || !player)
+            return;
+        SpellLearnSkillNode const* node = sSpellMgr->GetSpellLearnSkill(spellId);
+        if (!node || !AutoWowTrainPolicy::IsProfessionSkillLine(node->skill))
+            return;
+        uint32 const value = player->GetPureSkillValue(node->skill);
+        bool const firstRank = sSpellMgr->GetPrevSpellInChain(spellId) == 0;
+        AutoWowQuestLedger::EmitSkillUp(player, node->skill, firstRank ? 0 : value, value,
+                                        player->GetPureMaxSkillValue(node->skill), firstRank ? "learn" : "rank");
     }
 
     void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override

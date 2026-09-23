@@ -6,6 +6,7 @@
 
 #include "PlayerbotAIConfig.h"
 #include <iostream>
+#include "AutoWowTrainPolicy.h"
 #include "BisListMgr.h"
 #include "Config.h"
 #include "NewRpgInfo.h"
@@ -710,6 +711,16 @@ bool PlayerbotAIConfig::Initialize()
     autoWowIndependentAutoMaintenance = sConfigMgr->GetOption<uint32>("AutoWow.Independent.AutoMaintenance", 0);
     autoWowChatBotSpeakerByAI = sConfigMgr->GetOption<bool>("AutoWow.Chat.BotSpeakerByAI", false);
     autoWowChatMinReplyIntervalMs = sConfigMgr->GetOption<uint32>("AutoWow.Chat.MinReplyIntervalMs", 5000);
+    autoWowProfessionsEnable = sConfigMgr->GetOption<bool>("AutoWow.Professions.Enable", false);
+    autoWowProfessionsTrainOnArrival = sConfigMgr->GetOption<bool>("AutoWow.Professions.TrainOnArrival", false);
+    autoWowProfessionsCraftPriorityFix = sConfigMgr->GetOption<bool>("AutoWow.Professions.CraftPriorityFix", false);
+    if (!AutoWowTrainPolicy::ParseAssignments(
+            sConfigMgr->GetOption<std::string>("AutoWow.Professions.Assignments", ""), autoWowProfessionAssignments))
+        LOG_ERROR("server.loading", "AutoWow.Professions.Assignments is malformed; no bot gets a profession plan");
+    if (!AutoWowTrainPolicy::ParseSecondaries(
+            sConfigMgr->GetOption<std::string>("AutoWow.Professions.Secondaries", "129,185,356"),
+            autoWowProfessionSecondaries))
+        LOG_ERROR("server.loading", "AutoWow.Professions.Secondaries is malformed; no secondary is planned");
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderRandom", 15);
     RpgStatusProbWeight[RPG_WANDER_NPC] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderNpc", 20);

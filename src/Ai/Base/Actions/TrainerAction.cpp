@@ -7,6 +7,7 @@
 #include "TrainerAction.h"
 
 #include "AiFactory.h"
+#include "AutoWowTrainPolicy.h"
 #include "BisListMgr.h"
 #include "BudgetValues.h"
 #include "Event.h"
@@ -15,6 +16,21 @@
 #include "Playerbots.h"
 #include "ReputationMgr.h"
 #include "Trainer.h"
+
+namespace
+{
+// Skill line a trainer spell grants: through its learn-spell effects, or directly. 0 = none (class
+// spell, recipe).
+uint32 GrantedSkillLine(SpellInfo const* trainerSpellInfo)
+{
+    for (SpellEffectInfo const& effect : trainerSpellInfo->GetEffects())
+        if (effect.IsEffect(SPELL_EFFECT_LEARN_SPELL))
+            if (SpellLearnSkillNode const* node = sSpellMgr->GetSpellLearnSkill(effect.TriggerSpell))
+                return node->skill;
+    SpellLearnSkillNode const* node = sSpellMgr->GetSpellLearnSkill(trainerSpellInfo->Id);
+    return node ? node->skill : 0;
+}
+}  // namespace
 
 bool TrainerAction::Execute(Event event)
 {
@@ -101,6 +117,9 @@ void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId
 
     float reputationDiscount = bot->GetReputationPriceDiscount(creature);
     uint32 totalCost = 0;
+    // AutoWow.Professions.Enable: a planned bot only starts its assigned professions (learn filter).
+    std::vector<uint32> const* professionPlan =
+        sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter());
 
     for (auto& spell : trainer->GetSpells())
     {
@@ -119,6 +138,14 @@ void TrainerAction::Iterate(Creature* creature, bool learnSpells, uint32 spellId
         SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(trainerSpell->SpellId);
         if (!spellInfo)
             continue;
+
+        if (professionPlan)
+        {
+            uint32 const skill = GrantedSkillLine(spellInfo);
+            if (!AutoWowTrainPolicy::AllowSkillGrant(skill, skill && bot->HasSkill(skill), *professionPlan,
+                                                     sPlayerbotAIConfig.autoWowProfessionSecondaries))
+                continue;
+        }
 
         uint32 cost = static_cast<uint32>(floor(trainerSpell->MoneyCost * reputationDiscount));
         totalCost += cost;

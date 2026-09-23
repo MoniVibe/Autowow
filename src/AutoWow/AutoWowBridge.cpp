@@ -2787,7 +2787,10 @@ private:
         botAI->Reset(true);
 
         auto const [firstSkill, secondSkill] = OracleProfessionPair(m_request.botGuid);
-        if (firstSkill && secondSkill && AutoWowOracleRuntime::IsManagedBot(m_request.botGuid))
+        // A planned bot (AutoWow.Professions.Enable) keeps its trainer-learned professions: the
+        // reconcile would drop them and InitTradeSkills no longer re-grants for it.
+        if (firstSkill && secondSkill && AutoWowOracleRuntime::IsManagedBot(m_request.botGuid) &&
+            !sPlayerbotAIConfig.GetAutoWowProfessionPlan(m_request.botGuid))
         {
             sRandomPlayerbotMgr.SetValue(bot, "professionRollType",
                                          1u); // PlayerbotFactory::ProfessionRollType::Random

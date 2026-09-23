@@ -524,6 +524,21 @@ bool NewRpgWanderRandomAction::Execute(Event /*event*/)
     return MoveRandomNear();
 }
 
+// AutoWow.Professions.TrainOnArrival (needs AutoWow.Professions.Enable; default off): a planned
+// (cohort) bot that wandered to a friendly trainer learns there through the real-gold `trainer`
+// action, whose learn filter keeps it to its assigned professions.
+static void AutoWowTrainOnArrival(PlayerbotAI* botAI, Player* bot, WorldObject* object)
+{
+    if (!sPlayerbotAIConfig.autoWowProfessionsTrainOnArrival ||
+        !sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter()))
+        return;
+    Creature* trainer = object->ToCreature();
+    if (!trainer || !trainer->IsTrainer() || trainer->IsHostileTo(bot))
+        return;
+    bot->SetSelection(trainer->GetGUID());
+    botAI->DoSpecificAction("trainer", Event("autowow train", "learn"), true);
+}
+
 bool NewRpgWanderNpcAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
@@ -553,6 +568,7 @@ bool NewRpgWanderNpcAction::Execute(Event /*event*/)
             data.lastReach = getMSTime();
             if (bot->CanInteractWithQuestGiver(object))
                 InteractWithNpcOrGameObjectForQuest(data.npcOrGo);
+            AutoWowTrainOnArrival(botAI, bot, object);
             return true;
         }
 

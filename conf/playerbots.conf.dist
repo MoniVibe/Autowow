@@ -2252,6 +2252,12 @@ AutoWow.Ledger.BlockedDedupeMs = 0
 # sample and emit one `progress` line per quest whose counters changed. The first sample of a quest
 # only records a baseline (its `accepted` line already carries the counters). 60000 is the soak value.
 AutoWow.Ledger.ProgressSampleMs = 0
+# Profession skill events. 0 (default) = off. 1 (with AutoWow.Ledger.Enable) = one `skill_up` line
+# (fields skill, old, new, max, cause) per profession skill change of a bot: cause update (core skill
+# gain from gathering/crafting/fishing), learn (a new profession, old 0) or rank (a rank-up at a
+# trainer: value unchanged, max raised). Only the 14 profession lines. Fold with AutoWoW
+# scripts/cohort/faction-progress.ps1 -Ledger (real-time faction profession-skill KPI).
+AutoWow.Ledger.SkillUp = 0
 
 # AutoWoW combat telemetry (C1). Default 0 = inert: hooks early-return on one cached bool and the
 # bridge `combatlog` counters (autowow.combat-counters.v1) behave exactly as before.
@@ -2326,6 +2332,28 @@ AutoWow.PvpRealmZoneRules.Enable = 0
 #     weapon-skill grants), class quest reward spells and the hunter pet
 #     (AiPlayerbot.AutoLearnTrainerSpells / AutoLearnQuestSpells must also be on).
 AutoWow.Independent.AutoMaintenance = 0
+
+# AutoWoW cohort professions (docs/PROFESSIONS_PLAN.md P1). All default off; read once at world init.
+# Enable 1 = bots listed in Assignments are "planned": a trainer visit only starts their assigned
+# primaries and the Secondaries (rank-ups/recipes of lines they already have still pass), always for
+# real gold; the free profession paths (factory InitTradeSkills random professions/skill values,
+# level-up tradeskill-trainer spells, Oracle arm-time profession reconcile) are skipped for them,
+# in both cohort arms. Unlisted bots keep the legacy behavior.
+AutoWow.Professions.Enable = 0
+# TrainOnArrival 1 (needs Enable) = a planned bot that the new-rpg wander-npc step brings to a
+# friendly trainer (class or profession) learns every spell it can afford there (real gold, learn
+# filter above). No directed trainer travel yet (P2).
+AutoWow.Professions.TrainOnArrival = 0
+# guid:skill[,skill];guid:skill[,skill];... primary skill line ids (164 BS, 165 LW, 171 Alch, 182 Herb,
+# 186 Mining, 197 Tail, 202 Eng, 333 Ench, 393 Skin, 755 JC, 773 Insc), at most 2 per guid. Rendered
+# from the cohort manifest v2 by AutoWoW scripts/cohort/profession-assign.ps1. A malformed value is
+# rejected whole (logged; no bot is planned).
+AutoWow.Professions.Assignments = ""
+# Secondary professions every planned bot may learn (129 First Aid, 185 Cooking, 356 Fishing).
+AutoWow.Professions.Secondaries = "129,185,356"
+# CraftPriorityFix 1 = the random craft action prefers useful / skill-up recipes (GetSpellPriority
+# compared create-item with `!=`, and the sort ignored priority). Default 0 = legacy order.
+AutoWow.Professions.CraftPriorityFix = 0
 
 # Bot chat safety (soak-s5-cohort-r1 chat storm). Bots that hear chat decide whether the speaker is a
 # bot (reply cooldown, low odds) or a real player (no cooldown, eager replies naming the speaker).

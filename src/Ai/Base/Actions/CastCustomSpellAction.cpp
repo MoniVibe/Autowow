@@ -268,9 +268,17 @@ bool CastRandomSpellAction::Execute(Event event)
 
     // bool isCast = false; //not used, line marked for removal.
 
-    std::sort(spellList.begin(), spellList.end(),
-              [](std::pair<uint32, std::pair<uint32, WorldObject*>> i,
-                 std::pair<uint32, std::pair<uint32, WorldObject*>> j) { return i.first > j.first; });
+    // AutoWow.Professions.CraftPriorityFix: order by GetSpellPriority (then spell id, so equal
+    // priorities keep the legacy order); legacy sorts by spell id only and ignores the priority.
+    if (sPlayerbotAIConfig.autoWowProfessionsCraftPriorityFix)
+        std::sort(spellList.begin(), spellList.end(),
+                  [](std::pair<uint32, std::pair<uint32, WorldObject*>> const& i,
+                     std::pair<uint32, std::pair<uint32, WorldObject*>> const& j)
+                  { return i.second.first != j.second.first ? i.second.first > j.second.first : i.first > j.first; });
+    else
+        std::sort(spellList.begin(), spellList.end(),
+                  [](std::pair<uint32, std::pair<uint32, WorldObject*>> i,
+                     std::pair<uint32, std::pair<uint32, WorldObject*>> j) { return i.first > j.first; });
 
     uint32 rndBound = spellList.size() / 4;
 
@@ -311,7 +319,10 @@ bool CraftRandomItemAction::AcceptSpell(SpellInfo const* spellInfo)
 
 uint32 CraftRandomItemAction::GetSpellPriority(SpellInfo const* spellInfo)
 {
-    if (spellInfo->Effects[EFFECT_0].Effect != SPELL_EFFECT_CREATE_ITEM)
+    // Legacy tests `!=`, so a create-item recipe (the only kind AcceptSpell admits) never gets the
+    // usage / skill-up preference. AutoWow.Professions.CraftPriorityFix applies it.
+    bool const createsItem = spellInfo->Effects[EFFECT_0].Effect == SPELL_EFFECT_CREATE_ITEM;
+    if (sPlayerbotAIConfig.autoWowProfessionsCraftPriorityFix ? createsItem : !createsItem)
     {
         uint32 newItemId = spellInfo->Effects[EFFECT_0].ItemType;
         if (newItemId)

@@ -2836,6 +2836,11 @@ bool PlayerbotFactory::CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item)
 
 void PlayerbotFactory::InitTradeSkills()
 {
+    // AutoWow.Professions.Enable: a planned (cohort) bot learns professions at trainers with gold;
+    // free professions and random skill values would contaminate the profession KPI.
+    if (sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter()))
+        return;
+
     bool const autoWowManaged = AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
     if (!sRandomPlayerbotMgr.IsRandomBot(bot) && !autoWowManaged)
         return;

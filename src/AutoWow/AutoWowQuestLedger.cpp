@@ -6,6 +6,8 @@
 
 #include "AutoWowQuestLedger.h"
 
+#include "AutoWowTrainPolicy.h"
+
 #include <cmath>
 #include <mutex>
 #include <unordered_map>
@@ -30,6 +32,7 @@ void LoadConfig()
     detail::gRunId = sConfigMgr->GetOption<std::string>("AutoWow.Ledger.RunId", "");
     detail::gBlockedDedupeMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Ledger.BlockedDedupeMs", 0);
     detail::gProgressSampleMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Ledger.ProgressSampleMs", 0);
+    detail::gSkillUpEnabled = sConfigMgr->GetOption<bool>("AutoWow.Ledger.SkillUp", false);
 }
 
 char const* ReasonName(QuestFailureReason reason)
@@ -254,6 +257,21 @@ void EmitCombat(Player* player, std::string_view fields)
     Row row;
     FillRow(player, Event::Combat, 0, "", "", row);
     row.extra = fields;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
+void EmitSkillUp(Player* player, std::uint32_t skill, std::uint32_t oldValue, std::uint32_t newValue,
+                 std::uint32_t maxValue, char const* cause)
+{
+    if (!detail::gSkillUpEnabled || !AutoWowTrainPolicy::IsProfessionSkillLine(skill) || !IsRecordedBot(player))
+        return;
+    Row row;
+    FillRow(player, Event::SkillUp, 0, "", "", row);
+    row.skill = skill;
+    row.skillOld = oldValue;
+    row.skillNew = newValue;
+    row.skillMax = maxValue;
+    row.cause = cause;
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
 }
 
