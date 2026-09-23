@@ -37,7 +37,9 @@ function Get-CohortManifest {
 function Test-CohortManifest {
     param([Parameter(Mandatory = $true)][object]$Manifest)
     $errors = New-Object System.Collections.Generic.List[string]
-    if ($Manifest.schema -ne 'autowow.cohort.manifest.v1') { $errors.Add('schema must be autowow.cohort.manifest.v1') }
+    $v2 = ($Manifest.schema -eq 'autowow.cohort.manifest.v2')
+    if (-not $v2 -and $Manifest.schema -ne 'autowow.cohort.manifest.v1') { $errors.Add('schema must be autowow.cohort.manifest.v1 or v2') }
+    if ($v2) { foreach ($x in @(Test-CohortProfessionPlan -Manifest $Manifest)) { $errors.Add($x) } }
     $seqs = @{}; $ids = @{}; $names = @{}; $perAccount = @{}; $accountFaction = @{}
     $teamIds = @($Manifest.teams | ForEach-Object { [string]$_.team_id })
     foreach ($e in @($Manifest.entries)) {
@@ -68,6 +70,36 @@ function Test-CohortManifest {
     }
     # CharactersPerRealm = 10 (live worldserver.conf) caps each account.
     foreach ($k in $perAccount.Keys) { if ($perAccount[$k] -gt 10) { $errors.Add("account $k has $($perAccount[$k]) characters (max 10 per realm)") } }
+    return $errors
+}
+
+# v2 profession plan (docs/PROFESSIONS_PLAN.md section 2). Mirrors the server-side parse rules in
+# mod-playerbots src/AutoWow/AutoWowTrainPolicy.h: 1-2 distinct primaries, secondaries from 129/185/356.
+$script:CohortPrimarySkills = @(164,165,171,182,186,197,202,333,393,755,773)
+$script:CohortSecondarySkills = @(129,185,356)
+
+function Test-CohortProfessionPlan {
+    param([Parameter(Mandatory = $true)][object]$Manifest)
+    $errors = New-Object System.Collections.Generic.List[string]
+    $plan = $Manifest.profession_plan
+    if ($null -eq $plan) { $errors.Add('v2 manifest needs profession_plan'); return $errors }
+    $pairs = @{}
+    foreach ($p in $plan.pairs.PSObject.Properties) { $pairs[$p.Name] = @($p.Value | ForEach-Object { [int]$_ }) }
+    foreach ($k in $pairs.Keys) {
+        $skills = $pairs[$k]
+        if ($skills.Count -lt 1 -or $skills.Count -gt 2 -or ($skills | Select-Object -Unique).Count -ne $skills.Count) { $errors.Add("pair $k must be 1-2 distinct skills") }
+        foreach ($s in $skills) { if ($s -notin $script:CohortPrimarySkills) { $errors.Add("pair $k skill $s is not a primary profession") } }
+    }
+    foreach ($e in @($Manifest.entries)) {
+        $tag = "entry $($e.id)"
+        $pr = $e.professions
+        if ($null -eq $pr) { $errors.Add("$tag missing professions"); continue }
+        if (-not $pairs.ContainsKey([string]$pr.pair)) { $errors.Add("$tag unknown pair '$($pr.pair)'"); continue }
+        $primary = @($pr.primary | ForEach-Object { [int]$_ })
+        if (($primary -join ',') -ne ($pairs[[string]$pr.pair] -join ',')) { $errors.Add("$tag primary does not match pair $($pr.pair)") }
+        foreach ($s in @($pr.secondary)) { if ([int]$s -notin $script:CohortSecondarySkills) { $errors.Add("$tag secondary $s is not 129/185/356") } }
+        if ([int]$pr.plan_version -ne [int]$plan.plan_version) { $errors.Add("$tag plan_version $($pr.plan_version) != $($plan.plan_version)") }
+    }
     return $errors
 }
 

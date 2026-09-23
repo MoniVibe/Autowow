@@ -1,7 +1,7 @@
 {
-  "schema": "autowow.cohort.manifest.v1",
-  "manifest_version": 1,
-  "notes": "Persistent bot cohort. ids and seq are permanent and never reused; a retired entry keeps its row with status=retired. Names are reserved forever once listed. Accounts are cohort-only (never the rndbot prefix). control_arm: stock = NewRpg + bridge independent, not in AutoWow.OracleRuntime.BotGuids; oracle = same plus listed in the Oracle allowlist.",
+  "schema": "autowow.cohort.manifest.v2",
+  "manifest_version": 2,
+  "notes": "Persistent bot cohort. ids and seq are permanent and never reused; a retired entry keeps its row with status=retired. Names are reserved forever once listed. Accounts are cohort-only (never the rndbot prefix). control_arm: stock = NewRpg + bridge independent, not in AutoWow.OracleRuntime.BotGuids; oracle = same plus listed in the Oracle allowlist. v2: profession_plan + per-entry professions (docs/PROFESSIONS_PLAN.md section 2); rendered to AutoWow.Professions.Assignments by profession-assign.ps1.",
   "teams": [
     {
       "team_id": "cohort-alliance",
@@ -14,6 +14,48 @@
       "faction": "Horde"
     }
   ],
+  "profession_plan": {
+    "plan_version": 1,
+    "pairs": {
+      "MB": [
+        186,
+        164
+      ],
+      "ME": [
+        186,
+        202
+      ],
+      "MJ": [
+        186,
+        755
+      ],
+      "HA": [
+        182,
+        171
+      ],
+      "HI": [
+        182,
+        773
+      ],
+      "SL": [
+        393,
+        165
+      ],
+      "TE": [
+        197,
+        333
+      ]
+    },
+    "secondary_default": [
+      129,
+      185,
+      356
+    ],
+    "secondary_levelled": [
+      129,
+      185
+    ]
+  },
   "entries": [
     {
       "seq": 1,
@@ -31,7 +73,20 @@
       "zone_id": 12,
       "area_id": 9,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 2,
@@ -49,7 +104,20 @@
       "zone_id": 12,
       "area_id": 9,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "ME",
+        "primary": [
+          186,
+          202
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 3,
@@ -67,7 +135,20 @@
       "zone_id": 12,
       "area_id": 9,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 4,
@@ -85,7 +166,20 @@
       "zone_id": 12,
       "area_id": 9,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 5,
@@ -103,7 +197,20 @@
       "zone_id": 12,
       "area_id": 9,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 6,
@@ -121,7 +228,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 7,
@@ -139,7 +259,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 8,
@@ -157,7 +290,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 9,
@@ -175,7 +321,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "ME",
+        "primary": [
+          186,
+          202
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 10,
@@ -193,7 +352,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 11,
@@ -211,7 +383,20 @@
       "zone_id": 141,
       "area_id": 188,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 12,
@@ -229,7 +414,20 @@
       "zone_id": 141,
       "area_id": 188,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 13,
@@ -247,7 +445,20 @@
       "zone_id": 141,
       "area_id": 188,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 14,
@@ -265,7 +476,20 @@
       "zone_id": 141,
       "area_id": 188,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 15,
@@ -283,7 +507,20 @@
       "zone_id": 141,
       "area_id": 188,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HI",
+        "primary": [
+          182,
+          773
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 16,
@@ -301,7 +538,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "ME",
+        "primary": [
+          186,
+          202
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 17,
@@ -319,7 +569,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 18,
@@ -337,7 +600,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 19,
@@ -355,7 +631,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 20,
@@ -373,7 +662,20 @@
       "zone_id": 1,
       "area_id": 132,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HI",
+        "primary": [
+          182,
+          773
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 21,
@@ -391,7 +693,20 @@
       "zone_id": 3524,
       "area_id": 3526,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 22,
@@ -409,7 +724,20 @@
       "zone_id": 3524,
       "area_id": 3526,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 23,
@@ -427,7 +755,20 @@
       "zone_id": 3524,
       "area_id": 3526,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 24,
@@ -445,7 +786,20 @@
       "zone_id": 3524,
       "area_id": 3526,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 25,
@@ -463,7 +817,20 @@
       "zone_id": 3524,
       "area_id": 3526,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MJ",
+        "primary": [
+          186,
+          755
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 26,
@@ -481,7 +848,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 27,
@@ -499,7 +879,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 28,
@@ -517,7 +910,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 29,
@@ -535,7 +941,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "ME",
+        "primary": [
+          186,
+          202
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 30,
@@ -553,7 +972,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 31,
@@ -571,7 +1003,20 @@
       "zone_id": 85,
       "area_id": 154,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 32,
@@ -589,7 +1034,20 @@
       "zone_id": 85,
       "area_id": 154,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 33,
@@ -607,7 +1065,20 @@
       "zone_id": 85,
       "area_id": 154,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 34,
@@ -625,7 +1096,20 @@
       "zone_id": 85,
       "area_id": 154,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 35,
@@ -643,7 +1127,20 @@
       "zone_id": 85,
       "area_id": 154,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HI",
+        "primary": [
+          182,
+          773
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 36,
@@ -661,7 +1158,20 @@
       "zone_id": 215,
       "area_id": 220,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 37,
@@ -679,7 +1189,20 @@
       "zone_id": 215,
       "area_id": 220,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 38,
@@ -697,7 +1220,20 @@
       "zone_id": 215,
       "area_id": 220,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "ME",
+        "primary": [
+          186,
+          202
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 39,
@@ -715,7 +1251,20 @@
       "zone_id": 215,
       "area_id": 220,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 40,
@@ -733,7 +1282,20 @@
       "zone_id": 215,
       "area_id": 220,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 41,
@@ -751,7 +1313,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "ME",
+        "primary": [
+          186,
+          202
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 42,
@@ -769,7 +1344,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 43,
@@ -787,7 +1375,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 44,
@@ -805,7 +1406,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 45,
@@ -823,7 +1437,20 @@
       "zone_id": 14,
       "area_id": 363,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HI",
+        "primary": [
+          182,
+          773
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 46,
@@ -841,7 +1468,20 @@
       "zone_id": 3430,
       "area_id": 3431,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MB",
+        "primary": [
+          186,
+          164
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 47,
@@ -859,7 +1499,20 @@
       "zone_id": 3430,
       "area_id": 3431,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "SL",
+        "primary": [
+          393,
+          165
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 48,
@@ -877,7 +1530,20 @@
       "zone_id": 3430,
       "area_id": 3431,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "HA",
+        "primary": [
+          182,
+          171
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 49,
@@ -895,7 +1561,20 @@
       "zone_id": 3430,
       "area_id": 3431,
       "control_arm": "oracle",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "TE",
+        "primary": [
+          197,
+          333
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     },
     {
       "seq": 50,
@@ -913,7 +1592,20 @@
       "zone_id": 3430,
       "area_id": 3431,
       "control_arm": "stock",
-      "status": "active"
+      "status": "active",
+      "professions": {
+        "pair": "MJ",
+        "primary": [
+          186,
+          755
+        ],
+        "secondary": [
+          129,
+          185,
+          356
+        ],
+        "plan_version": 1
+      }
     }
   ]
 }
