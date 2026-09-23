@@ -292,7 +292,7 @@ def summarize(out, deaths=None, pvp=None, voided=None):
         k = (r["family"], r["outcome"], s[0], s[1], s[2], s[3][0], s[3][1])
         sig[k] += 1
         sig_bots[k].add(r["bot"])
-    top = sorted(sig.items(), key=lambda kv: (-kv[1], kv[0]))[:20]
+    top = sorted(sig.items(), key=lambda kv: (-kv[1], tuple(str(x) for x in kv[0])))[:20]
     lines += ["", "## Top 20 stall signatures (grouped by family)", "",
               "Signature = (last reason, phase, zone, %d-yard bucket); rewarded and open_progressing rows excluded." % BUCKET_YARDS,
               "", "| family | outcome | reason | phase | zone | bucket | rows | bots |",
