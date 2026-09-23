@@ -37,6 +37,11 @@ namespace
 {
 using CounterStore = std::unordered_map<std::uint32_t, RollingCounters>;
 
+// v1 window store. The hooks run on map threads (MapUpdate.Threads), so every access - including the
+// pointers returned by Find/FindOrCreate - is under this lock. Never held together with gLifetimeLock.
+// ponytail: one global lock (uncontended cost ~ tens of ns per hook); shard by guid if it ever shows.
+std::mutex gWindowLock;
+
 CounterStore& Store()
 {
     static CounterStore store;
@@ -487,11 +492,13 @@ void RecordDamageDone(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t 
     if (!amount)
         return;
 
+    std::lock_guard<std::mutex> guard(gWindowLock);
     FindOrCreate(botGuid)->RecordDamageDone(nowMs, amount);
 }
 
 void RecordEffectiveHealing(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t amount)
 {
+    std::lock_guard<std::mutex> guard(gWindowLock);
     FindOrCreate(botGuid)->RecordEffectiveHealing(nowMs, amount);
 }
 
@@ -500,21 +507,25 @@ void RecordDamageTaken(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t
     if (!amount)
         return;
 
+    std::lock_guard<std::mutex> guard(gWindowLock);
     FindOrCreate(botGuid)->RecordDamageTaken(nowMs, amount);
 }
 
 void RecordDeath(std::uint32_t botGuid, std::uint64_t nowMs)
 {
+    std::lock_guard<std::mutex> guard(gWindowLock);
     FindOrCreate(botGuid)->RecordDeath(nowMs);
 }
 
 void RecordCombatEntry(std::uint32_t botGuid, std::uint64_t nowMs)
 {
+    std::lock_guard<std::mutex> guard(gWindowLock);
     FindOrCreate(botGuid)->RecordCombatEntry(nowMs);
 }
 
 void RecordCombatExit(std::uint32_t botGuid, std::uint64_t nowMs)
 {
+    std::lock_guard<std::mutex> guard(gWindowLock);
     if (RollingCounters* counters = Find(botGuid))
         counters->RecordCombatExit(nowMs);
 }
@@ -523,6 +534,7 @@ void RecordThreatSample(std::uint32_t botGuid, std::uint64_t nowMs, std::uint32_
                         std::uint32_t ownersTargetingBot, float highestThreat)
 {
     bool const hasThreat = threatenedByMe != 0 || ownersTargetingBot != 0 || highestThreat > 0.0f;
+    std::lock_guard<std::mutex> guard(gWindowLock);
     if (RollingCounters* counters = Find(botGuid))
     {
         counters->RecordThreatSample(nowMs, threatenedByMe, ownersTargetingBot, highestThreat);
@@ -535,6 +547,7 @@ void RecordThreatSample(std::uint32_t botGuid, std::uint64_t nowMs, std::uint32_
 
 CounterSnapshot SnapshotFor(std::uint32_t botGuid)
 {
+    std::lock_guard<std::mutex> guard(gWindowLock);
     auto const& store = Store();
     auto const found = store.find(botGuid);
     if (found == store.end())
@@ -547,6 +560,7 @@ CounterSnapshot SnapshotFor(std::uint32_t botGuid)
 
 void Forget(std::uint32_t botGuid)
 {
+    std::lock_guard<std::mutex> guard(gWindowLock);
     Store().erase(botGuid);
 }
 
@@ -554,8 +568,8 @@ static_assert(kPowerMana == POWER_MANA && kPowerRage == POWER_RAGE && kPowerEner
 
 namespace
 {
-// Lifetime store. Unit/Player updates run on map threads (MapUpdate.Threads), so unlike the v1 window
-// store this one is mutex-guarded. Touched only when AutoWow.CombatTelemetry.Enable is on.
+// Lifetime store. Unit/Player updates run on map threads (MapUpdate.Threads), so like the v1 window
+// store this one is mutex-guarded (its own lock). Touched only when AutoWow.CombatTelemetry.Enable is on.
 std::mutex gLifetimeLock;
 std::unordered_map<std::uint32_t, LifetimeCounters> gLifetime;
 
@@ -744,6 +758,7 @@ public:
 
         std::uint64_t const nowMs = NowMs();
         ThreatSample const sample = ReadThreatSample(unit->ToPlayer());
+        std::lock_guard<std::mutex> guard(gWindowLock);
         if (RollingCounters* counters = Find(botGuid))
         {
             counters->Tick(nowMs);
@@ -752,8 +767,9 @@ public:
         }
         else if (sample.threatenedByMe || sample.ownersTargetingBot || sample.highestThreat > 0.0f)
         {
-            RecordThreatSample(botGuid, nowMs, sample.threatenedByMe, sample.ownersTargetingBot,
-                               sample.highestThreat);
+            // Same effect as RecordThreatSample(botGuid, ...) for an untracked bot, without re-locking.
+            FindOrCreate(botGuid)->RecordThreatSample(nowMs, sample.threatenedByMe, sample.ownersTargetingBot,
+                                                      sample.highestThreat);
         }
     }
 

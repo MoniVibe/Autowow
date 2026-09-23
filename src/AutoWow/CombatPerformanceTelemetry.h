@@ -15,8 +15,8 @@ class Unit;
 
 // Headless, server-side combat contribution telemetry. The accumulator is deliberately value-only so
 // its reset and bounded-window semantics can be tested without constructing a worldserver Unit.
-// Runtime entry points are world-thread-only: UnitScript callbacks and the AutoWow bridge operation
-// both execute there, so this slice does not add a lock or cross-thread live-object access.
+// Runtime entry points are called from map threads (UnitScript callbacks, MapUpdate.Threads) and the
+// world thread (AutoWow bridge); both runtime stores are mutex-guarded.
 namespace AutoWowCombatPerformanceTelemetry
 {
 inline constexpr char kSchema[] = "autowow.combat-counters.v1";
@@ -105,7 +105,7 @@ private:
     float maxThreat = 0.0f;
 };
 
-// Runtime store and hook bridge. All functions below are world-thread-only.
+// Runtime store and hook bridge. Thread-safe (the v1 store is mutex-guarded); callable from map threads.
 void RecordDamageDone(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t amount);
 void RecordEffectiveHealing(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t amount);
 void RecordDamageTaken(std::uint32_t botGuid, std::uint64_t nowMs, std::uint64_t amount);

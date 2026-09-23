@@ -7,6 +7,9 @@
 #include "CombatPerformanceTelemetry.h"
 #include "DotLifetimeGate.h"
 
+#include <thread>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 namespace
@@ -357,4 +360,37 @@ TEST(DotLifetimeGate, ClassifyAndTtkEstimate)
 TEST(DotLifetimeGate, FlagDefaultsOff)
 {
     EXPECT_FALSE(G::Enabled());
+}
+
+// The always-on v1 combat window store is written from map threads (MapUpdate.Threads = 4). Hammer it
+// from four threads, including create/evict (more bots than kMaxTrackedBots) and Forget, which rehash
+// the map; without the store lock this corrupts the table (crash / hang).
+TEST(CombatPerformanceTelemetryStore, ConcurrentWritersFromMapThreads)
+{
+    namespace T = AutoWowCombatPerformanceTelemetry;
+    std::vector<std::thread> threads;
+    for (std::uint32_t t = 0; t < 4; ++t)
+    {
+        threads.emplace_back([t]()
+        {
+            for (std::uint32_t k = 0; k < 20000; ++k)
+            {
+                std::uint32_t const guid = 900000 + (k * 7 + t) % (T::kMaxTrackedBots + 64);
+                std::uint64_t const now = 1000 + k;
+                T::RecordDamageDone(guid, now, 10);
+                T::RecordDamageTaken(guid, now, 5);
+                T::RecordThreatSample(guid, now, 1, 1, 1.0f);
+                T::RecordCombatExit(guid, now);
+                if (k % 97 == 0)
+                    T::Forget(guid);
+                if (k % 13 == 0)
+                    (void)T::SnapshotFor(guid);
+            }
+        });
+    }
+    for (std::thread& th : threads)
+        th.join();
+    for (std::uint32_t g = 900000; g < 900000 + T::kMaxTrackedBots + 64; ++g)
+        T::Forget(g);
+    EXPECT_FALSE(T::SnapshotFor(900000).tracked);
 }
