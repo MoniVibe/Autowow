@@ -23,6 +23,7 @@
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
 #include "DeathLoopBreaker.h"
+#include "TransportCrossingPolicy.h"
 #include "ZoneProgressionPolicy.h"
 #include "TacticalRuntime.h"
 #include "BattlefieldScript.h"
@@ -534,6 +535,7 @@ public:
         AutoWowCombatPerformanceTelemetry::LoadConfig();
         AutoWowDeathLoop::LoadConfig();
         AutoWowZoneProgression::LoadConfig();
+        AutoWowTransports::LoadConfig();  // after ZoneProgression: appends crossing-only routes
         AutoWowTactics::LoadConfig();
         AutoWowBridge::instance().Start();
 

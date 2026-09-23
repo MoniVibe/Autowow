@@ -198,7 +198,8 @@ enum class Mode : std::uint8_t
 {
     Unreachable = 0,
     Walk = 1,
-    Flight = 2
+    Flight = 2,
+    Chain = 3  // AutoWow.Transports: walk -> travel object / transport -> walk (TransportCrossingPolicy.h)
 };
 
 inline constexpr char const* ModeName(Mode m)
@@ -208,6 +209,7 @@ inline constexpr char const* ModeName(Mode m)
         case Mode::Unreachable: return "none";
         case Mode::Walk: return "walk";
         case Mode::Flight: return "flight";
+        case Mode::Chain: return "chain";
     }
     return "none";
 }

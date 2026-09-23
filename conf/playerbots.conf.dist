@@ -2415,7 +2415,7 @@ AutoWow.DeathLoop.RelocateLevelMargin = 5
 # GiveUpCooldownMs. Ledger `zone_move` per finished/abandoned move. Routes overrides the built-in
 # table (ZoneProgressionPolicy.h): ';'-separated "team,from,to,minLevel,maxLevel,map,x,y,z,innEntry,
 # crossing" (team 0 any, 1 alliance, 2 horde; crossing 1 = sea between, flight only).
-# Known gaps: Bloodmyst -> Darkshore (Exodar boat), Ghostlands -> Eastern Kingdoms (orb/zeppelin),
+# Known gaps without AutoWow.Transports: Bloodmyst -> Darkshore (Exodar boat), Ghostlands -> EK (orb),
 # Teldrassil -> Darkshore without Auberdine known (Rut'theran boat not ridden). Read once at world init.
 AutoWow.ZoneProgression.Enable = 0
 AutoWow.ZoneProgression.LevelMargin = 2
@@ -2425,6 +2425,30 @@ AutoWow.ZoneProgression.TravelTimeoutMs = 3600000
 AutoWow.ZoneProgression.MaxReissues = 8
 AutoWow.ZoneProgression.GiveUpCooldownMs = 1800000
 AutoWow.ZoneProgression.Routes = ""
+
+# Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
+# A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
+# -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport
+# GameObject (Silvermoon Orb of Translocation -> Undercity). Transports (boats, zeppelins): wait on the
+# dock, walk onto the deck while the ship is docked (the core makes the bot a passenger), stay aboard,
+# step off at the destination dock. Mode real|portal|auto (owner ruling 2026-09-24): portal relocates
+# the bot dock -> dock with no ship (ledger leg "portal"); auto rides, and switches a crossing to the
+# portal after AutoPortalAfterFailures failed rides (step past StepTimeoutMs or off the deck mid-sea).
+# ModeOverrides: ';'-separated "transportEntry=real|portal|auto". Crossings overrides the built-in
+# table: ';'-separated rows "team,from,to,seq,via,object,map,x,y,z,stopX,stopY,exitMap,exitX,exitY,
+# exitZ,exitStopX,exitStopY" (via 0 areatrigger, 1 gameobject, 2 transport). The flag also adds the
+# crossing-only routes (Bloodmyst/Wetlands/Ghostlands/Barrens) to the zone-progression table. Ledger
+# `zone_move` gains "legs":[[walk|flight|travel_object|transport|portal, ms], ...]. Read once at init.
+AutoWow.Transports.Enable = 0
+AutoWow.Transports.Mode = "auto"
+AutoWow.Transports.ModeOverrides = ""
+AutoWow.Transports.AutoPortalAfterFailures = 2
+AutoWow.Transports.ApproachYards = 5
+AutoWow.Transports.ExitYards = 60
+AutoWow.Transports.DockedYards = 8
+AutoWow.Transports.JoinYards = 300
+AutoWow.Transports.StepTimeoutMs = 900000
+AutoWow.Transports.Crossings = ""
 
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most

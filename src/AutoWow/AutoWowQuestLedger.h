@@ -45,7 +45,8 @@
 //   - `zone_move` (AutoWow.ZoneProgression.Enable): one line per finished or abandoned zone graduation.
 //     reason = trigger (level|no_quests); quest is 0; lvl/zone/x/y at the end of the move. Trailing:
 //     from, to (zone ids), travel_ms (graduation to hub arrival or give-up), arrived (bool),
-//     mode (walk|flight|none: the last travel leg issued).
+//     mode (walk|flight|chain|none: the last travel mode issued). With AutoWow.Transports.Enable also
+//     legs=[[walk|flight|travel_object|transport|portal, ms], ...] in travel order (same event id).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
