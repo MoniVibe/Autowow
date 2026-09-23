@@ -13,13 +13,18 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "AccountMgr.h"
+#include "AutoWowCohortPolicy.h"
 #include "BattleGroundTactics.h"
+#include "CharacterCache.h"
 #include "Chat.h"
 #include "GuildTaskMgr.h"
 #include "PerfMonitor.h"
 #include "PlayerbotMgr.h"
+#include "RandomPlayerbotFactory.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "WorldSessionMgr.h"
 
 using namespace Acore::ChatCommands;
 
@@ -50,8 +55,18 @@ public:
             {"account", playerbotsAccountCommandTable},
         };
 
+        // Console-only (SEC_CONSOLE + explicit session refusal); never exposed to players or the bridge.
+        static ChatCommandTable autowowCohortCommandTable = {
+            {"create", HandleAutoWowCohortCreateCommand, SEC_CONSOLE, Console::Yes},
+        };
+
+        static ChatCommandTable autowowCommandTable = {
+            {"cohort", autowowCohortCommandTable},
+        };
+
         static ChatCommandTable commandTable = {
             {"playerbots", playerbotsCommandTable},
+            {"autowow", autowowCommandTable},
         };
 
         return commandTable;
@@ -103,6 +118,113 @@ public:
         }
 
         sPerfMonitor.PrintStats();
+        return true;
+    }
+
+    // .autowow cohort create <account> <raceId> <classId> <gender 0|1> <name>
+    // Creates one level-1 character on an EXISTING account through RandomPlayerbotFactory's
+    // Player::Create path (stock start position, gear and spells). Never creates accounts.
+    // Output (one line): "cohort create: created|exists|refused name=<n> ... [reason=<r>]".
+    static bool HandleAutoWowCohortCreateCommand(ChatHandler* handler, char const* args)
+    {
+        using namespace AutoWowCohortPolicy;
+
+        auto refuse = [handler](std::string const& name, char const* reason)
+        {
+            handler->PSendSysMessage("cohort create: refused name={} reason={}", name, reason);
+            LOG_INFO("playerbots", "AutoWoW cohort create: refused name={} reason={}", name, reason);
+            return true;
+        };
+
+        if (handler->GetSession())
+            return refuse("-", "console_only");
+
+        CreateArgs req;
+        if (!ParseCreateArgs(args ? std::string_view(args) : std::string_view(), req))
+        {
+            handler->SendSysMessage("Usage: .autowow cohort create <account> <raceId> <classId> <gender 0|1> <name>");
+            return refuse("-", "usage");
+        }
+
+        CreateRefusal const argRefusal = CheckCreateArgs(req, sPlayerbotAIConfig.randomBotAccountPrefix);
+        if (argRefusal != CreateRefusal::None)
+            return refuse(req.name, CreateRefusalName(argRefusal));
+
+        std::string accountName = req.account;
+        Utf8ToUpperOnlyLatin(accountName);
+        uint32 const accountId = AccountMgr::GetId(accountName);
+        if (!accountId)
+            return refuse(req.name, "account_missing");
+
+        std::string name = req.name;
+        if (!normalizePlayerName(name) || ObjectMgr::CheckPlayerName(name, true) != CHAR_NAME_SUCCESS)
+            return refuse(req.name, "name_invalid");
+
+        uint8 const race = static_cast<uint8>(req.race);
+        uint8 const cls = static_cast<uint8>(req.cls);
+        uint8 const gender = static_cast<uint8>(req.gender);
+
+        // Idempotency: an existing character with this name is "exists" only when it is the same
+        // account/race/class/gender; anything else is a name collision.
+        ObjectGuid const existing = sCharacterCache->GetCharacterGuidByName(name);
+        if (existing)
+        {
+            CharacterCacheEntry const* entry = sCharacterCache->GetCharacterCacheByGuid(existing);
+            if (entry && entry->AccountId == accountId && entry->Race == race && entry->Class == cls &&
+                entry->Sex == gender)
+            {
+                handler->PSendSysMessage("cohort create: exists name={} guid={} account={}", name,
+                                         existing.GetCounter(), accountName);
+                LOG_INFO("playerbots", "AutoWoW cohort create: exists name={} guid={} account={}", name,
+                         existing.GetCounter(), accountName);
+                return true;
+            }
+            return refuse(name, "name_taken");
+        }
+        CharacterDatabasePreparedStatement* nameStmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHECK_NAME);
+        nameStmt->SetData(0, name);
+        if (CharacterDatabase.Query(nameStmt))
+            return refuse(name, "name_taken");
+
+        if (!RandomPlayerbotFactory::IsValidRaceClassCombination(race, cls, sWorld->getIntConfig(CONFIG_EXPANSION)))
+            return refuse(name, "race_class_invalid");
+        if (((1 << (race - 1)) & sWorld->getIntConfig(CONFIG_CHARACTER_CREATING_DISABLED_RACEMASK)) ||
+            ((1 << (cls - 1)) & sWorld->getIntConfig(CONFIG_CHARACTER_CREATING_DISABLED_CLASSMASK)))
+            return refuse(name, "race_class_disabled");
+
+        // The temporary session's destructor writes account.online = 0 and totaltime, so never run
+        // beside a live session of the same account (provisioning runs in a maintenance window).
+        if (sWorldSessionMgr->FindSession(accountId))
+            return refuse(name, "account_online");
+        if (AccountMgr::GetCharactersCount(accountId) >= sWorld->getIntConfig(CONFIG_CHARACTERS_PER_REALM))
+            return refuse(name, "realm_slots_full");
+
+        uint32 totalTime = 0;
+        if (QueryResult result = LoginDatabase.Query("SELECT totaltime FROM account WHERE id = {}", accountId))
+            totalTime = (*result)[0].Get<uint32>();
+
+        WorldSession* session = new WorldSession(accountId, "", 0x0, nullptr, SEC_PLAYER, EXPANSION_WRATH_OF_THE_LICH_KING,
+                                                 time_t(0), LOCALE_enUS, 0, false, false, totalTime, true);
+        Player* player = RandomPlayerbotFactory::CreateNamedCharacter(session, race, cls, gender, name);
+        if (!player)
+        {
+            delete session;
+            return refuse(name, "create_failed");
+        }
+
+        player->SaveToDB(true, false);
+        sCharacterCache->AddCharacterCacheEntry(player->GetGUID(), accountId, player->GetName(), player->getGender(),
+                                                player->getRace(), player->getClass(), player->GetLevel());
+        uint32 const guid = player->GetGUID().GetCounter();
+        uint32 const level = player->GetLevel();
+        player->CleanupsBeforeDelete();
+        delete player;
+        delete session;
+
+        handler->PSendSysMessage("cohort create: created name={} guid={} account={} race={} class={} gender={} level={}",
+                                 name, guid, accountName, race, cls, gender, level);
+        LOG_INFO("playerbots", "AutoWoW cohort create: created name={} guid={} account={} race={} class={} gender={} level={}",
+                 name, guid, accountName, race, cls, gender, level);
         return true;
     }
 

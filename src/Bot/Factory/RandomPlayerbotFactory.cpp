@@ -174,6 +174,59 @@ Player* RandomPlayerbotFactory::CreateRandomBot(WorldSession* session, uint8 cls
     return player;
 }
 
+Player* RandomPlayerbotFactory::CreateNamedCharacter(WorldSession* session, uint8 race, uint8 cls, uint8 gender,
+                                                    std::string const& name)
+{
+    // Deterministic appearance: the first CharSections row of each kind in store order, preferring rows
+    // flagged player-selectable (Flags & 0x1). Face rows carry (face type, skin color) as in CreateRandomBot.
+    CharSectionsEntry const* face = nullptr;
+    CharSectionsEntry const* hair = nullptr;
+    CharSectionsEntry const* facialHair = nullptr;
+    auto pick = [](CharSectionsEntry const*& slot, CharSectionsEntry const* entry)
+    {
+        if (!slot || (!(slot->Flags & 0x1) && (entry->Flags & 0x1)))
+            slot = entry;
+    };
+    for (CharSectionsEntry const* charSection : sCharSectionsStore)
+    {
+        if (charSection->Race != race || charSection->Gender != gender)
+            continue;
+
+        switch (charSection->GenType)
+        {
+            case SECTION_TYPE_FACE: pick(face, charSection); break;
+            case SECTION_TYPE_HAIR: pick(hair, charSection); break;
+            case SECTION_TYPE_FACIAL_HAIR: pick(facialHair, charSection); break;
+        }
+    }
+
+    if (!face || !hair)
+    {
+        LOG_ERROR("playerbots", "AutoWoW cohort create: no appearance sections for race {} gender {}", race, gender);
+        return nullptr;
+    }
+
+    bool const excludeCheck = (race == RACE_TAUREN) || (race == RACE_DRAENEI) ||
+                              (gender == GENDER_FEMALE && race != RACE_NIGHTELF && race != RACE_UNDEAD_PLAYER);
+    uint8 const facialHairType = (excludeCheck || !facialHair) ? 0 : facialHair->Type;
+
+    std::unique_ptr<CharacterCreateInfo> characterInfo = std::make_unique<CharacterCreateInfo>(
+        name, race, cls, gender, face->Color, face->Type, hair->Type, hair->Color, facialHairType);
+
+    Player* player = new Player(session);
+    player->GetMotionMaster()->Initialize();
+    if (!player->Create(sObjectMgr->GetGenerator<HighGuid::Player>().Generate(), characterInfo.get()))
+    {
+        player->CleanupsBeforeDelete();
+        delete player;
+        return nullptr;
+    }
+
+    player->setCinematic(2);
+    player->SetAtLoginFlag(AT_LOGIN_NONE);
+    return player;
+}
+
 std::string const RandomPlayerbotFactory::CreateRandomBotName(NameRaceAndGender raceAndGender)
 {
     std::string botName = "";

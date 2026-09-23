@@ -56,9 +56,13 @@ public:
     static std::string const CreateRandomGuildName();
     static uint32 CalculateTotalAccountCount();
     static uint32 CalculateAvailableCharsPerAccount();
+    static bool IsValidRaceClassCombination(uint8 race, uint8 class_, uint32 expansion);
+    // AutoWoW cohort (C1): same Player::Create path as CreateRandomBot with explicit race/class/gender/name
+    // and deterministic appearance (first playable CharSections). Caller validates and saves.
+    static Player* CreateNamedCharacter(WorldSession* session, uint8 race, uint8 cls, uint8 gender,
+                                        std::string const& name);
 
 private:
-    static bool IsValidRaceClassCombination(uint8 race, uint8 class_, uint32 expansion);
     std::string const CreateRandomBotName(NameRaceAndGender raceAndGender);
     static std::string const CreateRandomArenaTeamName();
 };
