@@ -3320,7 +3320,7 @@ void PlayerbotFactory::SetRandomSkill(uint16 id)
     bot->SetSkill(id, step, value, maxValue);
 }
 
-void PlayerbotFactory::InitAvailableSpells()
+void PlayerbotFactory::InitAvailableSpells(bool classTrainersOnly)
 {
     if (trainerIdCache[bot->getClass()].empty())
     {
@@ -3347,6 +3347,8 @@ void PlayerbotFactory::InitAvailableSpells()
     for (uint32 trainerId : trainerIdCache[bot->getClass()])
     {
         Trainer::Trainer* trainer = sObjectMgr->GetTrainer(trainerId);
+        if (classTrainersOnly && trainer->GetTrainerType() != Trainer::Type::Class)
+            continue;
 
         for (auto& spell : trainer->GetSpells())
         {

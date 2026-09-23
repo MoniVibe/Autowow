@@ -8,6 +8,23 @@
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
 #include "BroadcastHelper.h"
+#include "AutoWowCohortPolicy.h"
+
+namespace
+{
+// AutoWow.Independent.AutoMaintenance: only consulted after the legacy random/Oracle gates failed.
+// Mode 0 (default) returns before any other lookup, so the legacy path is unchanged.
+bool IndependentMaintenance(PlayerbotAI* botAI, Player* bot, bool oracleManaged,
+                            bool (*allows)(uint32 mode, bool eligible))
+{
+    uint32 const mode = sPlayerbotAIConfig.autoWowIndependentAutoMaintenance;
+    if (!mode)
+        return false;
+
+    return allows(mode, AutoWowCohortPolicy::IsIndependentMaintenanceEligible(
+                            sRandomPlayerbotMgr.IsRandomBot(bot), oracleManaged, botAI->IsAutoWowIndependentParty()));
+}
+}  // namespace
 
 bool AutoMaintenanceOnLevelupAction::Execute(Event /*event*/)
 {
@@ -35,7 +52,8 @@ void AutoMaintenanceOnLevelupAction::AutoPickTalents()
 {
     bool const oracleManaged = AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter());
     if (!sPlayerbotAIConfig.autoPickTalents ||
-        (!sRandomPlayerbotMgr.IsRandomBot(bot) && !oracleManaged))
+        (!sRandomPlayerbotMgr.IsRandomBot(bot) && !oracleManaged &&
+         !IndependentMaintenance(botAI, bot, oracleManaged, AutoWowCohortPolicy::IndependentAutoTalents)))
         return;
 
     if (bot->GetFreeTalentPoints() <= 0)
@@ -71,9 +89,19 @@ void AutoMaintenanceOnLevelupAction::LearnSpells(std::ostringstream* out)
     if (sPlayerbotAIConfig.autoLearnTrainerSpells &&
         (sRandomPlayerbotMgr.IsRandomBot(bot) || oracleManaged))
         LearnTrainerSpells(out);
+    else if (sPlayerbotAIConfig.autoLearnTrainerSpells &&
+             IndependentMaintenance(botAI, bot, oracleManaged, AutoWowCohortPolicy::IndependentAutoSpells))
+    {
+        // Class spells only: no InitSkills (free riding / maxed weapon skills), no tradeskill recipes.
+        PlayerbotFactory factory(bot, bot->GetLevel());
+        factory.InitClassSpells();
+        factory.InitAvailableSpells(true);
+        factory.InitPet();
+    }
 
     if (sPlayerbotAIConfig.autoLearnQuestSpells &&
-        (sRandomPlayerbotMgr.IsRandomBot(bot) || oracleManaged))
+        (sRandomPlayerbotMgr.IsRandomBot(bot) || oracleManaged ||
+         IndependentMaintenance(botAI, bot, oracleManaged, AutoWowCohortPolicy::IndependentAutoSpells)))
         LearnQuestSpells(out);
 }
 
@@ -162,6 +190,8 @@ std::string const AutoMaintenanceOnLevelupAction::FormatSpell(SpellInfo const* s
 
 void AutoMaintenanceOnLevelupAction::AutoUpgradeEquip()
 {
+    // Deliberately not widened by AutoWow.Independent.AutoMaintenance: independent bots never get
+    // free gear, consumables, ammo or reagents.
     if (!sRandomPlayerbotMgr.IsRandomBot(bot) &&
         !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()))
         return;

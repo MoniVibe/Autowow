@@ -73,7 +73,8 @@ public:
     uint32 InitTalentsTree(bool incremental = false, bool use_template = true, bool reset = false);
     static void InitTalentsBySpecNo(Player* bot, int specNo, bool reset);
     static void InitTalentsByParsedSpecLink(Player* bot, std::vector<std::vector<uint32>> parsedSpecLink, bool reset);
-    void InitAvailableSpells();
+    // classTrainersOnly: AutoWow.Independent.AutoMaintenance=2 skips tradeskill trainers (no free recipes).
+    void InitAvailableSpells(bool classTrainersOnly = false);
     void InitClassSpells();
     void InitSpecialSpells();
     void InitEquipment(bool incremental, bool second_chance = false);

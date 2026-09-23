@@ -2262,6 +2262,18 @@ AutoWow.QuestFullBagRelief.Enable = 0
 # are unchanged either way (SetPvP(false)). Default 0 = legacy forced flag on every realm type.
 AutoWow.PvpRealmZoneRules.Enable = 0
 
+# Level-up maintenance for AutoWoW independent bots that are neither random-pool bots nor listed in
+# AutoWow.OracleRuntime.BotGuids (e.g. the persistent cohort, docs/COHORT_PLAN.md C2). Those two
+# groups are unaffected. Never grants gear, consumables, ammo, reagents or money in any mode.
+# 0 (default) = legacy: no automatic talents or spells.
+# 1 = auto-assign talents on level-up (AiPlayerbot.AutoPickTalents must also be on). Spells are NOT
+#     learned; note the independent strategy set has no trainer-visit path (legacy `rpg train` lives
+#     only in the removed `rpg` strategy), so mode 1 bots stay on their level-1 spells.
+# 2 = mode 1 + class spells on level-up: class trainer spells (no tradeskill recipes, no riding or
+#     weapon-skill grants), class quest reward spells and the hunter pet
+#     (AiPlayerbot.AutoLearnTrainerSpells / AutoLearnQuestSpells must also be on).
+AutoWow.Independent.AutoMaintenance = 0
+
 # Soak setup rule. 1 = when a RANDOM bot logs in above AiPlayerbot.RandomBotMaxLevel (legacy pool
 # entries whose randomize timers lie past the soak), re-roll it once through the normal
 # RandomizeFirst level path (level/gear/teleport for level) and emit ledger `contaminated` reason

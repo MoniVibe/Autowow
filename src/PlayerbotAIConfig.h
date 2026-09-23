@@ -382,6 +382,7 @@ public:
     bool enableNewRpgStrategy;
     bool autoWowQuestFullBagRelief;  // AutoWow.QuestFullBagRelief.Enable (default off)
     bool autoWowPvpRealmZoneRules;   // AutoWow.PvpRealmZoneRules.Enable (default off)
+    uint32 autoWowIndependentAutoMaintenance;  // AutoWow.Independent.AutoMaintenance (0 off, 1 talents, 2 +class spells)
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;
