@@ -2393,7 +2393,7 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
             if (MoveFarTo(data.pos, /*questNoTeleport*/ true, &stuck))
             {
                 if (stuck)
-                    return BlockQuest(data, QuestFailureReason::MovementStuckNoTeleport, /*unsupported*/ false);
+                    return BlockQuest(data, TravelStuckReason(), /*unsupported*/ false);
                 return true;
             }
             // Sampler couldn't land a candidate this tick — small nudge so the
@@ -3349,12 +3349,12 @@ bool NewRpgDoQuestAction::DoCompletedQuest(NewRpgInfo::DoQuest& data)
             if (moved)
             {
                 if (stuck)
-                    return BlockQuest(data, QuestFailureReason::MovementStuckNoTeleport, /*unsupported*/ false);
+                    return BlockQuest(data, TravelStuckReason(), /*unsupported*/ false);
                 data.lastReachPOI = 0;
                 return true;
             }
             if (stuck)
-                return BlockQuest(data, QuestFailureReason::MovementStuckNoTeleport, /*unsupported*/ false);
+                return BlockQuest(data, TravelStuckReason(), /*unsupported*/ false);
             if (!data.lastReachPOI)
                 data.lastReachPOI = getMSTime();
             else if (GetMSTimeDiffToNow(data.lastReachPOI) >= questAcquireBudgetMs)

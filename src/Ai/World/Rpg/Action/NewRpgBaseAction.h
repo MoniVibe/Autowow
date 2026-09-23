@@ -53,6 +53,13 @@ protected:
                    bool deterministicPath = false,
                    StrictFinisherMovementPolicy::RouteIdentity strictRoute = {},
                    bool allowLegacyTeleportRecovery = false);
+    // AutoWow.TravelIntent.Enable: committed-segment travel (TravelIntentPolicy.h). MoveFarTo routes
+    // no-teleport travellers here; on give-up `outStuck` is set and TravelStuckReason() names why.
+    bool MoveFarToIntent(WorldPosition const& dest, bool questNoTeleport, bool* outStuck, bool deterministicPath,
+                         StrictFinisherMovementPolicy::RouteIdentity strictRoute);
+    // Typed block reason for a MoveFarTo `outStuck`: the travel intent's give-up reason when it gave
+    // up (read-and-clear), otherwise the legacy MovementStuckNoTeleport.
+    QuestFailureReason TravelStuckReason();
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
     bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);

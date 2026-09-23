@@ -708,6 +708,10 @@ bool PlayerbotAIConfig::Initialize()
     enableNewRpgStrategy = sConfigMgr->GetOption<bool>("AiPlayerbot.EnableNewRpgStrategy", true);
     autoWowQuestFullBagRelief = sConfigMgr->GetOption<bool>("AutoWow.QuestFullBagRelief.Enable", false);
     autoWowQuestTravelProgressWatch = sConfigMgr->GetOption<bool>("AutoWow.QuestTravelProgressWatch.Enable", false);
+    autoWowTravelIntent = sConfigMgr->GetOption<bool>("AutoWow.TravelIntent.Enable", false);
+    autoWowTravelIntentReplanFailCount = sConfigMgr->GetOption<uint32>("AutoWow.TravelIntent.ReplanFailCount", 5);
+    autoWowTravelIntentProgressWindowMs = sConfigMgr->GetOption<uint32>("AutoWow.TravelIntent.ProgressWindowMs", 90000);
+    autoWowTravelIntentHysteresisPct = sConfigMgr->GetOption<uint32>("AutoWow.TravelIntent.HysteresisPct", 20);
     autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
     autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
     autoWowQuestScheduler = sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.Enable", false);

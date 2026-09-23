@@ -389,6 +389,10 @@ public:
     bool enableNewRpgStrategy;
     bool autoWowQuestFullBagRelief;  // AutoWow.QuestFullBagRelief.Enable (default off)
     bool autoWowQuestTravelProgressWatch;   // AutoWow.QuestTravelProgressWatch.Enable (default off)
+    bool autoWowTravelIntent;                     // AutoWow.TravelIntent.Enable (default off)
+    uint32 autoWowTravelIntentReplanFailCount;    // AutoWow.TravelIntent.ReplanFailCount (default 5)
+    uint32 autoWowTravelIntentProgressWindowMs;   // AutoWow.TravelIntent.ProgressWindowMs (default 90000)
+    uint32 autoWowTravelIntentHysteresisPct;      // AutoWow.TravelIntent.HysteresisPct (default 20)
     bool autoWowQuestBlockedDefer;          // AutoWow.QuestBlockedDefer.Enable (default off)
     bool autoWowQuestItemTargetConditions;  // AutoWow.QuestItemTargetConditions.Enable (default off)
     bool autoWowQuestScheduler;             // AutoWow.QuestScheduler.Enable (default off; QuestSchedulerPolicy.h)

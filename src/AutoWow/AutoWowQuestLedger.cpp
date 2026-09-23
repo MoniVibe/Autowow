@@ -69,6 +69,8 @@ char const* ReasonName(QuestFailureReason reason)
         case QuestFailureReason::OracleRouteNoSafeAnchor: return "oracle_route_no_safe_anchor";
         case QuestFailureReason::OracleRouteBlocked: return "oracle_route_blocked";
         case QuestFailureReason::TravelNoProgress: return "travel_no_progress";
+        case QuestFailureReason::IntentReplanExhausted: return "intent_replan_exhausted";
+        case QuestFailureReason::IntentNoProgress: return "intent_no_progress";
     }
     return "unknown";
 }

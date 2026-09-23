@@ -426,6 +426,179 @@ bool NewRpgBaseAction::RotateStaleDoQuest()
     return true;
 }
 
+QuestFailureReason NewRpgBaseAction::TravelStuckReason()
+{
+    if (sPlayerbotAIConfig.autoWowTravelIntent)
+    {
+        switch (TravelIntentPolicy::TakeGiveUp(botAI->rpgInfo.travelIntent))
+        {
+            case TravelIntentPolicy::GiveUp::ReplanExhausted: return QuestFailureReason::IntentReplanExhausted;
+            case TravelIntentPolicy::GiveUp::NoProgress: return QuestFailureReason::IntentNoProgress;
+            case TravelIntentPolicy::GiveUp::None: break;
+        }
+    }
+    return QuestFailureReason::MovementStuckNoTeleport;
+}
+
+bool NewRpgBaseAction::MoveFarToIntent(WorldPosition const& dest, bool questNoTeleport, bool* outStuck,
+                                       bool deterministicPath,
+                                       StrictFinisherMovementPolicy::RouteIdentity strictRoute)
+{
+    using namespace TravelIntentPolicy;
+    Intent& intent = botAI->rpgInfo.travelIntent;
+    Params const params{sPlayerbotAIConfig.autoWowTravelIntentReplanFailCount,
+                        sPlayerbotAIConfig.autoWowTravelIntentProgressWindowMs,
+                        sPlayerbotAIConfig.autoWowTravelIntentHysteresisPct};
+    uint32 const now = getMSTime();
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    Point const goal = MakePoint(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+    Point const here = MakePoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+
+    auto dangerous = [&](Point const& p)
+    {
+        return AutoWowDeathLoop::Enabled() &&
+            AutoWowDeathLoop::IsDangerous(botGuid, p.mapId, static_cast<float>(p.x), static_cast<float>(p.y));
+    };
+    auto recordStrict = [&]()
+    {
+        if (!deterministicPath)
+            return;
+        LastMovement& issued = AI_VALUE(LastMovement&, "last movement");
+        botAI->rpgInfo.strictFinisherMovement = {
+            true,
+            strictRoute,
+            {true, issued.msTime, issued.lastMoveToMapId, issued.lastMoveToX,
+             issued.lastMoveToY, issued.lastMoveToZ}};
+    };
+    auto giveUp = [&](GiveUp reason) -> bool
+    {
+        LOG_INFO("playerbots", "[New RPG] AutoWow {} travel intent gives up ({}) toward ({},{},{},{}) at ({},{}) "
+                 "best={} segments={} failures={}",
+                 bot->GetName(), reason == GiveUp::NoProgress ? "intent_no_progress" : "intent_replan_exhausted",
+                 dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                 bot->GetPositionX(), bot->GetPositionY(), intent.bestGoalYards, intent.segmentsCommitted,
+                 intent.failures);
+        Abandon(intent, reason);
+        if (outStuck)
+            *outStuck = true;
+        // Quest callers block on (true, stuck); GO_GRIND/GO_CAMP mark the destination failed on (false, stuck).
+        return questNoTeleport;
+    };
+
+    if (Observe(intent, goal, DistanceYards(here, goal), now, params) == Verdict::NoProgress)
+        return giveUp(GiveUp::NoProgress);
+
+    bool const moving = IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL) || bot->isMoving();
+    bool const inCombat = bot->IsInCombat();
+
+    // Final approach: inside the direct-path radius the goal itself is the segment.
+    if (bot->GetExactDist(dest) < pathFinderDis)
+    {
+        if (moving)
+            return true;
+        bool const moved = MoveTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                                  false, false, false, true);
+        if (moved)
+            recordStrict();
+        return moved;
+    }
+
+    switch (ClassifySegment(intent, here, moving, inCombat || (intent.hasSegment && dangerous(intent.segment))))
+    {
+        case SegmentState::Follow:
+            return true;
+        case SegmentState::Reached:
+            CompleteSegment(intent);
+            break;
+        case SegmentState::Unsafe:
+            DropSegment(intent);
+            if (inCombat)
+                return false;
+            break;
+        case SegmentState::Interrupted:
+            if (ReplanCoolingDown(intent, now))
+                return true;
+            if (NoteFailure(intent, now, params))
+                return giveUp(GiveUp::ReplanExhausted);
+            break;
+        case SegmentState::None:
+            if (ReplanCoolingDown(intent, now))
+                return true;
+            break;
+    }
+
+    auto admit = [&](G3D::Vector3 const& end) -> bool
+    {
+        Point const candidate = MakePoint(bot->GetMapId(), end.x, end.y, end.z);
+        uint32 const candidateGoalYards = DistanceYards(candidate, goal);
+        if (!Admit(intent, here, candidate, candidateGoalYards, dangerous(candidate), params))
+            return false;
+        Commit(intent, here, candidate, candidateGoalYards);
+        return true;
+    };
+
+    // 1. Prepared quest walk: the same ordered proof as the legacy path (complete direct, TravelMgr
+    //    segment, deterministic local detour), now committed instead of re-selected per tick.
+    if (questNoTeleport)
+    {
+        AutoWowQuestGiverTravel::QuestWalkProbeSelection selection =
+            AutoWowQuestGiverTravel::SelectQuestWalkProbeDetailed(bot, dest);
+        if (selection.probe && !selection.probe->path.empty() && admit(selection.probe->path.back()))
+        {
+            AutoWowDungeonWalkAction walk(botAI);
+            selection.diagnostics.walkPreparedCalled = true;
+            AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason rejectReason =
+                AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::None;
+            bool const accepted = walk.WalkPrepared(*selection.probe, &rejectReason);
+            selection.diagnostics.walkPreparedAccepted = accepted;
+            selection.diagnostics.walkRejectReason = rejectReason;
+            AutoWowQuestGiverTravel::RecordQuestWalkDiagnostics(botGuid, selection.diagnostics);
+            if (accepted)
+            {
+                recordStrict();
+                return true;
+            }
+            DropSegment(intent);
+        }
+    }
+
+    // 2. mmap route to the true destination (slope-checked, as the legacy executor).
+    {
+        PathGenerator path(bot);
+        path.SetSlopeCheck(true);
+        path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+        uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
+        if (!(path.GetPathType() & ~typeOk))
+        {
+            G3D::Vector3 const endPos = path.GetActualEndPosition();
+            if (dest.GetExactDist(endPos.x, endPos.y, endPos.z) + 5.0f < bot->GetDistance(dest) && admit(endPos))
+            {
+                if (MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true))
+                {
+                    recordStrict();
+                    return true;
+                }
+                DropSegment(intent);
+            }
+        }
+    }
+
+    // 3. Nothing admissible. An interrupted segment is re-issued (the commitment holds); otherwise
+    //    count the failed replan and let the caller's existing no-candidate handling run.
+    if (intent.hasSegment)
+    {
+        bool const moved = MoveTo(intent.segment.mapId, static_cast<float>(intent.segment.x),
+                                  static_cast<float>(intent.segment.y), static_cast<float>(intent.segment.z),
+                                  false, false, false, true);
+        if (moved)
+            recordStrict();
+        return moved;
+    }
+    if (NoteFailure(intent, now, params))
+        return giveUp(GiveUp::ReplanExhausted);
+    return false;
+}
+
 bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool* outStuck,
                                  bool deterministicPath,
                                  StrictFinisherMovementPolicy::RouteIdentity strictRoute,
@@ -476,6 +649,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool*
             botAI->rpgInfo.strictFinisherMovement = {};
         }
     }
+
+    // AutoWow.TravelIntent.Enable: no-teleport travellers commit to a route segment instead of
+    // re-selecting (and re-arming the stuck counter) every tick. OFF = the legacy path below.
+    if (sPlayerbotAIConfig.autoWowTravelIntent && bot->GetMapId() == dest.GetMapId() &&
+        (questNoTeleport || deterministicPath || IsAutoWowTravelBot()))
+        return MoveFarToIntent(dest, questNoTeleport, outStuck, deterministicPath, strictRoute);
 
     auto issueMove = [&](uint32 mapId, float x, float y, float z)
     {

@@ -190,7 +190,9 @@ enum class QuestFailureReason : uint16
     OracleRouteUnsupportedTransition,
     OracleRouteNoSafeAnchor,
     OracleRouteBlocked,
-    TravelNoProgress  // appended: AutoWow.QuestTravelProgressWatch.Enable budget spent
+    TravelNoProgress,  // appended: AutoWow.QuestTravelProgressWatch.Enable budget spent
+    IntentReplanExhausted,  // appended: AutoWow.TravelIntent.Enable replan budget spent
+    IntentNoProgress        // appended: AutoWow.TravelIntent.Enable no goal progress in the window
 };
 
 struct QuestFinisherRef

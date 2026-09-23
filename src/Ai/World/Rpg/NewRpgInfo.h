@@ -12,6 +12,7 @@
 #include "StrictFinisherMovementPolicy.h"
 #include "Strategy.h"
 #include "Timer.h"
+#include "TravelIntentPolicy.h"
 #include "TravelMgr.h"
 
 using NewRpgStatusTransitionProb = std::vector<std::vector<int>>;
@@ -86,6 +87,7 @@ struct NewRpgInfo
     uint32 stuckAttempts{0};
     WorldPosition moveFarPos;
     StrictFinisherMovementPolicy::Provenance strictFinisherMovement;
+    TravelIntentPolicy::Intent travelIntent;  // AutoWow.TravelIntent.Enable only
     // END MOVE_FAR
 
     using RpgData = std::variant<

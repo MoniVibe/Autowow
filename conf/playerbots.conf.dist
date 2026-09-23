@@ -2326,6 +2326,16 @@ AutoWow.QuestFullBagRelief.Enable = 0
 # within 150 s of observed out-of-combat travel, rotate to another resolved source spawn, else block
 # with reason travel_no_progress.
 AutoWow.QuestTravelProgressWatch.Enable = 0
+# Committed travel intent (TravelIntentPolicy.h). 1 = no-teleport travellers (quest source/finisher
+# travel, AutoWow roster) commit to one route segment toward the goal and replan only on events:
+# segment reached / interrupted / unsafe, goal moved, ReplanFailCount consecutive failures (block
+# intent_replan_exhausted), or no 10 yd net progress toward the GOAL within ProgressWindowMs of observed
+# travel (block intent_no_progress). A segment returning to a recent segment point is refused (no A-B-A
+# bounce); a replacement for a live segment must be HysteresisPct closer to the goal. 0 = legacy.
+AutoWow.TravelIntent.Enable = 0
+AutoWow.TravelIntent.ReplanFailCount = 5
+AutoWow.TravelIntent.ProgressWindowMs = 90000
+AutoWow.TravelIntent.HysteresisPct = 20
 # Blocked-quest defer-and-return (non-Oracle directives only). 1 = a quest held in Blocked for 30 s is
 # deferred for 10 minutes (ledger `deferred` reason blocked_deferred) and the bot returns to Idle to pick
 # other work; the quest is eligible again after the deferral. 0 = hold Blocked until the 30-minute
