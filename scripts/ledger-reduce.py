@@ -44,6 +44,7 @@ OUTCOMES = ["rewarded", "rewarded_assisted", "open_progressing", "open_stalled",
 # A reward after one of these scores rewarded_assisted (reported separately, never as a clean pass).
 ASSIST_REASONS = {"rpg_stuck_teleport", "zone_travel_assist"}
 KILLER_KINDS = ["player", "creature", "environment", "unknown"]
+QUEST_EVENTS = {"accepted", "rewarded", "abandoned", "blocked", "deferred", "progress"}
 # Contaminated reasons that reset or relocate the bot (level/gear/quest log/zone): open rows before them are
 # voided (dropped, counted per reason in the summary) instead of scored. zone_travel_assist stays contamination.
 SETUP_REASONS = {"rndbot_randomize", "setup_reroll", "rndbot_teleport", "bridge_rally_teleport", "bridge_route_teleport",
@@ -168,6 +169,8 @@ def fold(events):
             pvp["honorable"] += 1 if ev.get("honorable") else 0
             continue
 
+        if kind not in QUEST_EVENTS:
+            continue  # bot-level (combat) or unknown future event: never creates a quest row
         row = get(run, bot, quest)
         if kind == "accepted":
             if not is_open(row):
@@ -195,6 +198,11 @@ def fold(events):
             row["deferred_at"] = ms
             row["deferred_reason"] = ev.get("reason")
             row["last_reason"], row["last_phase"] = ev.get("reason"), ev.get("phase")
+        elif kind == "progress":
+            # Sampled counter change (AutoWow.Ledger.ProgressSampleMs). Progress after a deferral means
+            # the quest was resumed (defer-and-return), so the deferral no longer describes the row.
+            observe_counters(row, ev)
+            row["deferred_at"] = row["deferred_reason"] = None
         else:
             continue  # unknown future event name: ignore, never guess
         touch(row, ev)
@@ -363,7 +371,9 @@ def selftest():
             line(3000, "pvp_kill", 12, 0, victim=11, vlvl=38, honorable=True),
             line(4000, "rewarded", 11, 1100),
             line(1000, "accepted", 12, 1200), line(2500, "died", 12, 0, killer="creature", kid=681, klvl=36),
-            line(2600, "died", 12, 0, killer="environment", kid=0, klvl=0)]
+            line(2600, "died", 12, 0, killer="environment", kid=0, klvl=0),
+            line(2700, "combat", 12, 0, cv=1, dmg=500, ttk=[[4000, 0]]),   # bot-level: no row
+            line(2800, "combat", 13, 0, cv=1)]
     catalog = {"quests": [{"id": 100, "family": "KILL", "zoneName": "Elwynn Forest", "title": "A"},
                           {"id": 200, "family": "KILL", "zoneName": "Elwynn Forest", "title": "B"}]}
     with tempfile.TemporaryDirectory() as td:
@@ -408,8 +418,12 @@ def selftest():
             fh.write(line(1000, "accepted", 1, 1, run="p") + "\n")
             fh.write(line(5000, "blocked", 1, 1, c=(1, 0, 0, 0), reason="r", run="p") + "\n")
             fh.write(line(6000, "accepted", 2, 2, run="p") + "\n")
+            fh.write(line(1000, "accepted", 3, 3, run="p") + "\n")
+            fh.write(line(2000, "deferred", 3, 3, reason="blocked_deferred", phase="blocked", run="p") + "\n")
+            fh.write(line(7000, "progress", 3, 3, c=(2, 0, 0, 0), run="p") + "\n")
         _, out2 = run([lp2], os.path.join(td, "o2"), cp, 600000)
-        assert {r["quest"]: r["outcome"] for r in out2} == {1: "blocked", 2: "open_progressing"}
+        assert {r["quest"]: r["outcome"] for r in out2} == {1: "blocked", 2: "open_progressing", 3: "open_progressing"}
+        assert [r for r in out2 if r["quest"] == 3][0]["first_progress_at"] == 7000
     print("selftest OK")
     return 0
 
