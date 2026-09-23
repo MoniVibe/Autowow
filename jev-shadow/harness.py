@@ -12,17 +12,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LEDGER = r"\\wsl.localhost\Ubuntu-24.04\root\autowow-soak\logs\ledger.log"
 CATALOG = r"D:\Games\wowstuff\AutoWoW\census\quest-catalog.json"
 KEY_FILE = r"C:\dev\SGSurvivors\docs\jevapi.md"
-JEV_URL = "https://jevtypesafeai.com/api/v1/decide"
+JEV_URL = "https://api.typesafe.ai/v1/systemone"
 
-RUN_SECONDS = int(sys.argv[1]) if len(sys.argv) > 1 else 3300
-MAX_CALLS, MAX_COST = 40, 2.0
+RUN_SECONDS = int(sys.argv[1]) if len(sys.argv) > 1 else 2700
+MAX_CALLS, MAX_TOKENS = 30, 38_000  # 10 HTTP calls (2 ok s1, 7 CF-403, 1 probe) / ~1.7k tokens already spent
 JEV_MIN_GAP = 5.0          # hard rate limit between Jev calls
-PLAIN_GAP = 75.0           # spread plain decisions across the run
+PLAIN_GAP = 60.0           # spread plain decisions across the run
 BRIDGE_MIN_GAP = 1.1       # <= 1 bridge call/sec
 STALL_N = 5
-PERSONA_EVERY = 5          # every 5th plain decision with >=3 options gets persona calls
+PERSONA_EVERY = 3          # every 3rd decision with >=3 options: one call, neutral + 3 persona questions
 PERSONAS = ["cautious", "greedy", "reckless explorer"]
-PERSONA_POINTS_MAX = 4     # 4 points x 3 personas = 12 calls
+PERSONA_POINTS_MAX = 5
 BOT_COOLDOWN_MS = 600_000  # one Jev decision per bot per 10 min (diversity)
 READ_ONLY_VERBS = {"questlog"}
 DRY = os.environ.get("JEV_SHADOW_DRY") == "1"  # no Jev calls; detector + candidate builder only
@@ -97,7 +97,19 @@ def build_options(dp, qlog):
     return dict(list(opts.items())[:5])
 
 
-def call_jev(dp, opts, persona=None):
+def _question(dp, opts, persona):
+    if persona:
+        instr = (f"Choose exactly one next action for a WoW WotLK leveling bot whose personality is "
+                 f"'{persona}'. Play in character; the choice should reflect that personality.")
+    else:
+        instr = ("Choose exactly one next action for a WoW WotLK leveling bot. Goal: efficient leveling "
+                 "(XP per minute, avoid stalls and wasted travel). SHADOW advisory only.")
+    return {"type": "choice", "instructions": instr, "criteria": {k: v["desc"] for k, v in opts.items()}}
+
+
+def call_jev(dp, opts, personas):
+    """One HTTP call; one question per persona (None = neutral efficiency question).
+    Returns (records, total_tokens). One record per question, sharing call_id."""
     state = {"bot_level": dp["lvl"], "zone": ZONE.get(dp["zone"], str(dp["zone"])),
              "trigger": dp["kind"], "trigger_quest": qfacts(dp["quest"]),
              "options": {k: {kk: vv for kk, vv in v.items() if kk != "desc"} for k, v in opts.items()}}
@@ -105,38 +117,50 @@ def call_jev(dp, opts, persona=None):
         state["stall"] = {"reason": dp["reason"], "phase": dp["phase"], "repeats": dp["count"]}
     if dp["kind"] in ("deferred", "abandoned"):
         state["reason"] = dp["reason"]
-    instr = ("Choose exactly one next action for a WoW WotLK leveling bot. Goal: efficient leveling "
-             "(XP per minute, avoid stalls and wasted travel). SHADOW advisory only.")
-    if persona:
-        state["persona"] = persona
-        instr = (f"Choose exactly one next action for a WoW WotLK leveling bot whose personality is "
-                 f"'{persona}'. Play in character; the choice should reflect that personality.")
-    req = {"model": "jev-latest", "state": state,
-           "questions": {"decision": {"type": "choice", "instructions": instr,
-                                      "criteria": {k: v["desc"] for k, v in opts.items()}}}}
-    rec = {"t": time.time(), "dp_id": dp["id"], "persona": persona, "allow": list(opts), "request_state": state}
-    t0 = time.time()
-    try:
-        r = urllib.request.Request(JEV_URL, data=json.dumps(req).encode(), method="POST",
-                                   headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(r, timeout=30) as resp:
-            body = json.loads(resp.read().decode())
-        rec["latency_s"] = round(time.time() - t0, 3)
-        ans = body.get("answers", {}).get("decision", {})
-        rec.update(model=body.get("model"), usage=body.get("usage"),
-                   cost_usd=(body.get("usage") or {}).get("cost_usd"),
-                   choice=ans.get("choice"), confidence=ans.get("confidence"),
-                   probabilities=ans.get("probabilities"),
-                   extra={k: v for k, v in ans.items() if k not in ("choice", "confidence", "probabilities", "type")})
-        rec["valid"] = ans.get("type") == "choice" and ans.get("choice") in opts
-    except urllib.error.HTTPError as e:
-        rec.update(latency_s=round(time.time() - t0, 3), valid=False,
-                   error=scrub(f"HTTP {e.code}: {e.read()[:300]!r}"))
-    except Exception as e:
-        rec.update(latency_s=round(time.time() - t0, 3), valid=False, error=scrub(repr(e))[:300])
+    qids = {(p or "neutral").replace(" ", "_"): p for p in personas}
+    req = {"model": "jev-latest", "state": "AutoWoW bot decision context (JSON): " + json.dumps(state),
+           "questions": {q: _question(dp, opts, p) for q, p in qids.items()}}
+    base = {"call_id": f"{dp['id']}-{int(time.time())}", "t": time.time(), "dp_id": dp["id"],
+            "allow": list(opts), "n_questions": len(qids), "request_state": state}
+    body, err, t0 = None, None, time.time()
+    for attempt in range(3):
+        t0 = time.time()
+        try:
+            r = urllib.request.Request(JEV_URL, data=json.dumps(req).encode(), method="POST",
+                                       headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json",
+                                                "User-Agent": "AutoWoW-JevShadow/1.0"})  # Cloudflare 1010 blocks Python-urllib UA
+            with urllib.request.urlopen(r, timeout=30) as resp:
+                body = json.loads(resp.read().decode())
+            err = None
+            break
+        except urllib.error.HTTPError as e:
+            err = scrub(f"HTTP {e.code}: {e.read()[:300]!r}")
+            if e.code not in (429, 529):
+                break
+            time.sleep(10 * (attempt + 1))
+        except Exception as e:
+            err = scrub(repr(e))[:300]
+            break
+    base["latency_s"] = round(time.time() - t0, 3)
+    usage = (body or {}).get("usage") or {}
+    tokens = int(usage.get("input_tokens", 0)) + int(usage.get("output_tokens", 0))
+    base.update(model=(body or {}).get("model"), usage=usage, tokens=tokens)
+    recs = []
+    for q, p in qids.items():
+        rec = dict(base, persona=p)
+        if err:
+            rec.update(valid=False, error=err)
+        else:
+            ans = body.get("answers", {}).get(q, {})
+            rec.update(choice=ans.get("choice"), confidence=ans.get("confidence"),
+                       probabilities=ans.get("probabilities"),
+                       extra={k: v for k, v in ans.items() if k not in ("choice", "confidence", "probabilities", "type")})
+            rec["valid"] = ans.get("type") == "choice" and ans.get("choice") in opts
+        recs.append(rec)
     with open(os.path.join(HERE, "calls.jsonl"), "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec) + "\n")
-    return rec
+        for rec in recs:
+            f.write(json.dumps(rec) + "\n")
+    return recs, tokens
 
 
 def parse(line):
@@ -151,7 +175,7 @@ def parse(line):
 
 def main():
     start = time.time()
-    calls, cost, plain_n, persona_points = 0, 0.0, 0, 0
+    calls, tokens, plain_n, persona_points, hard_errs = 0, 0, 0, 0, 0
     last_jev, last_plain = 0.0, 0.0
     streak = {}                       # bot -> (quest, reason, count, fired)
     bot_last_dp = defaultdict(lambda: -10**12)
@@ -161,9 +185,12 @@ def main():
     buf = ""
     dout = open(os.path.join(HERE, "decisions.jsonl"), "a", encoding="utf-8")
     print(f"shadow harness up; run {RUN_SECONDS}s", flush=True)
-    while time.time() - start < RUN_SECONDS and calls < MAX_CALLS and cost < MAX_COST:
+    while time.time() - start < RUN_SECONDS and calls < MAX_CALLS and tokens < MAX_TOKENS:
         chunk = f.read()
         if not chunk:
+            if os.path.getsize(LEDGER) < f.tell():  # ledger truncated by a soak restart: follow from 0
+                print("ledger truncated; re-reading from start", flush=True)
+                f.seek(0); buf = ""; streak.clear(); bot_last_dp.clear()
             time.sleep(2)
             continue
         buf += chunk
@@ -197,7 +224,7 @@ def main():
                       wall=time.time())
             now = time.time()
             eligible = (e["ms"] - bot_last_dp[bot] >= BOT_COOLDOWN_MS and now - last_plain >= PLAIN_GAP
-                        and calls < MAX_CALLS and cost < MAX_COST)
+                        and calls < MAX_CALLS and tokens < MAX_TOKENS)
             dp["jev"] = eligible
             dout.write(json.dumps(dp) + "\n"); dout.flush()
             if not eligible:
@@ -214,30 +241,31 @@ def main():
             last_plain = time.time()
             runs = [None]
             plain_n += 1
-            if len(opts) >= 3 and plain_n % PERSONA_EVERY == 0 and persona_points < PERSONA_POINTS_MAX \
-                    and calls + 4 <= MAX_CALLS:
+            if len(opts) >= 3 and plain_n % PERSONA_EVERY == 0 and persona_points < PERSONA_POINTS_MAX:
                 runs += PERSONAS
                 persona_points += 1
-            if DRY:  # key unusable: record the candidate set the Jev call would have received
+            if DRY:  # record the candidate set the Jev call would have received
                 with open(os.path.join(HERE, "dry_candidates.jsonl"), "a", encoding="utf-8") as fo:
                     fo.write(json.dumps({"dp_id": dp["id"], "kind": dp["kind"], "bot": bot, "lvl": dp["lvl"],
                                          "quest": dp["quest"], "reason": dp["reason"], "options": opts}) + "\n")
                 print(f"dry dp{dp['id']} {dp['kind']} bot{bot} opts={list(opts)}", flush=True)
                 continue
-            for persona in runs:
-                if calls >= MAX_CALLS or cost >= MAX_COST:
-                    break
-                wait = JEV_MIN_GAP - (time.time() - last_jev)
-                if wait > 0:
-                    time.sleep(wait)
-                last_jev = time.time()
-                rec = call_jev(dp, opts, persona)
-                calls += 1
-                cost += float(rec.get("cost_usd") or 0)
-                print(f"call {calls} dp{dp['id']} {dp['kind']} bot{bot} persona={persona} -> "
-                      f"{rec.get('choice')} valid={rec['valid']} {rec['latency_s']}s ${cost:.4f}"
-                      + (f" ERR {rec['error']}" if 'error' in rec else ""), flush=True)
-    print(f"done: calls={calls} cost=${cost:.4f} elapsed={time.time()-start:.0f}s", flush=True)
+            wait = JEV_MIN_GAP - (time.time() - last_jev)
+            if wait > 0:
+                time.sleep(wait)
+            last_jev = time.time()
+            recs, tk = call_jev(dp, opts, runs)
+            calls += 1
+            tokens += tk
+            r0 = recs[0]
+            print(f"call {calls} dp{dp['id']} {dp['kind']} bot{bot} q={len(runs)} -> "
+                  f"{[r.get('choice') for r in recs]} valid={all(r['valid'] for r in recs)} "
+                  f"{r0['latency_s']}s tok={tk} cum={tokens}" + (f" ERR {r0['error']}" if 'error' in r0 else ""), flush=True)
+            hard_errs = hard_errs + 1 if 'error' in r0 else 0
+            if hard_errs >= 2:
+                print("abort: 2 consecutive API errors", flush=True)
+                return
+    print(f"done: calls={calls} tokens={tokens} elapsed={time.time()-start:.0f}s", flush=True)
 
 
 if __name__ == "__main__":

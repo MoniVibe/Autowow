@@ -51,24 +51,36 @@ def main():
     calls = load(cp) if os.path.exists(cp) else []
     dp_path = os.path.join(HERE, "dry_candidates.jsonl")
     dry = load(dp_path) if os.path.exists(dp_path) else []
-    out = {"calls": len(calls), "valid": sum(c["valid"] for c in calls)}
-    lat = sorted(c["latency_s"] for c in calls if c["valid"])
+    by_call = {}
+    for c in calls:
+        by_call.setdefault(c["call_id"], c)
+    hc = list(by_call.values())
+    out = {"http_calls": len(hc), "questions": len(calls), "valid_questions": sum(c["valid"] for c in calls),
+           "http_errors": [c.get("error") for c in hc if c.get("error")]}
+    lat = sorted(c["latency_s"] for c in hc if not c.get("error"))
     q = statistics.quantiles(lat, n=10) if len(lat) >= 2 else lat * 9
     out["latency"] = {"p50": statistics.median(lat), "p90": q[8], "max": max(lat)} if lat else {}
-    costs = [c["cost_usd"] for c in calls if c.get("cost_usd") is not None]
-    out["cost_total"] = sum(costs)
-    out["cost_per_call"] = sum(costs) / len(costs) if costs else None
-    out["usage_sample"] = next((c["usage"] for c in calls if c.get("usage")), None)
+    single = [c for c in hc if c["n_questions"] == 1 and not c.get("error")]
+    multi = [c for c in hc if c["n_questions"] > 1 and not c.get("error")]
+    avg = lambda xs: sum(xs) / len(xs) if xs else None
+    out["tokens"] = {"total": sum(c["tokens"] for c in hc),
+                     "per_1q_call_in": avg([c["usage"].get("input_tokens", 0) for c in single]),
+                     "per_1q_call_out": avg([c["usage"].get("output_tokens", 0) for c in single]),
+                     "per_4q_call": avg([c["tokens"] for c in multi])}
     dl = list(dps.values())
     span_h = (max(d["wall"] for d in dl) - min(d["wall"] for d in dl)) / 3600 if len(dl) > 1 else None
-    bots = len({d["bot"] for d in dl})
     out["decision_points"] = {"total": len(dl), "by_kind": Counter(d["kind"] for d in dl), "span_h": span_h,
-                              "bots": bots}
+                              "bots_with_dp": len({d["bot"] for d in dl}), "fleet_bots": len(evs_by_bot)}
     if span_h:
-        rate = len(dl) / span_h / max(bots, 1)
+        rate = len(dl) / span_h / max(len(evs_by_bot), 1)
         out["dp_per_bot_hour"] = rate
-        if out["cost_per_call"]:
-            out["projected_usd_per_hour_200_bots"] = rate * 200 * out["cost_per_call"]
+        tpc = (out["tokens"]["per_1q_call_in"] or 0) + (out["tokens"]["per_1q_call_out"] or 0)
+        out["projected_200_bots"] = {"decisions_per_hour": rate * 200,
+                                     "tokens_per_hour": rate * 200 * tpc}
+    # confidence usefulness: does confidence separate agree/disagree with baseline?
+    confs = [c["confidence"] for c in calls if c["valid"] and c.get("confidence") is not None]
+    out["confidence"] = {"min": min(confs, default=None), "median": statistics.median(confs) if confs else None,
+                         "max": max(confs, default=None)}
     plain = [c for c in calls if c["persona"] is None and c["valid"]]
     rows, agree, known = [], 0, 0
     for c in plain:
@@ -109,6 +121,12 @@ def main():
         if c["valid"]:
             per[c["dp_id"]][c["persona"] or "neutral"] = c["choice"]
     out["persona"] = {k: v for k, v in per.items() if len(v) > 1}
+    out["persona_divergent_points"] = sum(len(set(v.values())) > 1 for v in out["persona"].values())
+    cmp = [r for r in rows if r["jev"] and r["baseline"] not in ("unobserved", "other")]
+    out["conf_by_agreement"] = {
+        "agree": [r["conf"] for r in cmp if r["jev"] == r["baseline"]],
+        "disagree": [r["conf"] for r in cmp if r["jev"] != r["baseline"]]}
+    out["jev_choice_dist"] = Counter(r["jev"].split("_")[0] for r in rows if r["jev"])
     out["errors"] = [c.get("error") for c in calls if not c["valid"]]
     out["ledger_span_min"] = (last_ms - first_ms) / 60000
     out["rows"] = rows

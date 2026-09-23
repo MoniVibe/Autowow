@@ -1,0 +1,4 @@
+{"kind": "stall", "count": 5, "id": 1, "bot": 244, "team": 1, "lvl": 8, "quest": 790, "map": 1, "zone": 14, "ms": 2697193, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790119364.2107038, "jev": true}
+{"kind": "stall", "count": 5, "id": 2, "bot": 121, "team": 1, "lvl": 12, "quest": 748, "map": 1, "zone": 215, "ms": 2698493, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790119365.8313673, "jev": false}
+{"kind": "stall", "count": 5, "id": 3, "bot": 112, "team": 0, "lvl": 14, "quest": 109, "map": 0, "zone": 40, "ms": 2704511, "reason": "oracle_route_blocked", "phase": "travel_to_finisher", "wall": 1790119371.8370595, "jev": false}
+{"kind": "rewarded", "id": 4, "bot": 16, "team": 0, "lvl": 55, "quest": 5503, "map": 0, "zone": 139, "ms": 2783660, "reason": "", "phase": "", "wall": 1790119453.9090376, "jev": true}

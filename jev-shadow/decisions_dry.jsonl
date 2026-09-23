@@ -1,0 +1,19 @@
+{"kind": "stall", "count": 5, "id": 1, "bot": 121, "team": 1, "lvl": 12, "quest": 748, "map": 1, "zone": 215, "ms": 320873, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790116914.6798434, "jev": true}
+{"kind": "stall", "count": 5, "id": 2, "bot": 244, "team": 1, "lvl": 8, "quest": 790, "map": 1, "zone": 14, "ms": 320873, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790116914.741718, "jev": false}
+{"kind": "rewarded", "id": 3, "bot": 33, "team": 1, "lvl": 80, "quest": 13272, "map": 571, "zone": 4395, "ms": 450290, "reason": "", "phase": "", "wall": 1790117046.8571172, "jev": true}
+{"kind": "rewarded", "id": 4, "bot": 236, "team": 1, "lvl": 11, "quest": 3902, "map": 0, "zone": 85, "ms": 490218, "reason": "", "phase": "", "wall": 1790117089.270516, "jev": false}
+{"kind": "rewarded", "id": 5, "bot": 236, "team": 1, "lvl": 11, "quest": 404, "map": 0, "zone": 85, "ms": 571775, "reason": "", "phase": "", "wall": 1790117173.335737, "jev": true}
+{"kind": "stall", "count": 5, "id": 6, "bot": 236, "team": 1, "lvl": 11, "quest": 368, "map": 0, "zone": 85, "ms": 630446, "reason": "oracle_route_blocked", "phase": "travel_to_source", "wall": 1790117231.7424488, "jev": false}
+{"kind": "rewarded", "id": 7, "bot": 19, "team": 0, "lvl": 8, "quest": 400, "map": 0, "zone": 1, "ms": 642359, "reason": "", "phase": "", "wall": 1790117243.7525601, "jev": false}
+{"kind": "rewarded", "id": 8, "bot": 29, "team": 0, "lvl": 80, "quest": 13099, "map": 571, "zone": 66, "ms": 673937, "reason": "", "phase": "", "wall": 1790117275.7764497, "jev": true}
+{"kind": "deferred", "id": 9, "bot": 14, "team": 0, "lvl": 9, "quest": 384, "map": 0, "zone": 1, "ms": 900708, "reason": "executor_unsupported", "phase": "resolve_objective", "wall": 1790117508.0317614, "jev": true}
+{"kind": "rewarded", "id": 10, "bot": 11, "team": 0, "lvl": 8, "quest": 997, "map": 1, "zone": 141, "ms": 954192, "reason": "", "phase": "", "wall": 1790117562.1387405, "jev": false}
+{"kind": "rewarded", "id": 11, "bot": 14, "team": 0, "lvl": 9, "quest": 400, "map": 0, "zone": 1, "ms": 970271, "reason": "", "phase": "", "wall": 1790117580.1528602, "jev": false}
+{"kind": "stall", "count": 5, "id": 12, "bot": 30, "team": 0, "lvl": 80, "quest": 12624, "map": 571, "zone": 3711, "ms": 1156067, "reason": "progress_did_not_change", "phase": "verify_progress", "wall": 1790117770.3061, "jev": true}
+{"kind": "rewarded", "id": 13, "bot": 25, "team": 1, "lvl": 9, "quest": 817, "map": 1, "zone": 14, "ms": 1246064, "reason": "", "phase": "", "wall": 1790117862.419019, "jev": true}
+{"kind": "deferred", "id": 14, "bot": 10, "team": 0, "lvl": 11, "quest": 1141, "map": 1, "zone": 148, "ms": 1338728, "reason": "oracle_unrunnable", "phase": "resolve_objective", "wall": 1790117959.0073159, "jev": true}
+{"kind": "rewarded", "id": 15, "bot": 15, "team": 0, "lvl": 9, "quest": 400, "map": 0, "zone": 1, "ms": 1373096, "reason": "", "phase": "", "wall": 1790117993.1650279, "jev": false}
+{"kind": "stall", "count": 5, "id": 16, "bot": 101, "team": 0, "lvl": 9, "quest": 916, "map": 1, "zone": 141, "ms": 1453324, "reason": "no_live_candidate", "phase": "acquire_target", "wall": 1790118077.231966, "jev": true}
+{"kind": "stall", "count": 5, "id": 1, "bot": 121, "team": 1, "lvl": 12, "quest": 748, "map": 1, "zone": 215, "ms": 2200806, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790118849.7815742, "jev": true}
+{"kind": "stall", "count": 5, "id": 2, "bot": 244, "team": 1, "lvl": 8, "quest": 790, "map": 1, "zone": 14, "ms": 2200806, "reason": "inventory_full", "phase": "resolve_objective", "wall": 1790118851.08717, "jev": false}
+{"kind": "stall", "count": 5, "id": 3, "bot": 112, "team": 0, "lvl": 14, "quest": 109, "map": 0, "zone": 40, "ms": 2208502, "reason": "oracle_route_blocked", "phase": "travel_to_finisher", "wall": 1790118857.0962944, "jev": false}
