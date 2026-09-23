@@ -36,8 +36,10 @@
 #include "PlayerbotGuildMgr.h"
 #include "PlayerbotSpellRepository.h"
 #include "PlayerbotWorldThreadProcessor.h"
+#include "QuestValues.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "SharedValueContext.h"
 #include "World.h"
 #include "PlayerbotCommandScript.h"
 #include "cmath"
@@ -471,6 +473,7 @@ class PlayerbotsWorldScript : public WorldScript
 public:
     PlayerbotsWorldScript() : WorldScript("PlayerbotsWorldScript", {
         WORLDHOOK_ON_BEFORE_WORLD_INITIALIZED,
+        WORLDHOOK_ON_STARTUP,
         WORLDHOOK_ON_UPDATE
     }) {}
 
@@ -506,6 +509,20 @@ public:
         PlayerbotSpellRepository::Instance().Initialize();
 
         LOG_INFO("server.loading", "Playerbots World Thread Processor initialized");
+    }
+
+    // Runs once on the world (main) thread after the world and spawn data are loaded and before the
+    // first world update. Forces the one-time computation of the shared "quest guidp map" here, so
+    // the first per-bot RefGet() on a map thread never races another thread into Calculate().
+    void OnStartup() override
+    {
+        if (!sConfigMgr->GetOption<bool>("AutoWow.WarmQuestSpawnMap", false))
+            return;
+        uint32 const startMs = getMSTime();
+        questGuidpMap const& questMap =
+            sSharedValueContext.getGlobalValue<questGuidpMap>("quest guidp map")->RefGet();
+        LOG_INFO("server.loading", ">> AutoWow warmed quest guidp map ({} quests) in {} ms", questMap.size(),
+                 GetMSTimeDiffToNow(startMs));
     }
 
     void OnUpdate(uint32 diff) override

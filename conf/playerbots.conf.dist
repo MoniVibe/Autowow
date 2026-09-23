@@ -2256,6 +2256,12 @@ AutoWow.PvpRealmZoneRules.Enable = 0
 # Default 0 = off.
 AutoWow.Soak.RerollAboveMaxLevel = 0
 
+# 1 = compute the shared "quest guidp map" (every quest-relevant creature/GO spawn) once at world
+# startup on the world thread, instead of lazily on the first bot that asks for it (possibly on a
+# map-update thread, racing other first readers). Costs one catalog scan at startup (logged).
+# Default 0 = lazy first compute (legacy).
+AutoWow.WarmQuestSpawnMap = 0
+
 #
 #
 ####################################################################################################
