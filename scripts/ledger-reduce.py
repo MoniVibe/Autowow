@@ -38,12 +38,16 @@ from collections import Counter, defaultdict
 
 SCHEMA_VERSION = 1
 DEFAULT_CATALOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "census", "quest-catalog.json")
-OUTCOMES = ["rewarded", "open_progressing", "open_stalled", "blocked", "deferred", "abandoned", "contested",
-            "contaminated"]
+OUTCOMES = ["rewarded", "rewarded_assisted", "open_progressing", "open_stalled", "blocked", "deferred", "abandoned",
+            "contested", "contaminated"]
+# Assist relocations (bot-initiated, stock behavior the owner accepts: "as long as bots end up where they need to be").
+# A reward after one of these scores rewarded_assisted (reported separately, never as a clean pass).
+ASSIST_REASONS = {"rpg_stuck_teleport", "zone_travel_assist"}
 KILLER_KINDS = ["player", "creature", "environment", "unknown"]
 # Contaminated reasons that reset or relocate the bot (level/gear/quest log/zone): open rows before them are
 # voided (dropped, counted per reason in the summary) instead of scored. zone_travel_assist stays contamination.
-SETUP_REASONS = {"rndbot_randomize", "setup_reroll", "rndbot_teleport"}
+SETUP_REASONS = {"rndbot_randomize", "setup_reroll", "rndbot_teleport", "bridge_rally_teleport", "bridge_route_teleport",
+                 "probe_reset_teleport"}
 BUCKET_YARDS = 50
 _DECODER = json.JSONDecoder()
 
@@ -200,6 +204,8 @@ def fold(events):
 
 def outcome(row, run_end, stall_ms):
     if row["contaminated_at"] is not None:
+        if row["rewarded_at"] is not None and row["contaminated_reason"] in ASSIST_REASONS:
+            return "rewarded_assisted"
         return "contaminated"
     if row["rewarded_at"] is not None:
         return "rewarded"
@@ -240,7 +246,7 @@ def reduce_rows(rows, run_end, catalog, stall_ms):
         row["quest_zone"] = meta.get("zoneName", "")
         row["title"] = meta.get("title", "")
         row["outcome"] = outcome(row, run_end.get(row["run"], 0), stall_ms)
-        row["stall_signature"] = None if row["outcome"] == "rewarded" else stall_signature(row)
+        row["stall_signature"] = None if row["outcome"] in ("rewarded", "rewarded_assisted") else stall_signature(row)
         out.append(row)
     return out
 
@@ -261,22 +267,26 @@ def summarize(out, deaths=None, pvp=None, voided=None):
     assert sum(counts.values()) == total
 
     lines += ["", "## Pass rate by family", "",
-              "Pass = rewarded / rows. Contaminated rows count in rows but never as a pass.", "",
-              "| family | rows | rewarded | pass rate |", "|---|---:|---:|---:|"]
-    fam = defaultdict(lambda: [0, 0])
+              "Pass = rewarded / rows (clean). Assisted = rewarded after an assist teleport (ASSIST_REASONS), "
+              "reported separately. Contaminated rows count in rows but never as a pass.", "",
+              "| family | rows | rewarded | assisted | pass rate | pass+assisted |", "|---|---:|---:|---:|---:|---:|"]
+    fam = defaultdict(lambda: [0, 0, 0])
     for r in out:
         fam[r["family"]][0] += 1
         if r["outcome"] == "rewarded":
             fam[r["family"]][1] += 1
+        elif r["outcome"] == "rewarded_assisted":
+            fam[r["family"]][2] += 1
     for name in sorted(fam, key=lambda f: (-fam[f][0], f)):
-        n, ok = fam[name]
-        lines.append("| %s | %d | %d | %.1f%% |" % (name, n, ok, 100.0 * ok / n))
-    lines.append("| **total** | **%d** | **%d** | |" % (sum(v[0] for v in fam.values()), sum(v[1] for v in fam.values())))
+        n, ok, ast = fam[name]
+        lines.append("| %s | %d | %d | %d | %.1f%% | %.1f%% |" % (name, n, ok, ast, 100.0 * ok / n, 100.0 * (ok + ast) / n))
+    lines.append("| **total** | **%d** | **%d** | **%d** | | |" % (sum(v[0] for v in fam.values()),
+                                                          sum(v[1] for v in fam.values()), sum(v[2] for v in fam.values())))
 
     sig = Counter()
     sig_bots = defaultdict(set)
     for r in out:
-        if r["outcome"] in ("rewarded", "open_progressing"):
+        if r["outcome"] in ("rewarded", "rewarded_assisted", "open_progressing"):
             continue
         s = r["stall_signature"]
         k = (r["family"], r["outcome"], s[0], s[1], s[2], s[3][0], s[3][1])
@@ -367,7 +377,7 @@ def selftest():
         assert len(events) == len(log) - 1, len(events)
         got = {(r["bot"], r["quest"]): r for r in out}
         expect = {(1, 100): "rewarded", (2, 200): "blocked", (3, 300): "abandoned", (4, 400): "deferred",
-                  (5, 500): "contaminated", (6, 600): "open_stalled", (7, 700): "blocked",
+                  (5, 500): "rewarded_assisted", (6, 600): "open_stalled", (7, 700): "blocked",
                   (8, 0): "deferred", (9, 900): "deferred", (10, 1000): "contaminated",
                   (11, 1100): "rewarded", (11, 1101): "contested", (12, 1200): "open_stalled"}
         for k, v in expect.items():
