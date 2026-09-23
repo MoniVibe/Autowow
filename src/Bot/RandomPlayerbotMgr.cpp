@@ -1449,6 +1449,8 @@ bool RandomPlayerbotMgr::ProcessBot(uint32 bot)
     return false;
 }
 
+static bool RerollAboveMaxLevel(RandomPlayerbotMgr& mgr, Player* bot);
+
 bool RandomPlayerbotMgr::ProcessBot(Player* bot)
 {
 
@@ -1463,6 +1465,11 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
         return false;
 
      uint32 botId = bot->GetGUID().GetCounter();
+
+    // Setup only: legacy pool bots above RandomBotMaxLevel are rerolled once (level drops, so this is idempotent).
+    if (bot->IsAlive() && sConfigMgr->GetOption<bool>("AutoWow.Soak.RerollAboveMaxLevel", false) &&
+        RerollAboveMaxLevel(*this, bot))
+        return true;
 
     // if death revive
     if (bot->isDead())
@@ -1874,7 +1881,9 @@ void RandomPlayerbotMgr::Randomize(Player* bot)
 }
 
 // AutoWow.Soak.RerollAboveMaxLevel: one RandomizeFirst for a pool bot above RandomBotMaxLevel.
-static void RerollAboveMaxLevelAtLogin(RandomPlayerbotMgr& mgr, Player* bot)
+// Runs from ProcessBot(Player*), not OnPlayerLogin: at login the PlayerbotAI is not attached yet, so
+// RandomizeFirst (and the ledger Emit) silently no-op'd. Returns true when a reroll ran.
+static bool RerollAboveMaxLevel(RandomPlayerbotMgr& mgr, Player* bot)
 {
     uint32 const guid = bot->GetGUID().GetCounter();
     bool const listed =
@@ -1886,7 +1895,7 @@ static void RerollAboveMaxLevelAtLogin(RandomPlayerbotMgr& mgr, Player* bot)
             sConfigMgr->GetOption<std::string>(AutoWowFixtureAcceleration::kMicroScenarioGuidsConfigKey, ""), guid);
     if (!AutoWowRandomBotPolicy::ShouldRerollAboveMaxLevel(true, mgr.IsRandomBot(bot), listed, bot->GetLevel(),
                                                            sPlayerbotAIConfig.randomBotMaxLevel))
-        return;
+        return false;
 
     LOG_INFO("playerbots", "Bot #{} <{}>: setup reroll from level {} (above RandomBotMaxLevel {})", guid,
              bot->GetName(), bot->GetLevel(), sPlayerbotAIConfig.randomBotMaxLevel);
@@ -1895,6 +1904,7 @@ static void RerollAboveMaxLevelAtLogin(RandomPlayerbotMgr& mgr, Player* bot)
     if (AutoWowQuestLedger::Enabled())
         AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "setup_reroll");
     mgr.RandomizeFirst(bot);
+    return true;
 }
 
 void RandomPlayerbotMgr::IncreaseLevel(Player* bot)
@@ -2687,8 +2697,6 @@ void RandomPlayerbotMgr::OnPlayerLogin(Player* player)
         if (AutoWowRandomBotPolicy::ShouldForceRandomBotPvpFlag(sWorld->IsPvPRealm(),
                                                                sPlayerbotAIConfig.autoWowPvpRealmZoneRules))
             player->SetPvP(sWorld->IsPvPRealm());
-        if (sConfigMgr->GetOption<bool>("AutoWow.Soak.RerollAboveMaxLevel", false))
-            RerollAboveMaxLevelAtLogin(*this, player);
     }
     else
     {
