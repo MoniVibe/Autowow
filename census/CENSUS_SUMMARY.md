@@ -28,16 +28,16 @@ Primary reason = first in precedence DISABLES_TABLE > DEPRECATED_TITLE > QUESTTY
 | TALK_ONLY | 3511 | 2943 | 2199 |
 | COLLECT_DROP | 1600 | 1452 | 951 |
 | COLLECT_OTHER | 1038 | 722 | 0 |
-| KILL | 934 | 847 | 633 |
-| GAMEOBJECT_COLLECT | 885 | 838 | 631 |
+| GAMEOBJECT_COLLECT | 884 | 837 | 630 |
+| KILL | 866 | 785 | 597 |
 | ITEM_USE_ON_TARGET | 688 | 654 | 470 |
 | EVENT_CREDIT | 418 | 320 | 0 |
-| SPELL_CREDIT | 187 | 161 | 0 |
+| SPELL_CREDIT | 258 | 226 | 0 |
 | ESCORT | 83 | 80 | 0 |
-| EXPLORE | 60 | 59 | 0 |
+| EXPLORE | 58 | 57 | 0 |
 | GAMEOBJECT_USE | 54 | 44 | 39 |
 | PVP_KILL | 6 | 2 | 0 |
-| **total** | **9464** | **8122** | **4923** |
+| **total** | **9464** | **8122** | **4886** |
 
 Primary family = hardest objective present, precedence ESCORT > EVENT_CREDIT > PVP_KILL > ITEM_USE_ON_TARGET > SPELL_CREDIT > EXPLORE > GAMEOBJECT_USE > GAMEOBJECT_COLLECT > COLLECT_OTHER > COLLECT_DROP > KILL > TALK_ONLY. `objectives[]` in the JSON lists every family present.
 
@@ -84,7 +84,7 @@ Primary family = hardest objective present, precedence ESCORT > EVENT_CREDIT > P
 
 Predicate: available AND primary family in the live-proven set {COLLECT_DROP, GAMEOBJECT_COLLECT, GAMEOBJECT_USE, ITEM_USE_ON_TARGET, KILL, TALK_ONLY} (QUEST_TYPE_COVERAGE_REPORT.md 2026-07-15) AND none of flags {DUNGEON, EVENT_GATED, GROUP_ELITE, HOLIDAY, PROFESSION, PVP, RAID, TIMED, VEHICLE_HEURISTIC} AND on an open-world continent map. Escort is excluded (only one conventional escort proven); GAMEOBJECT_COLLECT is included (q917 Webwood Egg is a GO-loot collect); COLLECT_OTHER is excluded (vendor/craft sourcing not proven). Cross-map travel is NOT excluded although it is only PARTIAL.
 
-- bot-ready prediction: **4923** of 8122 available (60.6%); of which Alliance-only 1738, Horde-only 1561, Both 1624
+- bot-ready prediction: **4886** of 8122 available (60.2%); of which Alliance-only 1722, Horde-only 1548, Both 1616
 
 ## 7. Questing zones per faction
 
@@ -100,13 +100,13 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 |---|---|---:|---:|---:|---:|---:|---|---|
 | Battleground | Alterac Valley | 2597 | 24 | 0 | 0 | 0 | 51-51 | COLLECT_OTHER 10, SPELL_CREDIT 6, TALK_ONLY 4, EVENT_CREDIT 2 |
 | Battleground | Arathi Basin | 3358 | 20 | 0 | 0 | 0 | 34-70 | COLLECT_OTHER 10, TALK_ONLY 6, EVENT_CREDIT 4 |
-| Eastern Kingdoms | Dun Morogh | 1 | 212 | 92 | 9 | 102 | 1-60 | TALK_ONLY 97, COLLECT_OTHER 52, GAMEOBJECT_COLLECT 25, COLLECT_DROP 9 |
+| Eastern Kingdoms | Dun Morogh | 1 | 212 | 92 | 9 | 101 | 1-60 | TALK_ONLY 97, COLLECT_OTHER 52, GAMEOBJECT_COLLECT 25, SPELL_CREDIT 10 |
 | Eastern Kingdoms | Stormwind City | 1519 | 186 | 79 | 5 | 123 | 5-60 | TALK_ONLY 125, GAMEOBJECT_COLLECT 17, ITEM_USE_ON_TARGET 13, COLLECT_DROP 10 |
 | Eastern Kingdoms | Stranglethorn Vale | 33 | 136 | 89 | 85 | 102 | 34-46 | COLLECT_DROP 50, TALK_ONLY 42, GAMEOBJECT_COLLECT 18, KILL 15 |
-| Eastern Kingdoms | Eastern Plaguelands | 139 | 126 | 101 | 107 | 70 | 55-60 | COLLECT_OTHER 39, TALK_ONLY 33, COLLECT_DROP 23, GAMEOBJECT_COLLECT 15 |
-| Eastern Kingdoms | Tirisfal Glades | 85 | 109 | 1 | 39 | 79 | 6-55 | TALK_ONLY 57, COLLECT_DROP 16, GAMEOBJECT_COLLECT 11, COLLECT_OTHER 9 |
+| Eastern Kingdoms | Eastern Plaguelands | 139 | 126 | 101 | 107 | 69 | 55-60 | COLLECT_OTHER 39, TALK_ONLY 33, COLLECT_DROP 23, GAMEOBJECT_COLLECT 15 |
+| Eastern Kingdoms | Tirisfal Glades | 85 | 109 | 1 | 39 | 78 | 6-55 | TALK_ONLY 57, COLLECT_DROP 16, GAMEOBJECT_COLLECT 11, COLLECT_OTHER 9 |
 | Eastern Kingdoms | Western Plaguelands | 28 | 100 | 62 | 62 | 70 | 53-60 | TALK_ONLY 44, COLLECT_DROP 22, GAMEOBJECT_COLLECT 16, KILL 5 |
-| Eastern Kingdoms | Elwynn Forest | 12 | 82 | 39 | 3 | 49 | 5-10 | TALK_ONLY 39, COLLECT_DROP 14, COLLECT_OTHER 10, SPELL_CREDIT 7 |
+| Eastern Kingdoms | Elwynn Forest | 12 | 82 | 39 | 3 | 48 | 5-10 | TALK_ONLY 39, COLLECT_DROP 14, COLLECT_OTHER 10, SPELL_CREDIT 8 |
 | Eastern Kingdoms | Ironforge | 1537 | 81 | 44 | 0 | 40 | 30-60 | COLLECT_DROP 36, TALK_ONLY 27, GAMEOBJECT_COLLECT 13, COLLECT_OTHER 3 |
 | Eastern Kingdoms | Duskwood | 10 | 80 | 73 | 5 | 75 | 23-32 | TALK_ONLY 53, COLLECT_DROP 12, KILL 9, GAMEOBJECT_COLLECT 4 |
 | Eastern Kingdoms | Hillsbrad Foothills | 267 | 66 | 16 | 39 | 50 | 22-40 | TALK_ONLY 22, COLLECT_DROP 16, KILL 13, GAMEOBJECT_COLLECT 5 |
@@ -147,7 +147,7 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Instance (dungeon) | Blackrock Depths | 1584 | 36 | 0 | 0 | 0 | 52-59 | TALK_ONLY 11, COLLECT_DROP 9, KILL 6, GAMEOBJECT_COLLECT 4 |
 | Instance (dungeon) | Blackrock Spire | 1583 | 33 | 0 | 0 | 0 | 59-60 | TALK_ONLY 10, GAMEOBJECT_COLLECT 8, KILL 4, COLLECT_DROP 4 |
 | Instance (dungeon) | Stratholme | 2017 | 17 | 0 | 0 | 0 | 60-60 | GAMEOBJECT_COLLECT 5, TALK_ONLY 4, COLLECT_DROP 3, ITEM_USE_ON_TARGET 3 |
-| Instance (dungeon) | Hellfire Citadel | 3535 | 16 | 0 | 0 | 0 | 62-70 | COLLECT_DROP 9, KILL 4, EXPLORE 2, COLLECT_OTHER 1 |
+| Instance (dungeon) | Hellfire Citadel | 3535 | 16 | 0 | 0 | 0 | 62-70 | COLLECT_DROP 9, KILL 3, EXPLORE 2, COLLECT_OTHER 1 |
 | Instance (dungeon) | Scholomance | 2057 | 12 | 0 | 0 | 0 | 58-60 | ITEM_USE_ON_TARGET 3, GAMEOBJECT_COLLECT 2, COLLECT_DROP 2, TALK_ONLY 2 |
 | Instance (dungeon) | Blackfathom Deeps | 719 | 11 | 0 | 0 | 0 | 22-27 | COLLECT_DROP 4, GAMEOBJECT_COLLECT 3, TALK_ONLY 3, KILL 1 |
 | Instance (dungeon) | Wailing Caverns | 718 | 10 | 0 | 0 | 0 | 16-26 | COLLECT_DROP 4, TALK_ONLY 3, GAMEOBJECT_COLLECT 1, KILL 1 |
@@ -173,7 +173,7 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Instance (dungeon) | Azjol-Nerub | 4277 | 3 | 0 | 0 | 0 | 1-74 | TALK_ONLY 1, COLLECT_DROP 1, GAMEOBJECT_USE 1 |
 | Instance (dungeon) | Utgarde Pinnacle | 1196 | 3 | 0 | 0 | 0 | 1-80 | TALK_ONLY 1, GAMEOBJECT_COLLECT 1, KILL 1 |
 | Instance (dungeon) | Ahn'kahet: The Old Kingdom | 4494 | 3 | 0 | 0 | 0 | 76-80 | KILL 1, SPELL_CREDIT 1, COLLECT_DROP 1 |
-| Instance (dungeon) | Pit of Saron | 4813 | 3 | 0 | 0 | 0 | 80-80 | COLLECT_OTHER 2, KILL 1 |
+| Instance (dungeon) | Pit of Saron | 4813 | 3 | 0 | 0 | 0 | 80-80 | COLLECT_OTHER 2, SPELL_CREDIT 1 |
 | Instance (dungeon) | Halls of Reflection | 4820 | 3 | 0 | 0 | 0 | 80-80 | ITEM_USE_ON_TARGET 2, SPELL_CREDIT 1 |
 | Instance (dungeon) | The Forge of Souls | 4809 | 3 | 0 | 0 | 0 | 80-80 | TALK_ONLY 2, KILL 1 |
 | Instance (dungeon) | Auchenai Crypts | 3790 | 2 | 0 | 0 | 0 | 67-68 | KILL 2 |
@@ -189,7 +189,7 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Instance (dungeon) | Shadow Labyrinth | 3789 | 1 | 0 | 0 | 0 | 70-70 | COLLECT_DROP 1 |
 | Instance (dungeon) | The Culling of Stratholme | 4100 | 1 | 0 | 0 | 0 | 80-80 | ITEM_USE_ON_TARGET 1 |
 | Instance (raid) | Ahn'Qiraj | 3428 | 78 | 0 | 0 | 0 | 60-60 | COLLECT_DROP 75, TALK_ONLY 3 |
-| Instance (raid) | Icecrown Citadel | 4812 | 59 | 0 | 0 | 0 | 80-80 | COLLECT_OTHER 37, KILL 5, EVENT_CREDIT 5, SPELL_CREDIT 4 |
+| Instance (raid) | Icecrown Citadel | 4812 | 59 | 0 | 0 | 0 | 80-80 | COLLECT_OTHER 37, SPELL_CREDIT 5, EVENT_CREDIT 5, TALK_ONLY 4 |
 | Instance (raid) | Zul'Gurub | 1977 | 48 | 0 | 0 | 0 | 60-60 | COLLECT_OTHER 30, TALK_ONLY 9, GAMEOBJECT_COLLECT 9 |
 | Instance (raid) | Naxxramas | 3456 | 22 | 0 | 0 | 0 | 60-80 | GAMEOBJECT_COLLECT 14, KILL 5, TALK_ONLY 2, COLLECT_OTHER 1 |
 | Instance (raid) | Ulduar | 4273 | 21 | 0 | 0 | 0 | 80-80 | GAMEOBJECT_COLLECT 8, TALK_ONLY 7, KILL 4, EXPLORE 1 |
@@ -207,18 +207,18 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Instance (raid) | The Obsidian Sanctum | 4493 | 1 | 0 | 0 | 0 | 80-80 | KILL 1 |
 | Instance (raid) | Trial of the Crusader | 4722 | 1 | 0 | 0 | 0 | 80-80 | KILL 1 |
 | Kalimdor | Orgrimmar | 1637 | 226 | 10 | 108 | 88 | 15-60 | TALK_ONLY 76, COLLECT_OTHER 49, COLLECT_DROP 45, GAMEOBJECT_COLLECT 27 |
-| Kalimdor | The Barrens | 17 | 153 | 17 | 96 | 120 | 10-25 | TALK_ONLY 64, COLLECT_DROP 40, GAMEOBJECT_COLLECT 23, COLLECT_OTHER 9 |
-| Kalimdor | Dustwallow Marsh | 15 | 135 | 73 | 61 | 107 | 35-41 | TALK_ONLY 67, COLLECT_DROP 20, ITEM_USE_ON_TARGET 13, GAMEOBJECT_COLLECT 12 |
+| Kalimdor | The Barrens | 17 | 153 | 17 | 96 | 119 | 10-25 | TALK_ONLY 64, COLLECT_DROP 40, GAMEOBJECT_COLLECT 23, COLLECT_OTHER 9 |
+| Kalimdor | Dustwallow Marsh | 15 | 135 | 73 | 61 | 104 | 35-41 | TALK_ONLY 67, COLLECT_DROP 20, ITEM_USE_ON_TARGET 13, GAMEOBJECT_COLLECT 11 |
 | Kalimdor | Silithus | 1377 | 127 | 96 | 96 | 63 | 59-60 | TALK_ONLY 33, COLLECT_OTHER 30, COLLECT_DROP 25, ITEM_USE_ON_TARGET 18 |
 | Kalimdor | Tanaris | 440 | 118 | 80 | 83 | 60 | 45-60 | TALK_ONLY 39, COLLECT_OTHER 36, COLLECT_DROP 16, GAMEOBJECT_COLLECT 12 |
-| Kalimdor | Durotar | 14 | 102 | 5 | 34 | 62 | 5-13 | TALK_ONLY 49, COLLECT_DROP 12, COLLECT_OTHER 11, ITEM_USE_ON_TARGET 9 |
+| Kalimdor | Durotar | 14 | 102 | 5 | 34 | 61 | 5-13 | TALK_ONLY 49, COLLECT_DROP 12, COLLECT_OTHER 11, ITEM_USE_ON_TARGET 9 |
 | Kalimdor | Feralas | 357 | 101 | 48 | 40 | 63 | 43-50 | TALK_ONLY 46, COLLECT_DROP 19, GAMEOBJECT_COLLECT 14, COLLECT_OTHER 11 |
 | Kalimdor | Ashenvale | 331 | 96 | 56 | 31 | 78 | 20-32 | TALK_ONLY 47, COLLECT_DROP 14, GAMEOBJECT_COLLECT 13, KILL 9 |
 | Kalimdor | Felwood | 361 | 95 | 56 | 56 | 40 | 54-56 | COLLECT_OTHER 40, COLLECT_DROP 21, TALK_ONLY 13, KILL 9 |
 | Kalimdor | Darkshore | 148 | 80 | 70 | 7 | 60 | 12-22 | TALK_ONLY 30, COLLECT_DROP 20, GAMEOBJECT_COLLECT 8, EVENT_CREDIT 5 |
 | Kalimdor | Thunder Bluff | 1638 | 75 | 1 | 37 | 46 | 15-60 | TALK_ONLY 43, GAMEOBJECT_COLLECT 9, COLLECT_OTHER 9, COLLECT_DROP 5 |
 | Kalimdor | Winterspring | 618 | 67 | 51 | 41 | 45 | 54-60 | TALK_ONLY 32, COLLECT_DROP 16, GAMEOBJECT_COLLECT 7, KILL 6 |
-| Kalimdor | Teldrassil | 141 | 66 | 33 | 3 | 42 | 5-12 | TALK_ONLY 36, EVENT_CREDIT 10, COLLECT_DROP 8, GAMEOBJECT_COLLECT 4 |
+| Kalimdor | Teldrassil | 141 | 66 | 33 | 3 | 41 | 5-12 | TALK_ONLY 36, EVENT_CREDIT 10, COLLECT_DROP 8, GAMEOBJECT_COLLECT 4 |
 | Kalimdor | Thousand Needles | 400 | 65 | 35 | 55 | 48 | 27-42 | TALK_ONLY 38, COLLECT_DROP 9, GAMEOBJECT_COLLECT 9, KILL 3 |
 | Kalimdor | Desolace | 405 | 62 | 37 | 35 | 50 | 32-40 | TALK_ONLY 25, COLLECT_DROP 22, KILL 4, GAMEOBJECT_COLLECT 4 |
 | Kalimdor | Un'Goro Crater | 490 | 59 | 48 | 50 | 42 | 52-55 | GAMEOBJECT_COLLECT 16, TALK_ONLY 15, COLLECT_DROP 12, EVENT_CREDIT 5 |
@@ -239,17 +239,17 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Kalimdor | Camp Narache | 221 | 1 | 0 | 1 | 1 | 1-1 | TALK_ONLY 1 |
 | Kalimdor | Alcaz Island | 2079 | 1 | 1 | 1 | 0 | 60-60 | GAMEOBJECT_COLLECT 1 |
 | Kalimdor | Darkspear Strand | 393 | 1 | 0 | 0 | 0 | 78-78 | SPELL_CREDIT 1 |
-| Kalimdor (map 530) | Azuremyst Isle | 3524 | 88 | 45 | 1 | 72 | 6-11 | TALK_ONLY 52, COLLECT_DROP 10, KILL 6, EVENT_CREDIT 6 |
-| Kalimdor (map 530) | Bloodmyst Isle | 3525 | 81 | 74 | 0 | 62 | 12-19 | TALK_ONLY 30, KILL 15, COLLECT_DROP 13, GAMEOBJECT_COLLECT 8 |
+| Kalimdor (map 530) | Azuremyst Isle | 3524 | 88 | 45 | 1 | 71 | 6-11 | TALK_ONLY 52, COLLECT_DROP 10, EVENT_CREDIT 6, KILL 5 |
+| Kalimdor (map 530) | Bloodmyst Isle | 3525 | 81 | 74 | 0 | 61 | 12-19 | TALK_ONLY 30, COLLECT_DROP 13, KILL 13, GAMEOBJECT_COLLECT 8 |
 | Kalimdor (map 530) | The Exodar | 3557 | 11 | 8 | 0 | 7 | 10-60 | GAMEOBJECT_COLLECT 5, TALK_ONLY 2, EVENT_CREDIT 2, EXPLORE 1 |
-| Northrend | Icecrown | 210 | 445 | 264 | 265 | 256 | 80-80 | TALK_ONLY 109, KILL 79, ITEM_USE_ON_TARGET 75, COLLECT_OTHER 58 |
-| Northrend | Dragonblight | 65 | 250 | 142 | 152 | 184 | 72-74 | TALK_ONLY 99, ITEM_USE_ON_TARGET 39, KILL 39, COLLECT_DROP 23 |
-| Northrend | Borean Tundra | 3537 | 244 | 128 | 153 | 193 | 71-72 | TALK_ONLY 94, ITEM_USE_ON_TARGET 45, KILL 34, COLLECT_DROP 25 |
-| Northrend | Howling Fjord | 495 | 224 | 138 | 108 | 166 | 71-71 | TALK_ONLY 68, ITEM_USE_ON_TARGET 39, KILL 36, GAMEOBJECT_COLLECT 28 |
-| Northrend | Grizzly Hills | 394 | 174 | 96 | 86 | 104 | 74-75 | TALK_ONLY 43, ITEM_USE_ON_TARGET 35, COLLECT_DROP 21, KILL 20 |
-| Northrend | The Storm Peaks | 67 | 151 | 117 | 115 | 107 | 78-80 | TALK_ONLY 43, ITEM_USE_ON_TARGET 36, KILL 24, GAMEOBJECT_COLLECT 20 |
+| Northrend | Icecrown | 210 | 445 | 264 | 265 | 246 | 80-80 | TALK_ONLY 109, ITEM_USE_ON_TARGET 75, KILL 69, SPELL_CREDIT 61 |
+| Northrend | Dragonblight | 65 | 250 | 142 | 152 | 180 | 72-74 | TALK_ONLY 99, ITEM_USE_ON_TARGET 39, KILL 35, COLLECT_DROP 23 |
+| Northrend | Borean Tundra | 3537 | 244 | 128 | 153 | 191 | 71-72 | TALK_ONLY 94, ITEM_USE_ON_TARGET 45, KILL 32, COLLECT_DROP 25 |
+| Northrend | Howling Fjord | 495 | 224 | 138 | 108 | 162 | 71-71 | TALK_ONLY 68, ITEM_USE_ON_TARGET 39, KILL 30, GAMEOBJECT_COLLECT 28 |
+| Northrend | Grizzly Hills | 394 | 174 | 96 | 86 | 104 | 74-75 | TALK_ONLY 43, ITEM_USE_ON_TARGET 35, COLLECT_DROP 21, KILL 19 |
+| Northrend | The Storm Peaks | 67 | 151 | 117 | 115 | 107 | 78-80 | TALK_ONLY 43, ITEM_USE_ON_TARGET 36, GAMEOBJECT_COLLECT 20, KILL 20 |
 | Northrend | Zul'Drak | 66 | 137 | 130 | 130 | 100 | 75-77 | ITEM_USE_ON_TARGET 32, TALK_ONLY 30, COLLECT_DROP 21, KILL 17 |
-| Northrend | Sholazar Basin | 3711 | 94 | 87 | 87 | 66 | 76-78 | TALK_ONLY 21, ITEM_USE_ON_TARGET 20, KILL 15, COLLECT_DROP 11 |
+| Northrend | Sholazar Basin | 3711 | 94 | 87 | 87 | 65 | 76-78 | TALK_ONLY 21, ITEM_USE_ON_TARGET 20, KILL 14, COLLECT_DROP 11 |
 | Northrend | Crystalsong Forest | 2817 | 52 | 0 | 0 | 0 | 1-70 | TALK_ONLY 20, COLLECT_OTHER 19, GAMEOBJECT_COLLECT 5, COLLECT_DROP 3 |
 | Northrend | Coldarra | 4024 | 15 | 15 | 15 | 12 | 71-80 | COLLECT_DROP 4, ITEM_USE_ON_TARGET 4, KILL 3, TALK_ONLY 2 |
 | Northrend | Dalaran | 4395 | 6 | 4 | 4 | 6 | 74-80 | TALK_ONLY 3, COLLECT_DROP 2, GAMEOBJECT_USE 1 |
@@ -258,18 +258,18 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Northrend | Wintergrasp | 4197 | 1 | 0 | 0 | 0 | 1-1 | TALK_ONLY 1 |
 | Northrend | Ulduar | 4445 | 1 | 0 | 0 | 0 | 80-80 | COLLECT_DROP 1 |
 | Northrend | Hrothgar's Landing | 4769 | 1 | 1 | 1 | 1 | 80-80 | GAMEOBJECT_COLLECT 1 |
-| Outland | Hellfire Peninsula | 3483 | 208 | 109 | 122 | 147 | 61-63 | TALK_ONLY 74, KILL 38, ITEM_USE_ON_TARGET 29, COLLECT_DROP 28 |
+| Outland | Hellfire Peninsula | 3483 | 208 | 109 | 122 | 146 | 61-63 | TALK_ONLY 74, KILL 37, ITEM_USE_ON_TARGET 29, COLLECT_DROP 28 |
 | Outland | Shadowmoon Valley | 3520 | 194 | 145 | 145 | 130 | 69-70 | TALK_ONLY 62, COLLECT_DROP 40, ITEM_USE_ON_TARGET 23, GAMEOBJECT_COLLECT 22 |
-| Outland | Terokkar Forest | 3519 | 179 | 89 | 94 | 95 | 63-65 | TALK_ONLY 51, KILL 35, COLLECT_DROP 30, COLLECT_OTHER 27 |
+| Outland | Terokkar Forest | 3519 | 179 | 89 | 94 | 94 | 63-65 | TALK_ONLY 51, KILL 34, COLLECT_DROP 30, COLLECT_OTHER 27 |
 | Outland | Blade's Edge Mountains | 3522 | 162 | 99 | 102 | 115 | 66-70 | TALK_ONLY 47, ITEM_USE_ON_TARGET 31, KILL 29, COLLECT_DROP 27 |
-| Outland | Netherstorm | 3523 | 151 | 143 | 143 | 108 | 68-70 | TALK_ONLY 38, COLLECT_DROP 33, KILL 24, ITEM_USE_ON_TARGET 22 |
-| Outland | Nagrand | 3518 | 144 | 89 | 101 | 94 | 65-68 | TALK_ONLY 43, KILL 31, COLLECT_DROP 26, ITEM_USE_ON_TARGET 15 |
+| Outland | Netherstorm | 3523 | 151 | 143 | 143 | 108 | 68-70 | TALK_ONLY 38, COLLECT_DROP 33, KILL 23, ITEM_USE_ON_TARGET 22 |
+| Outland | Nagrand | 3518 | 144 | 89 | 101 | 94 | 65-68 | TALK_ONLY 43, KILL 29, COLLECT_DROP 26, ITEM_USE_ON_TARGET 15 |
 | Outland | Zangarmarsh | 3521 | 115 | 69 | 67 | 82 | 62-64 | TALK_ONLY 32, COLLECT_DROP 23, KILL 21, GAMEOBJECT_COLLECT 19 |
 | Outland | Shattrath City | 3703 | 73 | 51 | 50 | 49 | 65-70 | TALK_ONLY 29, COLLECT_DROP 29, COLLECT_OTHER 7, EVENT_CREDIT 3 |
 | Outland | Sunstrider Isle | 3431 | 21 | 0 | 15 | 20 | 1-5 | TALK_ONLY 13, COLLECT_DROP 3, KILL 2, GAMEOBJECT_COLLECT 1 |
-| Outland | Ammen Vale | 3526 | 19 | 19 | 1 | 19 | 1-5 | TALK_ONLY 8, KILL 4, COLLECT_DROP 3, ITEM_USE_ON_TARGET 2 |
-| Outland | Auchindoun | 3688 | 16 | 3 | 3 | 2 | 67-67 | COLLECT_DROP 6, TALK_ONLY 5, KILL 3, GAMEOBJECT_COLLECT 2 |
-| Outland | Skettis | 3679 | 13 | 2 | 2 | 1 | 70-70 | KILL 3, TALK_ONLY 3, COLLECT_DROP 2, ITEM_USE_ON_TARGET 2 |
+| Outland | Ammen Vale | 3526 | 19 | 19 | 1 | 18 | 1-5 | TALK_ONLY 8, COLLECT_DROP 3, KILL 3, ITEM_USE_ON_TARGET 2 |
+| Outland | Auchindoun | 3688 | 16 | 3 | 3 | 2 | 67-67 | COLLECT_DROP 6, TALK_ONLY 5, GAMEOBJECT_COLLECT 2, KILL 2 |
+| Outland | Skettis | 3679 | 13 | 2 | 2 | 0 | 70-70 | TALK_ONLY 3, COLLECT_DROP 2, ITEM_USE_ON_TARGET 2, KILL 2 |
 | Outland | Coilfang Reservoir | 3905 | 6 | 1 | 1 | 1 | 65-65 | COLLECT_DROP 3, KILL 2, TALK_ONLY 1 |
 | Outland | The Black Temple | 3840 | 3 | 0 | 0 | 0 | 70-70 | KILL 1, TALK_ONLY 1, COLLECT_OTHER 1 |
 | Outland | Tempest Keep | 3842 | 1 | 0 | 0 | 0 | 70-70 | TALK_ONLY 1 |
@@ -280,7 +280,7 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 | Unknown | Rogue | 0 | 1 | 0 | 0 | 0 | 13-13 | COLLECT_DROP 1 |
 | Unknown | (zone 0) | 0 | 1 | 1 | 1 | 0 | 15-15 | TALK_ONLY 1 |
 | Unknown map 369 | Deeprun Tram | 2257 | 2 | 2 | 0 | 0 | 12-12 | ITEM_USE_ON_TARGET 1, TALK_ONLY 1 |
-| **total** | | | **8122** | | | **4923** | | |
+| **total** | | | **8122** | | | **4886** | | |
 
 ## 9. Method, caveats and assumptions
 
@@ -290,6 +290,6 @@ A **questing zone** for a faction = zone with >= 5 available open-world quests (
 - **Continent** = continent of the zone's AreaTable map (so a quest sorted to an instance zone reports `Instance (...)` even when its giver stands outside); `starterContinent` in the JSON holds the giver's (else ender's) first-spawn continent. Map 530 is split: Eversong/Ghostlands/Silvermoon/Quel'Danas -> `Eastern Kingdoms (map 530)`, Azuremyst/Bloodmyst/Exodar -> `Kalimdor (map 530)`. Only the first spawn of multi-spawn starters is used.
 - **Faction** from AllowableRaces (0 = all). When that says Both and the starter creature's FactionTemplate is hostile to / grouped only with one side, faction is narrowed (factionSource=starter_faction_template). Neutral starters that are actually faction-gated by reputation or phasing are not detected.
 - **Availability** is conservative-static: disables table (673 quest entries), deprecated-title regex, QuestType=1 (TrinityCore/AC 'disabled' method), Flags&UNAVAILABLE, no playable race, no starter (none of creature/gameobject/event/item startquest/RewardNextQuest chain/SmartAI OFFER_QUEST), or starter entry with zero spawns (may be script-summoned: false negatives possible). Quests started by spells, C++ scripts or phasing without any of these links count as NO_STARTER.
-- **Family heuristics.** Creature objectives whose name matches credit/bunny/trigger/etc. or flags_extra TRIGGER count as SPELL_CREDIT; any provided item (StartItem/ItemDrop) plus a creature/GO objective = ITEM_USE_ON_TARGET (may over-count quests where the provided item is incidental). Required items are sourced by creature loot/questitem/reference loot (COLLECT_DROP), gameobject loot/questitem (GAMEOBJECT_COLLECT), else COLLECT_OTHER (vendor/craft/container/pickpocket...). ESCORT = QuestInfoID 84, SmartAI ESCORT_START tied to the quest, or a QUEST_ constant in a C++ file using EscortAI/FollowerAI when the quest has EXPLORATION_OR_EVENT and no objectives. EVENT_CREDIT = SpecialFlags EXPLORATION_OR_EVENT without an areatrigger (scripted credit).
+- **Family heuristics.** Creature objectives whose name matches credit/bunny/trigger/etc., flags_extra TRIGGER, or whose faction template is friendly to every side that can take the quest (unkillable by the questing player, e.g. q9283 heal credit) count as SPELL_CREDIT; any provided item (StartItem/ItemDrop) plus a creature/GO objective = ITEM_USE_ON_TARGET (may over-count quests where the provided item is incidental). Required items are sourced by creature loot/questitem/reference loot (COLLECT_DROP), gameobject loot/questitem (GAMEOBJECT_COLLECT), else COLLECT_OTHER (vendor/craft/container/pickpocket...). ESCORT = QuestInfoID 84, SmartAI ESCORT_START tied to the quest, or a QUEST_ constant in a C++ file using EscortAI/FollowerAI when the quest has EXPLORATION_OR_EVENT and no objectives. EVENT_CREDIT = SpecialFlags EXPLORATION_OR_EVENT without an areatrigger (scripted credit).
 - **VEHICLE_HEURISTIC** (a vehicle creature's spellclick is condition-gated on this quest being taken/complete, or a target creature has VehicleId or spellclick, or quest-text keywords; vehicles summoned by item/gossip spells are missed) is a heuristic with both false positives and negatives. GROUP_ELITE = SuggestedGroupNum>1, QuestInfoID Group, or an elite/boss objective creature. DUNGEON/RAID = QuestInfoID or objective spawns / zone on party/raid instance maps.
 - **Self-check** vs live-proven fixtures (783 talk, 792 kill, 789/459/916 collect, 917 GO-collect, 786 GO-use, 5441 item-use, 435 escort): all match.

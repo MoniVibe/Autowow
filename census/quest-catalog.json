@@ -14426,7 +14426,7 @@
    "family": "EVENT_CREDIT",
    "objectives": [
     "EVENT_CREDIT",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -49191,7 +49191,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY",
@@ -50875,10 +50875,10 @@
   {
    "id": 1719,
    "title": "The Affray",
-   "family": "EXPLORE",
+   "family": "SPELL_CREDIT",
    "objectives": [
     "EXPLORE",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "TIMED",
@@ -54747,7 +54747,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -66979,9 +66979,9 @@
   {
    "id": 3383,
    "title": "<UNUSED>",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -68694,7 +68694,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -82118,9 +82118,9 @@
   {
    "id": 4921,
    "title": "Lost in Battle",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -82147,7 +82147,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 4941,
@@ -84694,7 +84694,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -84729,7 +84729,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -86495,9 +86495,9 @@
   {
    "id": 5211,
    "title": "Defenders of Darrowshire",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -86524,7 +86524,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 5212,
@@ -88122,7 +88122,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DUNGEON"
@@ -91034,7 +91034,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -91170,9 +91170,9 @@
   {
    "id": 5621,
    "title": "Garments of the Moon",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -91201,7 +91201,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 5622,
@@ -91274,9 +91274,9 @@
   {
    "id": 5624,
    "title": "Garments of the Light",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -91305,14 +91305,14 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 5625,
    "title": "Garments of the Light",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -91341,7 +91341,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 5626,
@@ -92055,9 +92055,9 @@
   {
    "id": 5648,
    "title": "Garments of Spirituality",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -92086,7 +92086,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 5649,
@@ -92125,9 +92125,9 @@
   {
    "id": 5650,
    "title": "Garments of Darkness",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -92156,7 +92156,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 5651,
@@ -94190,7 +94190,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "RAID"
@@ -110320,7 +110320,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DUNGEON",
@@ -127237,9 +127237,9 @@
   {
    "id": 8353,
    "title": "Chicken Clucking for a Mint",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127277,7 +127277,7 @@
    "family": "EVENT_CREDIT",
    "objectives": [
     "EVENT_CREDIT",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127312,9 +127312,9 @@
   {
    "id": 8355,
    "title": "Incoming Gumdrop",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127349,9 +127349,9 @@
   {
    "id": 8356,
    "title": "Flexing for Nougat",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127387,9 +127387,9 @@
   {
    "id": 8357,
    "title": "Dancing for Marzipan",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127424,9 +127424,9 @@
   {
    "id": 8358,
    "title": "Incoming Gumdrop",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127461,9 +127461,9 @@
   {
    "id": 8359,
    "title": "Flexing for Nougat",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -127498,9 +127498,9 @@
   {
    "id": 8360,
    "title": "Dancing for Marzipan",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "REPEATABLE",
@@ -131904,7 +131904,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -141050,7 +141050,7 @@
    "objectives": [
     "COLLECT_DROP",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY"
@@ -141623,7 +141623,7 @@
    "objectives": [
     "COLLECT_DROP",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY"
@@ -155893,7 +155893,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -160126,9 +160126,9 @@
   {
    "id": 9283,
    "title": "Rescue the Survivors!",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -160155,7 +160155,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 9284,
@@ -164702,9 +164702,9 @@
   {
    "id": 9419,
    "title": "Scouring the Desert",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "PVP"
@@ -164807,9 +164807,9 @@
   {
    "id": 9422,
    "title": "Scouring the Desert",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "PVP"
@@ -165312,10 +165312,10 @@
   {
    "id": 9437,
    "title": "Twilight of the Dawn Runner",
-   "family": "GAMEOBJECT_COLLECT",
+   "family": "SPELL_CREDIT",
    "objectives": [
     "GAMEOBJECT_COLLECT",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -165342,7 +165342,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 9438,
@@ -166527,7 +166527,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -168323,9 +168323,9 @@
   {
    "id": 9524,
    "title": "Imprisoned in the Citadel",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DUNGEON"
@@ -168359,9 +168359,9 @@
   {
    "id": 9525,
    "title": "Imprisoned in the Citadel",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DUNGEON"
@@ -168573,7 +168573,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -169003,7 +169003,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -170422,9 +170422,9 @@
   {
    "id": 9586,
    "title": "Help Tavara",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -170453,7 +170453,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 9587,
@@ -170783,9 +170783,9 @@
   {
    "id": 9596,
    "title": "<DEPRECATED>Control",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -173054,9 +173054,9 @@
   {
    "id": 9663,
    "title": "The Kessel Run",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "TIMED"
@@ -173299,9 +173299,9 @@
   {
    "id": 9670,
    "title": "They're Alive! Maybe...",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -173328,7 +173328,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 9671,
@@ -178315,7 +178315,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -181984,7 +181984,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -182019,7 +182019,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -182822,7 +182822,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -187851,9 +187851,10 @@
   {
    "id": 10097,
    "title": "Brother Against Brother",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE",
@@ -191361,9 +191362,9 @@
   {
    "id": 10201,
    "title": "And Now, the Moment of Truth",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -191390,7 +191391,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 10202,
@@ -193231,7 +193232,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -197112,7 +197113,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -198445,7 +198446,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -198941,7 +198942,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -199515,9 +199516,10 @@
   {
    "id": 10439,
    "title": "Dimensius the All-Devouring",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -203515,7 +203517,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -203747,7 +203749,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -203852,7 +203854,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -204884,7 +204886,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -205870,7 +205872,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -206348,9 +206350,9 @@
   {
    "id": 10639,
    "title": "Teron Gorefiend, I am...",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -206489,7 +206491,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -206553,9 +206555,9 @@
   {
    "id": 10645,
    "title": "Teron Gorefiend, I am...",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -211587,7 +211589,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -213801,7 +213803,7 @@
    "objectives": [
     "EVENT_CREDIT",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -214106,9 +214108,9 @@
   {
    "id": 10864,
    "title": "A Burden of Souls",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -214135,7 +214137,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 10865,
@@ -219070,9 +219072,9 @@
   {
    "id": 11005,
    "title": "Secrets of the Talonpriests",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -219099,7 +219101,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11006,
@@ -221175,7 +221177,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -221211,7 +221213,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -223053,7 +223055,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY"
@@ -223123,7 +223125,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY"
@@ -223322,9 +223324,9 @@
   {
    "id": 11126,
    "title": "Traitors Among Us",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -223351,7 +223353,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11127,
@@ -223427,7 +223429,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -223573,7 +223575,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -223976,7 +223978,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -224216,7 +224218,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -224809,7 +224811,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -225178,9 +225180,9 @@
   {
    "id": 11180,
    "title": "What's Haunting Witch Hill?",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -225207,7 +225209,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11181,
@@ -226549,9 +226551,9 @@
   {
    "id": 11221,
    "title": "Reports from the Field",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -226645,9 +226647,9 @@
   {
    "id": 11224,
    "title": "Send Them Packing",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -226674,7 +226676,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11225,
@@ -226882,7 +226884,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -227706,7 +227708,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -228051,7 +228053,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -229117,9 +229119,9 @@
   {
    "id": 11296,
    "title": "Rivenwood Captives",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -229146,7 +229148,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11297,
@@ -232469,9 +232471,9 @@
   {
    "id": 11390,
    "title": "I've Got a Flying Machine!",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -235879,9 +235881,9 @@
   {
    "id": 11489,
    "title": "Iron Rune Constructs and You: Collecting Data",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -235908,7 +235910,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11490,
@@ -236051,9 +236053,9 @@
   {
    "id": 11494,
    "title": "Lightning Infused Relics",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -236080,7 +236082,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11495,
@@ -236332,9 +236334,9 @@
   {
    "id": 11502,
    "title": "In Defense of Halaa",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -236370,9 +236372,9 @@
   {
    "id": 11503,
    "title": "Enemies, Old and New",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -238460,9 +238462,9 @@
   {
    "id": 11560,
    "title": "Oh Noes, the Tadpoles!",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -238489,7 +238491,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11561,
@@ -239378,7 +239380,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -239473,7 +239475,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -240175,9 +240177,9 @@
   {
    "id": 11611,
    "title": "Taken by the Scourge",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -240204,7 +240206,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 11612,
@@ -241552,10 +241554,11 @@
   {
    "id": 11652,
    "title": "The Plains of Nasam",
-   "family": "EXPLORE",
+   "family": "SPELL_CREDIT",
    "objectives": [
     "EXPLORE",
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -242394,7 +242397,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -243410,7 +243413,8 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -243611,7 +243615,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -243717,7 +243721,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -243988,7 +243992,8 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -246505,7 +246510,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -249615,7 +249620,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -250037,7 +250042,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -250246,7 +250251,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -252698,7 +252703,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -253181,7 +253186,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -256136,7 +256141,8 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -257131,7 +257137,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -258454,7 +258460,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -258527,7 +258533,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -260036,7 +260042,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -260518,7 +260524,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -260726,9 +260732,9 @@
   {
    "id": 12204,
    "title": "In the Name of Loken",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -261847,7 +261853,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -262125,9 +262131,9 @@
   {
    "id": 12245,
    "title": "No Mercy for the Captured",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -262154,7 +262160,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 12246,
@@ -262400,9 +262406,9 @@
   {
    "id": 12253,
    "title": "Rescue from Town Square",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -262429,7 +262435,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 12254,
@@ -264909,7 +264915,6 @@
    "title": "Steamtank Surprise",
    "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL",
     "SPELL_CREDIT"
    ],
    "flags": [
@@ -267982,7 +267987,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -268019,7 +268024,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -269473,9 +269478,9 @@
   {
    "id": 12457,
    "title": "The Chain Gun And You",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -269502,7 +269507,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 12458,
@@ -269640,9 +269645,10 @@
   {
    "id": 12462,
    "title": "Breaking Off A Piece",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -269669,7 +269675,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 12463,
@@ -273977,7 +273983,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -274077,9 +274083,9 @@
   {
    "id": 12592,
    "title": "The Great Hunter's Challenge",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -274106,7 +274112,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 12593,
@@ -274597,7 +274603,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -275452,7 +275458,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -275895,7 +275901,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -277204,7 +277210,8 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -277724,7 +277731,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "CLASS"
@@ -282765,7 +282772,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -283216,9 +283223,10 @@
   {
    "id": 12856,
    "title": "Cold Hearted",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -283396,7 +283404,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -285398,7 +285406,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE",
@@ -285986,7 +285994,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -286540,7 +286548,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -286676,9 +286684,10 @@
   {
    "id": 12957,
    "title": "Slaves of the Stormforged",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -287418,9 +287427,9 @@
   {
    "id": 12978,
    "title": "Facing the Storm",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -287491,7 +287500,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -287599,7 +287608,7 @@
    "objectives": [
     "ESCORT",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -288094,7 +288103,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -289497,9 +289506,9 @@
   {
    "id": 13037,
    "title": "Memories of Stormhoof",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -289537,7 +289546,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -289887,7 +289896,7 @@
    "objectives": [
     "DELIVER_PROVIDED_ITEM",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -293297,9 +293306,9 @@
   {
    "id": 13146,
    "title": "Generosity Abounds",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -293326,7 +293335,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13147,
@@ -294110,9 +294119,9 @@
   {
    "id": 13169,
    "title": "An Undead's Best Friend",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -294139,7 +294148,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13170,
@@ -294178,9 +294187,9 @@
   {
    "id": 13171,
    "title": "From Whence They Came",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -294207,7 +294216,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13172,
@@ -298156,7 +298165,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -299723,7 +299732,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -299942,7 +299951,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE"
@@ -301270,9 +301279,10 @@
   {
    "id": 13373,
    "title": "Fringe Science Benefits",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -301299,14 +301309,15 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13374,
    "title": "Amped for Revolt!",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Horde",
@@ -301333,7 +301344,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13375,
@@ -301371,9 +301382,10 @@
   {
    "id": 13376,
    "title": "Total Ohmage: The Valley of Lost Hope!",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -301403,7 +301415,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13377,
@@ -301504,9 +301516,10 @@
   {
    "id": 13380,
    "title": "Leading the Charge",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -301533,14 +301546,15 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13381,
    "title": "Watts My Target",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -301572,9 +301586,10 @@
   {
    "id": 13382,
    "title": "Putting the Hertz: The Valley of Lost Hope",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -301604,7 +301619,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13383,
@@ -302315,9 +302330,10 @@
   {
    "id": 13404,
    "title": "Static Shock Troops: the Bombardment",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -302347,7 +302363,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13405,
@@ -302388,9 +302404,10 @@
   {
    "id": 13406,
    "title": "Riding the Wavelength: The Bombardment",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -302420,7 +302437,7 @@
    },
    "available": true,
    "unavailableReason": null,
-   "botReadyPrediction": true
+   "botReadyPrediction": false
   },
   {
    "id": 13407,
@@ -303025,7 +303042,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -307039,7 +307056,7 @@
     "ESCORT",
     "GAMEOBJECT_COLLECT",
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "VEHICLE_HEURISTIC"
@@ -313655,7 +313672,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY"
@@ -313693,7 +313710,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "HOLIDAY"
@@ -316147,7 +316164,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -316740,7 +316757,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "DAILY",
@@ -319733,9 +319750,10 @@
   {
    "id": 24498,
    "title": "The Path to the Citadel",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE",
@@ -319809,7 +319827,6 @@
    "title": "Wrath of the Lich King",
    "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL",
     "SPELL_CREDIT"
    ],
    "flags": [
@@ -319879,9 +319896,10 @@
   {
    "id": 24507,
    "title": "The Path to the Citadel",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "KILL",
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE",
@@ -323532,7 +323550,6 @@
    "title": "Wrath of the Lich King",
    "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL",
     "SPELL_CREDIT"
    ],
    "flags": [
@@ -325302,9 +325319,9 @@
   {
    "id": 24874,
    "title": "Blood Quickening",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "GROUP_ELITE",
@@ -326407,7 +326424,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -326440,7 +326457,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -327070,7 +327087,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Alliance",
@@ -327583,9 +327600,9 @@
   {
    "id": 25414,
    "title": "The Missing",
-   "family": "KILL",
+   "family": "SPELL_CREDIT",
    "objectives": [
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [],
    "faction": "Both",
@@ -327890,7 +327907,7 @@
    "family": "ITEM_USE_ON_TARGET",
    "objectives": [
     "ITEM_USE_ON_TARGET",
-    "KILL"
+    "SPELL_CREDIT"
    ],
    "flags": [
     "EVENT_GATED"

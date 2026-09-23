@@ -290,6 +290,16 @@ def main():
                 return e, tab[e][0]
         return (entries[0] if entries else 0), None
 
+    def friendly_to(entry, side_bit):
+        """True if a creature's faction template is friendly to a player side (2 alliance, 4 horde)."""
+        f = FTPL.get(ct.get(entry, {}).get("faction", 0))
+        if not f:
+            return False
+        grp, friend, enemy = f
+        # friend bit 1 (all players) counts only for non-player-group templates (e.g. 35); player-group
+        # templates (grp & 1, e.g. 290 Defias Prisoner) take hostility from reputation, not these masks.
+        return not (enemy & side_bit) and bool((grp | friend) & side_bit or (not grp & 1 and friend & 1))
+
     def faction_ok(entry):
         """(alliance_ok, horde_ok) for a starter creature's faction template."""
         f = FTPL.get(ct.get(entry, {}).get("faction", 0))
@@ -371,6 +381,10 @@ def main():
         creds = [n for n in npcs if n > 0]
         gos = [-n for n in npcs if n < 0]
         credit_bunny = [n for n in creds if CREDIT_NAME.search(ct.get(n, {}).get("name", "")) or (ct.get(n, {}).get("flags_extra", 0) & 0x80)]
+        # A required creature friendly to every side that can take the quest cannot be killed by it:
+        # its credit comes from a spell/script (q9283 heal-credits friendly Draenei Survivors, faction 1638).
+        sides = [b for b, ok in ((2, al), (4, ho)) if ok]
+        credit_bunny += [n for n in creds if n not in credit_bunny and sides and all(friendly_to(n, b) for b in sides)]
         real_kills = [n for n in creds if n not in credit_bunny]
         req_items = [q["RequiredItemId%d" % i] for i in range(1, 7) if q["RequiredItemId%d" % i]]
         for it in req_items:
@@ -482,7 +496,8 @@ def main():
 
     # ---- self-check against live-proven fixtures (QUEST_TYPE_COVERAGE_REPORT.md)
     expect = {783: "TALK_ONLY", 792: "KILL", 789: "COLLECT_DROP", 459: "COLLECT_DROP", 916: "COLLECT_DROP",
-              917: "GAMEOBJECT_COLLECT", 786: "GAMEOBJECT_USE", 5441: "ITEM_USE_ON_TARGET", 435: "ESCORT"}
+              917: "GAMEOBJECT_COLLECT", 786: "GAMEOBJECT_USE", 5441: "ITEM_USE_ON_TARGET", 435: "ESCORT",
+              9283: "SPELL_CREDIT", 170: "KILL"}
     got = {k: by_id[k]["family"] for k in expect}
     bad = {k: (expect[k], got[k]) for k in expect if got[k] != expect[k]}
     assert len(catalog) == len(qt) == ROWCHECK["quest_template"][0]
@@ -583,7 +598,7 @@ def write_summary(cat, bad, last, applied, ignored, ndis):
     w("- **Continent** = continent of the zone's AreaTable map (so a quest sorted to an instance zone reports `Instance (...)` even when its giver stands outside); `starterContinent` in the JSON holds the giver's (else ender's) first-spawn continent. Map 530 is split: Eversong/Ghostlands/Silvermoon/Quel'Danas -> `Eastern Kingdoms (map 530)`, Azuremyst/Bloodmyst/Exodar -> `Kalimdor (map 530)`. Only the first spawn of multi-spawn starters is used.")
     w("- **Faction** from AllowableRaces (0 = all). When that says Both and the starter creature's FactionTemplate is hostile to / grouped only with one side, faction is narrowed (factionSource=starter_faction_template). Neutral starters that are actually faction-gated by reputation or phasing are not detected.")
     w("- **Availability** is conservative-static: disables table (%d quest entries), deprecated-title regex, QuestType=1 (TrinityCore/AC 'disabled' method), Flags&UNAVAILABLE, no playable race, no starter (none of creature/gameobject/event/item startquest/RewardNextQuest chain/SmartAI OFFER_QUEST), or starter entry with zero spawns (may be script-summoned: false negatives possible). Quests started by spells, C++ scripts or phasing without any of these links count as NO_STARTER." % ndis)
-    w("- **Family heuristics.** Creature objectives whose name matches credit/bunny/trigger/etc. or flags_extra TRIGGER count as SPELL_CREDIT; any provided item (StartItem/ItemDrop) plus a creature/GO objective = ITEM_USE_ON_TARGET (may over-count quests where the provided item is incidental). Required items are sourced by creature loot/questitem/reference loot (COLLECT_DROP), gameobject loot/questitem (GAMEOBJECT_COLLECT), else COLLECT_OTHER (vendor/craft/container/pickpocket...). ESCORT = QuestInfoID 84, SmartAI ESCORT_START tied to the quest, or a QUEST_ constant in a C++ file using EscortAI/FollowerAI when the quest has EXPLORATION_OR_EVENT and no objectives. EVENT_CREDIT = SpecialFlags EXPLORATION_OR_EVENT without an areatrigger (scripted credit).")
+    w("- **Family heuristics.** Creature objectives whose name matches credit/bunny/trigger/etc., flags_extra TRIGGER, or whose faction template is friendly to every side that can take the quest (unkillable by the questing player, e.g. q9283 heal credit) count as SPELL_CREDIT; any provided item (StartItem/ItemDrop) plus a creature/GO objective = ITEM_USE_ON_TARGET (may over-count quests where the provided item is incidental). Required items are sourced by creature loot/questitem/reference loot (COLLECT_DROP), gameobject loot/questitem (GAMEOBJECT_COLLECT), else COLLECT_OTHER (vendor/craft/container/pickpocket...). ESCORT = QuestInfoID 84, SmartAI ESCORT_START tied to the quest, or a QUEST_ constant in a C++ file using EscortAI/FollowerAI when the quest has EXPLORATION_OR_EVENT and no objectives. EVENT_CREDIT = SpecialFlags EXPLORATION_OR_EVENT without an areatrigger (scripted credit).")
     w("- **VEHICLE_HEURISTIC** (a vehicle creature's spellclick is condition-gated on this quest being taken/complete, or a target creature has VehicleId or spellclick, or quest-text keywords; vehicles summoned by item/gossip spells are missed) is a heuristic with both false positives and negatives. GROUP_ELITE = SuggestedGroupNum>1, QuestInfoID Group, or an elite/boss objective creature. DUNGEON/RAID = QuestInfoID or objective spawns / zone on party/raid instance maps.")
     w("- **Self-check** vs live-proven fixtures (783 talk, 792 kill, 789/459/916 collect, 917 GO-collect, 786 GO-use, 5441 item-use, 435 escort): %s." % ("all match" if not bad else "MISMATCHES %s" % bad))
     open(os.path.join(OUT, "CENSUS_SUMMARY.md"), "w", encoding="utf-8").write("\n".join(L) + "\n")
