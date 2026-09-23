@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "AutoWowQuestLedger.h"
 #include "Config.h"
 #include "Creature.h"
 #include "GameTime.h"
@@ -400,6 +401,66 @@ void LifetimeCounters::RecordDotSkip(std::uint64_t skipKey)
     SaturatingIncrement(totals.dotSkips);
 }
 
+bool LifetimeCounters::EmitDue(std::uint64_t nowMs, std::uint64_t intervalMs)
+{
+    if (!intervalMs)
+        return false;
+    if (!emitArmed)
+    {
+        emitArmed = true;
+        lastEmitMs = nowMs;
+        return false;
+    }
+    if (nowMs >= lastEmitMs && nowMs - lastEmitMs < intervalMs)
+        return false;
+    lastEmitMs = nowMs;
+    return true;
+}
+
+std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
+{
+    std::string out;
+    out.reserve(320 + pendingCount * 16);
+    auto field = [&out](char const* name, std::uint64_t value)
+    {
+        out += ",\"";
+        out += name;
+        out += "\":";
+        out += std::to_string(value);
+    };
+    field("cv", kLifetimeSchemaVersion);
+    field("cls", classId);
+    field("wall_ms", totals.wallMs);
+    field("combat_ms", totals.combatMs);
+    field("dead_ms", totals.deadMs);
+    field("starved_ms", totals.starvedMs);
+    field("fights", totals.fights);
+    field("kills", totals.kills);
+    field("deaths", totals.deaths);
+    field("dmg", totals.damageDone);
+    field("taken", totals.damageTaken);
+    field("heal", totals.healing);
+    field("casts", totals.casts);
+    field("gcd_casts", totals.gcdCasts);
+    field("dot_skips", totals.dotSkips);
+    field("ttk_n", totals.ttkCount);
+    field("ttk_drop", totals.ttkDropped);
+    out += ",\"ttk\":[";
+    for (std::size_t k = 0; k < pendingCount; ++k)
+    {
+        if (k)
+            out.push_back(',');
+        out.push_back('[');
+        out += std::to_string(pending[k].ms);
+        out.push_back(',');
+        out += std::to_string(pending[k].levelDelta);
+        out.push_back(']');
+    }
+    out.push_back(']');
+    pendingCount = 0;
+    return out;
+}
+
 std::uint32_t LifetimeCounters::RecentDps() const
 {
     if (recentCombatMs < kRecentDpsMinMs)
@@ -513,7 +574,17 @@ void UpdateLifetime(Player* bot, std::uint32_t botGuid, std::uint32_t diff)
     Powers const power = bot->getPowerType();
     bool const starved = inCombat && IsResourceStarved(static_cast<std::uint8_t>(power), bot->GetPower(power),
                                                        bot->GetMaxPower(power));
-    WithLifetime(botGuid, [&](LifetimeCounters& c) { c.Update(diff, inCombat, dead, starved); });
+    std::uint64_t const nowMs = NowMs();
+    std::string fields;
+    WithLifetime(botGuid, [&](LifetimeCounters& c)
+    {
+        c.Update(diff, inCombat, dead, starved);
+        if (c.EmitDue(nowMs, detail::gLogIntervalMs))
+            fields = c.DrainEmitFields(bot->getClass());
+    });
+    // C6: logged outside the store lock. EmitCombat is a no-op unless AutoWow.Ledger.Enable is on.
+    if (!fields.empty())
+        AutoWowQuestLedger::EmitCombat(bot, fields);
 }
 }  // namespace
 
@@ -682,14 +753,26 @@ public:
         if (!TelemetryEnabled() || !player)
             return;
         std::uint32_t const botGuid = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
-        std::lock_guard<std::mutex> guard(gLifetimeLock);
-        gLifetime.erase(botGuid);
+        std::string fields;
+        {
+            std::lock_guard<std::mutex> guard(gLifetimeLock);
+            auto const it = gLifetime.find(botGuid);
+            if (it == gLifetime.end())
+                return;
+            // Final line so the tail since the last periodic emit is not lost.
+            if (detail::gLogIntervalMs)
+                fields = it->second.DrainEmitFields(player->getClass());
+            gLifetime.erase(it);
+        }
+        if (!fields.empty())
+            AutoWowQuestLedger::EmitCombat(player, fields);
     }
 };
 
 void LoadConfig()
 {
     detail::gTelemetryEnabled = sConfigMgr->GetOption<bool>("AutoWow.CombatTelemetry.Enable", false);
+    detail::gLogIntervalMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.CombatTelemetry.LogIntervalMs", 60000);
 }
 
 void AddAutoWowCombatPerformanceTelemetryScript()

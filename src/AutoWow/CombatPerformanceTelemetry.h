@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 class Unit;
 
@@ -132,6 +133,7 @@ void AddAutoWowCombatPerformanceTelemetryScript();
 namespace detail
 {
 inline bool gTelemetryEnabled = false;
+inline std::uint64_t gLogIntervalMs = 60000;
 }
 
 inline bool TelemetryEnabled() { return detail::gTelemetryEnabled; }
@@ -216,6 +218,11 @@ public:
     // Counts one skipped DoT/debuff opportunity; consecutive skips of the same key count once.
     void RecordDotSkip(std::uint64_t skipKey);
 
+    // C6. First call arms the interval (returns false); then true once per intervalMs (0 = never).
+    bool EmitDue(std::uint64_t nowMs, std::uint64_t intervalMs);
+    // Trailing fields for the ledger `combat` event (",\"cv\":1,..."); drains the pending TTK samples.
+    std::string DrainEmitFields(std::uint32_t classId);
+
     // Damage per second over roughly the last minute of combat; 0 = unknown (too little combat).
     [[nodiscard]] std::uint32_t RecentDps() const;
     [[nodiscard]] LifetimeTotals const& Totals() const { return totals; }
@@ -235,6 +242,8 @@ private:
     std::uint64_t recentDamage = 0;
     std::uint64_t recentCombatMs = 0;
     std::uint64_t lastDotSkipKey = 0;
+    std::uint64_t lastEmitMs = 0;
+    bool emitArmed = false;
 };
 
 // Runtime (world/map-thread; the store is mutex-guarded). No-ops unless TelemetryEnabled().

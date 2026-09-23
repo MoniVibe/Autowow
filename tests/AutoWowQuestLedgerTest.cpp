@@ -39,6 +39,23 @@ TEST(AutoWowQuestLedgerTest, FormatsSchemaV1InStableFieldOrder)
               "\"phase\":\"acquire_target\"}");
 }
 
+TEST(AutoWowQuestLedgerTest, CombatEventAppendsPreformattedFieldsAtQuestZero)
+{
+    Row row;
+    row.ev = Event::Combat;
+    row.ms = 5;
+    row.bot = 62960;
+    row.level = 7;
+    row.extra = ",\"cv\":1,\"cls\":1";
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row),
+              "{\"v\":1,\"run\":\"r\",\"ms\":5,\"ev\":\"combat\",\"bot\":62960,\"team\":0,\"lvl\":7,"
+              "\"quest\":0,\"map\":0,\"zone\":0,\"x\":0,\"y\":0,\"c\":[0,0,0,0],\"i\":[0,0,0,0,0,0],"
+              "\"reason\":\"\",\"phase\":\"\",\"cv\":1,\"cls\":1}");
+    // extra is ignored on every other event.
+    row.ev = Event::Accepted;
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row).find("cv"), std::string::npos);
+}
+
 TEST(AutoWowQuestLedgerTest, DefaultRowHasEmptyStringsAndZeroCounters)
 {
     Row row;

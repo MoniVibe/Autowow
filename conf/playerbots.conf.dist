@@ -2253,6 +2253,12 @@ AutoWow.Ledger.BlockedDedupeMs = 0
 # 1 = count player-side combat entries (OnPlayerEnterCombat) into v1 `combat.entries`, which the core
 # otherwise only raises for creatures. Read once at world init.
 AutoWow.CombatTelemetry.Enable = 0
+# With Enable = 1 (C2/C4/C6): per-bot lifetime totals (wall/combat/dead/starved ms, damage, healing,
+# fights, kills, deaths, casts, GCD casts, DoT-gate skips, kill TTK samples) are emitted every
+# LogIntervalMs as a bot-level `combat` event (schema cv=1, quest 0) on logger `autowow.ledger`
+# (needs AutoWow.Ledger.Enable = 1), plus one final line at logout. Fold with
+# AutoWoW scripts/combat-reduce.py. 0 = never emit (totals still accumulate). Default 60000.
+AutoWow.CombatTelemetry.LogIntervalMs = 60000
 
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most

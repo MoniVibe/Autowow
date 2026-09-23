@@ -223,3 +223,40 @@ TEST(CombatLifetime, DotSkipCountsConsecutiveKeyOnce)
     c.RecordDotSkip(5);
     EXPECT_EQ(c.Totals().dotSkips, 3U);
 }
+
+// C6: the periodic emit arms on first call, then fires once per interval; fields are cumulative and the
+// TTK sample list drains per line.
+TEST(CombatLifetime, EmitIntervalAndFieldFormat)
+{
+    LifetimeCounters c;
+    EXPECT_FALSE(c.EmitDue(1000, 60000));
+    EXPECT_FALSE(c.EmitDue(60999, 60000));
+    EXPECT_TRUE(c.EmitDue(61000, 60000));
+    EXPECT_FALSE(c.EmitDue(61001, 60000));
+    EXPECT_FALSE(c.EmitDue(200000, 0));
+
+    c.RecordFight();
+    c.Update(2000, true, false, false);
+    c.RecordDamageDone(1000, 120, 9);
+    c.RecordKill(4000, 9, -2);
+    EXPECT_EQ(c.DrainEmitFields(8),
+              ",\"cv\":1,\"cls\":8,\"wall_ms\":2000,\"combat_ms\":2000,\"dead_ms\":0,\"starved_ms\":0,"
+              "\"fights\":1,\"kills\":1,\"deaths\":0,\"dmg\":120,\"taken\":0,\"heal\":0,\"casts\":0,"
+              "\"gcd_casts\":0,\"dot_skips\":0,\"ttk_n\":1,\"ttk_drop\":0,\"ttk\":[[3000,-2]]");
+    std::string const second = c.DrainEmitFields(8);
+    EXPECT_NE(second.find("\"ttk_n\":1,"), std::string::npos);
+    EXPECT_NE(second.find("\"ttk\":[]"), std::string::npos);
+}
+
+TEST(CombatLifetime, TtkOverflowIsCountedNotLost)
+{
+    LifetimeCounters c;
+    for (std::uint64_t k = 1; k <= AutoWowCombatPerformanceTelemetry::kTtkPendingMax + 3; ++k)
+    {
+        c.RecordDamageDone(k * 10, 1, k);
+        c.RecordKill(k * 10 + 5, k, 0);
+    }
+    EXPECT_EQ(c.Totals().ttkCount, AutoWowCombatPerformanceTelemetry::kTtkPendingMax + 3);
+    EXPECT_EQ(c.Totals().ttkDropped, 3U);
+    EXPECT_EQ(c.PendingTtk(), AutoWowCombatPerformanceTelemetry::kTtkPendingMax);
+}

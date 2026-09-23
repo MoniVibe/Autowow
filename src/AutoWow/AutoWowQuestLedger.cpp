@@ -189,6 +189,16 @@ void EmitPvpKill(Player* killer, Player* victim, bool honorable)
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
 }
 
+void EmitCombat(Player* player, std::string_view fields)
+{
+    if (!IsRecordedBot(player))
+        return;
+    Row row;
+    FillRow(player, Event::Combat, 0, "", "", row);
+    row.extra = fields;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
 void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase)
 {
     if (!IsRecordedBot(player))

@@ -22,6 +22,8 @@
 //          (creature entry, or player guid-low; a pet/guardian/totem kill names its owning player),
 //          killer level. quest is 0; zone/x/y are the victim's.
 //       victim, vlvl, honorable (pvp_kill): victim guid-low, victim level, core honor eligibility.
+//       cv, cls, ... (combat): bot-level cumulative combat totals, schema `cv`
+//          (AutoWowCombatPerformanceTelemetry::LifetimeCounters::DrainEmitFields). quest is 0.
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -48,7 +50,8 @@ enum class Event : std::uint8_t
     Deferred = 4,
     Contaminated = 5,
     Died = 6,
-    PvpKill = 7
+    PvpKill = 7,
+    Combat = 8
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -63,6 +66,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Contaminated: return "contaminated";
         case Event::Died: return "died";
         case Event::PvpKill: return "pvp_kill";
+        case Event::Combat: return "combat";
     }
     return "unknown";
 }
@@ -120,6 +124,8 @@ struct Row
     std::uint32_t victim = 0;
     std::uint32_t victimLevel = 0;
     bool honorable = false;
+    // combat: pre-formatted trailing fields (",\"cv\":1,..."), appended verbatim
+    std::string_view extra;
 };
 
 // Blocked-row dedupe (pure; unit-tested). A (quest, reason, phase) key emits on change; repeats of
@@ -284,6 +290,8 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += ",\"honorable\":";
         out += row.honorable ? "true" : "false";
     }
+    else if (row.ev == Event::Combat)
+        out += row.extra;
     out += "}";
     return out;
 }
@@ -310,6 +318,8 @@ void NoteKiller(Player* victim, KillerKind kind, std::uint32_t killerId, std::ui
 void EmitDied(Player* victim);
 // `pvp_kill` on the killer's row (no-op unless the killer is a recorded bot).
 void EmitPvpKill(Player* killer, Player* victim, bool honorable);
+// `combat` (no-op unless the player is a recorded bot); fields from DrainEmitFields.
+void EmitCombat(Player* player, std::string_view fields);
 }  // namespace AutoWowQuestLedger
 
 #endif
