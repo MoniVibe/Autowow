@@ -6,11 +6,19 @@ starting at '{"v":' is extracted. Events are folded into rows keyed by (run, bot
 
 Output (in --out-dir):
   ledger-rows.jsonl   one row per (run, bot, quest), sorted by key
-  ledger-summary.md   outcome counts (sum == rows), per-family pass rate, top stall signatures
+  ledger-summary.md   outcome counts (sum == rows), per-family pass rate, top stall signatures,
+                      deaths by killer kind, PvP kills
+
+Bot-level events (quest 0, never a row): `died` (killer, kid, klvl) and `pvp_kill` (victim, vlvl,
+honorable). They feed the death / PvP tables and the `contested` outcome.
+
+Blocked lines may carry `n` (AutoWow.Ledger.BlockedDedupeMs > 0): the number of occurrences the
+line stands for. Lines without `n` (older logs, dedupe off) count as one; blocked_count sums n.
 
 Outcome precedence (first match wins):
   contaminated     a contaminated event hit this bot while the quest was open (teleport/revive/randomize)
   rewarded         rewarded event seen
+  contested        the bot died to a player (`died` killer=player) while the quest was open
   abandoned        abandoned (deferred_reason says why, when the drop path emitted one)
   deferred         set aside (low-priority / parked) and not rewarded
   blocked          last event for the row is `blocked`
@@ -30,7 +38,12 @@ from collections import Counter, defaultdict
 
 SCHEMA_VERSION = 1
 DEFAULT_CATALOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "census", "quest-catalog.json")
-OUTCOMES = ["rewarded", "open_progressing", "open_stalled", "blocked", "deferred", "abandoned", "contaminated"]
+OUTCOMES = ["rewarded", "open_progressing", "open_stalled", "blocked", "deferred", "abandoned", "contested",
+            "contaminated"]
+KILLER_KINDS = ["player", "creature", "environment", "unknown"]
+# Contaminated reasons that reset or relocate the bot (level/gear/quest log/zone): open rows before them are
+# voided (dropped, counted per reason in the summary) instead of scored. zone_travel_assist stays contamination.
+SETUP_REASONS = {"rndbot_randomize", "setup_reroll", "rndbot_teleport"}
 BUCKET_YARDS = 50
 _DECODER = json.JSONDecoder()
 
@@ -73,7 +86,7 @@ def new_row(run, bot, quest):
         "last_counters": None, "rewarded_at": None, "abandoned_at": None,
         "deferred_at": None, "deferred_reason": None,
         "blocked_count": 0, "blocked_last_reason": None,
-        "contaminated_at": None, "contaminated_reason": None,
+        "contaminated_at": None, "contaminated_reason": None, "contested_at": None,
         "last_ev": None, "last_ms": None, "last_reason": None, "last_phase": None,
         "zone": None, "x": None, "y": None,
     }
@@ -87,6 +100,9 @@ def fold(events):
     rows = {}
     open_by_bot = defaultdict(set)  # (run, bot) -> {quest}
     run_end = {}
+    deaths = Counter()               # killer kind -> died events
+    pvp = Counter()                  # "kills" / "honorable" -> pvp_kill events
+    voided = Counter()               # setup reason -> open rows dropped (see SETUP_REASONS)
 
     def get(run, bot, quest):
         key = (run, bot, quest)
@@ -115,6 +131,14 @@ def fold(events):
         run, bot, quest, kind, ms = ev.get("run", ""), ev["bot"], ev["quest"], ev["ev"], ev["ms"]
         run_end[run] = max(run_end.get(run, 0), ms)
 
+        if kind == "contaminated" and ev.get("reason") in SETUP_REASONS:
+            # Randomize/reroll resets level, gear and quest log: open attempts before it are setup noise,
+            # not quest outcomes. Void them (drop the rows) instead of counting them as contaminated.
+            for q in open_by_bot.pop((run, bot), set()):
+                if rows.pop((run, bot, q), None) is not None:
+                    voided[ev.get("reason")] += 1
+            continue
+
         if kind == "contaminated":
             targets = set(open_by_bot[(run, bot)])
             if quest:
@@ -126,12 +150,26 @@ def fold(events):
                     row["contaminated_reason"] = ev.get("reason")
             continue
 
+        if kind == "died":
+            killer = ev.get("killer", "unknown")
+            deaths[killer if killer in KILLER_KINDS else "unknown"] += 1
+            if killer == "player":
+                for q in open_by_bot[(run, bot)]:
+                    row = get(run, bot, q)
+                    if row["contested_at"] is None:
+                        row["contested_at"] = ms
+            continue
+        if kind == "pvp_kill":
+            pvp["kills"] += 1
+            pvp["honorable"] += 1 if ev.get("honorable") else 0
+            continue
+
         row = get(run, bot, quest)
         if kind == "accepted":
             if not is_open(row):
                 # Re-accept after a terminal event starts a fresh attempt; outcome describes the latest.
                 for f in ("rewarded_at", "abandoned_at", "deferred_at", "deferred_reason",
-                          "contaminated_at", "contaminated_reason", "last_reason", "last_phase"):
+                          "contaminated_at", "contaminated_reason", "contested_at", "last_reason", "last_phase"):
                     row[f] = None
             row["attempts"] += 1
             row["accepted_at"] = ms
@@ -145,7 +183,7 @@ def fold(events):
             open_by_bot[(run, bot)].discard(quest)
         elif kind == "blocked":
             observe_counters(row, ev)
-            row["blocked_count"] += 1
+            row["blocked_count"] += int(ev.get("n", 1))
             row["blocked_last_reason"] = ev.get("reason")
             row["last_reason"], row["last_phase"] = ev.get("reason"), ev.get("phase")
         elif kind == "deferred":
@@ -157,7 +195,7 @@ def fold(events):
             continue  # unknown future event name: ignore, never guess
         touch(row, ev)
 
-    return rows, run_end
+    return rows, run_end, deaths, pvp, voided
 
 
 def outcome(row, run_end, stall_ms):
@@ -165,6 +203,8 @@ def outcome(row, run_end, stall_ms):
         return "contaminated"
     if row["rewarded_at"] is not None:
         return "rewarded"
+    if row["contested_at"] is not None:
+        return "contested"
     if row["abandoned_at"] is not None:
         return "abandoned"
     if row["deferred_at"] is not None:
@@ -205,7 +245,9 @@ def reduce_rows(rows, run_end, catalog, stall_ms):
     return out
 
 
-def summarize(out):
+def summarize(out, deaths=None, pvp=None, voided=None):
+    deaths = deaths or Counter()
+    pvp = pvp or Counter()
     lines = ["# AutoWoW quest ledger summary", ""]
     total = len(out)
     runs = sorted({r["run"] for r in out})
@@ -250,26 +292,35 @@ def summarize(out):
     shown = sum(n for _, n in top)
     lines.append("")
     lines.append("Shown %d of %d non-passing, non-progressing rows (%d distinct signatures)." % (shown, sum(sig.values()), len(sig)))
+
+    if voided:
+        lines += ["", "Setup-voided open rows (dropped, not counted): " + ", ".join("%s=%d" % kv for kv in sorted(voided.items()))]
+    lines += ["", "## Deaths by killer kind", "", "| killer | deaths |", "|---|---:|"]
+    for name in KILLER_KINDS:
+        lines.append("| %s | %d |" % (name, deaths.get(name, 0)))
+    lines.append("| **total** | **%d** |" % sum(deaths.values()))
+    lines += ["", "PvP kills by bots: %d (honorable %d)." % (pvp.get("kills", 0), pvp.get("honorable", 0))]
     return "\n".join(lines) + "\n"
 
 
 def run(paths, out_dir, catalog_path, stall_ms):
     events = read_events(paths)
-    rows, run_end = fold(events)
+    rows, run_end, deaths, pvp, voided = fold(events)
     out = reduce_rows(rows, run_end, load_catalog(catalog_path), stall_ms)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "ledger-rows.jsonl"), "w", encoding="ascii", newline="\n") as fh:
         for r in out:
             fh.write(json.dumps(r, sort_keys=False, ensure_ascii=True) + "\n")
     with open(os.path.join(out_dir, "ledger-summary.md"), "w", encoding="ascii", newline="\n") as fh:
-        fh.write(summarize(out))
+        fh.write(summarize(out, deaths, pvp, voided))
     return events, out
 
 
 def selftest():
-    def line(ms, ev, bot, quest, c=(0, 0, 0, 0), reason="", phase="", zone=12, x=0, y=0, run="t1"):
+    def line(ms, ev, bot, quest, c=(0, 0, 0, 0), reason="", phase="", zone=12, x=0, y=0, run="t1", **extra):
         obj = {"v": 1, "run": run, "ms": ms, "ev": ev, "bot": bot, "team": 0, "lvl": 5, "quest": quest,
                "map": 0, "zone": zone, "x": x, "y": y, "c": list(c), "i": [0] * 6, "reason": reason, "phase": phase}
+        obj.update(extra)
         return "2026-09-23_01:00:00 INFO [autowow.ledger] " + json.dumps(obj, separators=(",", ":"))
 
     log = [
@@ -277,14 +328,15 @@ def selftest():
         line(2000, "blocked", 1, 100, c=(1, 0, 0, 0), reason="progress_did_not_change", phase="engage_target"),
         line(3000, "rewarded", 1, 100),                                           # rewarded
         line(1000, "accepted", 2, 200),
-        line(2000, "blocked", 2, 200, reason="no_live_candidate", phase="acquire_target", x=120, y=-10),  # blocked
+        line(1900, "blocked", 2, 200, reason="no_live_candidate", phase="acquire_target", x=120, y=-10),
+        line(2000, "blocked", 2, 200, reason="no_live_candidate", phase="acquire_target", x=120, y=-10, n=119),  # blocked
         line(1000, "accepted", 3, 300),
         line(1500, "deferred", 3, 300, reason="drop_off_zone"),
         line(1500, "abandoned", 3, 300),                                          # abandoned
         line(1000, "accepted", 4, 400),
         line(4000, "deferred", 4, 400, reason="oracle_unrunnable", phase="resolve_objective"),  # deferred
         line(1000, "accepted", 5, 500),
-        line(5000, "contaminated", 5, 0, reason="rndbot_teleport"),               # contaminated
+        line(5000, "contaminated", 5, 0, reason="zone_travel_assist"),            # contaminated
         line(6000, "rewarded", 5, 500),
         line(1000, "accepted", 6, 600),                                           # open_stalled (no events)
         "garbage line without json",
@@ -295,6 +347,13 @@ def selftest():
     # bot 7: last event is blocked -> blocked. Add bot 9 progressing via deferred counters at end.
     log += [line(1000, "accepted", 9, 900), line(699000, "deferred", 9, 900, c=(1, 0, 0, 0), reason="executor_unsupported")]
     log += [line(1000, "accepted", 10, 1000), line(690000, "contaminated", 10, 1000, reason="zone_travel_assist")]
+    log += [line(1000, "accepted", 11, 1100), line(1000, "accepted", 11, 1101),
+            line(2000, "blocked", 11, 1101, reason="no_live_candidate", phase="acquire_target"),
+            line(3000, "died", 11, 0, killer="player", kid=12, klvl=40),
+            line(3000, "pvp_kill", 12, 0, victim=11, vlvl=38, honorable=True),
+            line(4000, "rewarded", 11, 1100),
+            line(1000, "accepted", 12, 1200), line(2500, "died", 12, 0, killer="creature", kid=681, klvl=36),
+            line(2600, "died", 12, 0, killer="environment", kid=0, klvl=0)]
     catalog = {"quests": [{"id": 100, "family": "KILL", "zoneName": "Elwynn Forest", "title": "A"},
                           {"id": 200, "family": "KILL", "zoneName": "Elwynn Forest", "title": "B"}]}
     with tempfile.TemporaryDirectory() as td:
@@ -309,18 +368,26 @@ def selftest():
         got = {(r["bot"], r["quest"]): r for r in out}
         expect = {(1, 100): "rewarded", (2, 200): "blocked", (3, 300): "abandoned", (4, 400): "deferred",
                   (5, 500): "contaminated", (6, 600): "open_stalled", (7, 700): "blocked",
-                  (8, 0): "deferred", (9, 900): "deferred", (10, 1000): "contaminated"}
+                  (8, 0): "deferred", (9, 900): "deferred", (10, 1000): "contaminated",
+                  (11, 1100): "rewarded", (11, 1101): "contested", (12, 1200): "open_stalled"}
         for k, v in expect.items():
             assert got[k]["outcome"] == v, (k, got[k]["outcome"], v)
         assert len(out) == len(expect)
         assert got[(1, 100)]["first_progress_at"] == 2000
+        assert got[(1, 100)]["blocked_count"] == 1                    # legacy line without n
+        assert got[(2, 200)]["blocked_count"] == 1 + 119              # n summed
         assert got[(1, 100)]["family"] == "KILL" and got[(2, 200)]["quest_zone"] == "Elwynn Forest"
         assert got[(2, 200)]["stall_signature"] == ["no_live_candidate", "acquire_target", 12, [2, -1]]
         assert got[(3, 300)]["deferred_reason"] == "drop_off_zone"
         assert got[(9, 900)]["first_progress_at"] == 699000
-        assert got[(5, 500)]["rewarded_at"] == 6000 and got[(5, 500)]["contaminated_reason"] == "rndbot_teleport"
+        assert got[(5, 500)]["rewarded_at"] == 6000 and got[(5, 500)]["contaminated_reason"] == "zone_travel_assist"
         md = open(os.path.join(td, "ledger-summary.md"), encoding="ascii").read()
-        assert "| **total** | **10** |" in md, md
+        assert "| **total** | **13** |" in md, md
+        assert "| contested | 1 |" in md, md
+        assert "| player | 1 |" in md and "| creature | 1 |" in md and "| environment | 1 |" in md, md
+        assert "| **total** | **3** |" in md, md
+        assert "PvP kills by bots: 1 (honorable 1)." in md, md
+        assert (12, 0) not in got and (11, 0) not in got  # bot-level events never make rows
         # Idempotent: same input -> identical bytes.
         first = open(os.path.join(td, "ledger-rows.jsonl"), "rb").read()
         run([lp], td, cp, 600000)
