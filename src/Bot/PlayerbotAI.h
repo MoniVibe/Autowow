@@ -685,6 +685,7 @@ protected:
     ChatHelper chatHelper;
     std::list<ChatCommandHolder> chatCommands;
     std::list<ChatQueuedReply> chatReplies;
+    uint32 lastChatReplyQueuedMs = 0;  // getMSTime() of the last queued chat reply; 0 = never (AutoWow.Chat.MinReplyIntervalMs)
     PacketHandlingHelper botOutgoingPacketHandlers;
     PacketHandlingHelper masterIncomingPacketHandlers;
     PacketHandlingHelper masterOutgoingPacketHandlers;

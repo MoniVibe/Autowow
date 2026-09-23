@@ -705,6 +705,8 @@ bool PlayerbotAIConfig::Initialize()
     autoWowQuestFullBagRelief = sConfigMgr->GetOption<bool>("AutoWow.QuestFullBagRelief.Enable", false);
     autoWowPvpRealmZoneRules = sConfigMgr->GetOption<bool>("AutoWow.PvpRealmZoneRules.Enable", false);
     autoWowIndependentAutoMaintenance = sConfigMgr->GetOption<uint32>("AutoWow.Independent.AutoMaintenance", 0);
+    autoWowChatBotSpeakerByAI = sConfigMgr->GetOption<bool>("AutoWow.Chat.BotSpeakerByAI", false);
+    autoWowChatMinReplyIntervalMs = sConfigMgr->GetOption<uint32>("AutoWow.Chat.MinReplyIntervalMs", 5000);
 
     RpgStatusProbWeight[RPG_WANDER_RANDOM] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderRandom", 15);
     RpgStatusProbWeight[RPG_WANDER_NPC] = sConfigMgr->GetOption<int32>("AiPlayerbot.RpgStatusProbWeight.WanderNpc", 20);
@@ -770,7 +772,8 @@ bool PlayerbotAIConfig::Initialize()
 
 bool PlayerbotAIConfig::IsInRandomAccountList(uint32 id)
 {
-    return find(randomBotAccounts.begin(), randomBotAccounts.end(), id) != randomBotAccounts.end();
+    // O(1): hot on every chat packet a bot receives (soak-s5-cohort-r1 perf: ~70% of a map thread in the old scan).
+    return randomBotAccountSet.count(id) != 0;
 }
 
 bool PlayerbotAIConfig::IsInRandomQuestItemList(uint32 id)

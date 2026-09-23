@@ -2274,6 +2274,16 @@ AutoWow.PvpRealmZoneRules.Enable = 0
 #     (AiPlayerbot.AutoLearnTrainerSpells / AutoLearnQuestSpells must also be on).
 AutoWow.Independent.AutoMaintenance = 0
 
+# Bot chat safety (soak-s5-cohort-r1 chat storm). Bots that hear chat decide whether the speaker is a
+# bot (reply cooldown, low odds) or a real player (no cooldown, eager replies naming the speaker).
+# BotSpeakerByAI 1 = a speaker is also a bot when it is a connected player driven by a PlayerbotAI
+# (cohort/independent/alt bots on normal accounts). Default 0 = legacy: only random-pool accounts.
+AutoWow.Chat.BotSpeakerByAI = 0
+
+# MinReplyIntervalMs: hard floor between queued chat replies per bot, in ms. Only bounds a runaway
+# reply loop; 0 = unbounded (legacy). Default 5000.
+AutoWow.Chat.MinReplyIntervalMs = 5000
+
 # Soak setup rule. 1 = when a RANDOM bot logs in above AiPlayerbot.RandomBotMaxLevel (legacy pool
 # entries whose randomize timers lie past the soak), re-roll it once through the normal
 # RandomizeFirst level path (level/gear/teleport for level) and emit ledger `contaminated` reason

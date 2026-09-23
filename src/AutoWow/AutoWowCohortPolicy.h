@@ -158,6 +158,26 @@ inline constexpr bool IndependentAutoSpells(std::uint32_t mode, bool eligible)
 {
     return mode >= 2 && eligible;
 }
+
+// ---- Chat safety (soak-s5-cohort-r1 chat storm) ----
+
+// A chat speaker is a bot (chat cooldown, low reply odds) when its account is in the random pool, or,
+// with AutoWow.Chat.BotSpeakerByAI, when it is a connected player driven by a PlayerbotAI (cohort,
+// independent and alt bots live on normal accounts and otherwise read as real players).
+inline constexpr bool IsBotSpeaker(bool onRandomAccount, bool hasPlayerbotAI, bool detectByAI)
+{
+    return onRandomAccount || (detectByAI && hasPlayerbotAI);
+}
+
+// AutoWow.Chat.MinReplyIntervalMs: at most one queued chat reply per bot per interval. Times are
+// getMSTime() values (wrap-safe unsigned diff); lastMs 0 = never replied; interval 0 = unbounded.
+inline constexpr bool ChatReplyAllowed(std::uint32_t nowMs, std::uint32_t lastMs, std::uint32_t minIntervalMs)
+{
+    return minIntervalMs == 0 || lastMs == 0 || static_cast<std::uint32_t>(nowMs - lastMs) >= minIntervalMs;
+}
+
+// Stamp to store after a reply; never 0 so it cannot read back as "never replied".
+inline constexpr std::uint32_t ChatReplyStamp(std::uint32_t nowMs) { return nowMs ? nowMs : 1u; }
 }  // namespace AutoWowCohortPolicy
 
 #endif

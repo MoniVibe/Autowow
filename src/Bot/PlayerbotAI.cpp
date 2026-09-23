@@ -13,6 +13,7 @@
 
 #include "AiFactory.h"
 #include "AutoWow/AutoWowBridge.h"
+#include "AutoWow/AutoWowCohortPolicy.h"
 #include "AutoWow/CampaignTravelSession.h"
 #include "BudgetValues.h"
 #include "ChannelMgr.h"
@@ -1312,6 +1313,14 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
                     sCharacterCache->GetCharacterNameByGuid(guid1, name);
                     uint32 accountId = sCharacterCache->GetCharacterAccountIdByGuid(guid1);
                     isFromFreeBot = sPlayerbotAIConfig.IsInRandomAccountList(accountId);
+                    // AutoWow.Chat.BotSpeakerByAI: bots on normal accounts (cohort) are bots too, so bot-to-bot
+                    // replies keep the cooldown and low odds instead of an unbounded real-player feedback loop.
+                    if (!isFromFreeBot && sPlayerbotAIConfig.autoWowChatBotSpeakerByAI)
+                    {
+                        Player* speaker = ObjectAccessor::FindConnectedPlayer(guid1);
+                        isFromFreeBot = AutoWowCohortPolicy::IsBotSpeaker(false, speaker && GET_PLAYERBOT_AI(speaker),
+                                                                          true);
+                    }
                     bool isMentioned = message.find(bot->GetName()) != std::string::npos;
 
                     // ChatChannelSource chatChannelSource = GetChatChannelSource(bot, msgtype, chanName);
@@ -1359,6 +1368,13 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
                                 return;
                         }
                     }
+
+                    // AutoWow.Chat.MinReplyIntervalMs: hard per-bot reply floor so no chat loop can storm.
+                    uint32 const nowMs = getMSTime();
+                    if (!AutoWowCohortPolicy::ChatReplyAllowed(nowMs, lastChatReplyQueuedMs,
+                                                               sPlayerbotAIConfig.autoWowChatMinReplyIntervalMs))
+                        return;
+                    lastChatReplyQueuedMs = AutoWowCohortPolicy::ChatReplyStamp(nowMs);
 
                     QueueChatResponse(ChatQueuedReply{msgtype, guid1.GetCounter(), guid2.GetCounter(), message,
                                                       chanName, name,

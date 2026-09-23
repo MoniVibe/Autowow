@@ -9,6 +9,7 @@
 
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <set>
 #include <vector>
 #include <map>
@@ -89,6 +90,11 @@ public:
 
     bool Initialize();
     bool IsInRandomAccountList(uint32 id);
+    void AddRandomBotAccount(uint32 id)
+    {
+        randomBotAccounts.push_back(id);
+        randomBotAccountSet.insert(id);
+    }
     bool IsInRandomQuestItemList(uint32 id);
     bool IsPvpProhibited(uint32 zoneId, uint32 areaId);
     bool IsInPvpProhibitedZone(uint32 id);
@@ -140,6 +146,7 @@ public:
     std::vector<uint32> randomBotMaps;
     std::vector<uint32> randomBotQuestItems;
     std::vector<uint32> randomBotAccounts;
+    std::unordered_set<uint32> randomBotAccountSet;  // lookup mirror of randomBotAccounts; add via AddRandomBotAccount
     std::vector<uint32> randomBotSpellIds;
     std::vector<uint32> randomBotQuestIds;
     uint32 randomBotTeleportDistance;
@@ -383,6 +390,8 @@ public:
     bool autoWowQuestFullBagRelief;  // AutoWow.QuestFullBagRelief.Enable (default off)
     bool autoWowPvpRealmZoneRules;   // AutoWow.PvpRealmZoneRules.Enable (default off)
     uint32 autoWowIndependentAutoMaintenance;  // AutoWow.Independent.AutoMaintenance (0 off, 1 talents, 2 +class spells)
+    bool autoWowChatBotSpeakerByAI;            // AutoWow.Chat.BotSpeakerByAI (default off)
+    uint32 autoWowChatMinReplyIntervalMs;      // AutoWow.Chat.MinReplyIntervalMs (default 5000, 0 = unbounded)
     std::unordered_map<NewRpgStatus, uint32> RpgStatusProbWeight;
     bool syncLevelWithPlayers;
     bool autoLearnQuestSpells;

@@ -712,7 +712,7 @@ void RandomPlayerbotFactory::CreateRandomBots()
         Field* fields = result->Fetch();
         uint32 accountId = fields[0].Get<uint32>();
 
-        sPlayerbotAIConfig.randomBotAccounts.push_back(accountId);
+        sPlayerbotAIConfig.AddRandomBotAccount(accountId);
 
         uint32 count = AccountMgr::GetCharactersCount(accountId);
         if (count >= 10)

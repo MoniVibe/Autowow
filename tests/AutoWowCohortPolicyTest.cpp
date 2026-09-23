@@ -96,4 +96,28 @@ TEST(AutoWowCohortPolicy, IndependentMaintenanceModes)
     EXPECT_FALSE(IndependentAutoTalents(2, false));
     EXPECT_FALSE(IndependentAutoSpells(2, false));
 }
+
+TEST(AutoWowCohortPolicy, BotSpeakerDetection)
+{
+    EXPECT_TRUE(IsBotSpeaker(true, false, false));   // random pool: bot regardless of flag
+    EXPECT_TRUE(IsBotSpeaker(true, false, true));
+    EXPECT_FALSE(IsBotSpeaker(false, true, false));  // flag off: legacy, cohort bot reads as real player
+    EXPECT_TRUE(IsBotSpeaker(false, true, true));    // flag on: PlayerbotAI on a normal account is a bot
+    EXPECT_FALSE(IsBotSpeaker(false, false, true));  // human on a normal account
+}
+
+TEST(AutoWowCohortPolicy, ChatReplyRateLimit)
+{
+    EXPECT_TRUE(ChatReplyAllowed(100, 0, 5000));      // never replied
+    EXPECT_FALSE(ChatReplyAllowed(5000, 1, 5000));    // 4999 ms since last
+    EXPECT_TRUE(ChatReplyAllowed(5001, 1, 5000));     // exactly the interval
+    EXPECT_FALSE(ChatReplyAllowed(1000, 1000, 5000)); // same tick
+    EXPECT_TRUE(ChatReplyAllowed(1000, 1000, 0));     // 0 = unbounded
+    // getMSTime wraps at 2^32: 0xFFFFF000 -> 0x00000388 is 5000 ms later.
+    EXPECT_TRUE(ChatReplyAllowed(0x00000388u, 0xFFFFF000u, 5000));
+    EXPECT_FALSE(ChatReplyAllowed(0x00000100u, 0xFFFFF000u, 5000));
+
+    EXPECT_EQ(ChatReplyStamp(0), 1u);
+    EXPECT_EQ(ChatReplyStamp(42), 42u);
+}
 }  // namespace
