@@ -374,6 +374,8 @@ inline std::vector<Route> gRoutes;
 inline bool Enabled() { return detail::gEnabled; }
 
 void LoadConfig();
+// A graduation (travel or flight-path learning) is under way for this bot. Town runs wait for it.
+bool Active(std::uint32_t guid);
 }  // namespace AutoWowZoneProgression
 
 #endif  // AUTOWOW_ZONE_PROGRESSION_POLICY_H

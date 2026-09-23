@@ -13,6 +13,12 @@
 #include "QuestDef.h"
 #include "TravelMgr.h"
 
+namespace AutoWowErrands
+{
+struct BotState;
+struct Stop;
+}
+
 struct POIInfo
 {
     G3D::Vector2 pos;
@@ -106,6 +112,11 @@ protected:
     // AutoWow.ZoneProgression.Enable (ZoneProgressionPolicy.h): graduate an independent bot to the next
     // zone by walk/flight. True when it changed the RPG status this tick. Caller checks the flag.
     bool ZoneProgressionStep();
+    // AutoWow.Errands.Enable (ErrandsPolicy.h): town run of an independent bot (sell, repair, restock,
+    // train, bind, flight path; real gold) and the way back. True when it consumed the tick. Caller
+    // checks the flag.
+    bool ErrandsStep();
+    void ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& stop, AutoWowErrands::BotState& s);
     bool WalkLeg(WorldPosition const& dest);
 
 protected:

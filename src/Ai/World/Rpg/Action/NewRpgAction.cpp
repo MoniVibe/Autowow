@@ -57,6 +57,7 @@
 #include "QuestDef.h"
 #include "QuestFinisherTransitionPolicy.h"
 #include "QuestInventoryReliefPolicy.h"
+#include "ErrandsPolicy.h"
 #include "QuestObjectiveContext.h"
 #include "QuestObjectiveTransitionPolicy.h"
 #include "QuestSourceStallPolicy.h"
@@ -385,6 +386,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 
     // AutoWow.ZoneProgression: independent bots graduate to the next zone by normal travel (no teleport).
     if (AutoWowZoneProgression::Enabled() && ZoneProgressionStep())
+        return true;
+
+    // AutoWow.Errands: independent bots keep themselves supplied by town runs (no cheats, real gold).
+    if (AutoWowErrands::Enabled() && ErrandsStep())
         return true;
 
     switch (status)

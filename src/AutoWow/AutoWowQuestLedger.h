@@ -47,6 +47,13 @@
 //     from, to (zone ids), travel_ms (graduation to hub arrival or give-up), arrived (bool),
 //     mode (walk|flight|chain|none: the last travel mode issued). With AutoWow.Transports.Enable also
 //     legs=[[walk|flight|travel_object|transport|portal, ms], ...] in travel order (same event id).
+//   - `errand` (AutoWow.Errands.Enable): one line per finished town run. reason = outcome
+//     (done|travel_gave_up|errands_timeout|return_gave_up); quest is 0; lvl/zone/x/y at the end. Trailing:
+//     town (innkeeper spawn guid), town_zone, needs (AutoWowErrands::Need bits), done (Done bits: sold 1,
+//     repaired 2, restocked 4, trained 8, bound 16, learned_fp 32, skipped 64), spent, sold (copper),
+//     dur0, dur1 (average equipped durability % at arrival / after the errands), bag0, bag1 (free bag
+//     slots, same points), travel_ms (decision to arrival), return_ms, leg (walk|flight|hearth|none: the
+//     leg that took the bot to town), hearth (bool: the hearthstone was cast).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -80,7 +87,8 @@ enum class Event : std::uint8_t
     DeathLoop = 10,
     SkillUp = 11,
     Engage = 12,
-    ZoneMove = 13
+    ZoneMove = 13,
+    Errand = 14
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -101,6 +109,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::DeathLoop: return "death_loop";
         case Event::Engage: return "engage";
         case Event::ZoneMove: return "zone_move";
+        case Event::Errand: return "errand";
     }
     return "unknown";
 }
@@ -370,7 +379,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += row.honorable ? "true" : "false";
     }
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
-             row.ev == Event::ZoneMove)
+             row.ev == Event::ZoneMove || row.ev == Event::Errand)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -422,6 +431,9 @@ void EmitEngage(Player* player, std::string_view fields);
 // `zone_move` (no-op unless the player is a recorded bot); reason is a static literal (trigger name),
 // fields from AutoWowZoneProgression::LedgerFields.
 void EmitZoneMove(Player* player, char const* reason, std::string_view fields);
+// `errand` (no-op unless the player is a recorded bot); reason is a static literal (outcome name),
+// fields from AutoWowErrands::LedgerFields.
+void EmitErrand(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

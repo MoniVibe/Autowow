@@ -16,6 +16,7 @@
 #include "AutoWowQuestLedger.h"
 #include "Config.h"
 #include "Creature.h"
+#include "ErrandsPolicy.h"
 #include "GameTime.h"
 #include "Log.h"
 #include "NewRpgBaseAction.h"
@@ -70,6 +71,8 @@ static void StoreState(std::uint32_t guid, BotState const& s)
     std::lock_guard<std::mutex> guard(gLock);
     gStates[guid] = s;
 }
+
+bool Active(std::uint32_t guid) { return LoadState(guid).phase != Phase::None; }
 
 static AutoWowTransports::ChainState LoadChain(std::uint32_t guid)
 {
@@ -369,6 +372,9 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     uint32 const guid = bot->GetGUID().GetCounter();
     if (!bot->IsAlive() || bot->IsInFlight() || bot->IsInCombat() || !botAI->IsAutoWowIndependentParty() ||
         AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return false;
+    // AutoWow.Errands: a town run under way owns the bot (flag off: never true).
+    if (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid))
         return false;
 
     Params const& p = detail::gParams;

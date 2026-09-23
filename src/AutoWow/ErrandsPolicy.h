@@ -1,0 +1,857 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
+#ifndef AUTOWOW_ERRANDS_POLICY_H
+#define AUTOWOW_ERRANDS_POLICY_H
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+// Town runs for independent AutoWoW bots (AutoWow.Errands.Enable, default 0). Random bots are kept
+// alive by cheats (free repair on revive, re-rolled gear, level teleports); a persistent bot must
+// maintain itself like a player: when its bags fill, its gear wears out, its food/water/ammo/reagents
+// run low, or a trainer is due, it travels to a friendly town (innkeeper + repair NPC + food vendor,
+// flight master when present), runs its errands with real gold, and walks/flies back.
+//
+// Order at the town (one batch): sell junk (stock `sell`), repair all (stock `repair`), restock
+// consumables (core vendor purchase), train (stock `trainer` + profession learn filter), bind the
+// hearthstone at the innkeeper, learn the flight path. Travel: the hearthstone when it is bound to the
+// town, off cooldown and the town is far; else a known flight path; else a walk (no teleport).
+// Each finished run emits ledger `errand` (event 14).
+//
+// Value-only below the runtime section: integer yards / copper / game-time ms, no floats in decisions,
+// no RNG, stable orders (spawn guid ascending; ties by lower id).
+namespace AutoWowErrands
+{
+inline constexpr std::uint8_t kStateVersion = 1;
+
+// ---- needs ---------------------------------------------------------------------------------------
+// Wire-stable bits (ledger `needs`); append only.
+enum Need : std::uint32_t
+{
+    NeedBags = 1u << 0,        // bags >= BagSoftPct used
+    NeedRepair = 1u << 1,      // average equipped durability < DurabilitySoftPct
+    NeedFood = 1u << 2,
+    NeedWater = 1u << 3,
+    NeedAmmo = 1u << 4,
+    NeedReagent = 1u << 5,
+    NeedClassTrain = 1u << 6,  // two levels since the last class-trainer visit and the budget in hand
+    NeedProfTrain = 1u << 7,   // a profession rank is learnable (skill near cap, level reached)
+    NeedHearth = 1u << 8,      // hearthstone bound outside the current zone
+    NeedFlightPath = 1u << 9   // current zone's flight master node unknown
+};
+inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
+
+// Consumable kinds; bit (1 << kind) is a vendor's `sells` mask.
+enum Kind : std::uint8_t
+{
+    KindFood = 0,
+    KindWater = 1,
+    KindArrow = 2,
+    KindBullet = 3,
+    KindReagent = 4
+};
+inline constexpr std::size_t kKinds = 5;
+
+struct Tier
+{
+    std::uint32_t item = 0;
+    std::uint32_t minLevel = 0;  // item_template.RequiredLevel (world DB, checked 2026-09-24)
+};
+
+// Standard vendor stock, lowest tier first. Food/water packs of 5; ammo packs of 200.
+inline constexpr std::array<Tier, 9> kFood = {{{4540, 1}, {4541, 5}, {4542, 15}, {4544, 25}, {4601, 35},
+                                               {8950, 45}, {27855, 55}, {33449, 65}, {35950, 75}}};
+inline constexpr std::array<Tier, 9> kWater = {{{159, 1}, {1179, 5}, {1205, 15}, {1708, 25}, {1645, 35},
+                                                {8766, 45}, {28399, 60}, {33444, 70}, {33445, 75}}};
+inline constexpr std::array<Tier, 6> kArrows = {{{2512, 1}, {2515, 10}, {3030, 25}, {11285, 40}, {28053, 55},
+                                                 {41586, 75}}};
+inline constexpr std::array<Tier, 6> kBullets = {{{2516, 1}, {2519, 10}, {3033, 25}, {11284, 40}, {28060, 55},
+                                                  {41584, 75}}};
+// Shaman Reincarnation (learned at 30) consumes an Ankh. Rogue Flash Powder (Vanish) has no vendor in
+// this world DB, so no rogue reagent line.
+inline constexpr std::array<Tier, 1> kShamanReagent = {{{17030, 30}}};
+
+inline constexpr std::uint32_t kClassWarrior = 1, kClassPaladin = 2, kClassHunter = 3, kClassRogue = 4,
+                               kClassPriest = 5, kClassDeathKnight = 6, kClassShaman = 7, kClassMage = 8,
+                               kClassWarlock = 9, kClassDruid = 11;
+
+// Ranged weapon ammo: 0 none, 1 arrows (bow/crossbow), 2 bullets (gun).
+enum RangedAmmo : std::uint8_t
+{
+    AmmoNone = 0,
+    AmmoArrows = 1,
+    AmmoBullets = 2
+};
+
+// Kinds a class buys at a level (bit per Kind). Mages conjure food and water from level 6.
+[[nodiscard]] inline std::uint32_t KindsFor(std::uint32_t cls, std::uint32_t level, RangedAmmo ammo)
+{
+    std::uint32_t kinds = 0;
+    bool const mageConjures = cls == kClassMage && level >= 6;
+    if (!mageConjures)
+        kinds |= 1u << KindFood;
+    bool const mana = cls == kClassPaladin || cls == kClassHunter || cls == kClassPriest || cls == kClassShaman ||
+                      cls == kClassMage || cls == kClassWarlock || cls == kClassDruid;
+    if (mana && !mageConjures)
+        kinds |= 1u << KindWater;
+    if (cls == kClassHunter && ammo == AmmoArrows)
+        kinds |= 1u << KindArrow;
+    if (cls == kClassHunter && ammo == AmmoBullets)
+        kinds |= 1u << KindBullet;
+    if (cls == kClassShaman && level >= kShamanReagent[0].minLevel)
+        kinds |= 1u << KindReagent;
+    return kinds;
+}
+
+// Tier table of a kind (the reagent table is the shaman's; KindsFor gates the class).
+struct TierSpan
+{
+    Tier const* data = nullptr;
+    std::size_t size = 0;
+};
+
+[[nodiscard]] inline TierSpan TiersOf(Kind kind)
+{
+    switch (kind)
+    {
+        case KindFood: return {kFood.data(), kFood.size()};
+        case KindWater: return {kWater.data(), kWater.size()};
+        case KindArrow: return {kArrows.data(), kArrows.size()};
+        case KindBullet: return {kBullets.data(), kBullets.size()};
+        case KindReagent: return {kShamanReagent.data(), kShamanReagent.size()};
+    }
+    return {};
+}
+
+// Best tier the bot may use: highest minLevel <= level, restricted to `available` (sorted item ids the
+// town sells) when given. 0 = none.
+[[nodiscard]] inline std::uint32_t BestTier(Kind kind, std::uint32_t level, std::vector<std::uint32_t> const* available)
+{
+    TierSpan const t = TiersOf(kind);
+    for (std::size_t k = t.size; k-- > 0;)
+    {
+        if (t.data[k].minLevel > level)
+            continue;
+        if (available && !std::binary_search(available->begin(), available->end(), t.data[k].item))
+            continue;
+        return t.data[k].item;
+    }
+    return 0;
+}
+
+// True when `item` belongs to a tier table of `kind`.
+[[nodiscard]] inline bool IsTierItem(Kind kind, std::uint32_t item)
+{
+    TierSpan const t = TiersOf(kind);
+    for (std::size_t k = 0; k < t.size; ++k)
+        if (t.data[k].item == item)
+            return true;
+    return false;
+}
+
+struct Params
+{
+    std::uint32_t checkIntervalMs = 60000;     // AutoWow.Errands.CheckIntervalMs
+    std::uint32_t cooldownMs = 900000;         // AutoWow.Errands.CooldownMs (after any finished run)
+    std::uint32_t bagSoftPct = 70;             // AutoWow.Errands.BagSoftPct
+    std::uint32_t bagUrgentPct = 90;           // AutoWow.Errands.BagUrgentPct
+    std::uint32_t durabilitySoftPct = 50;      // AutoWow.Errands.DurabilitySoftPct
+    std::uint32_t durabilityUrgentPct = 25;    // AutoWow.Errands.DurabilityUrgentPct
+    std::uint32_t foodLow = 5;                 // AutoWow.Errands.FoodLow / FoodTarget
+    std::uint32_t foodTarget = 20;
+    std::uint32_t waterLow = 5;                // AutoWow.Errands.WaterLow / WaterTarget
+    std::uint32_t waterTarget = 20;
+    std::uint32_t ammoLow = 200;               // AutoWow.Errands.AmmoLow / AmmoTarget (0 stock = urgent)
+    std::uint32_t ammoTarget = 1000;
+    std::uint32_t reagentLow = 1;              // AutoWow.Errands.ReagentLow / ReagentTarget
+    std::uint32_t reagentTarget = 5;
+    std::uint32_t townRadius = 120;            // AutoWow.Errands.TownRadius: npc cluster around an innkeeper
+    std::uint32_t arriveYards = 25;            // at the innkeeper = arrived
+    std::uint32_t hearthMinYards = 800;        // AutoWow.Errands.HearthMinYards
+    std::uint32_t flightMinYards = 600;        // shorter trips always walk
+    std::uint32_t maxWalkYards = 4000;         // AutoWow.Errands.MaxWalkYards
+    std::uint32_t levelOver = 3;               // skip towns in zones whose bracket starts above level + this
+    std::uint32_t candidateTowns = 8;          // nearest same-map towns costed per decision
+    std::uint32_t travelTimeoutMs = 1200000;   // AutoWow.Errands.TravelTimeoutMs
+    std::uint32_t errandsTimeoutMs = 600000;
+    std::uint32_t stopTimeoutMs = 90000;       // per npc stop
+    std::uint32_t returnMinYards = 150;        // closer than this: no return leg
+    std::uint32_t returnTimeoutMs = 1200000;
+    std::uint32_t maxReissues = 6;             // stuck walks / failed flights / hearth casts per leg
+    std::uint32_t hearthCostMs = 15000;        // cast + load, for town choice
+    std::uint32_t flightOverheadMs = 10000;    // taxi activation + landing
+    std::uint32_t walkYardsPerSec = 7;
+    std::uint32_t flyYardsPerSec = 30;
+};
+
+// Integer yards / percentages ------------------------------------------------------------------------
+[[nodiscard]] inline std::int64_t Dist2(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by)
+{
+    std::int64_t const dx = std::int64_t(ax) - bx;
+    std::int64_t const dy = std::int64_t(ay) - by;
+    return dx * dx + dy * dy;
+}
+
+[[nodiscard]] inline std::uint32_t ISqrt(std::int64_t v)
+{
+    if (v <= 0)
+        return 0;
+    std::uint64_t r = static_cast<std::uint64_t>(v);
+    std::uint64_t x = r;
+    std::uint64_t y = (x + 1) / 2;
+    while (y < x)
+    {
+        x = y;
+        y = (x + r / x) / 2;
+    }
+    return static_cast<std::uint32_t>(x);
+}
+
+[[nodiscard]] inline std::uint32_t Yards(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by)
+{
+    return ISqrt(Dist2(ax, ay, bx, by));
+}
+
+// Sum of current / max durability over equipped items that have durability. No such item = 100.
+[[nodiscard]] inline std::uint32_t DurabilityPct(std::uint64_t cur, std::uint64_t max)
+{
+    return max ? static_cast<std::uint32_t>(std::min<std::uint64_t>(cur, max) * 100 / max) : 100;
+}
+
+[[nodiscard]] inline std::uint32_t BagUsedPct(std::uint32_t used, std::uint32_t total)
+{
+    return total ? std::min<std::uint32_t>(used, total) * 100 / total : 100;
+}
+
+// Class-trainer trip budget (copper): a trip is worth it only with roughly one rank's gold in hand.
+// ponytail: level^2 * 5 approximates 3.3.5 rank costs (lvl 20 ~ 20s, lvl 60 ~ 1g80s); a real ask comes
+// from the trainer at the town (the stock trainer action skips what the bot cannot afford).
+[[nodiscard]] inline std::uint64_t ClassTrainBudgetCopper(std::uint32_t level)
+{
+    return std::uint64_t(level) * level * 5;
+}
+
+// Two levels since the last class-trainer visit (0 = never this session) and the budget in hand.
+[[nodiscard]] inline bool ClassTrainDue(std::uint32_t level, std::uint32_t lastTrainLevel, std::uint64_t money)
+{
+    return level >= 2 && level >= lastTrainLevel + 2 && money >= ClassTrainBudgetCopper(level);
+}
+
+// A profession's next rank (journeyman .. grand master) is learnable: skill within 25 of the cap and
+// the rank's level reached. Artisan -> master etc. per 3.3.5 (cap 75/150/225/300/375 -> lvl 10/20/35/50/65).
+[[nodiscard]] inline bool ProfessionRankDue(std::uint32_t value, std::uint32_t max, std::uint32_t level)
+{
+    static constexpr std::uint32_t kCap[] = {75, 150, 225, 300, 375};
+    static constexpr std::uint32_t kLevel[] = {10, 20, 35, 50, 65};
+    for (std::size_t k = 0; k < 5; ++k)
+        if (max == kCap[k])
+            return value + 25 >= max && level >= kLevel[k];
+    return false;
+}
+
+struct Obs
+{
+    std::uint32_t bagUsedPct = 0;
+    std::uint32_t durabilityPct = 100;
+    std::uint32_t cls = 0;
+    std::uint32_t level = 1;
+    RangedAmmo ammo = AmmoNone;
+    std::array<std::uint32_t, kKinds> have{};  // stock per kind (tier items in bags)
+    bool restockAffordable = true;             // money covers a quarter of the deficit at vendor price
+    bool classTrainDue = false;
+    bool profTrainDue = false;
+    bool hearthElsewhere = false;
+    bool unknownFlightPath = false;
+};
+
+struct Assessment
+{
+    std::uint32_t needs = 0;   // every need, urgent ones included
+    std::uint32_t urgent = 0;  // subset that alone justifies a run
+};
+
+// Low/target thresholds of a kind.
+[[nodiscard]] inline std::uint32_t LowOf(Params const& p, Kind kind)
+{
+    switch (kind)
+    {
+        case KindFood: return p.foodLow;
+        case KindWater: return p.waterLow;
+        case KindArrow:
+        case KindBullet: return p.ammoLow;
+        case KindReagent: return p.reagentLow;
+    }
+    return 0;
+}
+
+[[nodiscard]] inline std::uint32_t TargetOf(Params const& p, Kind kind)
+{
+    switch (kind)
+    {
+        case KindFood: return p.foodTarget;
+        case KindWater: return p.waterTarget;
+        case KindArrow:
+        case KindBullet: return p.ammoTarget;
+        case KindReagent: return p.reagentTarget;
+    }
+    return 0;
+}
+
+[[nodiscard]] inline std::uint32_t NeedOf(Kind kind)
+{
+    switch (kind)
+    {
+        case KindFood: return NeedFood;
+        case KindWater: return NeedWater;
+        case KindArrow:
+        case KindBullet: return NeedAmmo;
+        case KindReagent: return NeedReagent;
+    }
+    return 0;
+}
+
+// Urgent: bags >= BagUrgentPct, durability < DurabilityUrgentPct, a hunter with no ammo. The rest soft.
+// Consumable needs drop when the bot cannot afford a useful restock.
+[[nodiscard]] inline Assessment Assess(Params const& p, Obs const& o)
+{
+    Assessment a;
+    if (o.bagUsedPct >= p.bagSoftPct)
+        a.needs |= NeedBags;
+    if (o.bagUsedPct >= p.bagUrgentPct)
+        a.urgent |= NeedBags;
+    if (o.durabilityPct < p.durabilitySoftPct)
+        a.needs |= NeedRepair;
+    if (o.durabilityPct < p.durabilityUrgentPct)
+        a.urgent |= NeedRepair;
+    std::uint32_t const kinds = KindsFor(o.cls, o.level, o.ammo);
+    for (std::size_t k = 0; k < kKinds; ++k)
+    {
+        Kind const kind = static_cast<Kind>(k);
+        if (!(kinds & (1u << k)) || o.have[k] >= LowOf(p, kind))
+            continue;
+        a.needs |= NeedOf(kind);
+        if ((kind == KindArrow || kind == KindBullet) && o.have[k] == 0)
+            a.urgent |= NeedAmmo;
+    }
+    if (!o.restockAffordable)
+    {
+        a.needs &= ~kConsumableNeeds;
+        a.urgent &= ~kConsumableNeeds;
+    }
+    if (o.classTrainDue)
+        a.needs |= NeedClassTrain;
+    if (o.profTrainDue)
+        a.needs |= NeedProfTrain;
+    if (o.hearthElsewhere)
+        a.needs |= NeedHearth;
+    if (o.unknownFlightPath)
+        a.needs |= NeedFlightPath;
+    a.needs |= a.urgent;
+    return a;
+}
+
+// A run: any urgent need, or two soft needs.
+[[nodiscard]] inline bool ShouldRun(std::uint32_t needs, std::uint32_t urgent)
+{
+    std::uint32_t n = 0;
+    for (std::uint32_t v = needs; v; v &= v - 1)
+        ++n;
+    return urgent != 0 || n >= 2;
+}
+
+// ---- towns ---------------------------------------------------------------------------------------
+enum Role : std::uint32_t
+{
+    RoleInn = 1u << 0,
+    RoleRepair = 1u << 1,
+    RoleVendor = 1u << 2,
+    RoleFlight = 1u << 3,
+    RoleClassTrainer = 1u << 4,
+    RoleTradeTrainer = 1u << 5
+};
+
+// Team bits: 1 alliance, 2 horde (core TeamId + 1 as a bit).
+inline constexpr std::uint8_t kAlliance = 1, kHorde = 2;
+
+struct Npc
+{
+    std::uint32_t spawn = 0;  // creature DB guid: stable, never reused
+    std::uint32_t entry = 0;
+    std::uint32_t map = 0;
+    std::uint32_t zone = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint32_t roles = 0;
+    std::uint8_t teams = 0;               // teams it does not attack (faction hostile mask)
+    std::uint32_t sells = 0;              // (1 << Kind) of tier items on its vendor list
+    std::vector<std::uint32_t> items;     // tier items it sells, ascending
+    std::uint32_t nodeAlliance = 0;       // flight master: nearest taxi node per team
+    std::uint32_t nodeHorde = 0;
+};
+
+struct Town
+{
+    std::uint32_t id = 0;  // innkeeper spawn guid
+    std::uint32_t map = 0;
+    std::uint32_t zone = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint8_t teams = 0;         // teams that find inn + repair + food/water vendor here
+    std::uint32_t sells = 0;        // union of its vendors
+    std::vector<Npc> npcs;          // spawn ascending, the innkeeper included
+};
+
+// One town per innkeeper with, inside `radius` yards on its map, a repair NPC and a vendor of food or
+// water usable by the same team. Every role NPC in the radius joins it. Towns ascend by innkeeper spawn.
+[[nodiscard]] inline std::vector<Town> BuildTowns(std::vector<Npc> npcs, std::uint32_t radius)
+{
+    std::sort(npcs.begin(), npcs.end(), [](Npc const& a, Npc const& b) { return a.spawn < b.spawn; });
+    std::int64_t const r2 = std::int64_t(radius) * radius;
+    std::uint32_t const foodOrWater = (1u << KindFood) | (1u << KindWater);
+    std::vector<Town> towns;
+    for (Npc const& inn : npcs)
+    {
+        if (!(inn.roles & RoleInn) || !inn.teams)
+            continue;
+        Town t;
+        t.id = inn.spawn;
+        t.map = inn.map;
+        t.zone = inn.zone;
+        t.x = inn.x;
+        t.y = inn.y;
+        t.z = inn.z;
+        std::uint8_t repair = 0, food = 0;
+        for (Npc const& n : npcs)
+        {
+            if (n.map != inn.map || !(n.teams & inn.teams) || Dist2(inn.x, inn.y, n.x, n.y) > r2)
+                continue;
+            t.npcs.push_back(n);
+            if (n.roles & RoleRepair)
+                repair |= n.teams;
+            if ((n.roles & RoleVendor) && (n.sells & foodOrWater))
+                food |= n.teams;
+        }
+        t.teams = inn.teams & repair & food;
+        if (!t.teams)
+            continue;
+        for (Npc const& n : t.npcs)
+            if (n.teams & t.teams)
+                t.sells |= n.sells;
+        towns.push_back(std::move(t));
+    }
+    return towns;
+}
+
+// ---- travel --------------------------------------------------------------------------------------
+// Wire-stable names (ledger `leg`); append only.
+enum class Leg : std::uint8_t
+{
+    None = 0,
+    Walk = 1,
+    Flight = 2,
+    Hearth = 3
+};
+
+inline constexpr char const* LegName(Leg leg)
+{
+    switch (leg)
+    {
+        case Leg::None: return "none";
+        case Leg::Walk: return "walk";
+        case Leg::Flight: return "flight";
+        case Leg::Hearth: return "hearth";
+    }
+    return "none";
+}
+
+struct LegInput
+{
+    bool sameMap = true;
+    std::uint32_t walkYards = 0;   // straight line bot -> destination
+    bool hearthHere = false;       // hearthstone bound within TownRadius of the destination (same map)
+    bool hearthReady = false;      // hearthstone in bags, spell off cooldown
+    bool flight = false;           // taxi path from the nearest flight master to a known node there
+    std::uint32_t fmYards = 0;     // bot -> nearest flight master
+    std::uint32_t flyYards = 0;    // flight master -> destination node (straight line)
+    std::uint32_t tailYards = 0;   // destination node -> destination
+};
+
+[[nodiscard]] inline std::uint32_t LegCostMs(Params const& p, Leg leg, LegInput const& in)
+{
+    std::uint64_t const walk = std::max<std::uint32_t>(1, p.walkYardsPerSec);
+    std::uint64_t const fly = std::max<std::uint32_t>(1, p.flyYardsPerSec);
+    std::uint64_t ms = 0;
+    switch (leg)
+    {
+        case Leg::None: return UINT32_MAX;
+        case Leg::Walk: ms = std::uint64_t(in.walkYards) * 1000 / walk; break;
+        case Leg::Flight:
+            ms = (std::uint64_t(in.fmYards) + in.tailYards) * 1000 / walk + std::uint64_t(in.flyYards) * 1000 / fly +
+                 p.flightOverheadMs;
+            break;
+        case Leg::Hearth: ms = p.hearthCostMs; break;
+    }
+    return static_cast<std::uint32_t>(std::min<std::uint64_t>(ms, UINT32_MAX - 1));
+}
+
+// Hearthstone when bound here, ready and the trip is long (same map only: a hearth onto another
+// continent would strand the bot away from its quests). Else the cheaper of flight (known path, trip >=
+// FlightMinYards) and walk (<= MaxWalkYards). None = unreachable.
+[[nodiscard]] inline Leg ChooseLeg(Params const& p, LegInput const& in)
+{
+    if (!in.sameMap)
+        return Leg::None;
+    if (in.hearthHere && in.hearthReady && in.walkYards > p.hearthMinYards)
+        return Leg::Hearth;
+    bool const canFly = in.flight && in.walkYards >= p.flightMinYards;
+    bool const canWalk = in.walkYards <= p.maxWalkYards;
+    if (canFly && (!canWalk || LegCostMs(p, Leg::Flight, in) < LegCostMs(p, Leg::Walk, in)))
+        return Leg::Flight;
+    return canWalk ? Leg::Walk : Leg::None;
+}
+
+struct Candidate
+{
+    std::uint32_t town = 0;
+    Leg leg = Leg::None;
+    std::uint32_t costMs = 0;
+};
+
+// Cheapest reachable candidate; ties go to the lower town id. nullptr = none.
+[[nodiscard]] inline Candidate const* PickTown(std::vector<Candidate> const& cands)
+{
+    Candidate const* best = nullptr;
+    for (Candidate const& c : cands)
+        if (c.leg != Leg::None &&
+            (!best || c.costMs < best->costMs || (c.costMs == best->costMs && c.town < best->town)))
+            best = &c;
+    return best;
+}
+
+// Town zone too dangerous to reach on foot or by flight: its bracket starts above level + LevelOver.
+[[nodiscard]] inline bool ZoneTooHigh(Params const& p, std::uint32_t level, std::uint32_t bracketLow)
+{
+    return bracketLow && bracketLow > level + p.levelOver;
+}
+
+// Needs a town can serve: bags/repair always; a consumable when a vendor there sells its tiers;
+// trainers when present (class: valid for the bot); hearth/flight path only in the bot's zone.
+struct TownFacts
+{
+    std::uint32_t sells = 0;
+    bool classTrainer = false;
+    bool tradeTrainer = false;
+    bool inBotZone = false;
+    bool unknownFlightMaster = false;  // town has a flight master whose node the bot lacks
+};
+
+[[nodiscard]] inline std::uint32_t Serves(TownFacts const& f)
+{
+    std::uint32_t m = NeedBags | NeedRepair;
+    if (f.sells & (1u << KindFood))
+        m |= NeedFood;
+    if (f.sells & (1u << KindWater))
+        m |= NeedWater;
+    if (f.sells & ((1u << KindArrow) | (1u << KindBullet)))
+        m |= NeedAmmo;
+    if (f.sells & (1u << KindReagent))
+        m |= NeedReagent;
+    if (f.classTrainer)
+        m |= NeedClassTrain;
+    if (f.tradeTrainer)
+        m |= NeedProfTrain;
+    if (f.inBotZone)
+        m |= NeedHearth;
+    if (f.inBotZone && f.unknownFlightMaster)
+        m |= NeedFlightPath;
+    return m;
+}
+
+// ---- restock ---------------------------------------------------------------------------------------
+struct RestockLine
+{
+    Kind kind = KindFood;
+    std::uint32_t item = 0;   // best tier the town sells (0 = none: nothing to buy)
+    std::uint32_t have = 0;
+    std::uint32_t target = 0;
+};
+
+// What to buy at a town: every kind the class uses whose stock is below target (topped up to target,
+// not only when under Low: the bot is at the vendor anyway), best tier sold there.
+[[nodiscard]] inline std::vector<RestockLine> RestockList(Params const& p, std::uint32_t cls, std::uint32_t level,
+                                                          RangedAmmo ammo,
+                                                          std::array<std::uint32_t, kKinds> const& have,
+                                                          std::vector<std::uint32_t> const& available)
+{
+    std::vector<RestockLine> out;
+    std::uint32_t const kinds = KindsFor(cls, level, ammo);
+    for (std::size_t k = 0; k < kKinds; ++k)
+    {
+        Kind const kind = static_cast<Kind>(k);
+        if (!(kinds & (1u << k)) || have[k] >= TargetOf(p, kind))
+            continue;
+        std::uint32_t const item = BestTier(kind, level, &available);
+        if (item)
+            out.push_back({kind, item, have[k], TargetOf(p, kind)});
+    }
+    return out;
+}
+
+// Packs to buy for `deficit` items sold `perPack` at a time, `packPrice` copper each, `spendable`
+// copper in hand. Short = money limited the purchase.
+struct PackBuy
+{
+    std::uint32_t packs = 0;
+    bool shortOfMoney = false;
+};
+
+[[nodiscard]] inline PackBuy PacksToBuy(std::uint32_t deficit, std::uint32_t perPack, std::uint64_t packPrice,
+                                        std::uint64_t spendable)
+{
+    PackBuy b;
+    if (!deficit)
+        return b;
+    std::uint32_t const per = std::max<std::uint32_t>(1, perPack);
+    std::uint32_t const want = (deficit + per - 1) / per;
+    std::uint64_t const afford = packPrice ? spendable / packPrice : want;
+    b.packs = static_cast<std::uint32_t>(std::min<std::uint64_t>(want, afford));
+    b.shortOfMoney = b.packs < want;
+    return b;
+}
+
+// ---- errands at the town --------------------------------------------------------------------------
+// Wire-stable bits (ledger `done`); append only.
+enum Done : std::uint32_t
+{
+    DoneSold = 1u << 0,
+    DoneRepaired = 1u << 1,
+    DoneRestocked = 1u << 2,
+    DoneTrained = 1u << 3,
+    DoneBound = 1u << 4,
+    DoneLearnedFp = 1u << 5,
+    DoneSkipped = 1u << 6  // an item or trainer rank was skipped as unaffordable (logged)
+};
+
+// Operations at one npc, run in bit order.
+enum Op : std::uint32_t
+{
+    OpSell = 1u << 0,
+    OpRepair = 1u << 1,
+    OpBuy = 1u << 2,
+    OpTrain = 1u << 3,
+    OpBind = 1u << 4,
+    OpLearnFp = 1u << 5
+};
+
+struct Stop
+{
+    std::uint32_t spawn = 0;
+    std::uint32_t entry = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint32_t ops = 0;
+    std::uint32_t buyKinds = 0;  // (1 << Kind) bought here
+};
+
+inline constexpr std::size_t kMaxStops = 8;
+
+struct Plan
+{
+    std::array<Stop, kMaxStops> stops{};
+    std::uint8_t count = 0;
+};
+
+struct PlanInput
+{
+    std::uint8_t team = 0;                             // kAlliance | kHorde
+    std::array<std::uint32_t, kKinds> buyItems{};      // item per kind to buy (0 = none)
+    std::vector<std::uint32_t> trainers;               // trainer spawns with work for the bot, ascending
+    bool bind = false;                                 // hearthstone not bound here
+    bool learnFp = false;                              // town flight master node unknown
+};
+
+// Errand batch in order: sell junk, repair, restock, train, bind, flight path. Operations on the same
+// npc merge into its first stop, so stops order by their first operation; npcs ascend by spawn.
+[[nodiscard]] inline Plan PlanStops(Town const& town, PlanInput const& in)
+{
+    Plan plan;
+    auto add = [&](Npc const& n, std::uint32_t op, std::uint32_t buyKinds)
+    {
+        for (std::uint8_t k = 0; k < plan.count; ++k)
+            if (plan.stops[k].spawn == n.spawn)
+            {
+                plan.stops[k].ops |= op;
+                plan.stops[k].buyKinds |= buyKinds;
+                return;
+            }
+        if (plan.count == kMaxStops)
+            return;
+        plan.stops[plan.count++] = Stop{n.spawn, n.entry, n.x, n.y, n.z, op, buyKinds};
+    };
+    auto usable = [&](Npc const& n) { return (n.teams & in.team) != 0; };
+    // Repairer: the first usable one, a vendor-repairer preferred (junk is sold there too).
+    Npc const* repairer = nullptr;
+    for (Npc const& n : town.npcs)
+    {
+        if (!usable(n) || !(n.roles & RoleRepair))
+            continue;
+        if (!repairer || ((n.roles & RoleVendor) && !(repairer->roles & RoleVendor)))
+            repairer = &n;
+    }
+    Npc const* seller = repairer && (repairer->roles & RoleVendor) ? repairer : nullptr;
+    for (Npc const& n : town.npcs)
+        if (!seller && usable(n) && (n.roles & RoleVendor))
+            seller = &n;
+    if (seller)
+        add(*seller, OpSell, 0);
+    if (repairer)
+        add(*repairer, OpRepair, 0);
+    for (std::size_t k = 0; k < kKinds; ++k)
+    {
+        std::uint32_t const item = in.buyItems[k];
+        if (!item)
+            continue;
+        for (Npc const& n : town.npcs)
+            if (usable(n) && (n.roles & RoleVendor) && std::binary_search(n.items.begin(), n.items.end(), item))
+            {
+                add(n, OpBuy, 1u << k);
+                break;
+            }
+    }
+    for (std::uint32_t spawn : in.trainers)
+        for (Npc const& n : town.npcs)
+            if (n.spawn == spawn && usable(n))
+                add(n, OpTrain, 0);
+    if (in.bind)
+        for (Npc const& n : town.npcs)
+            if (n.spawn == town.id)
+                add(n, OpBind, 0);
+    if (in.learnFp)
+        for (Npc const& n : town.npcs)
+            if (usable(n) && (n.roles & RoleFlight))
+            {
+                add(n, OpLearnFp, 0);
+                break;
+            }
+    return plan;
+}
+
+// ---- per-bot state -----------------------------------------------------------------------------------
+enum class Phase : std::uint8_t
+{
+    None = 0,     // assessing needs
+    Travel = 1,   // heading to the town
+    Errands = 2,  // walking the stop list
+    Return = 3    // heading back to the pre-run position
+};
+
+// Wire-stable ledger reasons; append only.
+enum class Outcome : std::uint8_t
+{
+    Done = 0,
+    TravelGaveUp = 1,
+    ErrandsTimeout = 2,
+    ReturnGaveUp = 3
+};
+
+inline constexpr char const* OutcomeName(Outcome o)
+{
+    switch (o)
+    {
+        case Outcome::Done: return "done";
+        case Outcome::TravelGaveUp: return "travel_gave_up";
+        case Outcome::ErrandsTimeout: return "errands_timeout";
+        case Outcome::ReturnGaveUp: return "return_gave_up";
+    }
+    return "done";
+}
+
+struct BotState
+{
+    std::uint8_t version = kStateVersion;
+    Phase phase = Phase::None;
+    std::uint64_t nextCheckMs = 0;
+    std::uint64_t cooldownUntilMs = 0;
+    std::uint32_t lastClassTrainLevel = 0;  // survives runs (not restarts)
+    // run
+    std::uint32_t town = 0;                 // Town::id
+    std::uint32_t needs = 0;
+    std::uint32_t done = 0;
+    Leg leg = Leg::None;                    // current leg (travel or return)
+    Leg travelLeg = Leg::None;              // last leg that moved the bot toward the town
+    bool legIssued = false;                 // flight handed to the flight status / hearth cast requested
+    bool hearthUsed = false;
+    std::uint32_t reissues = 0;
+    std::uint64_t startMs = 0;
+    std::uint64_t phaseMs = 0;              // current phase start
+    std::uint64_t legMs = 0;                // current leg / stop start
+    std::uint64_t travelMs = 0;
+    std::uint32_t backMap = 0;              // pre-run position
+    std::int32_t backX = 0;
+    std::int32_t backY = 0;
+    std::int32_t backZ = 0;
+    std::uint32_t durBefore = 0;
+    std::uint32_t durAfter = 0;
+    std::uint32_t bagFreeBefore = 0;
+    std::uint32_t bagFreeAfter = 0;
+    std::uint64_t spent = 0;                // copper debited by repair / purchases / training
+    std::uint64_t sold = 0;                 // copper credited by selling
+    Plan plan;
+    std::uint8_t stop = 0;
+    std::array<std::uint32_t, kKinds> buyItems{};
+    Outcome outcome = Outcome::Done;
+};
+
+// Travel / return leg exhausted: past its timeout or out of reissues.
+[[nodiscard]] inline bool LegExhausted(Params const& p, BotState const& s, std::uint64_t nowMs, std::uint32_t timeoutMs)
+{
+    return (nowMs >= s.phaseMs && nowMs - s.phaseMs > timeoutMs) || s.reissues > p.maxReissues;
+}
+
+// State after a finished run: cooldown, keep the class-trainer level.
+[[nodiscard]] inline BotState AfterRun(Params const& p, BotState const& s, std::uint64_t nowMs)
+{
+    BotState next;
+    next.lastClassTrainLevel = s.lastClassTrainLevel;
+    next.cooldownUntilMs = nowMs + p.cooldownMs;
+    next.nextCheckMs = nowMs + p.checkIntervalMs;
+    return next;
+}
+
+// Trailing fields of the ledger `errand` line (AutoWowQuestLedger.h documents them).
+inline std::string LedgerFields(BotState const& s, std::uint32_t townZone, std::uint64_t returnMs)
+{
+    return ",\"town\":" + std::to_string(s.town) + ",\"town_zone\":" + std::to_string(townZone) +
+           ",\"needs\":" + std::to_string(s.needs) + ",\"done\":" + std::to_string(s.done) +
+           ",\"spent\":" + std::to_string(s.spent) + ",\"sold\":" + std::to_string(s.sold) +
+           ",\"dur0\":" + std::to_string(s.durBefore) + ",\"dur1\":" + std::to_string(s.durAfter) +
+           ",\"bag0\":" + std::to_string(s.bagFreeBefore) + ",\"bag1\":" + std::to_string(s.bagFreeAfter) +
+           ",\"travel_ms\":" + std::to_string(s.travelMs) + ",\"return_ms\":" + std::to_string(returnMs) +
+           ",\"leg\":\"" + LegName(s.travelLeg) + "\",\"hearth\":" + (s.hearthUsed ? "true" : "false");
+}
+
+// ---- runtime (NewRpgErrands.cpp) -------------------------------------------------------------------
+namespace detail
+{
+inline bool gEnabled = false;
+inline Params gParams;
+inline std::vector<Town> gTowns;  // built once at world init with the flag on; read-only afterwards
+}
+inline bool Enabled() { return detail::gEnabled; }
+
+void LoadConfig();
+// A run (travel, errands or return) is under way for this bot. Zone progression waits for it.
+bool Active(std::uint32_t guid);
+}  // namespace AutoWowErrands
+
+#endif  // AUTOWOW_ERRANDS_POLICY_H

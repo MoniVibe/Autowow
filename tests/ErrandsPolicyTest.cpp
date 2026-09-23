@@ -1,0 +1,435 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
+#include "ErrandsPolicy.h"
+
+#include "gtest/gtest.h"
+
+namespace
+{
+using namespace AutoWowErrands;
+
+Obs Healthy(std::uint32_t cls, std::uint32_t level)
+{
+    Obs o;
+    o.cls = cls;
+    o.level = level;
+    o.have = {20, 20, 1000, 1000, 5};
+    return o;
+}
+
+// ---- needs policy ---------------------------------------------------------------------------------
+TEST(Errands, HealthyBotHasNoNeeds)
+{
+    Params p;
+    Assessment const a = Assess(p, Healthy(kClassWarrior, 20));
+    EXPECT_EQ(a.needs, 0U);
+    EXPECT_EQ(a.urgent, 0U);
+}
+
+TEST(Errands, BagAndDurabilityThresholds)
+{
+    Params p;  // bags soft 70 / urgent 90, durability soft 50 / urgent 25
+    Obs o = Healthy(kClassWarrior, 20);
+    o.bagUsedPct = 69;
+    o.durabilityPct = 50;
+    EXPECT_EQ(Assess(p, o).needs, 0U);
+    o.bagUsedPct = 70;
+    o.durabilityPct = 49;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.needs, std::uint32_t(NeedBags | NeedRepair));
+    EXPECT_EQ(a.urgent, 0U);
+    o.bagUsedPct = 90;
+    o.durabilityPct = 24;
+    a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedBags | NeedRepair));
+}
+
+TEST(Errands, ConsumableNeedsFollowClass)
+{
+    Params p;
+    Obs o = Healthy(kClassWarrior, 20);
+    o.have = {0, 0, 0, 0, 0};
+    // Warrior: food only (no water, ammo, reagent).
+    EXPECT_EQ(Assess(p, o).needs, std::uint32_t(NeedFood));
+    // Priest: food + water.
+    o.cls = kClassPriest;
+    EXPECT_EQ(Assess(p, o).needs, std::uint32_t(NeedFood | NeedWater));
+    // Mage conjures from level 6.
+    o.cls = kClassMage;
+    EXPECT_EQ(Assess(p, o).needs, 0U);
+    o.level = 5;
+    EXPECT_EQ(Assess(p, o).needs, std::uint32_t(NeedFood | NeedWater));
+    // Shaman 30+: ankh.
+    o.cls = kClassShaman;
+    o.level = 30;
+    EXPECT_EQ(Assess(p, o).needs, std::uint32_t(NeedFood | NeedWater | NeedReagent));
+    o.level = 29;
+    EXPECT_EQ(Assess(p, o).needs, std::uint32_t(NeedFood | NeedWater));
+}
+
+TEST(Errands, HunterWithoutAmmoIsUrgent)
+{
+    Params p;
+    Obs o = Healthy(kClassHunter, 20);
+    o.ammo = AmmoBullets;
+    o.have[KindBullet] = 199;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.needs, std::uint32_t(NeedAmmo));
+    EXPECT_EQ(a.urgent, 0U);
+    o.have[KindBullet] = 0;
+    a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedAmmo));
+    // Arrows in bags do not feed a gun.
+    o.have[KindArrow] = 1000;
+    EXPECT_EQ(Assess(p, o).urgent, std::uint32_t(NeedAmmo));
+    // No ranged weapon: no ammo need.
+    o.ammo = AmmoNone;
+    EXPECT_EQ(Assess(p, o).needs, 0U);
+}
+
+TEST(Errands, UnaffordableRestockDropsConsumableNeeds)
+{
+    Params p;
+    Obs o = Healthy(kClassHunter, 20);
+    o.ammo = AmmoArrows;
+    o.have = {0, 0, 0, 0, 0};
+    o.restockAffordable = false;
+    o.bagUsedPct = 75;
+    Assessment const a = Assess(p, o);
+    EXPECT_EQ(a.needs, std::uint32_t(NeedBags));
+    EXPECT_EQ(a.urgent, 0U);
+}
+
+TEST(Errands, TrainerHearthAndFlightPathNeeds)
+{
+    Params p;
+    Obs o = Healthy(kClassWarrior, 20);
+    o.classTrainDue = true;
+    o.profTrainDue = true;
+    o.hearthElsewhere = true;
+    o.unknownFlightPath = true;
+    EXPECT_EQ(Assess(p, o).needs,
+              std::uint32_t(NeedClassTrain | NeedProfTrain | NeedHearth | NeedFlightPath));
+    EXPECT_EQ(Assess(p, o).urgent, 0U);
+}
+
+TEST(Errands, ClassTrainDueEveryTwoLevelsWithBudget)
+{
+    EXPECT_EQ(ClassTrainBudgetCopper(20), 2000U);  // 20 silver
+    EXPECT_FALSE(ClassTrainDue(1, 0, 1000000));    // nothing to learn at 1
+    EXPECT_TRUE(ClassTrainDue(2, 0, 20));
+    EXPECT_FALSE(ClassTrainDue(21, 20, 1000000));
+    EXPECT_TRUE(ClassTrainDue(22, 20, 2420));
+    EXPECT_FALSE(ClassTrainDue(22, 20, 2419));     // short of the budget
+}
+
+TEST(Errands, ProfessionRankDueAtCapAndLevel)
+{
+    EXPECT_TRUE(ProfessionRankDue(50, 75, 10));    // apprentice -> journeyman
+    EXPECT_FALSE(ProfessionRankDue(49, 75, 10));
+    EXPECT_FALSE(ProfessionRankDue(75, 75, 9));
+    EXPECT_TRUE(ProfessionRankDue(200, 225, 35));  // expert -> artisan
+    EXPECT_FALSE(ProfessionRankDue(200, 225, 34));
+    EXPECT_TRUE(ProfessionRankDue(350, 375, 65));  // master -> grand master
+    EXPECT_FALSE(ProfessionRankDue(450, 450, 80)); // capped
+}
+
+// ---- trigger decision ------------------------------------------------------------------------------
+TEST(Errands, RunOnUrgentOrTwoSoftNeeds)
+{
+    EXPECT_FALSE(ShouldRun(0, 0));
+    EXPECT_FALSE(ShouldRun(NeedFood, 0));
+    EXPECT_TRUE(ShouldRun(NeedFood | NeedHearth, 0));
+    EXPECT_TRUE(ShouldRun(NeedRepair, NeedRepair));
+    EXPECT_TRUE(ShouldRun(NeedBags | NeedFood | NeedClassTrain, 0));
+}
+
+TEST(Errands, TownServesOnlyWhatItCan)
+{
+    TownFacts f;
+    f.sells = 1u << KindFood;
+    std::uint32_t const needs = NeedFood | NeedWater | NeedHearth | NeedFlightPath;
+    EXPECT_EQ(needs & Serves(f), std::uint32_t(NeedFood));  // other zone, no water vendor
+    EXPECT_FALSE(ShouldRun(needs & Serves(f), 0));
+    f.inBotZone = true;
+    f.unknownFlightMaster = true;
+    EXPECT_EQ(needs & Serves(f), std::uint32_t(NeedFood | NeedHearth | NeedFlightPath));
+    EXPECT_EQ(Serves(TownFacts{}) & (NeedBags | NeedRepair), std::uint32_t(NeedBags | NeedRepair));
+}
+
+// ---- town choice -------------------------------------------------------------------------------------
+TEST(Errands, LegChoice)
+{
+    Params p;  // hearth > 800 yd, flight >= 600 yd, walk <= 4000 yd
+    LegInput in;
+    in.walkYards = 300;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Walk);
+    in.hearthHere = in.hearthReady = true;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Walk);  // near: walk even when bound here
+    in.walkYards = 900;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Hearth);
+    in.hearthReady = false;  // on cooldown
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Walk);
+    in.flight = true;
+    in.fmYards = 50;
+    in.flyYards = 900;
+    in.tailYards = 30;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Flight);  // 128 s walk vs 11 s + 30 s + 10 s
+    in.walkYards = 2000;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Flight);
+    in.fmYards = 1900;  // the flight master is as far as the town
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Walk);
+    in.flight = false;
+    in.walkYards = 4001;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::None);
+    in.sameMap = false;
+    in.hearthHere = in.hearthReady = true;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::None);  // never hearth off the bot's continent
+}
+
+TEST(Errands, LegCosts)
+{
+    Params p;
+    LegInput in;
+    in.walkYards = 700;
+    in.fmYards = 70;
+    in.flyYards = 300;
+    in.tailYards = 0;
+    EXPECT_EQ(LegCostMs(p, Leg::Walk, in), 100000U);
+    EXPECT_EQ(LegCostMs(p, Leg::Flight, in), 10000U + 10000U + 10000U);
+    EXPECT_EQ(LegCostMs(p, Leg::Hearth, in), 15000U);
+    EXPECT_EQ(LegCostMs(p, Leg::None, in), UINT32_MAX);
+}
+
+TEST(Errands, PickTownCheapestThenLowerId)
+{
+    std::vector<Candidate> c = {{30, Leg::Walk, 50000}, {20, Leg::None, 1}, {40, Leg::Flight, 40000},
+                                {10, Leg::Walk, 40000}};
+    Candidate const* best = PickTown(c);
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->town, 10U);  // 40 s tie: lower id; the unreachable 1 ms candidate is ignored
+    EXPECT_EQ(PickTown({{5, Leg::None, 0}}), nullptr);
+}
+
+TEST(Errands, ZoneTooHighSkipsDangerousTowns)
+{
+    Params p;  // level + 3
+    EXPECT_FALSE(ZoneTooHigh(p, 20, 0));   // unbracketed (capital)
+    EXPECT_FALSE(ZoneTooHigh(p, 20, 23));
+    EXPECT_TRUE(ZoneTooHigh(p, 20, 24));
+}
+
+Npc MakeNpc(std::uint32_t spawn, std::uint32_t roles, std::int32_t x, std::uint8_t teams = kAlliance | kHorde)
+{
+    Npc n;
+    n.spawn = spawn;
+    n.entry = spawn + 1000;
+    n.x = x;
+    n.roles = roles;
+    n.teams = teams;
+    return n;
+}
+
+TEST(Errands, BuildTownsNeedsInnRepairAndFood)
+{
+    Npc inn = MakeNpc(5, RoleInn | RoleVendor, 0, kAlliance);
+    inn.sells = 1u << KindFood;
+    inn.items = {4540};
+    Npc smith = MakeNpc(7, RoleRepair | RoleVendor, 60, kAlliance);
+    Npc far = MakeNpc(9, RoleRepair, 500, kAlliance);
+    Npc fm = MakeNpc(3, RoleFlight, -80, kAlliance);
+    Npc lonelyInn = MakeNpc(11, RoleInn, 5000, kAlliance);   // no repair nearby
+    Npc hordeInn = MakeNpc(13, RoleInn, 40, kHorde);         // horde has no repair / food here
+    std::vector<Town> towns = BuildTowns({smith, far, inn, lonelyInn, fm, hordeInn}, 120);
+    ASSERT_EQ(towns.size(), 1U);
+    EXPECT_EQ(towns[0].id, 5U);
+    EXPECT_EQ(towns[0].teams, kAlliance);
+    EXPECT_EQ(towns[0].sells, 1u << KindFood);
+    ASSERT_EQ(towns[0].npcs.size(), 3U);  // fm, inn, smith (spawn order); the far smith and horde inn excluded
+    EXPECT_EQ(towns[0].npcs[0].spawn, 3U);
+    EXPECT_EQ(towns[0].npcs[2].spawn, 7U);
+}
+
+// ---- restock ------------------------------------------------------------------------------------------
+TEST(Errands, BestTierByLevelAndStock)
+{
+    EXPECT_EQ(BestTier(KindFood, 1, nullptr), 4540U);
+    EXPECT_EQ(BestTier(KindFood, 24, nullptr), 4542U);
+    EXPECT_EQ(BestTier(KindFood, 25, nullptr), 4544U);
+    EXPECT_EQ(BestTier(KindWater, 69, nullptr), 28399U);  // Pungent Seal Whey needs 70
+    EXPECT_EQ(BestTier(KindWater, 70, nullptr), 33444U);
+    EXPECT_EQ(BestTier(KindArrow, 80, nullptr), 41586U);
+    EXPECT_EQ(BestTier(KindReagent, 29, nullptr), 0U);
+    std::vector<std::uint32_t> const sold = {159, 4540, 4541};  // a starter-town vendor
+    EXPECT_EQ(BestTier(KindFood, 40, &sold), 4541U);  // best it has, not the best there is
+    EXPECT_EQ(BestTier(KindWater, 40, &sold), 159U);
+    EXPECT_EQ(BestTier(KindBullet, 40, &sold), 0U);
+}
+
+TEST(Errands, RestockListByClassAndLevel)
+{
+    Params p;
+    std::vector<std::uint32_t> const sold = {159, 1179, 1205, 1708, 2512, 2515, 2516, 2519, 3030, 3033,
+                                             4540, 4541, 4542, 4544, 17030};
+    std::array<std::uint32_t, kKinds> have = {3, 12, 0, 150, 0};
+    // Level 26 hunter with a gun: food, water, bullets topped up to target; arrows not bought.
+    std::vector<RestockLine> lines = RestockList(p, kClassHunter, 26, AmmoBullets, have, sold);
+    ASSERT_EQ(lines.size(), 3U);
+    EXPECT_EQ(lines[0].kind, KindFood);
+    EXPECT_EQ(lines[0].item, 4544U);
+    EXPECT_EQ(lines[0].target - lines[0].have, 17U);
+    EXPECT_EQ(lines[1].kind, KindWater);
+    EXPECT_EQ(lines[1].item, 1708U);
+    EXPECT_EQ(lines[2].kind, KindBullet);
+    EXPECT_EQ(lines[2].item, 3033U);
+    EXPECT_EQ(lines[2].target - lines[2].have, 850U);
+    // Level 30 shaman: food, water, ankh.
+    lines = RestockList(p, kClassShaman, 30, AmmoNone, have, sold);
+    ASSERT_EQ(lines.size(), 3U);
+    EXPECT_EQ(lines[2].kind, KindReagent);
+    EXPECT_EQ(lines[2].item, 17030U);
+    // Level 12 rogue: food only.
+    lines = RestockList(p, kClassRogue, 12, AmmoNone, have, sold);
+    ASSERT_EQ(lines.size(), 1U);
+    EXPECT_EQ(lines[0].item, 4541U);
+    // Level 40 mage: conjures, buys nothing. Full stocks: nothing.
+    EXPECT_TRUE(RestockList(p, kClassMage, 40, AmmoNone, have, sold).empty());
+    std::array<std::uint32_t, kKinds> const full = {20, 20, 1000, 1000, 5};
+    EXPECT_TRUE(RestockList(p, kClassHunter, 26, AmmoBullets, full, sold).empty());
+}
+
+TEST(Errands, PacksLimitedByMoney)
+{
+    PackBuy b = PacksToBuy(17, 5, 1000, 100000);
+    EXPECT_EQ(b.packs, 4U);  // 17 items in packs of 5
+    EXPECT_FALSE(b.shortOfMoney);
+    b = PacksToBuy(17, 5, 1000, 2500);
+    EXPECT_EQ(b.packs, 2U);
+    EXPECT_TRUE(b.shortOfMoney);
+    b = PacksToBuy(850, 200, 300, 0);
+    EXPECT_EQ(b.packs, 0U);
+    EXPECT_TRUE(b.shortOfMoney);
+    EXPECT_EQ(PacksToBuy(0, 5, 1000, 100000).packs, 0U);
+}
+
+// ---- errand batch ---------------------------------------------------------------------------------------
+TEST(Errands, PlanStopsBatchesInOrderAndMergesNpcs)
+{
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn | RoleVendor, 0);
+    inn.items = {159, 4540};
+    Npc smith = MakeNpc(7, RoleRepair | RoleVendor, 20);
+    Npc trainer = MakeNpc(8, RoleClassTrainer, 30);
+    Npc bowyer = MakeNpc(9, RoleVendor, 40);
+    bowyer.items = {2512};
+    Npc fm = MakeNpc(12, RoleFlight, 50);
+    t.npcs = {inn, smith, trainer, bowyer, fm};
+    PlanInput in;
+    in.team = kAlliance;
+    in.buyItems[KindFood] = 4540;
+    in.buyItems[KindWater] = 159;
+    in.buyItems[KindArrow] = 2512;
+    in.trainers = {8};
+    in.bind = true;
+    in.learnFp = true;
+    Plan const plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 5U);
+    // smith: sell + repair; inn: food + water, later bind (merged); bowyer: arrows; trainer; fm.
+    EXPECT_EQ(plan.stops[0].spawn, 7U);
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell | OpRepair));
+    EXPECT_EQ(plan.stops[1].spawn, 5U);
+    EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpBuy | OpBind));
+    EXPECT_EQ(plan.stops[1].buyKinds, std::uint32_t((1u << KindFood) | (1u << KindWater)));
+    EXPECT_EQ(plan.stops[2].spawn, 9U);
+    EXPECT_EQ(plan.stops[2].buyKinds, std::uint32_t(1u << KindArrow));
+    EXPECT_EQ(plan.stops[3].spawn, 8U);
+    EXPECT_EQ(plan.stops[3].ops, std::uint32_t(OpTrain));
+    EXPECT_EQ(plan.stops[4].spawn, 12U);
+    EXPECT_EQ(plan.stops[4].ops, std::uint32_t(OpLearnFp));
+}
+
+TEST(Errands, PlanStopsMinimalRunAndTeamFilter)
+{
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn, 0);
+    Npc hordeSmith = MakeNpc(6, RoleRepair | RoleVendor, 10, kHorde);
+    Npc smith = MakeNpc(7, RoleRepair, 20);           // repairs, sells nothing
+    Npc grocer = MakeNpc(8, RoleVendor, 30);
+    t.npcs = {inn, hordeSmith, smith, grocer};
+    PlanInput in;
+    in.team = kAlliance;
+    Plan const plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 2U);
+    EXPECT_EQ(plan.stops[0].spawn, 8U);  // junk sold at a vendor
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell));
+    EXPECT_EQ(plan.stops[1].spawn, 7U);
+    EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpRepair));
+}
+
+// ---- state + ledger ----------------------------------------------------------------------------------------
+TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
+{
+    Params p;
+    BotState s;
+    s.phase = Phase::Return;
+    s.town = 99;
+    s.lastClassTrainLevel = 24;
+    s.spent = 500;
+    BotState const n = AfterRun(p, s, 1000);
+    EXPECT_EQ(n.phase, Phase::None);
+    EXPECT_EQ(n.town, 0U);
+    EXPECT_EQ(n.spent, 0U);
+    EXPECT_EQ(n.lastClassTrainLevel, 24U);
+    EXPECT_EQ(n.cooldownUntilMs, 1000U + p.cooldownMs);
+    EXPECT_EQ(n.version, kStateVersion);
+}
+
+TEST(Errands, LegExhaustedByTimeoutOrReissues)
+{
+    Params p;
+    BotState s;
+    s.phaseMs = 1000;
+    EXPECT_FALSE(LegExhausted(p, s, 1000 + p.travelTimeoutMs, p.travelTimeoutMs));
+    EXPECT_TRUE(LegExhausted(p, s, 1001 + p.travelTimeoutMs, p.travelTimeoutMs));
+    s.reissues = p.maxReissues + 1;
+    EXPECT_TRUE(LegExhausted(p, s, 1000, p.travelTimeoutMs));
+}
+
+TEST(Errands, DurabilityAndBagPercent)
+{
+    EXPECT_EQ(DurabilityPct(0, 0), 100U);
+    EXPECT_EQ(DurabilityPct(30, 120), 25U);
+    EXPECT_EQ(BagUsedPct(12, 16), 75U);
+    EXPECT_EQ(Yards(0, 0, 300, 400), 500U);
+    EXPECT_EQ(ISqrt(99), 9U);
+}
+
+TEST(Errands, LedgerFieldsAreStable)
+{
+    BotState s;
+    s.town = 3002;
+    s.needs = NeedBags | NeedFood;
+    s.done = DoneSold | DoneRepaired | DoneRestocked;
+    s.spent = 1234;
+    s.sold = 560;
+    s.durBefore = 40;
+    s.durAfter = 100;
+    s.bagFreeBefore = 2;
+    s.bagFreeAfter = 11;
+    s.travelMs = 90000;
+    s.travelLeg = Leg::Hearth;
+    s.hearthUsed = true;
+    EXPECT_EQ(LedgerFields(s, 12, 45000),
+              ",\"town\":3002,\"town_zone\":12,\"needs\":5,\"done\":7,\"spent\":1234,\"sold\":560,\"dur0\":40,"
+              "\"dur1\":100,\"bag0\":2,\"bag1\":11,\"travel_ms\":90000,\"return_ms\":45000,\"leg\":\"hearth\","
+              "\"hearth\":true");
+    EXPECT_STREQ(OutcomeName(Outcome::ReturnGaveUp), "return_gave_up");
+    EXPECT_STREQ(LegName(Leg::Flight), "flight");
+}
+}  // namespace

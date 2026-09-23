@@ -26,6 +26,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/DeathLoopBreakerTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ZoneProgressionPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/TransportCrossingPolicyTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/ErrandsPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ExactBossTargetingTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/FixtureFactoryContractTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/FixtureAccelerationControlTest.cpp"

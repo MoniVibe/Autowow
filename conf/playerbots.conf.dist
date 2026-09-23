@@ -2454,6 +2454,39 @@ AutoWow.Transports.JoinYards = 300
 AutoWow.Transports.StepTimeoutMs = 900000
 AutoWow.Transports.Crossings = ""
 
+# Town runs for independent bots (ErrandsPolicy.h; random bots are kept up by cheats instead). Every
+# CheckIntervalMs a bot assesses its needs: bags >= BagSoftPct used (BagUrgentPct urgent), average
+# equipped durability < DurabilitySoftPct (DurabilityUrgentPct urgent), food/water/ammo/reagent below
+# *Low for its class and level (a hunter with no ammo is urgent), a class-trainer visit due (two levels,
+# gold for a rank), a profession rank due (planned bots), hearthstone bound outside the zone, the zone's
+# flight path unknown. Any urgent need, or two soft ones that the chosen town can serve, starts a run to
+# the cheapest friendly town (innkeeper + repair NPC + food/water vendor within TownRadius, flight
+# master optional): hearthstone when bound there, ready and farther than HearthMinYards; else a known
+# flight path; else a walk up to MaxWalkYards (no teleport). At the town, one batch: sell junk, repair,
+# restock up to *Target (best tier sold for the level), train, bind the hearthstone, learn the flight
+# path, all with real gold (unaffordable items/ranks skipped and logged); then back to the pre-run spot.
+# Ledger `errand` (event 14) per run. CooldownMs between runs. The town table is built once at world
+# init with the flag on.
+AutoWow.Errands.Enable = 0
+AutoWow.Errands.CheckIntervalMs = 60000
+AutoWow.Errands.CooldownMs = 900000
+AutoWow.Errands.BagSoftPct = 70
+AutoWow.Errands.BagUrgentPct = 90
+AutoWow.Errands.DurabilitySoftPct = 50
+AutoWow.Errands.DurabilityUrgentPct = 25
+AutoWow.Errands.FoodLow = 5
+AutoWow.Errands.FoodTarget = 20
+AutoWow.Errands.WaterLow = 5
+AutoWow.Errands.WaterTarget = 20
+AutoWow.Errands.AmmoLow = 200
+AutoWow.Errands.AmmoTarget = 1000
+AutoWow.Errands.ReagentLow = 1
+AutoWow.Errands.ReagentTarget = 5
+AutoWow.Errands.TownRadius = 120
+AutoWow.Errands.HearthMinYards = 800
+AutoWow.Errands.MaxWalkYards = 4000
+AutoWow.Errands.TravelTimeoutMs = 1200000
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,

@@ -25,6 +25,7 @@
 #include "DeathLoopBreaker.h"
 #include "TransportCrossingPolicy.h"
 #include "ZoneProgressionPolicy.h"
+#include "ErrandsPolicy.h"
 #include "TacticalRuntime.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
@@ -536,6 +537,7 @@ public:
         AutoWowDeathLoop::LoadConfig();
         AutoWowZoneProgression::LoadConfig();
         AutoWowTransports::LoadConfig();  // after ZoneProgression: appends crossing-only routes
+        AutoWowErrands::LoadConfig();     // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowTactics::LoadConfig();
         AutoWowBridge::instance().Start();
 

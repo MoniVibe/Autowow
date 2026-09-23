@@ -282,6 +282,23 @@ TEST(AutoWowQuestLedgerTest, ZoneMoveEventIsAppendOnlyAndCarriesTrailingFields)
               "\"mode\":\"walk\"}");
 }
 
+TEST(AutoWowQuestLedgerTest, ErrandEventIsAppendOnlyAndCarriesTrailingFields)
+{
+    EXPECT_EQ(static_cast<int>(Event::Errand), 14);
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Errand), "errand");
+    Row row;
+    row.ev = Event::Errand;
+    row.bot = 62955;
+    row.level = 12;
+    row.zone = 12;
+    row.reason = "done";
+    row.extra = ",\"town\":3002,\"hearth\":false";
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row),
+              "{\"v\":1,\"run\":\"r\",\"ms\":0,\"ev\":\"errand\",\"bot\":62955,\"team\":0,\"lvl\":12,"
+              "\"quest\":0,\"map\":0,\"zone\":12,\"x\":0,\"y\":0,\"c\":[0,0,0,0],\"i\":[0,0,0,0,0,0],"
+              "\"reason\":\"done\",\"phase\":\"\",\"town\":3002,\"hearth\":false}");
+}
+
 TEST(AutoWowQuestLedgerTest, DiffProgressEmitsOnlyChangedKnownQuests)
 {
     using AutoWowQuestLedger::DiffProgress;
