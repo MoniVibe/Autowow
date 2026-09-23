@@ -212,7 +212,7 @@ function Get-CohortOracleAllowlist {
 
 function Invoke-CohortBridge {
     param([Parameter(Mandatory = $true)][string]$Action, [uint32]$Guid = 0)
-    $lines = if ($Guid) { @(& $script:CohortBridge -Action $Action -BotGuid $Guid) } else { @(& $script:CohortBridge -Action $Action) }
+    $lines = @(if ($Guid) { & $script:CohortBridge -Action $Action -BotGuid $Guid } else { & $script:CohortBridge -Action $Action })
     if ($lines.Count -eq 0) { throw "Bridge $Action returned nothing." }
     return (([string]$lines[-1]) | ConvertFrom-Json)
 }

@@ -106,6 +106,8 @@ function Invoke-OneShotConsole {
         if (-not $ready) { throw 'One-shot worldserver did not become ready.' }
         foreach ($l in $Lines) { $proc.StandardInput.WriteLine($l); $proc.StandardInput.Flush(); Start-Sleep -Milliseconds 300 }
         Start-Sleep -Seconds 20   # let async character saves drain before shutdown
+        # Stdin EOF alone did not stop the console loop (observed: 300s kill). Ask for a normal shutdown.
+        $proc.StandardInput.WriteLine('.server shutdown 1'); $proc.StandardInput.Flush()
     }
     finally {
         # Console EOF triggers AzerothCore's normal shutdown path (saves are flushed).
@@ -113,7 +115,8 @@ function Invoke-OneShotConsole {
         if (-not $proc.WaitForExit(300000)) { $proc.Kill(); Write-Warning 'One-shot worldserver was killed after 300s.' }
     }
     $pw = $env:COHORT_ACCOUNT_PASSWORD
-    $text = ($out.Result + "`n--- stderr ---`n" + $err.Result).Replace($pw, '<redacted>')
+    $text = ($out.Result + "`n--- stderr ---`n" + $err.Result)
+    if (-not [string]::IsNullOrEmpty($pw)) { $text = $text.Replace($pw, '<redacted>') }
     $log = Join-Path $logDir "provision-console-$stamp.log"
     [System.IO.File]::WriteAllText($log, $text, (New-Object System.Text.UTF8Encoding($false)))
     return $log
