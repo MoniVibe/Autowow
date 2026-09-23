@@ -94,3 +94,23 @@ TEST(CombatPerformanceTelemetry, MaximumWindowRetiresEvenWhenEventsContinue)
               1000U + AutoWowCombatPerformanceTelemetry::kMaxWindowMs);
     EXPECT_EQ(snapshot.damageDone, 20U);
 }
+
+// C1: the player-side entry hook feeds RecordCombatEntry once per false->true transition; exits come
+// from the core OnUnitExitCombat. Alternating transitions within one window count both sides.
+TEST(CombatPerformanceTelemetry, PlayerSideEntriesAndExitsPairUp)
+{
+    RollingCounters counters;
+    counters.RecordCombatEntry(1000);
+    counters.RecordCombatExit(2000);
+    counters.RecordCombatEntry(3000);
+    counters.RecordCombatExit(4000);
+
+    CounterSnapshot const snapshot = counters.Snapshot(4500);
+    EXPECT_EQ(snapshot.combatEntries, 2U);
+    EXPECT_EQ(snapshot.combatExits, 2U);
+}
+
+TEST(CombatPerformanceTelemetry, TelemetryFlagDefaultsOff)
+{
+    EXPECT_FALSE(AutoWowCombatPerformanceTelemetry::TelemetryEnabled());
+}

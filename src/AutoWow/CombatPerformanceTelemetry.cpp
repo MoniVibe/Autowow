@@ -13,9 +13,11 @@
 #include <utility>
 #include <vector>
 
+#include "Config.h"
 #include "Creature.h"
 #include "GameTime.h"
 #include "Player.h"
+#include "PlayerScript.h"
 #include "Playerbots.h"
 #include "ThreatManager.h"
 #include "Unit.h"
@@ -448,8 +450,37 @@ public:
     }
 };
 
+// AutoWow.CombatTelemetry.Enable-gated player-side hooks. Registered unconditionally (the flag is read
+// after script registration); every handler early-returns on the cached flag.
+class CombatTelemetryPlayerScript : public PlayerScript
+{
+public:
+    CombatTelemetryPlayerScript()
+        : PlayerScript("AutoWowCombatTelemetryPlayer", {
+            PLAYERHOOK_ON_PLAYER_ENTER_COMBAT
+        })
+    {
+    }
+
+    // C1: CombatManager::UpdateOwnerCombatState fires this on every false->true transition.
+    void OnPlayerEnterCombat(Player* player, Unit* /*enemy*/) override
+    {
+        if (!TelemetryEnabled())
+            return;
+        std::uint32_t botGuid = 0;
+        if (IsPlayerbotPlayer(player, botGuid))
+            RecordCombatEntry(botGuid, NowMs());
+    }
+};
+
+void LoadConfig()
+{
+    detail::gTelemetryEnabled = sConfigMgr->GetOption<bool>("AutoWow.CombatTelemetry.Enable", false);
+}
+
 void AddAutoWowCombatPerformanceTelemetryScript()
 {
     new CombatPerformanceTelemetryScript();
+    new CombatTelemetryPlayerScript();
 }
 }

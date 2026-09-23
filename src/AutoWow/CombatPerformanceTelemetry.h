@@ -121,6 +121,23 @@ void Forget(std::uint32_t botGuid);
 
 // Registers the UnitScript event hooks during AddPlayerbotsScripts().
 void AddAutoWowCombatPerformanceTelemetryScript();
+
+// ---- AutoWow.CombatTelemetry.* (default off) -------------------------------------------------
+// Everything gated by this flag is inert when it is 0: the hooks early-return on one cached bool and
+// the v1 window above behaves exactly as before (combat.entries stays 0 for players).
+//   C1: player-side combat entry. The core raises OnUnitEnterCombat only for creatures
+//       (Creature.cpp), so v1 `combat.entries` was structurally 0 for bots; with the flag on,
+//       PlayerScript::OnPlayerEnterCombat (CombatManager::UpdateOwnerCombatState, every
+//       false->true transition) feeds RecordCombatEntry.
+namespace detail
+{
+inline bool gTelemetryEnabled = false;
+}
+
+inline bool TelemetryEnabled() { return detail::gTelemetryEnabled; }
+
+// Reads the AutoWow.CombatTelemetry.* / AutoWow.Combat.* keys. Called once at world init.
+void LoadConfig();
 }
 
 #endif  // AUTOWOW_COMBAT_PERFORMANCE_TELEMETRY_H

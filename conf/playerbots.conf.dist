@@ -2248,6 +2248,12 @@ AutoWow.Ledger.RunId = ""
 # repeats carrying a count field `n` (occurrences the line stands for). 60000 is the soak value.
 AutoWow.Ledger.BlockedDedupeMs = 0
 
+# AutoWoW combat telemetry (C1). Default 0 = inert: hooks early-return on one cached bool and the
+# bridge `combatlog` counters (autowow.combat-counters.v1) behave exactly as before.
+# 1 = count player-side combat entries (OnPlayerEnterCombat) into v1 `combat.entries`, which the core
+# otherwise only raises for creatures. Read once at world init.
+AutoWow.CombatTelemetry.Enable = 0
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,

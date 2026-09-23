@@ -501,6 +501,7 @@ public:
 
         sPlayerbotAIConfig.Initialize();
         AutoWowQuestLedger::LoadConfig();
+        AutoWowCombatPerformanceTelemetry::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
