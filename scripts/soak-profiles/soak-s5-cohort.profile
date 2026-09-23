@@ -21,7 +21,7 @@ pb|AutoWow.OracleRuntime.BotGuids|"7,10,101,112,121,123,139,144,154,166,236,244,
 pb|AutoWow.OracleRuntime.MaxBots|27
 pb|AutoWow.OracleRuntime.SliceBots|8
 pb|AutoWow.Ledger.Enable|1
-pb|AutoWow.Ledger.RunId|"soak-s5-cohort-r1"
+pb|AutoWow.Ledger.RunId|"soak-s5-cohort-r2"
 pb|AutoWow.Ledger.BlockedDedupeMs|60000
 pb|AutoWow.QuestFullBagRelief.Enable|1
 pb|AutoWow.PvpRealmZoneRules.Enable|1
@@ -40,3 +40,6 @@ pb|AutoWow.OracleRuntime.NoRandomTeleport|1
 ws|AutoWow.Perf.CreatureTerrainRefreshMs|400
 ws|AutoWow.Perf.CreatureTerrainRefreshYards|1.5
 pb|AutoWow.Independent.AutoMaintenance|2
+# r2: chat feedback loop between non-rndbot cohort bots hung a map thread (r1). Silence bot chat until code fix.
+pb|AiPlayerbot.RandomBotTalk|0
+pb|AiPlayerbot.EnableBroadcasts|0
