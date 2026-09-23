@@ -97,7 +97,11 @@ void BuildCatalog()
     for (auto const& [guid, data] : sObjectMgr->GetAllCreatureData())
     {
         CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(data.id);
-        if (!ct || !(ct->npcflag & roleFlags))
+        if (!ct)
+            continue;
+        uint32 npcflag = 0, unitFlags = 0, dynamicFlags = 0;
+        ObjectMgr::ChooseCreatureFlags(ct, npcflag, unitFlags, dynamicFlags, &data);  // spawn overrides
+        if (!(npcflag & roleFlags))
             continue;
         if (std::find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(), data.mapid) ==
             sPlayerbotAIConfig.randomBotMaps.end())
@@ -112,25 +116,25 @@ void BuildCatalog()
         n.teams = TeamsOf(ct->faction);
         if (!n.teams)
             continue;
-        if (ct->npcflag & UNIT_NPC_FLAG_INNKEEPER)
+        if (npcflag & UNIT_NPC_FLAG_INNKEEPER)
         {
             n.roles |= RoleInn;
             if (Map* map = sMapMgr->FindMap(data.mapid, 0))
                 n.zone = map->GetZoneId(PHASEMASK_NORMAL, data.posX, data.posY, data.posZ);
         }
-        if (ct->npcflag & UNIT_NPC_FLAG_REPAIR)
+        if (npcflag & UNIT_NPC_FLAG_REPAIR)
             n.roles |= RoleRepair;
-        if (ct->npcflag & UNIT_NPC_FLAG_TRAINER_CLASS)
+        if (npcflag & UNIT_NPC_FLAG_TRAINER_CLASS)
             n.roles |= RoleClassTrainer;
-        if (ct->npcflag & UNIT_NPC_FLAG_TRAINER_PROFESSION)
+        if (npcflag & UNIT_NPC_FLAG_TRAINER_PROFESSION)
             n.roles |= RoleTradeTrainer;
-        if (ct->npcflag & UNIT_NPC_FLAG_FLIGHTMASTER)
+        if (npcflag & UNIT_NPC_FLAG_FLIGHTMASTER)
         {
             n.roles |= RoleFlight;
             n.nodeAlliance = sObjectMgr->GetNearestTaxiNode(data.posX, data.posY, data.posZ, data.mapid, TEAM_ALLIANCE);
             n.nodeHorde = sObjectMgr->GetNearestTaxiNode(data.posX, data.posY, data.posZ, data.mapid, TEAM_HORDE);
         }
-        if (ct->npcflag & UNIT_NPC_FLAG_VENDOR_MASK)
+        if (npcflag & UNIT_NPC_FLAG_VENDOR_MASK)
         {
             n.roles |= RoleVendor;
             if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id))
@@ -446,7 +450,7 @@ void LoadConfig()
     p.ammoTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.AmmoTarget", 1000);
     p.reagentLow = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.ReagentLow", 1);
     p.reagentTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.ReagentTarget", 5);
-    p.townRadius = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TownRadius", 120);
+    p.townRadius = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TownRadius", 180);
     p.hearthMinYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.HearthMinYards", 800);
     p.maxWalkYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MaxWalkYards", 4000);
     p.travelTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TravelTimeoutMs", 1200000);

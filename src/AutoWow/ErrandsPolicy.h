@@ -172,7 +172,7 @@ struct Params
     std::uint32_t ammoTarget = 1000;
     std::uint32_t reagentLow = 1;              // AutoWow.Errands.ReagentLow / ReagentTarget
     std::uint32_t reagentTarget = 5;
-    std::uint32_t townRadius = 120;            // AutoWow.Errands.TownRadius: npc cluster around an innkeeper
+    std::uint32_t townRadius = 180;            // AutoWow.Errands.TownRadius: npc cluster around an innkeeper
     std::uint32_t arriveYards = 25;            // at the innkeeper = arrived
     std::uint32_t hearthMinYards = 800;        // AutoWow.Errands.HearthMinYards
     std::uint32_t flightMinYards = 600;        // shorter trips always walk
