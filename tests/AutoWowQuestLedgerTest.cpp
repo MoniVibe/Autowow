@@ -247,6 +247,23 @@ TEST(AutoWowQuestLedgerTest, ProgressEventNameIsAppendOnly)
     EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Progress), "progress");
 }
 
+TEST(AutoWowQuestLedgerTest, DeathLoopEventIsAppendOnlyAndCarriesTrailingFields)
+{
+    EXPECT_EQ(static_cast<int>(Event::DeathLoop), 10);
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::DeathLoop), "death_loop");
+    Row row;
+    row.ev = Event::DeathLoop;
+    row.bot = 112;
+    row.level = 18;
+    row.quest = 4183;
+    row.reason = "level_gap";
+    row.extra = ",\"deaths\":1";
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row),
+              "{\"v\":1,\"run\":\"r\",\"ms\":0,\"ev\":\"death_loop\",\"bot\":112,\"team\":0,\"lvl\":18,"
+              "\"quest\":4183,\"map\":0,\"zone\":0,\"x\":0,\"y\":0,\"c\":[0,0,0,0],\"i\":[0,0,0,0,0,0],"
+              "\"reason\":\"level_gap\",\"phase\":\"\",\"deaths\":1}");
+}
+
 TEST(AutoWowQuestLedgerTest, DiffProgressEmitsOnlyChangedKnownQuests)
 {
     using AutoWowQuestLedger::DiffProgress;

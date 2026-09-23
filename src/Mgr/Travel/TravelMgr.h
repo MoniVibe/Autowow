@@ -900,6 +900,12 @@ public:
     std::vector<uint32> GetFlightNodesInZone(uint32 zoneId, TeamId team, uint32 excludeNode = 0) const;
     bool SelectAuctioneerByMap(Player* bot, NpcLocation& outAuctioneer);
     const std::vector<WorldLocation>& GetLocsPerLevelCache(uint8 level) { return locsPerLevelCache[level]; }
+    // Low end of a zone's curated level bracket (filled once at Init); 0 = zone not bracketed.
+    uint32 GetZoneBracketLow(uint32 zoneId) const
+    {
+        auto const it = zone2LevelBracket.find(zoneId);
+        return it == zone2LevelBracket.end() ? 0 : it->second.low;
+    }
 
     template <class D, class W, class URBG>
     void weighted_shuffle(D first, D last, W first_weight, W last_weight, URBG&& g)

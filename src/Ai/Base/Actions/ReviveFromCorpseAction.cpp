@@ -8,6 +8,7 @@
 
 #include "AutoWowBridge.h"
 #include "AutoWowQuestLedger.h"
+#include "DeathLoopBreaker.h"
 #include "DungeonPathSafety.h"
 #include "Event.h"
 #include "FleeManager.h"
@@ -109,6 +110,12 @@ bool ReviveFromCorpseAction::Execute(Event event)
         }
     }
 
+    // AutoWow.DeathLoop: an escalated death never reclaims the body next to its killer. Falls through to
+    // the ordinary reclaim only when the spirit-healer route cannot act at all.
+    if (AutoWowDeathLoop::Enabled() && AutoWowDeathLoop::WantsSpiritHealer(bot->GetGUID().GetCounter()) &&
+        botAI->DoSpecificAction("spirit healer", Event("death loop"), true))
+        return true;
+
     LOG_DEBUG("playerbots", "Bot {} {}:{} <{}> revives at body", bot->GetGUID().ToString().c_str(),
               bot->GetTeamId() == TEAM_ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName().c_str());
 
@@ -178,6 +185,15 @@ bool FindCorpseAction::Execute(Event /*event*/)
                                       "worker_death_recovery_blocked", "no_teleport_policy_missing");
         return false;
     }
+
+    // AutoWow.DeathLoop: an escalated death (same-spot loop, or a killer far above the bot's level) takes
+    // the spirit healer instead of the corpse run - ahead of the legacy five-death revive-in-place, which
+    // is itself a loop at a hostile spawn. Falls through to the ordinary corpse run if the spirit-healer
+    // route cannot act at all.
+    if (AutoWowDeathLoop::Enabled() && bot->HasPlayerFlag(PLAYER_FLAGS_GHOST) &&
+        AutoWowDeathLoop::WantsSpiritHealer(bot->GetGUID().GetCounter()) &&
+        botAI->DoSpecificAction("spirit healer", Event("death loop"), true))
+        return true;
 
     // Player::GetCorpse() only searches the player's current Map.  A released ghost whose body is
     // on another continent or inside an unloaded instance still has an authoritative persisted

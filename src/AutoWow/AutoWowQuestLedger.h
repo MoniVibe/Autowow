@@ -31,6 +31,11 @@
 //       skill, old, new, max, cause: skill line id, value before and after, max after, and
 //       cause update (core UpdateSkill/UpdateSkillPro) | learn (first rank, old 0) | rank (rank-up,
 //       old == new, max grew). quest is 0. Sum(new - old) per team is the profession KPI delta.
+//   - `death_loop` (AutoWow.DeathLoop.Enable): one line per escalated death (AutoWowDeathLoop).
+//     reason = trigger (cluster|level_gap|cluster_level_gap); quest = the quest deferred for it (or 0);
+//     zone/x/y are the victim's. Trailing: deaths (same-spot deaths in the window, incl. this one),
+//     klvl (killer level, 0 = unknown), zlow (zone bracket low, 0 = unknown), relocate (0|1),
+//     dx, dy, dr (danger-area center and radius, integer yards), cool_ms (danger cooldown).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -60,8 +65,9 @@ enum class Event : std::uint8_t
     Died = 6,
     PvpKill = 7,
     Combat = 8,
-    Progress = 9,  // 10 DeathLoop reserved by the death-loop lane
-    SkillUp = 11   // explicit: 10 is reserved (DeathLoop), never reuse it here
+    Progress = 9,
+    DeathLoop = 10,
+    SkillUp = 11
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -79,6 +85,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Combat: return "combat";
         case Event::Progress: return "progress";
         case Event::SkillUp: return "skill_up";
+        case Event::DeathLoop: return "death_loop";
     }
     return "unknown";
 }
@@ -136,7 +143,7 @@ struct Row
     std::uint32_t victim = 0;
     std::uint32_t victimLevel = 0;
     bool honorable = false;
-    // combat: pre-formatted trailing fields (",\"cv\":1,..."), appended verbatim
+    // combat, death_loop: pre-formatted trailing fields (",\"cv\":1,..."), appended verbatim
     std::string_view extra;
     // skill_up
     std::uint32_t skill = 0;
@@ -347,7 +354,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += ",\"honorable\":";
         out += row.honorable ? "true" : "false";
     }
-    else if (row.ev == Event::Combat)
+    else if (row.ev == Event::Combat || row.ev == Event::DeathLoop)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -391,6 +398,9 @@ void EmitDied(Player* victim);
 void EmitPvpKill(Player* killer, Player* victim, bool honorable);
 // `combat` (no-op unless the player is a recorded bot); fields from DrainEmitFields.
 void EmitCombat(Player* player, std::string_view fields);
+// `death_loop` (no-op unless the player is a recorded bot); reason is a static literal, fields are the
+// pre-formatted trailing fields.
+void EmitDeathLoop(Player* player, std::uint32_t questId, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

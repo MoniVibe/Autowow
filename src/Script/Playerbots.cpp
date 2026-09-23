@@ -22,6 +22,7 @@
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
+#include "DeathLoopBreaker.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -529,6 +530,7 @@ public:
         sPlayerbotAIConfig.Initialize();
         AutoWowQuestLedger::LoadConfig();
         AutoWowCombatPerformanceTelemetry::LoadConfig();
+        AutoWowDeathLoop::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
@@ -724,6 +726,7 @@ void AddPlayerbotsScripts()
     AddPlayerbotsSecureLoginScripts();
     AddPlayerbotsCommandscripts();
     AutoWowCombatPerformanceTelemetry::AddAutoWowCombatPerformanceTelemetryScript();
+    AutoWowDeathLoop::AddScripts();
     PlayerBotsGuildValidationScript();
     AddSC_MagtheridonBotScripts();
     AddSC_TempestKeepBotScripts();

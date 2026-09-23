@@ -16,6 +16,7 @@
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "DBCStores.h"
+#include "DeathLoopBreaker.h"
 #include "DungeonPathSafety.h"
 #include "DungeonPathWalkAction.h"
 #include "G3D/Vector2.h"
@@ -135,6 +136,9 @@ WorldPosition SelectReachableAutoWowTravelPos(Player* bot, std::vector<WorldLoca
         if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(),
                                                 loc.GetPositionY(), ground) != bot->GetZoneId())
             continue;
+        if (AutoWowDeathLoop::Enabled() && AutoWowDeathLoop::IsDangerous(bot->GetGUID().GetCounter(),
+                loc.GetMapId(), loc.GetPositionX(), loc.GetPositionY()))
+            continue;
         WorldPosition candidate(loc.GetMapId(), loc.GetPositionX(), loc.GetPositionY(), ground,
                                 loc.GetOrientation());
         if (!TravelDestinationCoolingDown(bot->GetGUID().GetCounter(), candidate))
@@ -208,6 +212,21 @@ WorldPosition SelectReachableAutoWowTravelPos(Player* bot, std::vector<WorldLoca
     LOG_DEBUG("playerbots", "[New RPG] AutoWow {} no reachable local travel destination coarse={} eligible={} cooldown={} probed={}",
               bot->GetName(), locs.size(), eligibleCandidates, coolingCandidates, probes);
     return {};
+}
+
+// AutoWow.DeathLoop: a quest with an objective POI (bot's map) inside one of the bot's danger areas is
+// deferred (lowPriorityQuest + ledger `deferred` reason `death_loop_area`) instead of being picked.
+bool DeathLoopDefersQuest(Player* bot, uint32 questId, std::vector<POIInfo> const& pois)
+{
+    for (POIInfo const& poi : pois)
+    {
+        if (AutoWowDeathLoop::IsDangerous(bot->GetGUID().GetCounter(), bot->GetMapId(), poi.pos.x, poi.pos.y))
+        {
+            AutoWowDeathLoop::DeferQuest(bot, questId);
+            return true;
+        }
+    }
+    return false;
 }
 }
 
@@ -1710,6 +1729,10 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
         if (bot->GetExactDist(loc) > 2500.0f)
             continue;
 
+        if (AutoWowDeathLoop::Enabled() && AutoWowDeathLoop::IsDangerous(bot->GetGUID().GetCounter(),
+                loc.GetMapId(), loc.GetPositionX(), loc.GetPositionY()))
+            continue;
+
         if (!inCity && bot->GetMap()->GetZoneId(bot->GetPhaseMask(), loc.GetPositionX(), loc.GetPositionY(),
                                                 loc.GetPositionZ()) != bot->GetZoneId())
             continue;
@@ -1889,7 +1912,8 @@ bool NewRpgBaseAction::RandomChangeStatus(std::vector<NewRpgStatus> candidateSta
                     continue;
 
                 std::vector<POIInfo> poiInfo;
-                if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
+                if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true) &&
+                    (!AutoWowDeathLoop::Enabled() || !DeathLoopDefersQuest(bot, questId, poiInfo)))
                 {
                     availableQuests.push_back(questId);
                 }
@@ -1984,7 +2008,8 @@ bool NewRpgBaseAction::CheckRpgStatusAvailable(NewRpgStatus status)
                     continue;
 
                 std::vector<POIInfo> poiInfo;
-                if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true))
+                if (GetQuestPOIPosAndObjectiveIdx(questId, poiInfo, true) &&
+                    (!AutoWowDeathLoop::Enabled() || !DeathLoopDefersQuest(bot, questId, poiInfo)))
                 {
                     return true;
                 }

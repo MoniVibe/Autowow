@@ -275,6 +275,16 @@ void EmitSkillUp(Player* player, std::uint32_t skill, std::uint32_t oldValue, st
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
 }
 
+void EmitDeathLoop(Player* player, std::uint32_t questId, char const* reason, std::string_view fields)
+{
+    if (!IsRecordedBot(player))
+        return;
+    Row row;
+    FillRow(player, Event::DeathLoop, questId, reason, "", row);
+    row.extra = fields;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
 void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase)
 {
     if (!IsRecordedBot(player))

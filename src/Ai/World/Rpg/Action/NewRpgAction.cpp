@@ -26,6 +26,7 @@
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
+#include "DeathLoopBreaker.h"
 #include "DungeonPathWalkAction.h"
 #include "DungeonPullReadinessGuard.h"
 #include "ExactQuestAttackRecoveryPolicy.h"
@@ -361,6 +362,26 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgStatus status = info.GetStatus();
+
+    // AutoWow.DeathLoop: an escalated death in a zone whose level bracket starts well above the bot
+    // leaves one relocation attempt, taken through the ordinary flight-travel status (walk to the
+    // nearest flight master, fly to a zone bracketing the bot's level). No teleport.
+    if (AutoWowDeathLoop::Enabled() && status != RPG_TRAVEL_FLIGHT && bot->IsAlive() &&
+        AutoWowDeathLoop::TakeRelocation(bot->GetGUID().GetCounter()))
+    {
+        uint32 flightMasterEntry = 0;
+        WorldPosition flightMasterPos;
+        std::vector<uint32> path;
+        bool const found = SelectRandomFlightTaxiNode(flightMasterEntry, flightMasterPos, path);
+        LOG_INFO("playerbots", "[DeathLoop] bot={} relocate lvl={} zone={} flight={} to_node={}", bot->GetName(),
+                 bot->GetLevel(), bot->GetZoneId(), found, found ? path.back() : 0);
+        if (found)
+        {
+            info.ChangeToTravelFlight(flightMasterEntry, flightMasterPos, path);
+            return true;
+        }
+    }
+
     switch (status)
     {
         case RPG_IDLE:

@@ -11,6 +11,7 @@
 #include "AiObjectContext.h"
 #include "Config.h"
 #include "Creature.h"
+#include "DeathLoopBreaker.h"
 #include "GameObject.h"
 #include "G3D/Vector3.h"
 #include "GatheringWorkerState.h"
@@ -966,7 +967,11 @@ bool Runtime::EnsureQuestDirective(Guid botGuid, BotState& state)
                 coreReadyForFinisher,
                 objective != nullptr,
                 resolved.hasLock() && resolved.key.questId == current->questId};
-            bool const unrunnable = ShouldDeferUnrunnableQuest(selectionFacts);
+            // AutoWow.DeathLoop: the bot escalated a death loop while working this quest; defer it through
+            // this same lease-releasing path.
+            bool const deathLoopArea = AutoWowDeathLoop::Enabled() &&
+                AutoWowDeathLoop::TakeQuestDeferral(static_cast<std::uint32_t>(botGuid), current->questId);
+            bool const unrunnable = deathLoopArea || ShouldDeferUnrunnableQuest(selectionFacts);
             bool const noCandidate = !unrunnable && !state.lease.valid &&
                 ShouldDeferNoCandidateQuest(state.noCandidate, current->questId,
                     config_.deferNoCandidatePasses);
@@ -975,7 +980,9 @@ bool Runtime::EnsureQuestDirective(Guid botGuid, BotState& state)
                 uint32 const deferredQuestId = current->questId;
                 if (AutoWowQuestLedger::Enabled())
                     AutoWowQuestLedger::Emit(ai->GetBot(), AutoWowQuestLedger::Event::Deferred, deferredQuestId,
-                        unrunnable ? "oracle_unrunnable" : NoCandidateReasonName(state.noCandidate.kind),
+                        deathLoopArea ? "death_loop_area"
+                        : unrunnable  ? "oracle_unrunnable"
+                                      : NoCandidateReasonName(state.noCandidate.kind),
                         AutoWowQuestLedger::PhaseName(current->objectiveRuntime.phase));
                 if (noCandidate)
                     state.noCandidate = {};

@@ -2288,6 +2288,28 @@ AutoWow.Combat.DotMinTargetHpPct = 10
 AutoWow.Combat.DotMinDurationPct = 50
 AutoWow.Combat.DotHighHpPerLevel = 150
 
+# AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
+# untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within
+# WindowMs within RadiusYards (same map), or the killer is >= KillerLevelGap levels above the bot
+# (0 disables that rule; Deaths = 0 disables the cluster rule). An escalated death:
+#   - takes the spirit-healer resurrection at the graveyard instead of the corpse run / reclaim;
+#   - marks the death cluster (centroid, RadiusYards) as a danger area for this bot for
+#     DangerCooldownMs: New RPG grind/camp picks skip it, quests with an objective POI inside it are
+#     deferred (ledger `deferred` reason death_loop_area), and the quest the bot was working is
+#     deferred (Oracle-managed: through the Oracle's own defer path);
+#   - when the zone's level bracket starts more than RelocateLevelMargin above the bot, makes one
+#     relocation attempt through the ordinary New RPG flight-travel status (walk to the flight master,
+#     fly to a zone bracketing the bot's level; no teleport).
+# Each escalation emits a ledger `death_loop` line. Bots following a real player, gather workers,
+# battlegrounds/arenas and dungeon/raid deaths are never escalated. Read once at world init.
+AutoWow.DeathLoop.Enable = 0
+AutoWow.DeathLoop.Deaths = 3
+AutoWow.DeathLoop.WindowMs = 1800000
+AutoWow.DeathLoop.RadiusYards = 60
+AutoWow.DeathLoop.KillerLevelGap = 10
+AutoWow.DeathLoop.DangerCooldownMs = 3600000
+AutoWow.DeathLoop.RelocateLevelMargin = 5
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,
