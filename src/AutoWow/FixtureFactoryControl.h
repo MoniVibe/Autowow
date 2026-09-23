@@ -33,6 +33,14 @@ bool IsValidQuality(uint32 quality);
 // bridge network thread.
 std::string Init(uint32 guid, uint32 level, uint32 specIndex, uint32 quality);
 std::string Status(uint32 guid);
+
+// probe-setlevel SETUP (reachable only through the AutoWow.Probe.Enable bridge verb, whose caller
+// applies the probe GUID gate first). Unlike Init it also moves DOWN: talents are reset and every
+// known spell whose SpellLevel exceeds the target is unlearned; then the same InitializeFixture path
+// sets the exact level, zeroes XP, relearns class/available spells and talents, and applies the
+// exact-quality loadout. Gear: exactly what fixture-init grants, nothing more. specIndex < 0 = the
+// bot's stored spec (or 0). Emits ledger `contaminated` reason `probe_setup` on success.
+std::string SetLevel(uint32 guid, uint32 level, int32 specIndex, uint32 quality);
 }
 
 #endif  // AUTOWOW_FIXTURE_FACTORY_CONTROL_H

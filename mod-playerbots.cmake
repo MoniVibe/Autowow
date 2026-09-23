@@ -62,6 +62,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/DTKNovosPolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/DungeonTransitionPolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/ShadowCombatOraclePolicyTest.cpp")
+  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/ProbePlacePolicyTest.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES
     "${CMAKE_CURRENT_LIST_DIR}/tests/WorkerGatherSafetyPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/WorkerGatherDeathRecoveryPolicyTest.cpp")

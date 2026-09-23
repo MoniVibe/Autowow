@@ -5,6 +5,7 @@
 
 #include "FixtureFactoryControl.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdlib>
@@ -12,7 +13,9 @@
 #include <limits>
 #include <sstream>
 #include <string>
+#include <vector>
 
+#include "AutoWowQuestLedger.h"
 #include "Config.h"
 #include "Bag.h"
 #include "Item.h"
@@ -23,8 +26,11 @@
 #include "PlayerbotAIConfig.h"
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
+#include "ProbePlacePolicy.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedDefines.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "World.h"
 
 namespace
@@ -524,5 +530,71 @@ std::string Status(uint32 guid)
         return Error(error);
 
     return Evidence(target.player, target.ai, "fixture_status", target.leagueRole, -1, -1, false);
+}
+
+std::string SetLevel(uint32 guid, uint32 level, int32 requestedSpecIndex, uint32 quality)
+{
+    FixtureTarget target;
+    std::string error;
+    if (!ResolveFixtureTarget(guid, target, error))
+        return Error(error);
+
+    Player* bot = target.player;
+    if (char const* invalid = AutoWowProbePlace::ValidateLevel(
+            level, static_cast<uint32>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)), bot->getClass()))
+        return Error(invalid);
+
+    int32 const storedSpec = ReadSpecEvidence(bot).storedIndex;
+    uint32 const specIndex = requestedSpecIndex >= 0 ? static_cast<uint32>(requestedSpecIndex)
+                                                     : static_cast<uint32>(storedSpec >= 0 ? storedSpec : 0);
+    if (!IsValidSpecIndex(specIndex))
+        return Error("fixture_spec_index_out_of_range");
+    if (!IsValidQuality(quality))
+        return Error("fixture_quality_out_of_range");
+    if (bot->getClass() >= MAX_CLASSES || sPlayerbotAIConfig.premadeSpecName[bot->getClass()][specIndex].empty())
+        return Error("fixture_spec_not_configured");
+    if (bot->IsInCombat())
+        return Error("fixture_target_in_combat");
+
+    // Downlevel: GiveLevel keeps spells learned above the target, so prune them first. Talents are
+    // reset (InitializeFixture re-applies the spec); every other spell above the target SpellLevel
+    // is removed in ascending spell id order. Level-0 spells (racials, professions, most passives)
+    // are kept.
+    uint32 const fromLevel = bot->GetLevel();
+    uint32 pruned = 0;
+    if (level < fromLevel)
+    {
+        bot->resetTalents(true);
+        std::vector<uint32> above;
+        for (auto const& [spellId, playerSpell] : bot->GetSpellMap())
+        {
+            if (!playerSpell || playerSpell->State == PLAYERSPELL_REMOVED)
+                continue;
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+            if (info && info->SpellLevel > level)
+                above.push_back(spellId);
+        }
+        std::sort(above.begin(), above.end());
+        for (uint32 spellId : above)
+            bot->removeSpell(spellId, SPEC_MASK_ALL, false);
+        pruned = static_cast<uint32>(above.size());
+    }
+
+    PlayerbotFactory factory(bot, level, quality);
+    if (!factory.InitializeFixture(specIndex, quality))
+        return Error("fixture_exact_quality_unavailable");
+    target.ai->ResetStrategies(false);
+
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "probe_setup");
+
+    std::string out = Evidence(bot, target.ai, "probe_setlevel", target.leagueRole, static_cast<int32>(specIndex),
+                               static_cast<int32>(quality), true);
+    // Evidence closes with the top-level '}'; append the probe block as one more top-level field.
+    std::ostringstream probe;
+    probe << ",\"probe\":{\"from_level\":" << fromLevel << ",\"to_level\":" << level
+          << ",\"spells_pruned\":" << pruned << ",\"xp\":" << bot->GetUInt32Value(PLAYER_XP) << '}';
+    out.insert(out.size() - 1, probe.str());
+    return out;
 }
 }  // namespace AutoWowFixture

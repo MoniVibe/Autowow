@@ -2223,6 +2223,17 @@ AutoWow.ObserverGuids = ""
 # quality enum is constrained to 0..5 (poor through legendary), and spec-index to 0..19.
 AutoWow.FixtureGuids = ""
 
+# Per-quest PROBE setup verbs on the loopback bridge: `probe-login <guid>`,
+# `probe-setlevel <guid> <level> [<spec-index> <quality>]` (up OR down; downlevel resets talents and
+# unlearns spells above the target level, then re-runs the fixture-init spell/talent/exact-quality
+# gear path; no other gear is granted), `probe-place <guid> <questId> [drop-others]` (clears the
+# quest's status/reward and quest-class objective items, then teleports to the deterministic
+# creature/gameobject quest-starter spawn; ledger `contaminated` reason `probe_setup`), and
+# `probe-status <guid> [<questId>]`. Every verb is limited to AutoWow.FixtureGuids and refuses the
+# cohort range 62955-63004 and any GUID in AutoWow.OracleRuntime.BotGuids.
+# Default 0: every probe verb is refused with `probe_disabled`.
+AutoWow.Probe.Enable = 0
+
 # Fixture-only accelerated micro-scenario allow-list. Empty (default) means no character may
 # receive 1000%-of-baseline (10x) pacing or exact-target fixture kills. Keep these GUIDs separate
 # from FixtureGuids and from persistent campaign/league rosters; the adapter never grants quest or

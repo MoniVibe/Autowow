@@ -20,6 +20,7 @@
 #include "ExactBossTargetControl.h"
 #include "FixtureAccelerationControl.h"
 #include "FixtureFactoryControl.h"
+#include "ProbePlaceControl.h"
 #include "ProbeResetControl.h"
 #include "QuestAcquisitionPolicy.h"
 #include "QuestGiverTravelFeedback.h"
@@ -247,6 +248,7 @@ enum class AutoWowRequestType
     Resume,
     Travel,
     ProbeReset,
+    ProbeFixture,
     FixtureInit,
     FixtureStatus,
     FixtureAccelerate,
@@ -274,6 +276,7 @@ struct AutoWowRequest
     uint32 fixturePacingPercent = 0;
     uint32 fixtureKillEntry = 0;
     uint64 fixtureKillSpawnId = 0;
+    AutoWowProbePlace::WireRequest probe;
     uint32 raidDifficulty = 0;
     uint32 expectedMapId = 0;
     uint32 exactCreatureEntry = 0;
@@ -2489,6 +2492,9 @@ public:
         if (m_request.type == AutoWowRequestType::ProbeReset)
             return Finish(true, AutoWowProbeReset::Reset(m_request.destination, m_request.expectedMapId,
                                                          m_request.raidDifficulty, m_request.memberGuids));
+
+        if (m_request.type == AutoWowRequestType::ProbeFixture)
+            return Finish(true, AutoWowProbePlace::Execute(m_request.probe));
 
         if (m_request.type == AutoWowRequestType::FixtureStatus)
             return Finish(true, AutoWowFixture::Status(m_request.botGuid));
@@ -5249,6 +5255,17 @@ bool ParseRequest(std::string requestText, AutoWowRequest& request, std::string&
         }
 
         request.type = AutoWowRequestType::ProbeReset;
+        return true;
+    }
+
+    // Fixture-only quest-probe SETUP verbs (AutoWow.Probe.Enable, GUID gate in ProbePlaceControl).
+    if (command == "probe-login" || command == "probe-setlevel" || command == "probe-place" ||
+        command == "probe-status")
+    {
+        if (!AutoWowProbePlace::ParseWireRequest(requestText, request.probe, error))
+            return false;
+        request.botGuid = request.probe.guid;
+        request.type = AutoWowRequestType::ProbeFixture;
         return true;
     }
 
