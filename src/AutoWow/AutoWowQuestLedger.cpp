@@ -135,7 +135,59 @@ void FillRow(Player* player, Event ev, std::uint32_t questId, char const* reason
 // Bots update on map threads; the dedupe table is shared. Touched only on blocked events.
 std::mutex gBlockedLock;
 std::unordered_map<std::uint32_t, BlockedDedupeState> gBlockedByBot;
+
+struct PendingKiller
+{
+    KillerKind kind = KillerKind::Unknown;
+    std::uint32_t id = 0;
+    std::uint32_t level = 0;
+};
+// Killer noted by the kill hook until the victim's OnPlayerJustDied. Touched only on deaths.
+std::mutex gKillerLock;
+std::unordered_map<std::uint32_t, PendingKiller> gKillerByBot;
 }  // namespace
+
+void NoteKiller(Player* victim, KillerKind kind, std::uint32_t killerId, std::uint32_t killerLevel)
+{
+    if (!IsRecordedBot(victim))
+        return;
+    std::lock_guard<std::mutex> guard(gKillerLock);
+    gKillerByBot[static_cast<std::uint32_t>(victim->GetGUID().GetCounter())] = {kind, killerId, killerLevel};
+}
+
+void EmitDied(Player* victim)
+{
+    if (!IsRecordedBot(victim))
+        return;
+    PendingKiller killer;
+    {
+        std::lock_guard<std::mutex> guard(gKillerLock);
+        auto const it = gKillerByBot.find(static_cast<std::uint32_t>(victim->GetGUID().GetCounter()));
+        if (it != gKillerByBot.end())
+        {
+            killer = it->second;
+            gKillerByBot.erase(it);
+        }
+    }
+    Row row;
+    FillRow(victim, Event::Died, 0, "", "", row);
+    row.killer = killer.kind;
+    row.killerId = killer.id;
+    row.killerLevel = killer.level;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
+void EmitPvpKill(Player* killer, Player* victim, bool honorable)
+{
+    if (!victim || !IsRecordedBot(killer))
+        return;
+    Row row;
+    FillRow(killer, Event::PvpKill, 0, "", "", row);
+    row.victim = static_cast<std::uint32_t>(victim->GetGUID().GetCounter());
+    row.victimLevel = victim->GetLevel();
+    row.honorable = honorable;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
 
 void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase)
 {

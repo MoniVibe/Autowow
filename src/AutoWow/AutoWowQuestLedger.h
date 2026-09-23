@@ -18,6 +18,10 @@
 //   - Optional trailing fields (appended after `phase`, only on the events that carry them):
 //       n  (blocked, AutoWow.Ledger.BlockedDedupeMs > 0): occurrences this line stands for (>= 1).
 //          Lines without `n` stand for exactly one occurrence.
+//       killer, kid, klvl (died): killer kind (player|creature|environment|unknown), killer id
+//          (creature entry, or player guid-low; a pet/guardian/totem kill names its owning player),
+//          killer level. quest is 0; zone/x/y are the victim's.
+//       victim, vlvl, honorable (pvp_kill): victim guid-low, victim level, core honor eligibility.
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -42,7 +46,9 @@ enum class Event : std::uint8_t
     Abandoned = 2,
     Blocked = 3,
     Deferred = 4,
-    Contaminated = 5
+    Contaminated = 5,
+    Died = 6,
+    PvpKill = 7
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -55,8 +61,38 @@ inline constexpr char const* EventName(Event ev)
         case Event::Blocked: return "blocked";
         case Event::Deferred: return "deferred";
         case Event::Contaminated: return "contaminated";
+        case Event::Died: return "died";
+        case Event::PvpKill: return "pvp_kill";
     }
     return "unknown";
+}
+
+// Wire-stable; append only.
+enum class KillerKind : std::uint8_t
+{
+    Player = 0,
+    Creature = 1,
+    Environment = 2,
+    Unknown = 3
+};
+
+inline constexpr char const* KillerKindName(KillerKind kind)
+{
+    switch (kind)
+    {
+        case KillerKind::Player: return "player";
+        case KillerKind::Creature: return "creature";
+        case KillerKind::Environment: return "environment";
+        case KillerKind::Unknown: return "unknown";
+    }
+    return "unknown";
+}
+
+// Mirrors the core Player::RewardHonor gate for a player victim (arena excluded by the caller).
+inline constexpr bool IsHonorableKill(bool sameTeam, bool ffaRealm, std::uint32_t killerGrayLevel,
+                                      std::uint32_t victimLevel, bool victimNoPvpCredit)
+{
+    return !victimNoPvpCredit && (!sameTeam || ffaRealm) && victimLevel > killerGrayLevel;
 }
 
 struct Row
@@ -76,6 +112,14 @@ struct Row
     char const* reason = "";  // static literal from a closed name table
     char const* phase = "";   // static literal from a closed name table
     std::uint32_t n = 0;      // blocked repeat count; 0 = field omitted (one occurrence)
+    // died
+    KillerKind killer = KillerKind::Unknown;
+    std::uint32_t killerId = 0;
+    std::uint32_t killerLevel = 0;
+    // pvp_kill
+    std::uint32_t victim = 0;
+    std::uint32_t victimLevel = 0;
+    bool honorable = false;
 };
 
 // Blocked-row dedupe (pure; unit-tested). A (quest, reason, phase) key emits on change; repeats of
@@ -222,6 +266,24 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += ",\"n\":";
         out += std::to_string(row.n);
     }
+    if (row.ev == Event::Died)
+    {
+        out += ",\"killer\":\"";
+        out += KillerKindName(row.killer);
+        out += "\",\"kid\":";
+        out += std::to_string(row.killerId);
+        out += ",\"klvl\":";
+        out += std::to_string(row.killerLevel);
+    }
+    else if (row.ev == Event::PvpKill)
+    {
+        out += ",\"victim\":";
+        out += std::to_string(row.victim);
+        out += ",\"vlvl\":";
+        out += std::to_string(row.victimLevel);
+        out += ",\"honorable\":";
+        out += row.honorable ? "true" : "false";
+    }
     out += "}";
     return out;
 }
@@ -240,6 +302,14 @@ void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason = 
 // Blocked event through the per-bot dedupe (AutoWow.Ledger.BlockedDedupeMs; 0 = every occurrence,
 // identical to Emit(Blocked)). reason/phase must be static literals (ReasonName / PhaseName).
 void EmitBlocked(Player* player, std::uint32_t questId, char const* reason, char const* phase);
+
+// Death attribution. Core order: Unit::Kill fires the kill hook (killer known) and the victim's
+// next update fires OnPlayerJustDied. NoteKiller records the killer for a recorded bot victim;
+// EmitDied emits `died` with it (or kind unknown when no kill hook fired) and forgets it.
+void NoteKiller(Player* victim, KillerKind kind, std::uint32_t killerId, std::uint32_t killerLevel);
+void EmitDied(Player* victim);
+// `pvp_kill` on the killer's row (no-op unless the killer is a recorded bot).
+void EmitPvpKill(Player* killer, Player* victim, bool honorable);
 }  // namespace AutoWowQuestLedger
 
 #endif

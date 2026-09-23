@@ -24,8 +24,10 @@
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
+#include "Creature.h"
 #include "DatabaseEnv.h"
 #include "DatabaseLoader.h"
+#include "Formulas.h"
 #include "Group.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
@@ -36,6 +38,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "RandomPlayerbotMgr.h"
 #include "ScriptMgr.h"
+#include "World.h"
 #include "PlayerbotCommandScript.h"
 #include "cmath"
 #include "BattleGroundTactics.h"
@@ -97,6 +100,19 @@ public:
     }
 };
 
+// Ledger side of one player-vs-player kill: killer noted for the victim's `died`, `pvp_kill` for the
+// killer. Honor eligibility mirrors Player::RewardHonor (arena kills never reward honor).
+static void NoteAutoWowPlayerKill(Player* killer, Player* killed)
+{
+    AutoWowQuestLedger::NoteKiller(killed, AutoWowQuestLedger::KillerKind::Player,
+                                   static_cast<uint32>(killer->GetGUID().GetCounter()), killer->GetLevel());
+    bool const honorable = killer != killed && !killer->InArena() &&
+        AutoWowQuestLedger::IsHonorableKill(killer->GetTeamId() == killed->GetTeamId(), sWorld->IsFFAPvPRealm(),
+                                            Acore::XP::GetGrayLevel(killer->GetLevel()), killed->GetLevel(),
+                                            killed->HasNoPVPCreditAura());
+    AutoWowQuestLedger::EmitPvpKill(killer, killed, honorable);
+}
+
 class PlayerbotsPlayerScript : public PlayerScript
 {
 public:
@@ -115,7 +131,10 @@ public:
         PLAYERHOOK_ON_GROUP_ROLL_REWARD_ITEM,
         PLAYERHOOK_ON_PLAYER_QUEST_ACCEPT,
         PLAYERHOOK_ON_PLAYER_COMPLETE_QUEST,
-        PLAYERHOOK_ON_QUEST_ABANDON
+        PLAYERHOOK_ON_QUEST_ABANDON,
+        PLAYERHOOK_ON_PLAYER_JUST_DIED,
+        PLAYERHOOK_ON_PVP_KILL,
+        PLAYERHOOK_ON_PLAYER_KILLED_BY_CREATURE
     }) {}
 
     void OnPlayerLogin(Player* player) override
@@ -225,6 +244,39 @@ public:
     {
         if (AutoWowQuestLedger::Enabled())
             AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Abandoned, questId);
+    }
+
+    // Death attribution (ledger only). Kill hooks note the killer; JustDied emits `died`.
+    void OnPlayerPVPKill(Player* killer, Player* killed) override
+    {
+        if (!AutoWowQuestLedger::Enabled() || !killer || !killed)
+            return;
+        if (killer == killed)  // Unit::Kill(self, self): environmental damage
+        {
+            AutoWowQuestLedger::NoteKiller(killed, AutoWowQuestLedger::KillerKind::Environment, 0, 0);
+            return;
+        }
+        NoteAutoWowPlayerKill(killer, killed);
+    }
+
+    void OnPlayerKilledByCreature(Creature* killer, Player* killed) override
+    {
+        if (!AutoWowQuestLedger::Enabled() || !killer || !killed)
+            return;
+        // A pet, guardian or totem kill is a kill by its owning player.
+        if (Player* owner = killer->GetCharmerOrOwnerPlayerOrPlayerItself())
+        {
+            NoteAutoWowPlayerKill(owner, killed);
+            return;
+        }
+        AutoWowQuestLedger::NoteKiller(killed, AutoWowQuestLedger::KillerKind::Creature, killer->GetEntry(),
+                                       killer->GetLevel());
+    }
+
+    void OnPlayerJustDied(Player* player) override
+    {
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::EmitDied(player);
     }
 
     void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override

@@ -148,4 +148,79 @@ TEST(AutoWowQuestLedgerTest, BlockedDedupeComparesKeyByTextNotPointer)
     (void)DedupeBlocked(s, BlockedKey{1, "no_live_candidate", "acquire_target"}, 0, 60000);
     EXPECT_EQ(DedupeBlocked(s, BlockedKey{1, reasonCopy.c_str(), "acquire_target"}, 10, 60000).n, 0u);
 }
+
+TEST(AutoWowQuestLedgerTest, DiedAndPvpKillEventsAreAppendedWireStable)
+{
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Died), "died");
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::PvpKill), "pvp_kill");
+    EXPECT_EQ(static_cast<int>(Event::Died), 6);
+    EXPECT_EQ(static_cast<int>(Event::PvpKill), 7);
+    using AutoWowQuestLedger::KillerKind;
+    EXPECT_STREQ(AutoWowQuestLedger::KillerKindName(KillerKind::Player), "player");
+    EXPECT_STREQ(AutoWowQuestLedger::KillerKindName(KillerKind::Creature), "creature");
+    EXPECT_STREQ(AutoWowQuestLedger::KillerKindName(KillerKind::Environment), "environment");
+    EXPECT_STREQ(AutoWowQuestLedger::KillerKindName(KillerKind::Unknown), "unknown");
+}
+
+TEST(AutoWowQuestLedgerTest, FormatsDiedWithKillerFields)
+{
+    Row row;
+    row.ev = Event::Died;
+    row.ms = 5000;
+    row.bot = 77;
+    row.team = 1;
+    row.level = 34;
+    row.map = 0;
+    row.zone = 33;
+    row.x = -11500;
+    row.y = 300;
+    row.killer = AutoWowQuestLedger::KillerKind::Creature;
+    row.killerId = 681;
+    row.killerLevel = 36;
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("s2", row),
+              "{\"v\":1,\"run\":\"s2\",\"ms\":5000,\"ev\":\"died\",\"bot\":77,\"team\":1,\"lvl\":34,"
+              "\"quest\":0,\"map\":0,\"zone\":33,\"x\":-11500,\"y\":300,\"c\":[0,0,0,0],"
+              "\"i\":[0,0,0,0,0,0],\"reason\":\"\",\"phase\":\"\",\"killer\":\"creature\",\"kid\":681,"
+              "\"klvl\":36}");
+
+    Row unknown;
+    unknown.ev = Event::Died;
+    std::string const line = AutoWowQuestLedger::FormatLine("", unknown);
+    EXPECT_NE(line.find(",\"killer\":\"unknown\",\"kid\":0,\"klvl\":0}"), std::string::npos);
+}
+
+TEST(AutoWowQuestLedgerTest, FormatsPvpKillWithVictimFields)
+{
+    Row row;
+    row.ev = Event::PvpKill;
+    row.bot = 12;
+    row.victim = 99;
+    row.victimLevel = 40;
+    row.honorable = true;
+    std::string const line = AutoWowQuestLedger::FormatLine("", row);
+    EXPECT_NE(line.find("\"ev\":\"pvp_kill\""), std::string::npos);
+    EXPECT_NE(line.find(",\"phase\":\"\",\"victim\":99,\"vlvl\":40,\"honorable\":true}"), std::string::npos);
+    row.honorable = false;
+    EXPECT_NE(AutoWowQuestLedger::FormatLine("", row).find("\"honorable\":false}"), std::string::npos);
+
+    // Other events never carry the death/kill fields.
+    Row blocked;
+    blocked.ev = Event::Blocked;
+    blocked.victim = 99;
+    blocked.killer = AutoWowQuestLedger::KillerKind::Player;
+    std::string const b = AutoWowQuestLedger::FormatLine("", blocked);
+    EXPECT_EQ(b.find("victim"), std::string::npos);
+    EXPECT_EQ(b.find("killer"), std::string::npos);
+}
+
+TEST(AutoWowQuestLedgerTest, HonorableKillMirrorsCoreRewardHonorGate)
+{
+    using AutoWowQuestLedger::IsHonorableKill;
+    // Level 40 killer: core gray level is 30 (40 - 10 for levels 40..49).
+    EXPECT_TRUE(IsHonorableKill(false, false, 30, 31, false));
+    EXPECT_FALSE(IsHonorableKill(false, false, 30, 30, false));  // gray victim
+    EXPECT_FALSE(IsHonorableKill(true, false, 30, 40, false));   // same faction
+    EXPECT_TRUE(IsHonorableKill(true, true, 30, 40, false));     // same faction on an FFA realm
+    EXPECT_FALSE(IsHonorableKill(false, false, 30, 40, true));   // honorless-target aura
+}
 }  // namespace
