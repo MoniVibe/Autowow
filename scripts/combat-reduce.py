@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Fold AutoWoW ledger `combat` events (combat telemetry cv=1) into per-bot / per-class / per-level-band
-combat efficiency tables. Stdlib only, read-only, idempotent.
+"""Fold AutoWoW ledger `combat` events (combat telemetry cv=1 / cv=2) and tactical `engage` events into
+per-bot / per-class / per-level-band combat efficiency tables, per-tactic time tables and per-engagement
+tactic cells. Stdlib only, read-only, idempotent.
 
 Usage:
   python combat-reduce.py ledger.log [more.log ...] [--out-dir DIR] [--exclude 101,112,...] [--profile NAME]
@@ -10,7 +11,13 @@ Input: the autowow.ledger log (worldserver AutoWow.Ledger.Enable=1 plus AutoWow.
 Each `combat` line carries CUMULATIVE per-login counters for one bot (quest 0):
   cv, cls, wall_ms, combat_ms, dead_ms, starved_ms, fights, kills, deaths, dmg, taken, heal,
   casts, gcd_casts, dot_skips, ttk_n, ttk_drop, ttk=[[ms, dlvl], ...]  (ttk: kills since the previous line)
+cv=2 (AutoWow.Tactics.Observe/Enable) = every cv=1 field unchanged, plus tac_ms=[[tactic id, ms], ...]
+(cumulative in-engagement ms per tactic) and arm (0 control, 1 treatment). cv=2 lines also feed the
+`class_band_arm` cells and the per-tactic time table. Any other cv is ignored, never guessed.
 `died` lines (killer kind/id/level) are joined for deaths-by-killer.
+`engage` lines (ecv=1, one per solo-priest engagement) fold into cells class/band/arm/tac0 (tac0 = the
+first tactic the policy chose): engagements (= sum over outcomes: sterile), outcome counts, duration
+median/p90, kills, mana_spent, hp_lost, wand_ms, cc_n, shield_n, gap_rest_ms.
 
 Folding law (sterile sums): per (run, bot) the delta of every cumulative counter between consecutive
 lines is attributed to the level band of the later line. A counter that decreases means a new login
@@ -32,6 +39,13 @@ CLASSES = {1: "warrior", 2: "paladin", 3: "hunter", 4: "rogue", 5: "priest", 6: 
            8: "mage", 9: "warlock", 11: "druid"}
 BANDS = [(1, 20), (21, 40), (41, 60), (61, 70), (71, 80)]
 GCD_MS = 1500
+TACTICS = {0: "none", 10: "p-wand", 11: "p-burst", 12: "p-multi", 13: "p-emergency", 14: "p-escape"}
+OUTCOMES = {0: "win", 1: "died", 2: "escaped", 3: "died_after_escape", 4: "no_kill"}
+ENGAGE_SUMS = ["kills", "mana_spent", "hp_lost", "wand_ms", "cc_n", "shield_n"]
+
+
+def tactic_name(tid):
+    return TACTICS.get(tid, "t%s" % tid)
 
 
 def band(level):
@@ -59,7 +73,7 @@ def read_events(paths):
         with open(p, encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 ev = parse_line(line)
-                if ev is not None and ev["ev"] in ("combat", "died"):
+                if ev is not None and ev["ev"] in ("combat", "died", "engage"):
                     out.append((ev.get("run", ""), ev["bot"], ev["ms"], seq, ev))
                     seq += 1
     out.sort(key=lambda t: t[:4])
@@ -78,15 +92,39 @@ def new_cell():
     c["ttk"] = []
     c["killers"] = Counter()
     c["bots"] = set()
+    c["tac_ms"] = Counter()
     return c
 
 
-def fold(events, exclude):
+def new_engage_cell():
+    c = {k: 0 for k in ENGAGE_SUMS}
+    c.update({"n": 0, "outcomes": Counter(), "dur": [], "gap_rest_ms": 0, "bots": set()})
+    return c
+
+
+def fold_engage(ev, engage):
+    cls = CLASSES.get(ev.get("cls"), "cls%s" % ev.get("cls"))
+    key = (cls, band(ev.get("lvl", 0)), "arm%s" % ev.get("arm", "?"), tactic_name(ev.get("tac0", 0)))
+    cell = engage[key]
+    cell["n"] += 1
+    cell["outcomes"][OUTCOMES.get(ev.get("outcome"), "o%s" % ev.get("outcome"))] += 1
+    cell["dur"].append(int(ev.get("dur_ms", 0)))
+    for k in ENGAGE_SUMS:
+        cell[k] += int(ev.get(k, 0))
+    cell["gap_rest_ms"] += max(0, int(ev.get("gap_rest_ms", -1)))
+    cell["bots"].add(ev["bot"])
+
+
+def fold(events, exclude, engage=None):
     prev = {}                        # (run, bot) -> last cumulative counters
     cells = defaultdict(new_cell)    # (kind, key) -> cell
     for ev in events:
         run, bot = ev.get("run", ""), ev["bot"]
         if bot in exclude:
+            continue
+        if ev["ev"] == "engage":
+            if engage is not None and ev.get("ecv") == 1:
+                fold_engage(ev, engage)
             continue
         cls = CLASSES.get(ev.get("cls"), "cls%s" % ev.get("cls")) if ev["ev"] == "combat" else None
         if ev["ev"] == "died":
@@ -101,22 +139,33 @@ def fold(events, exclude):
             for key in keys:
                 cells[key]["killers"][k] += 1
             continue
-        if ev.get("cv") != 1:
+        cv = ev.get("cv")
+        if cv not in (1, 2):
             continue  # unknown combat schema: ignore, never guess
         cur = {k: int(ev.get(k, 0)) for k in COUNTERS}
+        tac = {int(t[0]): int(t[1]) for t in ev.get("tac_ms", [])} if cv == 2 else {}
         base = prev.get((run, bot))
-        if base is None or any(cur[k] < base[k] for k in COUNTERS):
+        if (base is None or any(cur[k] < base[k] for k in COUNTERS)
+                or any(tac.get(t, 0) < ms for t, ms in base["_tac"].items())):
             base = {k: 0 for k in COUNTERS}
+            base["_tac"] = {}
         delta = {k: cur[k] - base[k] for k in COUNTERS}
+        tac_delta = {t: ms - base["_tac"].get(t, 0) for t, ms in tac.items()}
         b = band(ev.get("lvl", 0))
-        for key in (("bot", str(bot)), ("class", cls), ("band", b), ("class_band", "%s/%s" % (cls, b)),
-                    ("total", "all")):
+        keys = [("bot", str(bot)), ("class", cls), ("band", b), ("class_band", "%s/%s" % (cls, b)), ("total", "all")]
+        if cv == 2:
+            keys.append(("class_band_arm", "%s/%s/arm%s" % (cls, b, ev.get("arm", "?"))))
+        for key in keys:
             cell = cells[key]
             for k in COUNTERS:
                 cell[k] += delta[k]
+            for t, ms in tac_delta.items():
+                if ms:
+                    cell["tac_ms"][t] += ms
             cell["ttk"].extend(int(s[0]) for s in ev.get("ttk", []))
             cell["bots"].add(bot)
         cur["_cls"] = cls
+        cur["_tac"] = tac
         prev[(run, bot)] = cur
     return cells
 
@@ -141,6 +190,23 @@ def derive(kind, key, c, profile):
     row["starved_share"] = round(c["starved_ms"] / c["combat_ms"], 3) if c["combat_ms"] else None
     row["gcd_util_est"] = round(c["gcd_casts"] * GCD_MS / c["combat_ms"], 3) if c["combat_ms"] else None
     row["killers"] = dict(sorted(c["killers"].items()))
+    tac_total = sum(c["tac_ms"].values())
+    row["tac_ms"] = {tactic_name(t): ms for t, ms in sorted(c["tac_ms"].items())}
+    row["tac_share"] = ({tactic_name(t): round(ms / tac_total, 3) for t, ms in sorted(c["tac_ms"].items())}
+                        if tac_total else {})
+    return row
+
+
+def derive_engage(key, c, profile):
+    cls, b, arm, tac0 = key
+    dur = sorted(c["dur"])
+    row = {"profile": profile, "kind": "engage", "key": "/".join(key), "class": cls, "band": b, "arm": arm,
+           "tac0": tac0, "bots": len(c["bots"]), "engagements": c["n"],
+           "outcomes": dict(sorted(c["outcomes"].items())), "dur_median_ms": pct(dur, 0.5),
+           "dur_p90_ms": pct(dur, 0.9), "gap_rest_ms": c["gap_rest_ms"]}
+    row.update({k: c[k] for k in ENGAGE_SUMS})
+    row["deaths_per_100"] = round(100.0 * (c["outcomes"]["died"] + c["outcomes"]["died_after_escape"]) / c["n"], 2)
+    row["mana_per_kill"] = round(c["mana_spent"] / c["kills"], 1) if c["kills"] else None
     return row
 
 
@@ -149,7 +215,7 @@ def summarize(rows, profile):
              "Deltas of cumulative `combat` lines (cv=1); rates from summed deltas. dps_combat = dmg / in-combat s;",
              "dps_sustained = dmg / wall s. TTK = bot's first damage on a creature to its killing blow (bot or pet).",
              "gcd_util_est = gcd_casts x 1.5 s / combat s (upper-bound style estimate, ignores haste).", ""]
-    for kind in ("total", "band", "class", "class_band", "bot"):
+    for kind in ("total", "band", "class", "class_band", "class_band_arm", "bot"):
         sel = [r for r in rows if r["kind"] == kind]
         if not sel:
             continue
@@ -165,6 +231,33 @@ def summarize(rows, profile):
                 f(r["deaths_per_hour"], 2), f(r["combat_share"], 3), f(r["dead_share"], 3),
                 f(r["downtime_share"], 3), f(r["starved_share"], 3), f(r["gcd_util_est"], 3), r["dot_skips"]))
         lines.append("")
+    tac = [r for r in rows if r["kind"] == "class_band_arm"]
+    if tac:
+        names = sorted({n for r in tac for n in r["tac_ms"]})
+        lines += ["## tactic time share (cv=2, in-engagement ms)", "",
+                  "| class_band_arm | bots | wall h | deaths/h | starved | tactic s | %s |" % " | ".join(names),
+                  "|---|---|---|---|---|---|%s" % ("---|" * len(names))]
+        for r in tac:
+            f = lambda v, d=3: "-" if v is None else ("%.*f" % (d, v))
+            lines.append("| %s | %d | %.2f | %s | %s | %.0f | %s |" % (
+                r["key"], r["bots"], r["wall_ms"] / 3.6e6, f(r["deaths_per_hour"], 2), f(r["starved_share"]),
+                sum(r["tac_ms"].values()) / 1000.0, " | ".join(f(r["tac_share"].get(n)) for n in names)))
+        lines.append("")
+    eng = [r for r in rows if r["kind"] == "engage"]
+    if eng:
+        lines += ["## engagements (engage, cell = class/band/arm/tac0)", "",
+                  "| cell | bots | n | win | no_kill | escaped | died | deaths/100 | dur med s | dur p90 s | kills | mana/kill | cc | shield | rest s |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        for r in eng:
+            o = r["outcomes"]
+            f = lambda v, d=1: "-" if v is None else ("%.*f" % (d, v))
+            lines.append("| %s | %d | %d | %d | %d | %d | %d | %s | %s | %s | %d | %s | %d | %d | %.0f |" % (
+                r["key"], r["bots"], r["engagements"], o.get("win", 0), o.get("no_kill", 0), o.get("escaped", 0),
+                o.get("died", 0) + o.get("died_after_escape", 0), f(r["deaths_per_100"], 2),
+                f(None if r["dur_median_ms"] is None else r["dur_median_ms"] / 1000.0),
+                f(None if r["dur_p90_ms"] is None else r["dur_p90_ms"] / 1000.0), r["kills"],
+                f(r["mana_per_kill"]), r["cc_n"], r["shield_n"], r["gap_rest_ms"] / 1000.0))
+        lines.append("")
     killers = [r for r in rows if r["kind"] == "bot" and r["killers"]]
     if killers:
         lines += ["## deaths by killer (per bot)", "", "| bot | killer | deaths |", "|---|---|---|"]
@@ -177,10 +270,12 @@ def summarize(rows, profile):
 
 def run(paths, out_dir, exclude, profile):
     events = read_events(paths)
-    cells = fold(events, exclude)
-    order = {"total": 0, "band": 1, "class": 2, "class_band": 3, "bot": 4}
+    engage = defaultdict(new_engage_cell)
+    cells = fold(events, exclude, engage)
+    order = {"total": 0, "band": 1, "class": 2, "class_band": 3, "class_band_arm": 4, "bot": 5}
     keyf = lambda kv: (order[kv[0][0]], (int(kv[0][1]) if kv[0][0] == "bot" else 0), kv[0][1])
     rows = [derive(kind, key, c, profile) for (kind, key), c in sorted(cells.items(), key=keyf)]
+    rows += [derive_engage(key, c, profile) for key, c in sorted(engage.items())]
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "combat-cells.jsonl"), "w", encoding="ascii", newline="\n") as fh:
         for r in rows:
@@ -200,6 +295,13 @@ def selftest():
         obj.update(c)
         return "2026-09-23 01:00:00 " + json.dumps(obj, separators=(",", ":"))
 
+    def engage(ms, bot, lvl, arm, tac0, outcome, dur, kills, mana, run="t"):
+        obj = {"v": 1, "run": run, "ms": ms, "ev": "engage", "bot": bot, "lvl": lvl, "quest": 0, "ecv": 1,
+               "cls": 5, "tab": 2, "arm": arm, "eng": 1, "tac0": tac0, "tacs": [[tac0, dur]], "dur_ms": dur,
+               "kills": kills, "outcome": outcome, "mana_spent": mana, "hp_lost": 10, "wand_ms": dur // 2,
+               "cc_n": 0, "shield_n": 1, "gap_ms": -1, "gap_rest_ms": 4000}
+        return "2026-09-23 01:00:00 " + json.dumps(obj)
+
     def died(ms, bot, lvl, kid, klvl, run="t"):
         obj = {"v": 1, "run": run, "ms": ms, "ev": "died", "bot": bot, "lvl": lvl, "quest": 0,
                "killer": "creature", "kid": kid, "klvl": klvl}
@@ -217,7 +319,19 @@ def selftest():
              ttk=[[5000, -1], [6000, 0], [10000, 1]], dot_skips=4),
         line(60000, 9, 30, cls=1, wall_ms=60000, dmg=99999),     # excluded
         "garbage",
-        '{"v":1,"run":"t","ms":1,"ev":"combat","bot":3,"lvl":5,"cv":2,"dmg":5}',  # unknown schema -> ignored
+        '{"v":1,"run":"t","ms":1,"ev":"combat","bot":3,"lvl":5,"cv":3,"dmg":5}',  # unknown schema -> ignored
+        # cv=2 (tactics): cv=1 fields + cumulative tac_ms + arm; priest 4 in treatment, 5 in control
+        line(60000, 4, 12, cls=5, cv=2, arm=1, wall_ms=60000, combat_ms=20000, dmg=500, kills=2, fights=2,
+             tac_ms=[[10, 15000], [12, 5000]]),
+        line(120000, 4, 12, cls=5, cv=2, arm=1, wall_ms=120000, combat_ms=40000, dmg=900, kills=4, fights=4,
+             tac_ms=[[10, 25000], [12, 5000], [13, 10000]]),
+        line(60000, 5, 12, cls=5, cv=2, arm=0, wall_ms=60000, combat_ms=30000, dmg=400, kills=1, fights=1,
+             tac_ms=[[11, 30000]]),
+        engage(30000, 4, 12, 1, 10, 0, 8000, 1, 120),
+        engage(50000, 4, 12, 1, 10, 0, 6000, 1, 80),
+        engage(90000, 4, 12, 1, 12, 1, 12000, 0, 300),
+        engage(40000, 5, 12, 0, 11, 4, 9000, 0, 200),
+        '{"v":1,"run":"t","ms":2,"ev":"engage","bot":5,"lvl":12,"ecv":9}',  # unknown engage schema -> ignored
     ]
     with tempfile.TemporaryDirectory() as td:
         lp = os.path.join(td, "ledger.log")
@@ -226,9 +340,24 @@ def selftest():
         rows = run([lp], td, {9}, "selftest")
         by = {(r["kind"], r["key"]): r for r in rows}
         tot = by[("total", "all")]
-        assert tot["dmg"] == 1000 + 300 + 3000, tot["dmg"]
-        assert tot["wall_ms"] == 120000 + 30000 + 60000
-        assert tot["kills"] == 8 and tot["ttk_n"] == 8 and tot["ttk_samples"] == 8
+        assert tot["dmg"] == 1000 + 300 + 3000 + 900 + 400, tot["dmg"]
+        assert tot["wall_ms"] == 120000 + 30000 + 60000 + 120000 + 60000
+        assert tot["kills"] == 8 + 4 + 1 and tot["ttk_n"] == 8 and tot["ttk_samples"] == 8
+        # cv=2: tactic deltas fold like counters; arm cells split treatment/control; cv=1 cells carry none
+        arm1 = by[("class_band_arm", "priest/1-20/arm1")]
+        assert arm1["tac_ms"] == {"p-wand": 25000, "p-multi": 5000, "p-emergency": 10000}, arm1["tac_ms"]
+        assert arm1["tac_share"]["p-wand"] == round(25000 / 40000, 3) and arm1["dmg"] == 900
+        assert by[("class_band_arm", "priest/1-20/arm0")]["tac_ms"] == {"p-burst": 30000}
+        assert by[("bot", "1")]["tac_ms"] == {} and ("class_band_arm", "mage/1-20/arm?") not in by
+        # engage cells: sterile (n == sum of outcomes), keyed class/band/arm/tac0
+        eng = {r["key"]: r for r in rows if r["kind"] == "engage"}
+        w = eng["priest/1-20/arm1/p-wand"]
+        assert w["engagements"] == 2 and w["outcomes"] == {"win": 2} and w["kills"] == 2 and w["mana_per_kill"] == 100.0
+        assert w["dur_median_ms"] == 6000 and w["gap_rest_ms"] == 8000
+        assert eng["priest/1-20/arm1/p-multi"]["deaths_per_100"] == 100.0
+        assert eng["priest/1-20/arm0/p-burst"]["outcomes"] == {"no_kill": 1}
+        assert sum(r["engagements"] for r in eng.values()) == 4
+        assert all(r["engagements"] == sum(r["outcomes"].values()) for r in eng.values())
         b1 = by[("bot", "1")]
         assert b1["dmg"] == 1300 and b1["combat_ms"] == 60000 and b1["deaths"] == 1
         assert b1["dps_combat"] == round(1300 / 60.0, 1)
@@ -237,8 +366,8 @@ def selftest():
         assert abs(b1["combat_share"] + b1["dead_share"] + b1["downtime_share"] - 1.0) < 0.002
         assert b1["starved_share"] == round(5000 / 60000, 3)
         assert b1["gcd_util_est"] == round(20 * 1500 / 60000, 3)
-        # band split: bot 1's lvl-10 and lvl-11 deltas both land in 1-20; bot 2 in 21-40
-        assert by[("band", "1-20")]["dmg"] == 1300 and by[("band", "21-40")]["dmg"] == 3000
+        # band split: bot 1's lvl-10 and lvl-11 deltas (and the lvl-12 priests) land in 1-20; bot 2 in 21-40
+        assert by[("band", "1-20")]["dmg"] == 1300 + 900 + 400 and by[("band", "21-40")]["dmg"] == 3000
         assert by[("class", "warrior")]["dot_skips"] == 4 and ("bot", "9") not in by and ("bot", "3") not in by
         # sterile: per-bot dmg sums to total
         assert sum(r["dmg"] for r in rows if r["kind"] == "bot") == tot["dmg"]
@@ -247,6 +376,7 @@ def selftest():
         assert open(os.path.join(td, "combat-cells.jsonl"), "rb").read() == first  # idempotent
         md = open(os.path.join(td, "combat-summary.md"), encoding="ascii").read()
         assert "## by class_band" in md and "creature:3382(L13,d+3)" in md
+        assert "## tactic time share" in md and "## engagements" in md and "priest/1-20/arm1/p-wand" in md
     print("selftest OK")
     return 0
 
