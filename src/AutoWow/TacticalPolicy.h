@@ -455,6 +455,16 @@ inline std::uint32_t ParseClassMask(std::string_view text)
     return mask;
 }
 
+// AutoWow.Tactics.ObserveClasses (default ""): observe-only tracking - engage rows and cv=2 fields, arm 0,
+// never treated - of the listed classes, even with AutoWow.Tactics.Observe / Enable off. soak-s21-full-r1:
+// rogues took 32% of the deaths and mages spent 43% of the time dead with no engage rows, because adding
+// them to AutoWow.Tactics.Classes under Enable would also treat them. Tracked = in Classes with the layer
+// on (Observe or Enable), or in ObserveClasses. Treatment stays Classes + Enable + arm.
+inline bool Tracked(std::uint32_t classId, std::uint32_t classMask, std::uint32_t observeMask, bool layerOn)
+{
+    return classId < 32 && ((layerOn && ((classMask >> classId) & 1)) || ((observeMask >> classId) & 1));
+}
+
 // Per-bot A/B arm: 1 = treatment, 0 = control. Pure hash of the guid counter so it is reproducible
 // across restarts and independent of login order (murmur3 fmix32).
 inline std::uint32_t Hash32(std::uint32_t x)

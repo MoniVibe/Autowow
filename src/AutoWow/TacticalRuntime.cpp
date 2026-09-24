@@ -55,6 +55,7 @@ struct Settings
     std::uint32_t pullMinHpPct = 60;
     std::uint32_t riskYd = 15;          // legacy grind: distance penalty per risk band
     std::uint32_t classMask = 1u << CLASS_PRIEST;  // AutoWow.Tactics.Classes (default "priest")
+    std::uint32_t observeMask = 0;                 // AutoWow.Tactics.ObserveClasses (default ""): observe only
     PriestParams priest;
     FactorTable factors[5];             // TacticId 10..14
     ClassParams cls[kFamilies];         // non-priest families (AutoWow.Tactics.<Class>.*)
@@ -106,6 +107,14 @@ bool ClassEnabled(std::uint32_t classId)
 {
     Family const f = FamilyOfClass(classId);
     return classId < 32 && ((gSettings.classMask >> classId) & 1) &&
+           (f == Family::Priest || !kClassTables[static_cast<std::uint32_t>(f)].key.empty());
+}
+
+// Tracked (engage rows): Classes with Observe/Enable on, or ObserveClasses; a family without tactics is skipped.
+bool ClassTracked(std::uint32_t classId)
+{
+    Family const f = FamilyOfClass(classId);
+    return Tracked(classId, gSettings.classMask, gSettings.observeMask, detail::gObserve || detail::gEnable) &&
            (f == Family::Priest || !kClassTables[static_cast<std::uint32_t>(f)].key.empty());
 }
 
@@ -335,6 +344,8 @@ void LoadConfig()
     s.factors[4] = f("AutoWow.Tactics.Priest.Factors.Escape", kDefaultEscapeFactors);
 
     s.classMask = ParseClassMask(sConfigMgr->GetOption<std::string>("AutoWow.Tactics.Classes", "priest"));
+    s.observeMask = ParseClassMask(sConfigMgr->GetOption<std::string>("AutoWow.Tactics.ObserveClasses", ""));
+    detail::gObserveExtra = s.observeMask != 0;
     for (std::uint32_t k = 0; k < kFamilies; ++k)
     {
         ClassTable const& t = kClassTables[k];
@@ -369,7 +380,7 @@ void Update(PlayerbotAI* botAI)
     if (!Tracking() || !botAI)
         return;
     Player* bot = botAI->GetBot();
-    if (!bot || !ClassEnabled(bot->getClass()) || !bot->IsInWorld())
+    if (!bot || !ClassTracked(bot->getClass()) || !bot->IsInWorld())
         return;
     Family const family = FamilyOfClass(bot->getClass());
 
@@ -385,7 +396,8 @@ void Update(PlayerbotAI* botAI)
             if (gBots.size() >= kMaxBots)
                 return;
             it = gBots.emplace(botGuid, BotState{}).first;
-            it->second.arm = ArmOf(botGuid, gSettings.armSalt, gSettings.armPct);
+            // Observe-only classes (ObserveClasses, not in Classes) are never treated: arm 0.
+            it->second.arm = ClassEnabled(bot->getClass()) ? ArmOf(botGuid, gSettings.armSalt, gSettings.armPct) : 0;
         }
         BotState& st = it->second;
         if (nowMs < st.nextDueMs && inCombat == st.lastCombat)
@@ -451,7 +463,7 @@ void NoteKill(std::uint32_t botGuid)
 
 void NoteCast(Player* player, SpellInfo const* spellInfo)
 {
-    if (!player || !spellInfo || !ClassEnabled(player->getClass()))
+    if (!player || !spellInfo || !ClassTracked(player->getClass()))
         return;
     CastKind kind = CastKind::Other;
     if (player->getClass() == CLASS_PRIEST)

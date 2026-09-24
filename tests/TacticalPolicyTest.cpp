@@ -764,3 +764,20 @@ TEST(PackAvoid, PackPathThreatCountsLowPacksLoneLowMobsStayFree)
     EXPECT_EQ(AutoWowPackAvoid::PackPathThreat(path, far, 15, 12), 0U);
     EXPECT_EQ(AutoWowPackAvoid::PackPathThreat({}, pack, 15, 12), 0U);
 }
+
+// AutoWow.Tactics.ObserveClasses: rogue + mage engage rows with the layer off, never via Classes.
+TEST(TacticsObserveClasses, TrackedIsClassesWithLayerOrObserveList)
+{
+    using AutoWowTactics::ParseClassMask;
+    using AutoWowTactics::Tracked;
+    std::uint32_t const classes = ParseClassMask("priest,warlock,hunter");  // soak-s21 profile
+    std::uint32_t const observe = ParseClassMask("rogue,mage");
+    EXPECT_TRUE(Tracked(4, classes, observe, false));   // rogue, tactics off
+    EXPECT_TRUE(Tracked(8, classes, observe, true));    // mage, tactics on
+    EXPECT_FALSE(Tracked(5, classes, observe, false));  // priest needs Observe / Enable
+    EXPECT_TRUE(Tracked(5, classes, observe, true));
+    EXPECT_FALSE(Tracked(1, classes, observe, true));   // warrior: in neither list
+    EXPECT_FALSE(Tracked(4, classes, 0, true));         // flag off: rogue untracked, as before
+    EXPECT_FALSE(Tracked(40, ~0u, ~0u, true));
+    EXPECT_EQ(ParseClassMask(""), 0U);
+}

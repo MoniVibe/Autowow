@@ -40,9 +40,10 @@ namespace detail
 inline bool gObserve = false;
 inline bool gEnable = false;  // T2 master; tracking also runs under it
 inline bool gShadowLevelingSpec = false;
+inline bool gObserveExtra = false;  // AutoWow.Tactics.ObserveClasses non-empty (TacticalPolicy.h Tracked)
 }  // namespace detail
 
-inline bool Tracking() { return detail::gObserve || detail::gEnable; }
+inline bool Tracking() { return detail::gObserve || detail::gEnable || detail::gObserveExtra; }
 inline bool Enabled() { return detail::gEnable; }
 inline bool ShadowLevelingSpec() { return detail::gShadowLevelingSpec; }
 inline constexpr std::uint32_t kShadowLevelingSpecNo = 6;  // AiPlayerbot.PremadeSpec*.5.6

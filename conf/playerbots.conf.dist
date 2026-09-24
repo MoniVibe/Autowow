@@ -2397,6 +2397,10 @@ AutoWow.Tactics.PriestShadowLevelingSpec = 0
 # class listed before its tactics exist is ignored. Pre-pull readiness stays priest-only (other classes:
 # AutoWow.Survival.RestGate); pack-risk pull choice applies to every treated class.
 AutoWow.Tactics.Classes = "priest"
+# Observe-only classes (default ""): the listed classes get the tactical assessment and ledger `engage`
+# rows (arm 0, never treated), even with AutoWow.Tactics.Observe / Enable off. Unlike adding them to
+# Classes, this never turns their tactics on under Enable. Same names as Classes ("rogue,mage", "all").
+AutoWow.Tactics.ObserveClasses = ""
 # Warrior (60 single, 62 multi, 63 emergency, 64 escape; TacticalClassStrategy.cpp WarriorNodes): Hamstring on
 # a fleeing target, Victory Rush below HealHpPct; multi Thunder Clap / Demoralizing Shout / Cleave and
 # Intimidating Shout; emergency shout / Victory Rush / Last Stand (no stance-bound cooldowns: their stance
