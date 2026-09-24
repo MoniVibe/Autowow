@@ -24,6 +24,7 @@
 #include "ChatHelper.h"
 #include "ConditionMgr.h"
 #include "Config.h"
+#include "ContractsPolicy.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DeathLoopBreaker.h"
@@ -487,6 +488,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 
     // AutoWow.Gathering.Detours: herbalists/miners walk to a nearby gatherable node between RPG moves.
     if (AutoWowGatherDetour::Enabled() && GatherDetourStep())
+        return true;
+
+    // AutoWow.Contracts: an idle independent bot with no live quest work hunts a faction contract nearby.
+    if (AutoWowContracts::Enabled() && ContractStep())
         return true;
 
     switch (status)

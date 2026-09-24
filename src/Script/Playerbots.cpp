@@ -22,6 +22,7 @@
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
+#include "ContractsPolicy.h"
 #include "DeathLoopBreaker.h"
 #include "GatherDetourPolicy.h"
 #include "TransportCrossingPolicy.h"
@@ -551,6 +552,7 @@ public:
         AutoWowPullCap::LoadConfig();
         AutoWowRestGate::LoadConfig();
         AutoWowSurvivalRecovery::LoadConfig();
+        AutoWowContracts::LoadConfig();   // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
@@ -612,6 +614,9 @@ public:
     {
         if (player)
             GuildTaskMgr::instance().CheckKillTask(player, victim);
+        // AutoWow.Contracts (default 0): kill credit (the core's credited player) toward its hunt contract.
+        if (AutoWowContracts::Enabled() && player && victim && victim->IsCreature())
+            AutoWowContracts::CreditKill(static_cast<uint32>(player->GetGUID().GetCounter()), victim->GetEntry());
     }
 
     void OnPlayerbotCheckPetitionAccount(Player* player, bool& found) override

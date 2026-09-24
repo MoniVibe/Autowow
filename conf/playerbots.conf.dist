@@ -2726,6 +2726,27 @@ AutoWow.Gathering.DetourYards = 60
 AutoWow.Gathering.DetourMaxDz = 20
 AutoWow.Gathering.DetourTimeoutMs = 45000
 
+# Hunt contracts for independent bots (ContractsPolicy.h). A bot at the RPG Idle choice point with no live
+# quest work (DO_QUEST unavailable) is issued a faction contract (issuer faction_board): kill Kills mobs of
+# the best spawn cluster within SearchYards - the world-DB spawn with the most normal-rank, attackable,
+# level-window ([level - LevelBelow, level + LevelAbove]) spawns within ClusterYards (at least
+# MinClusterSpawns; ties nearer, then lower spawn id), skipping the bot's death-loop danger areas and zones
+# bracketed more than 3 levels above it. The bot walks to the anchor (no teleport), grinds only the
+# contract entries within LeashYards of it, walks back past the leash out of combat, and returns to its
+# quest loop when done, expired (TimeoutMs, or the anchor became a danger area) or abandoned (quest work
+# came back, a zone trip / errand run / party took the bot). The anchor then cools down for CooldownMs.
+# No reward (no free gold). Ledger `contract` (event 18) per issue and end; [Contracts] log lines.
+AutoWow.Contracts.Enable = 0
+AutoWow.Contracts.Kills = 15
+AutoWow.Contracts.LevelBelow = 3
+AutoWow.Contracts.LevelAbove = 1
+AutoWow.Contracts.SearchYards = 700
+AutoWow.Contracts.ClusterYards = 120
+AutoWow.Contracts.LeashYards = 150
+AutoWow.Contracts.TimeoutMs = 1200000
+AutoWow.Contracts.CooldownMs = 300000
+AutoWow.Contracts.MinClusterSpawns = 6
+
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
 # -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport

@@ -13,6 +13,7 @@
 #include "NewRpgInfo.h"
 #include "Playerbots.h"
 #include "AutoWowAcceptance.h"
+#include "ContractsPolicy.h"
 #include "DeathLoopBreaker.h"
 #include "PullLevelCap.h"
 #include "QuestObjectiveContext.h"
@@ -395,6 +396,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     uint32 resultBand = 0;
     std::unordered_map<uint32, bool> needForQuestMap;
 
+    // AutoWow.Contracts (default 0): a hunt-contract holder picks only contract entries within the leash of
+    // the anchor (ContractsPolicy.h HuntTarget). No contract: phase None, nothing filtered.
+    AutoWowContracts::BotState const contract =
+        AutoWowContracts::Enabled() ? AutoWowContracts::Snapshot(botGuid) : AutoWowContracts::BotState{};
+
     for (ObjectGuid const guid : targets)
     {
         Unit* unit = botAI->GetUnit(guid);
@@ -402,6 +408,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             continue;
 
         if (!unit->IsInWorld() || unit->IsDuringRemoveFromWorld())
+            continue;
+
+        if (contract.phase != AutoWowContracts::Phase::None &&
+            !AutoWowContracts::HuntTarget(AutoWowContracts::detail::gParams, contract,
+                                          unit->IsCreature() ? unit->GetEntry() : 0, unit->GetMapId(),
+                                          static_cast<std::int32_t>(unit->GetPositionX()),
+                                          static_cast<std::int32_t>(unit->GetPositionY())))
             continue;
 
         if (unit->ToCreature() && !unit->ToCreature()->GetCreatureTemplate()->lootid &&
