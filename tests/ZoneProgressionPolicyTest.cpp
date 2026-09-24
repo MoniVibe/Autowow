@@ -378,4 +378,128 @@ TEST(ZoneProgression, HubPickSpreadsByGuidDeterministically)
     // Wrong team: an Alliance-only source zone has nothing for the Horde.
     EXPECT_EQ(PickRoute(routes, 2, 12, 30, 1), nullptr);
 }
+
+// ---- AutoWow.Survival.HardEscape (1) --------------------------------------------------------------------
+// Coarse Eastern Kingdoms zone boxes (x north, y west; first match wins) with the conf.dist bracket lows.
+std::uint32_t EkZone(std::int32_t x, std::int32_t y)
+{
+    struct Box
+    {
+        std::uint32_t zone;
+        std::int32_t x0, x1, y0, y1;
+    };
+    static Box const boxes[] = {
+        {46, -8400, -7500, -3200, -500},    // Burning Steppes (51-60)
+        {51, -7500, -6300, -2000, -500},    // Searing Gorge (45-51)
+        {38, -6300, -4700, -4200, -2100},   // Loch Modan (10-20)
+        {1, -6300, -5000, -2100, 1000},     // Dun Morogh (5-12)
+        {44, -9800, -8400, -3500, -1300},   // Redridge (16-28)
+        {10, -11200, -10000, -1500, 700},   // Duskwood (19-33)
+        {12, -10000, -8400, -1300, 1000},   // Elwynn (5-12)
+        {40, -11500, -10000, 700, 2000},    // Westfall (10-21)
+    };
+    for (Box const& b : boxes)
+        if (x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1)
+            return b.zone;
+    return 0;
+}
+
+std::uint32_t EkLow(std::uint32_t zone)
+{
+    switch (zone)
+    {
+        case 46: return 51;
+        case 51: return 45;
+        case 38: return 10;
+        case 1: return 5;
+        case 44: return 16;
+        case 10: return 19;
+        case 12: return 5;
+        case 40: return 10;
+    }
+    return 0;
+}
+
+// Danger = bracket low more than 5 above the bot (AutoWowDeathLoop::Overshoot with WalkZoneMargin 5).
+auto DangerFor(std::uint32_t level)
+{
+    return [level](std::uint32_t zone) { return EkLow(zone) > level + 5; };
+}
+
+TEST(ZoneProgression, SegmentCrossesDangerSkipsTheBotsOwnZone)
+{
+    auto const danger = DangerFor(18);
+    // Westfall -> Thelsamar runs through Burning Steppes.
+    EXPECT_TRUE(SegmentCrossesDanger(-10547, 1197, -5378, -2974, kDangerStepYards, 40, EkZone, danger));
+    // Westfall -> Darkshire stays in Westfall / Duskwood.
+    EXPECT_FALSE(SegmentCrossesDanger(-10547, 1197, -10516, -1161, kDangerStepYards, 40, EkZone, danger));
+    // From inside Burning Steppes the bot's own zone does not count; Lakeshire is next door.
+    EXPECT_FALSE(SegmentCrossesDanger(-7924, -1354, -9224, -2158, kDangerStepYards, 46, EkZone, danger));
+    // ... but the same line counts for a bot standing elsewhere.
+    EXPECT_TRUE(SegmentCrossesDanger(-7924, -1354, -9224, -2158, kDangerStepYards, 44, EkZone, danger));
+    // A L50 may cross Burning Steppes (51 <= 55). Zero-length and step 0 are safe.
+    EXPECT_FALSE(SegmentCrossesDanger(-10547, 1197, -5378, -2974, kDangerStepYards, 40, EkZone, DangerFor(50)));
+    EXPECT_FALSE(SegmentCrossesDanger(-10547, 1197, -10547, 1197, 0, 40, EkZone, danger));
+}
+
+// soak-s22-full-r1 replay: Taelorin (alliance L18) looped at the Westfall grave (-10547,1197); the V2 escape
+// took Loch Modan (lowest band) and the walk died 183 times in Burning Steppes (zone 46).
+TEST(ZoneProgression, SafeEscapeHubReplaysTaelorin)
+{
+    std::vector<Route> routes = DefaultRoutes();
+    for (Route const& r : HubRoutes(DefaultHubs(), DefaultHubSources()))
+        routes.push_back(r);
+    auto const danger = DangerFor(18);
+    auto crossesFrom = [&](std::int32_t x, std::int32_t y, std::uint32_t zone)
+    {
+        return [=, &danger](Route const& r)
+        { return SegmentCrossesDanger(x, y, r.x, r.y, kDangerStepYards, zone, EkZone, danger); };
+    };
+
+    // Before: the lowest-band pick crosses zone 46.
+    Route const* old = PickLowEscapeRoute(routes, 1, 18, 40, 0, -10547, 1197);
+    ASSERT_NE(old, nullptr);
+    EXPECT_EQ(old->to, 38U);
+    EXPECT_TRUE(SegmentCrossesDanger(-10547, 1197, old->x, old->y, kDangerStepYards, 40, EkZone,
+                                     [](std::uint32_t z) { return z == 46; }));
+
+    // After: Duskwood (Darkshire), whose line never enters zone 46.
+    Route const* r = PickSafeEscapeRoute(routes, 1, 18, 40, 0, -10547, 1197, crossesFrom(-10547, 1197, 40));
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 10U);
+    EXPECT_FALSE(SegmentCrossesDanger(-10547, 1197, r->x, r->y, kDangerStepYards, 40, EkZone,
+                                      [](std::uint32_t z) { return z == 46; }));
+
+    // Already in Burning Steppes at (-7924,-1354): out the short way to Redridge (Lakeshire).
+    r = PickSafeEscapeRoute(routes, 1, 18, 46, 0, -7924, -1354, crossesFrom(-7924, -1354, 46));
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 44U);
+}
+
+TEST(ZoneProgression, SafeEscapeHubSkipsANearerHubBehindDanger)
+{
+    // Bot at (0,0) on map 0. Hub 501 is near but its line crosses a danger strip (x in [100,200]).
+    std::vector<Route> const routes = {{1, 0, 501, 9, 20, 0, 300, 0, 0, 1, false},
+                                       {1, 0, 502, 9, 20, 0, -900, 0, 0, 2, false},
+                                       {1, 0, 503, 9, 20, 1, 5, 5, 0, 3, false}};
+    auto zoneAt = [](std::int32_t x, std::int32_t) -> std::uint32_t { return x >= 100 && x <= 200 ? 77 : 7; };
+    auto danger = [](std::uint32_t z) { return z == 77; };
+    auto crosses = [&](Route const& r) { return SegmentCrossesDanger(0, 0, r.x, r.y, 50, 7, zoneAt, danger); };
+    Route const* r = PickSafeEscapeRoute(routes, 1, 15, 7, 0, 0, 0, crosses);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 502U);
+    // Every same-map line crosses: the other-map hub (its leg is a flight / portal, never this walk).
+    std::vector<Route> const blocked = {routes[0], routes[2]};
+    r = PickSafeEscapeRoute(blocked, 1, 15, 7, 0, 0, 0, crosses);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 503U);
+    // Nothing else: the nearest anyway (the walk's own zone check and portal fallback take over).
+    std::vector<Route> const only = {routes[0]};
+    r = PickSafeEscapeRoute(only, 1, 15, 7, 0, 0, 0, crosses);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 501U);
+    // Level outside every band / own zone: none.
+    EXPECT_EQ(PickSafeEscapeRoute(routes, 1, 30, 7, 0, 0, 0, crosses), nullptr);
+    EXPECT_EQ(PickSafeEscapeRoute(only, 1, 15, 501, 0, 0, 0, crosses), nullptr);
+}
 }  // namespace

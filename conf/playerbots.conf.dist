@@ -2582,6 +2582,13 @@ AutoWow.DeathLoop.EscapePortalDeaths = 3
 # no proactive pull until hp/mana reach AutoWow.Survival.RestGate.MinHpPct/MinManaPct and Resurrection
 # Sickness is gone (eats/drinks what it carries), whether or not AutoWow.Survival.RestGate is on.
 AutoWow.DeathLoop.V2 = 0
+# Hard escape (default 0; needs AutoWow.DeathLoop.Enable; DeathLoopBreaker.h). A "danger zone" is a zone
+# whose bracket low (AiPlayerbot.ZoneBracket, else its AreaTable level) is more than WalkZoneMargin above
+# the bot. (1) With EscapeViaZoneProgression the escape hub is the nearest one on the bot's map whose
+# straight line crosses no danger zone (the bot's own zone excepted), else one on another map, else the
+# nearest (replaces the V2 lowest-band pick).
+AutoWow.Survival.HardEscape = 0
+AutoWow.Survival.HardEscape.WalkZoneMargin = 5
 
 # Pull level cap for solo independent bots (PullLevelCap.h; default 0). Grind and quest-objective target
 # picks skip creatures whose level (+ElitePenalty for elites) is more than MaxLevelAbove above the bot,

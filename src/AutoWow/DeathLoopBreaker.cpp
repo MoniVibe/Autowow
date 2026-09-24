@@ -16,8 +16,10 @@
 #include "AutoWowQuestLedger.h"
 #include "Config.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "GameTime.h"
 #include "GatheringWorkerState.h"
+#include "GridTerrainData.h"
 #include "Log.h"
 #include "Map.h"
 #include "NewRpgInfo.h"
@@ -169,6 +171,24 @@ void LoadConfig()
     detail::gEscape = sConfigMgr->GetOption<bool>("AutoWow.DeathLoop.EscapeViaZoneProgression", false);
     p.escapePortalDeaths = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.EscapePortalDeaths", 3);
     detail::gV2 = sConfigMgr->GetOption<bool>("AutoWow.DeathLoop.V2", false);
+    detail::gHard = sConfigMgr->GetOption<bool>("AutoWow.Survival.HardEscape", false);
+    HardParams& h = detail::gHardParams;
+    h.walkZoneMargin = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.WalkZoneMargin", 5);
+}
+
+std::uint32_t ZoneAt(Map* map, float x, float y)
+{
+    GridTerrainData* const grid = map ? map->GetGridTerrainData(x, y) : nullptr;
+    AreaTableEntry const* const area = grid ? sAreaTableStore.LookupEntry(grid->getArea(x, y)) : nullptr;
+    return !area ? 0 : area->zone ? area->zone : area->ID;
+}
+
+std::uint32_t ZoneMinLevel(std::uint32_t zoneId)
+{
+    if (std::uint32_t const low = sTravelMgr.GetZoneBracketLow(zoneId))
+        return low;
+    AreaTableEntry const* const area = zoneId ? sAreaTableStore.LookupEntry(zoneId) : nullptr;
+    return area && area->area_level > 0 ? static_cast<std::uint32_t>(area->area_level) : 0;
 }
 
 bool RestPending(std::uint32_t botGuid)

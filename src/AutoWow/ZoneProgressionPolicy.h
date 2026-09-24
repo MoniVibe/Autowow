@@ -334,6 +334,67 @@ inline std::vector<HubSource> DefaultHubSources()
     return best;
 }
 
+// AutoWow.Survival.HardEscape: the straight line a -> b passes a danger zone. Samples every stepYards
+// (Chebyshev spacing, integer interpolation, a excluded, b included); zoneAt(x, y) -> zone id (0 = none),
+// danger(zone) -> too high for the bot. Samples in skipZone (the zone the bot already stands in) never count.
+inline constexpr std::uint32_t kDangerStepYards = 50;
+
+template <class ZoneAt, class Danger>
+[[nodiscard]] inline bool SegmentCrossesDanger(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by,
+                                               std::uint32_t stepYards, std::uint32_t skipZone, ZoneAt const& zoneAt,
+                                               Danger const& danger)
+{
+    std::int64_t const dx = std::int64_t(bx) - ax;
+    std::int64_t const dy = std::int64_t(by) - ay;
+    std::int64_t const n = std::max(dx < 0 ? -dx : dx, dy < 0 ? -dy : dy) / std::max<std::uint32_t>(stepYards, 1) + 1;
+    for (std::int64_t i = 1; i <= n; ++i)
+    {
+        std::uint32_t const zone = zoneAt(static_cast<std::int32_t>(ax + dx * i / n),
+                                          static_cast<std::int32_t>(ay + dy * i / n));
+        if (zone && zone != skipZone && danger(zone))
+            return true;
+    }
+    return false;
+}
+
+// AutoWow.Survival.HardEscape escape hub: the PickEscapeRoute candidates (team, band holds `level`, not the
+// bot's zone), first the nearest on the bot's map whose straight line crosses no danger zone
+// (crosses(route), evaluated lazily nearest first), else the nearest on another map (flight / portal leg),
+// else the nearest on the bot's map anyway. Distance ties keep table order. soak-s22-full-r1: a L18 in
+// Westfall took Loch Modan (lowest band) across Burning Steppes; here Duskwood.
+// ponytail: straight-line distance stands in for the path length once the line is proven danger-free;
+// a travel-node graph router is the upgrade if safe lines start detouring far.
+template <class Crosses>
+[[nodiscard]] inline Route const* PickSafeEscapeRoute(std::vector<Route> const& routes, std::uint32_t team,
+                                                      std::uint32_t level, std::uint32_t zone, std::uint32_t map,
+                                                      std::int32_t x, std::int32_t y, Crosses const& crosses)
+{
+    struct Candidate
+    {
+        Route const* route;
+        bool sameMap;
+        std::int64_t dist2;
+    };
+    std::vector<Candidate> fit;
+    for (Route const& r : routes)
+    {
+        if (r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+            continue;
+        std::int64_t const dx = std::int64_t(r.x) - x;
+        std::int64_t const dy = std::int64_t(r.y) - y;
+        fit.push_back(Candidate{&r, r.map == map, r.map == map ? dx * dx + dy * dy : 0});
+    }
+    std::stable_sort(fit.begin(), fit.end(), [](Candidate const& a, Candidate const& b)
+                     { return a.sameMap != b.sameMap ? a.sameMap : a.dist2 < b.dist2; });
+    for (Candidate const& c : fit)
+        if (c.sameMap && !crosses(*c.route))
+            return c.route;
+    for (Candidate const& c : fit)
+        if (!c.sameMap)
+            return c.route;
+    return fit.empty() ? nullptr : fit.front().route;
+}
+
 // Wire-stable ledger reason names; append only.
 enum class Trigger : std::uint8_t
 {

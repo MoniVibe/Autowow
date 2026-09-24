@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <string>
 
+class Map;
 class Player;
 
 // Death-loop breaker (AutoWow.DeathLoop.Enable, default 0). A bot that keeps dying at the same spot
@@ -248,6 +249,15 @@ inline std::string LedgerFields(std::uint32_t clusterDeaths, std::uint32_t kille
     return out;
 }
 
+// ---- AutoWow.Survival.HardEscape (default 0; needs Enable) -------------------------------------------
+// soak-s22-full-r1: cohort hunter Taelorin (L18) died 183 times in 55 min in Burning Steppes (bracket
+// 51-60). The V2 escape from Westfall took the lowest-band hub, Loch Modan, across the continent; the walk
+// beelined through Redridge / Burning Steppes; every later relocation found no flight and never moved.
+struct HardParams
+{
+    std::uint32_t walkZoneMargin = 5;   // AutoWow.Survival.HardEscape.WalkZoneMargin: zone too high to cross
+};
+
 // ---- runtime (DeathLoopBreaker.cpp) -------------------------------------------------------------
 // Per-bot state is mutex-guarded (deaths and bot AI updates run on map threads). Every query below
 // returns false/0 when the flag is off.
@@ -256,7 +266,9 @@ namespace detail
 inline bool gEnabled = false;
 inline bool gEscape = false;
 inline bool gV2 = false;
+inline bool gHard = false;
 inline Params gParams;
+inline HardParams gHardParams;
 }
 inline bool Enabled() { return detail::gEnabled; }
 // AutoWow.DeathLoop.EscapeViaZoneProgression (default 0; needs Enable and AutoWow.ZoneProgression.Enable):
@@ -272,6 +284,19 @@ inline bool EscapeEnabled() { return detail::gEnabled && detail::gEscape; }
 //   (c) after the spirit-healer res of an escalated death the bot rests fully (AutoWowRestGate thresholds
 //       and no Resurrection Sickness) before any proactive pull, whether or not the rest gate flag is on.
 inline bool V2Enabled() { return detail::gEnabled && detail::gV2; }
+
+// AutoWow.Survival.HardEscape (default 0; needs Enable; conf/playerbots.conf.dist documents it):
+//   (1) the death-loop escape hub is the nearest one whose straight line from the bot crosses no zone
+//       bracketed above the bot (ZoneProgression PickSafeEscapeRoute) - not the lowest band anywhere;
+//   (2) Walking V2 chunks never end in (or pass through) such a zone other than the bot's own;
+//   (3) a bot stuck far over its level (or dying there) that does not move for StuckMs hearths home, else
+//       is portalled to its bind point / a capital (ledger zone_move reason hard_escape).
+inline bool HardEscapeEnabled() { return detail::gEnabled && detail::gHard; }
+
+// Zone (AreaTable parent) at (x, y) on `map` from the terrain grid's area map; 0 = none / off map.
+std::uint32_t ZoneAt(Map* map, float x, float y);
+// Low end of the zone's curated bracket (TravelMgr), else its AreaTable level; 0 = unknown.
+std::uint32_t ZoneMinLevel(std::uint32_t zoneId);
 
 void LoadConfig();
 void AddScripts();

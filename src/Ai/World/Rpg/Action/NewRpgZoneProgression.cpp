@@ -431,12 +431,28 @@ static bool StartEscape(Player* bot, AutoWowZoneProgression::BotState& s, AutoWo
     std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
     std::int32_t const bx = static_cast<std::int32_t>(std::floor(bot->GetPositionX()));
     std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
+    Route const* hub = nullptr;
+    if (AutoWowDeathLoop::HardEscapeEnabled())
+    {
+        // AutoWow.Survival.HardEscape (1): the nearest hub whose straight line crosses no zone bracketed
+        // more than WalkZoneMargin above the bot (the bot's own zone excepted).
+        Map* const map = bot->GetMap();
+        std::uint32_t const level = bot->GetLevel();
+        std::uint32_t const zone = bot->GetZoneId();
+        std::uint32_t const margin = AutoWowDeathLoop::detail::gHardParams.walkZoneMargin;
+        auto const zoneAt = [map](std::int32_t x, std::int32_t y)
+        { return AutoWowDeathLoop::ZoneAt(map, float(x), float(y)); };
+        auto const danger = [level, margin](std::uint32_t z)
+        { return AutoWowDeathLoop::Overshoot(AutoWowDeathLoop::ZoneMinLevel(z), level, margin); };
+        hub = PickSafeEscapeRoute(detail::gRoutes, team, level, zone, bot->GetMapId(), bx, by,
+                                  [&](Route const& r)
+                                  { return SegmentCrossesDanger(bx, by, r.x, r.y, kDangerStepYards, zone, zoneAt, danger); });
+    }
     // AutoWow.DeathLoop.V2: back toward the lowest level band that fits, not the nearest same-level hub.
-    Route const* hub = AutoWowDeathLoop::V2Enabled()
-                           ? PickLowEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(),
-                                                bot->GetMapId(), bx, by)
-                           : PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(),
-                                             bot->GetMapId(), bx, by);
+    else
+        hub = AutoWowDeathLoop::V2Enabled()
+                  ? PickLowEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by)
+                  : PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by);
     if (!hub)
         return false;
     if (s.phase != Phase::None)
