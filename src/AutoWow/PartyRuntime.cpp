@@ -32,6 +32,8 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "WorldPacket.h"
+#include "WorldSession.h"
 #include "ZoneProgressionPolicy.h"
 
 namespace AutoWowParty
@@ -475,6 +477,32 @@ void SetPhase(Party& p, Phase ph, std::uint64_t now)
     p.phaseMs = now;
 }
 
+// Step through an entrance trigger like a client does (the stock DungeonTransition waits for the whole
+// party standing still inside the trigger at once, which never held in soak-s26-full-r1: 2/2 stage_failed).
+void FireTrigger(Player* bot, PlayerbotAI* ai, std::uint32_t triggerId)
+{
+    bot->StopMoving();
+    WorldPacket packet(CMSG_AREATRIGGER);
+    packet << triggerId;
+    packet.rpos(0);
+    bot->GetSession()->HandleAreaTriggerOpcode(packet);
+    ai->SetAutoWowPaused(false);
+}
+
+// Members outside on the entrance map walk into the trigger and step through it.
+void StepIn(Player* bot, PlayerbotAI* ai, AreaTrigger const* trigger, Entrance const& e)
+{
+    if (!bot->IsAlive() || bot->IsInCombat() || bot->GetMapId() != e.map || bot->GetInstanceId())
+        return;
+    if (bot->IsInAreaTriggerRadius(trigger))
+        FireTrigger(bot, ai, e.trigger);
+    else if (!bot->isMoving())
+    {
+        ai->SetAutoWowPaused(false);
+        bot->GetMotionMaster()->MovePoint(0, e.x, e.y, e.z);
+    }
+}
+
 // One supervision step of a dungeon run. Returns a disband reason (None = keep the party).
 Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std::uint64_t now)
 {
@@ -544,6 +572,9 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
         {
             if (now >= p.phaseMs + gParams.stageTimeoutMs || !trigger)
             {
+                LOG_INFO("playerbots", "[Party] pid={} stage_failed leader_map={} leader_yd={} in_trigger={} alive={} combat={}",
+                         p.id, leader->GetMapId(), trigger ? int(leader->GetExactDist2d(e.x, e.y)) : -1,
+                         trigger && leader->IsInAreaTriggerRadius(trigger), leader->IsAlive(), leader->IsInCombat());
                 EmitRun(p, RunEvent::StageFailed, -1, now);
                 EndRun(p, now);
                 return Disband::None;
@@ -557,10 +588,14 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                 PlayerbotAI* ai = AiOf(bot);
                 if (bot->IsInAreaTriggerRadius(trigger))
                 {
+                    if (bot == leader)
+                    {
+                        FireTrigger(bot, ai, e.trigger);
+                        continue;
+                    }
                     if (bot->isMoving())
                         bot->StopMoving();
-                    if (bot != leader)
-                        ai->SetAutoWowPaused(true);
+                    ai->SetAutoWowPaused(true);
                 }
                 else if (!bot->isMoving())
                 {
@@ -577,6 +612,8 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
             {
                 anyAlive = anyAlive || bot->IsAlive();
                 PlayerbotAI* ai = AiOf(bot);
+                if (trigger && bot != leader)
+                    StepIn(bot, ai, trigger, e);
                 if (bot != leader && bot->GetMapId() == p.dungeonMap && !ai->IsAutoWowPaused() &&
                     !ai->HasStrategy("follow", BOT_STATE_NON_COMBAT))
                     ai->ChangeStrategy("+follow", BOT_STATE_NON_COMBAT);
