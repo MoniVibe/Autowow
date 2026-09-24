@@ -20,6 +20,11 @@ bool ResetAiAction::Execute(Event event)
         WorldPacket packet = event.getPacket();
         if (packet.GetOpcode() == SMSG_GROUP_LIST)
         {
+            // AutoWow party runtime owns this bot's strategies. group->Create(leader) sends the leader a
+            // member-less group list after formation applied its roles; resetting here dropped "new rpg"
+            // and froze every dungeon approach (soak-s25-full-r1: 2/2 approach_gave_up).
+            if (botAI->IsAutoWowIndependentParty())
+                return false;
             uint8 groupType;
             Group::MemberSlot slot;
             packet >> groupType;
