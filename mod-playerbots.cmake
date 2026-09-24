@@ -23,6 +23,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/CombatPerformanceTelemetryTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/TacticalPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/TacticalPriestContractTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/TacticalClassContractTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/DeathLoopBreakerTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ZoneProgressionPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/PullLevelCapTest.cpp"

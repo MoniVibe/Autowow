@@ -7,6 +7,7 @@
 #include "TacticalRuntime.h"
 
 #include <algorithm>
+#include <cctype>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -26,10 +27,13 @@
 #include "Spell.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "TacticalClassTables.h"
 
 static_assert(AutoWowTactics::kRankNormal == CREATURE_ELITE_NORMAL && AutoWowTactics::kRankElite == CREATURE_ELITE_ELITE &&
               AutoWowTactics::kRankRareElite == CREATURE_ELITE_RAREELITE &&
               AutoWowTactics::kRankBoss == CREATURE_ELITE_WORLDBOSS && AutoWowTactics::kRankRare == CREATURE_ELITE_RARE);
+static_assert(CLASS_WARRIOR == 1 && CLASS_PALADIN == 2 && CLASS_HUNTER == 3 && CLASS_ROGUE == 4 && CLASS_PRIEST == 5 &&
+              CLASS_DEATH_KNIGHT == 6 && CLASS_SHAMAN == 7 && CLASS_MAGE == 8 && CLASS_WARLOCK == 9 && CLASS_DRUID == 11);
 
 namespace AutoWowTactics
 {
@@ -49,8 +53,11 @@ struct Settings
     std::uint32_t pullMinManaPct = 50;  // T2 pre-pull readiness (0 = off)
     std::uint32_t pullMinHpPct = 60;
     std::uint32_t riskYd = 15;          // legacy grind: distance penalty per risk band
+    std::uint32_t classMask = 1u << CLASS_PRIEST;  // AutoWow.Tactics.Classes (default "priest")
     PriestParams priest;
     FactorTable factors[5];             // TacticId 10..14
+    ClassParams cls[kFamilies];         // non-priest families (AutoWow.Tactics.<Class>.*)
+    FactorTable classFactors[kFamilies][4];  // .Factors.{Single,Multi,Emergency,Escape}
 };
 
 // Default action -> factor tables (AutoWow.Tactics.Priest.Factors.<Tactic>). Unlisted actions keep 1.
@@ -93,9 +100,71 @@ bool Eligible(Player* bot)
     return !bot->GetGroup() && map && !map->IsDungeon() && !map->IsBattlegroundOrArena();
 }
 
+// In AutoWow.Tactics.Classes and the family has tactics (priest, or a kClassTables row).
+bool ClassEnabled(std::uint32_t classId)
+{
+    Family const f = FamilyOfClass(classId);
+    return classId < 32 && ((gSettings.classMask >> classId) & 1) &&
+           (f == Family::Priest || !kClassTables[static_cast<std::uint32_t>(f)].key.empty());
+}
+
 std::uint32_t SpellIdOf(PlayerbotAI* botAI, char const* name)
 {
     return botAI->GetAiObjectContext()->GetValue<uint32>("spell id", name)->Get();
+}
+
+std::uint32_t SpellIdOf(PlayerbotAI* botAI, std::string_view name) { return SpellIdOf(botAI, std::string(name).c_str()); }
+
+// Non-priest readiness: per tool list, known = any spell of the list learned, ready = any of them off
+// cooldown. Plus kCdPet (combat pet alive) and kCdWand. ponytail: cooldown only - a shield-less warrior's
+// Shield Wall counts as ready; add per-tool usability checks if the capacity bonus proves misleading.
+std::uint32_t ClassReadiness(PlayerbotAI* botAI, Player* bot, Family f)
+{
+    ClassTable const& t = kClassTables[static_cast<std::uint32_t>(f)];
+    std::uint32_t cds = 0;
+    auto scan = [&](std::string_view const(&names)[3], std::uint32_t knownBit, std::uint32_t readyBit)
+    {
+        for (std::string_view const name : names)
+        {
+            if (name.empty())
+                continue;
+            std::uint32_t const id = SpellIdOf(botAI, name);
+            if (!id || !bot->HasSpell(id))
+                continue;
+            cds |= knownBit;
+            if (!bot->HasSpellCooldown(id))
+                cds |= readyBit;
+        }
+    };
+    scan(t.control, kCdControlKnown, kCdControl);
+    scan(t.defensive, kCdDefensiveKnown, kCdDefensive);
+    scan(t.escape, kCdEscapeKnown, kCdEscape);
+    if (Pet* pet = bot->GetPet(); pet && pet->IsAlive())
+        cds |= kCdPet;
+    if (Item* ranged = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED))
+        if (ranged->GetTemplate()->Class == ITEM_CLASS_WEAPON && ranged->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_WAND)
+            cds |= kCdWand;
+    return cds;
+}
+
+// The first known control tool (immunity check of fearableMelee); nullptr = none known.
+SpellInfo const* ControlSpell(PlayerbotAI* botAI, Player* bot, Family f)
+{
+    if (f == Family::Priest)
+    {
+        std::uint32_t const id = SpellIdOf(botAI, "psychic scream");
+        return id ? sSpellMgr->GetSpellInfo(id) : nullptr;
+    }
+    for (std::string_view const name : kClassTables[static_cast<std::uint32_t>(f)].control)
+        if (!name.empty())
+            if (std::uint32_t const id = SpellIdOf(botAI, name); id && bot->HasSpell(id))
+                return sSpellMgr->GetSpellInfo(id);
+    return nullptr;
+}
+
+LoadParams const& LoadOf(Family f)
+{
+    return f == Family::Priest ? gSettings.priest.load : gSettings.cls[static_cast<std::uint32_t>(f)].load;
 }
 
 std::uint32_t ReadinessBits(PlayerbotAI* botAI, Player* bot)
@@ -138,12 +207,13 @@ MobFacts FactsOf(Unit* unit)
 }
 
 // The assessment value (plan 2.1). deathEtaMs is filled by the tracker from its own HP samples.
-EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, PriestParams const& p)
+// fearableMelee counts melee attackers not immune to the family's control tool (priest: Psychic Scream).
+EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, Family family)
 {
     EngagementSnapshot s;
     AiObjectContext* context = botAI->GetAiObjectContext();
-    std::uint32_t const screamId = SpellIdOf(botAI, "psychic scream");
-    SpellInfo const* scream = screamId ? sSpellMgr->GetSpellInfo(screamId) : nullptr;
+    LoadParams const& load = LoadOf(family);
+    SpellInfo const* scream = ControlSpell(botAI, bot, family);
     std::int32_t const botLevel = static_cast<std::int32_t>(bot->GetLevel());
 
     GuidVector const attackerGuids = context->GetValue<GuidVector>("attackers")->Get();
@@ -158,7 +228,7 @@ EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, PriestParams c
         MobFacts const f = FactsOf(unit);
         std::int32_t const dl = static_cast<std::int32_t>(unit->GetLevel()) - botLevel;
         ++s.attackers;
-        s.load += MobWeight(f.rank, dl, f.caster, p.load);
+        s.load += MobWeight(f.rank, dl, f.caster, load);
         s.lvlDmax = firstLevel || dl > s.lvlDmax ? dl : s.lvlDmax;
         firstLevel = false;
         if (f.rank == kRankElite || f.rank == kRankRareElite || f.rank == kRankBoss)
@@ -201,13 +271,14 @@ EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, PriestParams c
                 continue;
             MobFacts const f = FactsOf(unit);
             ++s.addsNear;
-            s.load += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster, p.load);
+            s.load += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster, load);
         }
     }
 
     s.hpPct = Pct(bot->GetHealth(), bot->GetMaxHealth());
-    s.manaPct = bot->getPowerType() == POWER_MANA ? Pct(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA)) : 100;
-    s.cds = ReadinessBits(botAI, bot);
+    // Mana users (druids in a form too); 100 for rage / energy / runic classes.
+    s.manaPct = bot->GetMaxPower(POWER_MANA) ? Pct(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA)) : 100;
+    s.cds = family == Family::Priest ? ReadinessBits(botAI, bot) : ClassReadiness(botAI, bot, family);
     if (Unit* target = context->GetValue<Unit*>("current target")->Get())
         s.targetCaster = FactsOf(target).caster;
     return s;
@@ -255,6 +326,34 @@ void LoadConfig()
     s.factors[2] = f("AutoWow.Tactics.Priest.Factors.Multi", kDefaultMultiFactors);
     s.factors[3] = f("AutoWow.Tactics.Priest.Factors.Emergency", kDefaultEmergencyFactors);
     s.factors[4] = f("AutoWow.Tactics.Priest.Factors.Escape", kDefaultEscapeFactors);
+
+    s.classMask = ParseClassMask(sConfigMgr->GetOption<std::string>("AutoWow.Tactics.Classes", "priest"));
+    for (std::uint32_t k = 0; k < kFamilies; ++k)
+    {
+        ClassTable const& t = kClassTables[k];
+        if (t.key.empty())
+            continue;
+        std::string const prefix = "AutoWow.Tactics." + std::string(t.key) + ".";
+        auto cu = [&](char const* name, std::uint32_t def) { return u((prefix + name).c_str(), def); };
+        ClassParams& c = s.cls[k];
+        c.healHpPct = t.healHpPct;
+        c.minDwellMs = p.minDwellMs;
+        c.deathEtaMs = p.deathEtaMs;
+        c.escapeRatioPct = p.escapeRatioPct;
+        c.escapeMaxMs = p.escapeMaxMs;
+        c.load = p.load;
+        c.singleMax = cu("SingleMaxPct", c.singleMax);
+        c.base = cu("BasePct", c.base);
+        c.healHpPct = cu("HealHpPct", c.healHpPct);
+        c.lowManaPct = cu("LowManaPct", c.lowManaPct);
+        c.emergencyHpPct = cu("EmergencyHpPct", c.emergencyHpPct);
+        c.emergencyExitHpPct = cu("EmergencyExitHpPct", c.emergencyExitHpPct);
+        c.controlMinMelee = cu("ControlMinMelee", c.controlMinMelee);
+        c.controlHpPct = cu("ControlHpPct", c.controlHpPct);
+        for (std::uint32_t i = 0; i < 4; ++i)
+            s.classFactors[k][i] = ParseFactors(sConfigMgr->GetOption<std::string>(
+                prefix + "Factors." + std::string(kClassSlotKeys[i]), std::string(t.factors[i])));
+    }
     gSettings = s;
 }
 
@@ -263,8 +362,9 @@ void Update(PlayerbotAI* botAI)
     if (!Tracking() || !botAI)
         return;
     Player* bot = botAI->GetBot();
-    if (!bot || bot->getClass() != CLASS_PRIEST || !bot->IsInWorld())
+    if (!bot || !ClassEnabled(bot->getClass()) || !bot->IsInWorld())
         return;
+    Family const family = FamilyOfClass(bot->getClass());
 
     std::uint32_t const botGuid = static_cast<std::uint32_t>(bot->GetGUID().GetCounter());
     std::uint64_t const nowMs = NowMs();
@@ -300,7 +400,7 @@ void Update(PlayerbotAI* botAI)
     in.mana = bot->GetPower(POWER_MANA);
     in.manaPct = Pct(in.mana, bot->GetMaxPower(POWER_MANA));
     if (inCombat)
-        in.snap = BuildSnapshot(botAI, bot, gSettings.priest);
+        in.snap = BuildSnapshot(botAI, bot, family);
     Unit* const target = inCombat ? botAI->GetAiObjectContext()->GetValue<Unit*>("current target")->Get() : nullptr;
     std::uint64_t const targetGuid = target ? target->GetGUID().GetRawValue() : 0;
 
@@ -316,7 +416,9 @@ void Update(PlayerbotAI* botAI)
             return;
         BotState& st = it->second;
         in.pullRisk = targetGuid && targetGuid == st.pullGuid ? st.pullBand : -1;
-        finished = st.tracker.Tick(in, gSettings.priest, rec);
+        finished = family == Family::Priest
+                       ? st.tracker.Tick(in, gSettings.priest, rec)
+                       : st.tracker.Tick(in, family, gSettings.cls[static_cast<std::uint32_t>(family)], rec);
         creditId = st.tracker.CreditId();
         creditMs = st.tracker.CreditMs();
         arm = st.arm;
@@ -342,13 +444,29 @@ void NoteKill(std::uint32_t botGuid)
 
 void NoteCast(Player* player, SpellInfo const* spellInfo)
 {
-    if (!player || !spellInfo || player->getClass() != CLASS_PRIEST)
+    if (!player || !spellInfo || !ClassEnabled(player->getClass()))
         return;
-    SpellInfo const* first = spellInfo->GetFirstRankSpell();
-    std::uint32_t const firstId = first ? first->Id : spellInfo->Id;
-    CastKind const kind = firstId == kSpellPowerWordShieldR1 ? CastKind::Shield
-                          : firstId == kSpellPsychicScreamR1 ? CastKind::Control
-                                                             : CastKind::Other;
+    CastKind kind = CastKind::Other;
+    if (player->getClass() == CLASS_PRIEST)
+    {
+        SpellInfo const* first = spellInfo->GetFirstRankSpell();
+        std::uint32_t const firstId = first ? first->Id : spellInfo->Id;
+        kind = firstId == kSpellPowerWordShieldR1 ? CastKind::Shield
+               : firstId == kSpellPsychicScreamR1 ? CastKind::Control
+                                                  : CastKind::Other;
+    }
+    else if (char const* raw = spellInfo->SpellName[LOCALE_enUS])
+    {
+        std::string name(raw);
+        std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) { return std::tolower(ch); });
+        ClassTable const& t = kClassTables[static_cast<std::uint32_t>(FamilyOfClass(player->getClass()))];
+        for (std::string_view const tool : t.control)
+            if (!tool.empty() && name == tool)
+                kind = CastKind::Control;
+        for (std::string_view const tool : t.defensive)
+            if (!tool.empty() && name == tool)
+                kind = CastKind::Shield;
+    }
     std::lock_guard<std::mutex> guard(gLock);
     if (auto it = gBots.find(static_cast<std::uint32_t>(player->GetGUID().GetCounter())); it != gBots.end())
         it->second.tracker.NoteCast(kind);
@@ -366,6 +484,8 @@ namespace
 {
 bool IsPriest(Player* bot) { return bot && bot->getClass() == CLASS_PRIEST; }
 
+bool IsTacticalClass(Player* bot) { return bot && ClassEnabled(bot->getClass()); }
+
 bool TreatmentEligible(PlayerbotAI* botAI)
 {
     Player* bot = botAI ? botAI->GetBot() : nullptr;
@@ -377,13 +497,13 @@ std::uint32_t ManaPct(Player* bot) { return Pct(bot->GetPower(POWER_MANA), bot->
 
 bool IsTreatment(Player* bot)
 {
-    return Enabled() && IsPriest(bot) &&
+    return Enabled() && IsTacticalClass(bot) &&
            ArmOf(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()), gSettings.armSalt, gSettings.armPct) == 1;
 }
 
 TacticId Current(Player* bot, EngagementSnapshot* snap)
 {
-    if (!Enabled() || !IsPriest(bot))
+    if (!Enabled() || !IsTacticalClass(bot))
         return TacticId::None;
     std::lock_guard<std::mutex> guard(gLock);
     auto const it = gBots.find(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
@@ -396,18 +516,30 @@ TacticId Current(Player* bot, EngagementSnapshot* snap)
 
 PriestParams const& Priest() { return gSettings.priest; }
 
+ClassParams const& Params(Family family)
+{
+    std::uint32_t const k = static_cast<std::uint32_t>(family);
+    return gSettings.cls[k < kFamilies ? k : 0];
+}
+
 std::uint32_t FactorPermille(TacticId id, std::string const& action)
 {
     std::uint32_t const k = static_cast<std::uint32_t>(id);
     std::uint32_t const first = static_cast<std::uint32_t>(TacticId::PriestWand);
-    if (k < first || k > static_cast<std::uint32_t>(TacticId::PriestEscape))
+    if (k >= first && k <= static_cast<std::uint32_t>(TacticId::PriestEscape))
+        return FactorOf(gSettings.factors[k - first], action);
+    std::uint32_t const family = static_cast<std::uint32_t>(FamilyOf(id));
+    std::uint32_t const index = FactorIndexOfSlot(SlotOf(id));
+    if (id == TacticId::None || family >= kFamilies || index >= 4)
         return 1000;
-    return FactorOf(gSettings.factors[k - first], action);
+    return FactorOf(gSettings.classFactors[family][index], action);
 }
 
+// Priest-only (the "tactical nc" rest triggers exist for priests); other classes rest via
+// AutoWow.Survival.RestGate.
 bool HoldProactivePull(PlayerbotAI* botAI)
 {
-    if (!Enabled() || !TreatmentEligible(botAI))
+    if (!Enabled() || !botAI || !IsPriest(botAI->GetBot()) || !TreatmentEligible(botAI))
         return false;
     Player* bot = botAI->GetBot();
     return AutoWowPackRisk::HoldPull(Pct(bot->GetHealth(), bot->GetMaxHealth()), ManaPct(bot),
@@ -417,7 +549,7 @@ bool HoldProactivePull(PlayerbotAI* botAI)
 
 bool NeedsRestMana(PlayerbotAI* botAI)
 {
-    if (!Enabled() || !gSettings.pullMinManaPct || !TreatmentEligible(botAI))
+    if (!Enabled() || !gSettings.pullMinManaPct || !botAI || !IsPriest(botAI->GetBot()) || !TreatmentEligible(botAI))
         return false;
     Player* bot = botAI->GetBot();
     return !bot->IsInCombat() && bot->getPowerType() == POWER_MANA && ManaPct(bot) < gSettings.pullMinManaPct;
@@ -425,7 +557,7 @@ bool NeedsRestMana(PlayerbotAI* botAI)
 
 bool NeedsRestHealth(PlayerbotAI* botAI)
 {
-    if (!Enabled() || !gSettings.pullMinHpPct || !TreatmentEligible(botAI))
+    if (!Enabled() || !gSettings.pullMinHpPct || !botAI || !IsPriest(botAI->GetBot()) || !TreatmentEligible(botAI))
         return false;
     Player* bot = botAI->GetBot();
     return !bot->IsInCombat() && Pct(bot->GetHealth(), bot->GetMaxHealth()) < gSettings.pullMinHpPct;
@@ -438,9 +570,16 @@ std::uint32_t PullCapacity(PlayerbotAI* botAI)
     Player* bot = botAI->GetBot();
     EngagementSnapshot s;
     s.hpPct = Pct(bot->GetHealth(), bot->GetMaxHealth());
-    s.manaPct = ManaPct(bot);
-    s.cds = ReadinessBits(botAI, bot);
-    return Capacity(s, gSettings.priest);
+    if (IsPriest(bot))
+    {
+        s.manaPct = ManaPct(bot);
+        s.cds = ReadinessBits(botAI, bot);
+        return Capacity(s, gSettings.priest);
+    }
+    Family const family = FamilyOfClass(bot->getClass());
+    s.manaPct = bot->GetMaxPower(POWER_MANA) ? ManaPct(bot) : 100;
+    s.cds = ClassReadiness(botAI, bot, family);
+    return Capacity(s, Params(family));
 }
 
 // ponytail: O(candidates x pool) per grind selection (tens of units); index by grid cell if it ever shows.
@@ -449,9 +588,13 @@ AutoWowPackRisk::Verdict ScorePull(PlayerbotAI* botAI, Unit* candidate, std::vec
 {
     Player* bot = botAI->GetBot();
     std::int32_t const botLevel = static_cast<std::int32_t>(bot->GetLevel());
+    Family const family = FamilyOfClass(bot->getClass());
+    LoadParams const& load = LoadOf(family);
+    std::uint32_t const escapeRatioPct =
+        family == Family::Priest ? gSettings.priest.escapeRatioPct : Params(family).escapeRatioPct;
     MobFacts const cf = FactsOf(candidate);
     std::uint32_t const candidateWeight = MobWeight(cf.rank, static_cast<std::int32_t>(candidate->GetLevel()) - botLevel,
-                                                    cf.caster, gSettings.priest.load);
+                                                    cf.caster, load);
     std::uint32_t neighbours = 0;
     for (ObjectGuid const guid : pool)
     {
@@ -461,10 +604,9 @@ AutoWowPackRisk::Verdict ScorePull(PlayerbotAI* botAI, Unit* candidate, std::vec
             unit->GetDistance(candidate) > float(gSettings.linkRadiusYd))
             continue;
         MobFacts const f = FactsOf(unit);
-        neighbours += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster,
-                                gSettings.priest.load);
+        neighbours += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster, load);
     }
-    return AutoWowPackRisk::Score(candidateWeight, neighbours, capacity, gSettings.priest.escapeRatioPct);
+    return AutoWowPackRisk::Score(candidateWeight, neighbours, capacity, escapeRatioPct);
 }
 
 std::uint32_t RiskYd() { return gSettings.riskYd; }

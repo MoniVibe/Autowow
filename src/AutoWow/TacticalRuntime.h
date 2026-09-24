@@ -27,7 +27,10 @@ class Unit;
 //     "tactical" / "tactical nc" priest strategies, the pre-pull readiness gate and pack-risk pull choice.
 //     Control-arm bots are tracked and labelled in the same run (same-soak A/B).
 //   AutoWow.Tactics.PriestShadowLevelingSpec: non-random priests level with premade spec 5.6.
-// Eligible = priest, not grouped, not in a dungeon/raid/battleground/arena. Per-bot state is keyed by guid
+//   AutoWow.Tactics.Classes (default "priest"): the classes the layer tracks and treats ("all" or a list:
+//     priest, warrior, rogue, mage, shaman, paladin, hunter, druid, warlock, deathknight); a class without a
+//     TacticalClassTables.h row is skipped. The arm hash applies within every class.
+// Eligible = a listed class, not grouped, not in a dungeon/raid/battleground/arena. Per-bot state is keyed by guid
 // counter under one mutex (bots update on map threads); never held while calling other subsystems.
 namespace AutoWowTactics
 {
@@ -56,14 +59,17 @@ void NoteCast(Player* player, SpellInfo const* spellInfo);
 void Forget(std::uint32_t botGuid);
 
 // ---- T2: treatment (AutoWow.Tactics.Enable) -------------------------------------------------------
-// Enable on, priest, treatment arm. Fixed per guid, so safe to consult when an engine is built.
+// Enable on, listed class, treatment arm. Fixed per guid, so safe to consult when an engine is built.
 bool IsTreatment(Player* bot);
 // The running tactic of an eligible treatment bot (None otherwise) and the snapshot it was chosen on.
 TacticId Current(Player* bot, EngagementSnapshot* snap = nullptr);
 PriestParams const& Priest();
-// Permille multiplier of an action under a tactic (1000 = unchanged); AutoWow.Tactics.Priest.Factors.*.
+// Non-priest family parameters (AutoWow.Tactics.<Class>.*).
+ClassParams const& Params(Family family);
+// Permille multiplier of an action under a tactic (1000 = unchanged); AutoWow.Tactics.<Class>.Factors.*.
 std::uint32_t FactorPermille(TacticId id, std::string const& action);
-// Pre-pull readiness gate: true = do not start a proactive pull now (rest first). Self-defence unaffected.
+// Pre-pull readiness gate (priests): true = do not start a proactive pull now (rest first). Self-defence
+// unaffected. Other classes rest through AutoWow.Survival.RestGate.
 bool HoldProactivePull(PlayerbotAI* botAI);
 // Out-of-combat rest triggers of "tactical nc" (eligible treatment bot, below the pull thresholds).
 bool NeedsRestMana(PlayerbotAI* botAI);

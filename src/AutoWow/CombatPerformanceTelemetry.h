@@ -151,7 +151,7 @@ void LoadConfig();
 // its lines stay byte-identical cv=1.
 inline constexpr std::uint32_t kLifetimeSchemaVersion = 1;
 inline constexpr std::uint32_t kLifetimeSchemaVersionTactics = 2;
-inline constexpr std::size_t kTacticSlots = 32;  // AutoWowTactics::kMaxTacticId
+inline constexpr std::size_t kTacticSlots = 128;  // AutoWowTactics::kMaxTacticId (families 1-10, ids < 110)
 inline constexpr std::size_t kTtkTracked = 16;              // concurrently engaged creatures per bot
 inline constexpr std::uint64_t kTtkEngageExpiryMs = 120000; // engagement forgotten after 2 min
 inline constexpr std::size_t kTtkPendingMax = 64;           // TTK samples per emit line; rest -> ttk_drop

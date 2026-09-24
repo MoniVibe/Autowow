@@ -22,6 +22,7 @@
 #include "RpgTriggers.h"
 #include "RtiTriggers.h"
 #include "StuckTriggers.h"
+#include "TacticalClassStrategy.h"
 #include "TravelTriggers.h"
 #include "WaitForAttackTriggers.h"
 
@@ -51,6 +52,21 @@ public:
         creators["medium health"] = &TriggerContext::MediumHealth;
         creators["rest gate health"] = &TriggerContext::rest_gate_health;
         creators["rest gate mana"] = &TriggerContext::rest_gate_mana;
+        // AutoWow tactical layer, non-priest classes (TacticalClassStrategy.h)
+        creators["tac single"] = &TriggerContext::tac_single;
+        creators["tac multi"] = &TriggerContext::tac_multi;
+        creators["tac emergency"] = &TriggerContext::tac_emergency;
+        creators["tac escape"] = &TriggerContext::tac_escape;
+        creators["tac heal"] = &TriggerContext::tac_heal;
+        creators["tac control"] = &TriggerContext::tac_control;
+        creators["tac control add"] = &TriggerContext::tac_control_add;
+        creators["tac emergency control"] = &TriggerContext::tac_emergency_control;
+        creators["tac melee on me"] = &TriggerContext::tac_melee_on_me;
+        creators["tac runner"] = &TriggerContext::tac_runner;
+        creators["tac low mana"] = &TriggerContext::tac_low_mana;
+        creators["tac life tap"] = &TriggerContext::tac_life_tap;
+        creators["tac pet low"] = &TriggerContext::tac_pet_low;
+        creators["tac kite"] = &TriggerContext::tac_kite;
         creators["almost full health"] = &TriggerContext::AlmostFullHealth;
 
         creators["low mana"] = &TriggerContext::LowMana;
@@ -317,6 +333,21 @@ private:
     static Trigger* MediumHealth(PlayerbotAI* botAI) { return new MediumHealthTrigger(botAI); }
     static Trigger* rest_gate_health(PlayerbotAI* botAI) { return new RestGateTrigger(botAI, "rest gate health", false); }
     static Trigger* rest_gate_mana(PlayerbotAI* botAI) { return new RestGateTrigger(botAI, "rest gate mana", true); }
+    static Trigger* tac(PlayerbotAI* botAI, char const* name, ClassTacticCondition c) { return new ClassTacticTrigger(botAI, name, c); }
+    static Trigger* tac_single(PlayerbotAI* botAI) { return tac(botAI, "tac single", ClassTacticCondition::Single); }
+    static Trigger* tac_multi(PlayerbotAI* botAI) { return tac(botAI, "tac multi", ClassTacticCondition::Multi); }
+    static Trigger* tac_emergency(PlayerbotAI* botAI) { return tac(botAI, "tac emergency", ClassTacticCondition::Emergency); }
+    static Trigger* tac_escape(PlayerbotAI* botAI) { return tac(botAI, "tac escape", ClassTacticCondition::Escape); }
+    static Trigger* tac_heal(PlayerbotAI* botAI) { return tac(botAI, "tac heal", ClassTacticCondition::Heal); }
+    static Trigger* tac_control(PlayerbotAI* botAI) { return tac(botAI, "tac control", ClassTacticCondition::Control); }
+    static Trigger* tac_control_add(PlayerbotAI* botAI) { return tac(botAI, "tac control add", ClassTacticCondition::ControlAdd); }
+    static Trigger* tac_emergency_control(PlayerbotAI* botAI) { return tac(botAI, "tac emergency control", ClassTacticCondition::EmergencyControl); }
+    static Trigger* tac_melee_on_me(PlayerbotAI* botAI) { return tac(botAI, "tac melee on me", ClassTacticCondition::MeleeOnMe); }
+    static Trigger* tac_runner(PlayerbotAI* botAI) { return tac(botAI, "tac runner", ClassTacticCondition::Runner); }
+    static Trigger* tac_low_mana(PlayerbotAI* botAI) { return tac(botAI, "tac low mana", ClassTacticCondition::LowMana); }
+    static Trigger* tac_life_tap(PlayerbotAI* botAI) { return tac(botAI, "tac life tap", ClassTacticCondition::LifeTap); }
+    static Trigger* tac_pet_low(PlayerbotAI* botAI) { return tac(botAI, "tac pet low", ClassTacticCondition::PetLow); }
+    static Trigger* tac_kite(PlayerbotAI* botAI) { return tac(botAI, "tac kite", ClassTacticCondition::Kite); }
     static Trigger* AlmostFullHealth(PlayerbotAI* botAI) { return new AlmostFullHealthTrigger(botAI); }
     static Trigger* CriticalHealth(PlayerbotAI* botAI) { return new CriticalHealthTrigger(botAI); }
     static Trigger* TargetCriticalHealth(PlayerbotAI* botAI) { return new TargetCriticalHealthTrigger(botAI); }

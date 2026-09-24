@@ -2309,8 +2309,8 @@ AutoWow.Combat.DotMinDurationPct = 50
 AutoWow.Combat.DotHighHpPerLevel = 150
 
 # AutoWoW tactical combat layer (docs/TACTICAL_COMBAT_PLAN.md; TacticalPolicy.h). Default 0 = off: the
-# bot AI tick and the telemetry hooks early-return on one cached bool. Solo priests only (not grouped,
-# not in a dungeon/raid/battleground/arena). Read once at world init.
+# bot AI tick and the telemetry hooks early-return on one cached bool. Solo bots of the classes in
+# Classes only (not grouped, not in a dungeon/raid/battleground/arena). Read once at world init.
 # Observe = 1 (T1, no behaviour change): every ReevalMs (and on every combat-state change) the bot's
 # engagement is assessed (attackers, melee, idle adds within LinkRadius yards of an attacker, levels,
 # elites, casters, hp/mana, hp-slope death eta, Scream/Shield/wand readiness) and labelled with the
@@ -2381,6 +2381,22 @@ AutoWow.Tactics.Priest.Factors.Escape = "smite:0,mind blast:0,holy fire:0,mana b
 # reset (AutoMaintenance level-up respec) or while already shadow. Random bots are untouched. Note: shadow
 # priests have no stock self-heal; the tactical strategy (Enable, treatment arm) supplies Renew/Heal.
 AutoWow.Tactics.PriestShadowLevelingSpec = 0
+# Classes: the classes the layer tracks (Observe) and treats (Enable), "all" or names separated by ',' or ' '
+# (priest, warrior, rogue, mage, shaman, paladin, hunter, druid, warlock, deathknight). Default "priest" =
+# the priest-only behaviour above. The arm hash (ArmPct / ArmSalt) applies within every class. Every
+# non-priest class runs the same ladder: single (<id>0), multi (<id>2, load > SingleMaxPct), emergency
+# (<id>3, hp < EmergencyHpPct or death eta < DeathEtaMs; leaves above EmergencyExitHpPct), escape (<id>4,
+# one attempt: load > capacity x EscapeRatioPct%, hp < EmergencyExitHpPct, >= 2 attackers, the known
+# control/defensive cooldowns spent). Class ids: warlock 2x, mage 3x, hunter 4x, rogue 5x, warrior 6x,
+# paladin 7x, druid 8x, shaman 9x, death knight 10x. Capacity = (BasePct + 100 if a control tool is ready
+# + 50 if a defensive cooldown is ready + 100 while a pet is alive) x hp% x (0.5 + 0.5 mana%). Per class:
+# <Class>.SingleMaxPct / BasePct / HealHpPct (self-heal or defensive floor while fighting, +10 in multi) /
+# LowManaPct / EmergencyHpPct / EmergencyExitHpPct / ControlMinMelee / ControlHpPct (area control needs
+# ControlMinMelee controllable melee on the bot and hp < ControlHpPct or >= 3 attackers, no idle adds near)
+# and <Class>.Factors.{Single,Multi,Emergency,Escape} ("action:factor,..."; the defaults are below). A
+# class listed before its tactics exist is ignored. Pre-pull readiness stays priest-only (other classes:
+# AutoWow.Survival.RestGate); pack-risk pull choice applies to every treated class.
+AutoWow.Tactics.Classes = "priest"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within

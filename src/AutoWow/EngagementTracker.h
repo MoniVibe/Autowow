@@ -39,8 +39,8 @@ enum class Outcome : std::uint8_t
 enum class CastKind : std::uint8_t
 {
     Other = 0,
-    Shield = 1,   // PW:Shield
-    Control = 2   // Psychic Scream
+    Shield = 1,   // PW:Shield; other families: their defensive cooldown (`engage` shield_n)
+    Control = 2   // Psychic Scream; other families: their control tool (`engage` cc_n)
 };
 
 struct TickInput
@@ -98,6 +98,46 @@ public:
     // Returns true when an engagement finished; `out` then holds it. After the call, CreditId()/CreditMs()
     // name the tactic and the ms of this tick to credit to the lifetime tac_ms counters (None/0 = none).
     bool Tick(TickInput const& in, PriestParams const& p, EngageRecord& out)
+    {
+        return TickWith(in, out, [&p](EngagementSnapshot const& s, TacticId cur, std::uint32_t ms, bool used)
+                        { return ChoosePriest(s, p, cur, ms, used); });
+    }
+
+    // Any other class family (ChooseClass ladder).
+    bool Tick(TickInput const& in, Family family, ClassParams const& p, EngageRecord& out)
+    {
+        return TickWith(in, out, [family, &p](EngagementSnapshot const& s, TacticId cur, std::uint32_t ms, bool used)
+                        { return ChooseClass(family, s, p, cur, ms, used); });
+    }
+
+    void NoteKill()
+    {
+        if (active)
+            ++rec.kills;
+    }
+
+    void NoteCast(CastKind kind)
+    {
+        if (!active)
+            return;
+        ++rec.casts;
+        if (kind == CastKind::Shield)
+            ++rec.shieldN;
+        else if (kind == CastKind::Control)
+            ++rec.ccN;
+    }
+
+    [[nodiscard]] bool Active() const { return active; }
+    // The tactic the bot is (or, in observe mode, would be) running; None outside an engagement.
+    [[nodiscard]] TacticId Current() const { return active && !pendingEnd ? tactic : TacticId::None; }
+    [[nodiscard]] TacticId CreditId() const { return creditId; }
+    [[nodiscard]] std::uint32_t CreditMs() const { return creditMs; }
+    // Latest in-combat snapshot (with deathEtaMs); what the strategy triggers read while Current() != None.
+    [[nodiscard]] EngagementSnapshot const& Last() const { return last; }
+
+private:
+    template <class Choose>
+    bool TickWith(TickInput const& in, EngageRecord& out, Choose&& choose)
     {
         std::uint64_t const dt = hasLast && in.nowMs >= lastMs ? in.nowMs - lastMs : 0;
         hasLast = true;
@@ -173,12 +213,12 @@ public:
         last = s;
 
         std::uint64_t const inCurrent = in.nowMs - tacticSinceMs;
-        TacticId const next = ChoosePriest(s, p, tactic, static_cast<std::uint32_t>(inCurrent), escapeUsed);
+        TacticId const next = choose(s, tactic, static_cast<std::uint32_t>(inCurrent), escapeUsed);
         if (rec.tac0 == TacticId::None)
             rec.tac0 = next;
         if (next != tactic)
         {
-            if (next == TacticId::PriestEscape)
+            if (next != TacticId::None && SlotOf(next) == kSlotEscape)
                 escapeUsed = true;
             tactic = next;
             tacticSinceMs = in.nowMs;
@@ -196,32 +236,6 @@ public:
         return false;
     }
 
-    void NoteKill()
-    {
-        if (active)
-            ++rec.kills;
-    }
-
-    void NoteCast(CastKind kind)
-    {
-        if (!active)
-            return;
-        ++rec.casts;
-        if (kind == CastKind::Shield)
-            ++rec.shieldN;
-        else if (kind == CastKind::Control)
-            ++rec.ccN;
-    }
-
-    [[nodiscard]] bool Active() const { return active; }
-    // The tactic the bot is (or, in observe mode, would be) running; None outside an engagement.
-    [[nodiscard]] TacticId Current() const { return active && !pendingEnd ? tactic : TacticId::None; }
-    [[nodiscard]] TacticId CreditId() const { return creditId; }
-    [[nodiscard]] std::uint32_t CreditMs() const { return creditMs; }
-    // Latest in-combat snapshot (with deathEtaMs); what the strategy triggers read while Current() != None.
-    [[nodiscard]] EngagementSnapshot const& Last() const { return last; }
-
-private:
     struct HpSample
     {
         std::uint64_t ms = 0;

@@ -20,7 +20,8 @@
 namespace AutoWowTactics
 {
 // Wire-stable (ledger `engage` tac0/tacs, `combat` cv=2 tac_ms); append only, ids never reused.
-// Namespaced by class family: priest 10-19 (warlock 20-29, ... reserved). 0 = none / stock.
+// id = 10 x Family + slot. Slots: 0 single, 1 alternate single (priest burst; reserved elsewhere),
+// 2 multi, 3 emergency, 4 escape, 5-9 reserved. 0 = none / stock.
 enum class TacticId : std::uint8_t
 {
     None = 0,
@@ -28,17 +29,89 @@ enum class TacticId : std::uint8_t
     PriestBurst = 11,      // single, fast: stock nuke rotation while mana is high
     PriestMulti = 12,      // 2-3 mobs: DoT spread, shield/renew, Psychic Scream
     PriestEmergency = 13,  // low hp / fast death eta: heal-first, damage off except wand
-    PriestEscape = 14      // overwhelmed and tools spent: scream / fade / flee, one attempt per engagement
+    PriestEscape = 14,     // overwhelmed and tools spent: scream / fade / flee, one attempt per engagement
+    WarlockSingle = 20,    // pet tanks, drain-tank (Drain Life / Life Tap discipline)
+    WarlockMulti = 22,     // fear the add, DoT spread
+    WarlockEmergency = 23,
+    WarlockEscape = 24,
+    MageSingle = 30,       // frost kite: nova + step back
+    MageMulti = 32,        // polymorph the add, nova + cone
+    MageEmergency = 33,
+    MageEscape = 34,
+    HunterSingle = 40,     // pet tanks, wing clip / disengage off melee
+    HunterMulti = 42,      // trap the add
+    HunterEmergency = 43,
+    HunterEscape = 44,
+    RogueSingle = 50,
+    RogueMulti = 52,       // evasion + blade flurry, kidney the target
+    RogueEmergency = 53,
+    RogueEscape = 54,      // vanish / gouge + sprint
+    WarriorSingle = 60,    // rage pacing, victory rush, hamstring runners
+    WarriorMulti = 62,     // thunder clap + demo shout, intimidating shout
+    WarriorEmergency = 63,
+    WarriorEscape = 64,
+    PaladinSingle = 70,
+    PaladinMulti = 72,
+    PaladinEmergency = 73,
+    PaladinEscape = 74,
+    DruidSingle = 80,
+    DruidMulti = 82,       // bear form for adds
+    DruidEmergency = 83,
+    DruidEscape = 84,
+    ShamanSingle = 90,
+    ShamanMulti = 92,
+    ShamanEmergency = 93,
+    ShamanEscape = 94,
+    DeathKnightSingle = 100,
+    DeathKnightMulti = 102,
+    DeathKnightEmergency = 103,
+    DeathKnightEscape = 104
 };
 
-inline constexpr std::uint32_t kMaxTacticId = 32;  // telemetry array bound (ids < 32)
+inline constexpr std::uint32_t kMaxTacticId = 128;  // telemetry array bound (ids < 128)
 
-// Readiness bits (EngagementSnapshot::cds).
+// Class family: the tens digit of its tactic ids. Wire-stable.
+enum class Family : std::uint8_t
+{
+    None = 0,
+    Priest = 1,
+    Warlock = 2,
+    Mage = 3,
+    Hunter = 4,
+    Rogue = 5,
+    Warrior = 6,
+    Paladin = 7,
+    Druid = 8,
+    Shaman = 9,
+    DeathKnight = 10
+};
+inline constexpr std::uint32_t kFamilies = 11;  // array bound (Family values < 11)
+
+inline constexpr std::uint32_t kSlotSingle = 0;
+inline constexpr std::uint32_t kSlotMulti = 2;
+inline constexpr std::uint32_t kSlotEmergency = 3;
+inline constexpr std::uint32_t kSlotEscape = 4;
+inline constexpr std::uint32_t SlotOf(TacticId id) { return static_cast<std::uint32_t>(id) % 10; }
+inline constexpr Family FamilyOf(TacticId id) { return static_cast<Family>(static_cast<std::uint32_t>(id) / 10); }
+inline constexpr TacticId TacticOf(Family f, std::uint32_t slot)
+{
+    return static_cast<TacticId>(static_cast<std::uint32_t>(f) * 10 + slot);
+}
+
+// Readiness bits (EngagementSnapshot::cds). Priest names; every other family reads bit 0/3 as its control
+// tool (fear / stun / nova / shout ...) and bit 1/4 as its defensive cooldown (see kCdControl ...).
 inline constexpr std::uint32_t kCdScream = 1u << 0;  // Psychic Scream known and off cooldown
 inline constexpr std::uint32_t kCdShield = 1u << 1;  // PW:Shield known and no Weakened Soul
 inline constexpr std::uint32_t kCdWand = 1u << 2;    // wand equipped
 inline constexpr std::uint32_t kCdScreamKnown = 1u << 3;
 inline constexpr std::uint32_t kCdShieldKnown = 1u << 4;
+inline constexpr std::uint32_t kCdPet = 1u << 5;         // combat pet alive
+inline constexpr std::uint32_t kCdEscape = 1u << 6;      // escape tool known and ready (vanish, blink, FD ...)
+inline constexpr std::uint32_t kCdEscapeKnown = 1u << 7;
+inline constexpr std::uint32_t kCdControl = kCdScream;
+inline constexpr std::uint32_t kCdDefensive = kCdShield;
+inline constexpr std::uint32_t kCdControlKnown = kCdScreamKnown;
+inline constexpr std::uint32_t kCdDefensiveKnown = kCdShieldKnown;
 
 // Creature rank as the core stores it (CreatureEliteType); static_assert'ed in the runtime adapter.
 inline constexpr std::uint32_t kRankNormal = 0;
@@ -132,21 +205,29 @@ inline std::uint32_t Capacity(EngagementSnapshot const& s, PriestParams const& p
     return static_cast<std::uint32_t>(c);
 }
 
-// Escalation order; a switch to a higher severity is immediate, anything else waits MinDwellMs.
+// Escalation order by slot (every family): single 1, multi 2, emergency 3, escape 4. A switch to a higher
+// severity is immediate, anything else waits MinDwellMs.
 inline std::uint32_t Severity(TacticId id)
 {
-    switch (id)
-    {
-        case TacticId::PriestWand:
-        case TacticId::PriestBurst: return 1;
-        case TacticId::PriestMulti: return 2;
-        case TacticId::PriestEmergency: return 3;
-        case TacticId::PriestEscape: return 4;
-        default: return 0;
-    }
+    std::uint32_t const slot = SlotOf(id);
+    if (id == TacticId::None || slot > kSlotEscape)
+        return 0;
+    return slot <= 1 ? 1 : slot;
 }
 
-inline bool InEmergency(EngagementSnapshot const& s, PriestParams const& p, bool alreadyIn)
+// Escalation immediate; downgrades and lateral switches need minDwellMs in the current tactic; leaving an
+// escape (after its hold) is always allowed.
+inline TacticId Hysteresis(TacticId want, TacticId current, std::uint32_t msInCurrent, std::uint32_t minDwellMs)
+{
+    if (current == TacticId::None || want == current)
+        return want;
+    if (SlotOf(current) == kSlotEscape || Severity(want) > Severity(current))
+        return want;
+    return msInCurrent >= minDwellMs ? want : current;
+}
+
+template <class Params>
+inline bool InEmergency(EngagementSnapshot const& s, Params const& p, bool alreadyIn)
 {
     bool const etaBad = s.deathEtaMs && s.deathEtaMs < p.deathEtaMs;
     if (alreadyIn)  // leave only above the (higher) exit threshold with a safe eta
@@ -191,11 +272,116 @@ inline TacticId ChoosePriest(EngagementSnapshot const& s, PriestParams const& p,
     if (current == TacticId::PriestEscape && msInCurrent < p.escapeMaxMs)
         return current;
     TacticId const want = DesiredPriest(s, p, current, escapeUsed || current == TacticId::PriestEscape);
-    if (current == TacticId::None || want == current)
-        return want;
-    if (current == TacticId::PriestEscape || Severity(want) > Severity(current))
-        return want;
-    return msInCurrent >= p.minDwellMs ? want : current;
+    return Hysteresis(want, current, msInCurrent, p.minDwellMs);
+}
+
+// ---- every other class family (single / multi / emergency / escape) ------------------------------
+// Same ladder as the priest without the wand/burst split: the class character lives in the strategy's
+// triggers and factor tables (TacticalClassStrategy.cpp), not here. Config: AutoWow.Tactics.<Class>.*.
+struct ClassParams
+{
+    std::uint32_t singleMax = 120;          // .SingleMaxPct (centi load)
+    std::uint32_t base = 100;               // .BasePct (centi capacity)
+    std::uint32_t controlBonus = 100;       // capacity per ready control tool
+    std::uint32_t defensiveBonus = 50;      // capacity per ready defensive cooldown
+    std::uint32_t petBonus = 100;           // capacity while a combat pet is alive (hunter / warlock tank)
+    std::uint32_t escapeRatioPct = 160;     // AutoWow.Tactics.EscapeRatioPct
+    std::uint32_t healHpPct = 50;           // .HealHpPct: self-heal / defensive floor while fighting
+    std::uint32_t lowManaPct = 25;          // .LowManaPct: mana recovery (evocation, life tap) while fighting
+    std::uint32_t emergencyHpPct = 30;      // .EmergencyHpPct (enter)
+    std::uint32_t emergencyExitHpPct = 45;  // .EmergencyExitHpPct (leave)
+    std::uint32_t controlMinMelee = 2;      // .ControlMinMelee: area control needs this many controllable melee
+    std::uint32_t controlHpPct = 60;        // .ControlHpPct: ... and hp below it (or >= 3 attackers)
+    std::uint32_t deathEtaMs = 6000;        // AutoWow.Tactics.DeathEtaMs
+    std::uint32_t minDwellMs = 3000;        // AutoWow.Tactics.MinDwellMs
+    std::uint32_t escapeMaxMs = 8000;       // AutoWow.Tactics.EscapeMaxMs
+    LoadParams load;
+};
+
+// C = (base + control + defensive + pet bonuses) x hp% x (0.5 + 0.5 mana%); mana% = 100 for non-mana classes.
+inline std::uint32_t Capacity(EngagementSnapshot const& s, ClassParams const& p)
+{
+    std::uint64_t c = p.base;
+    if (s.cds & kCdControl)
+        c += p.controlBonus;
+    if (s.cds & kCdDefensive)
+        c += p.defensiveBonus;
+    if (s.cds & kCdPet)
+        c += p.petBonus;
+    c = c * s.hpPct / 100;
+    c = c * (200 + std::uint64_t(s.manaPct) * 2) / 400;
+    return static_cast<std::uint32_t>(c);
+}
+
+// Escape = overwhelmed (load > C x EscapeRatio) AND losing (hp below the emergency exit line) AND >= 2
+// attackers AND the control/defensive tools the bot knows are all on cooldown (a bot that knows none
+// fights on). The escape tool itself (vanish, blink, feign death ...) is what the escape tactic spends.
+inline TacticId DesiredClass(Family f, EngagementSnapshot const& s, ClassParams const& p, TacticId current,
+                             bool escapeUsed)
+{
+    std::uint32_t const cap = Capacity(s, p);
+    bool const toolsKnown = (s.cds & (kCdControlKnown | kCdDefensiveKnown)) != 0;
+    bool const toolsSpent = toolsKnown && !(s.cds & (kCdControl | kCdDefensive));
+    if (!escapeUsed && s.attackers >= 2 && toolsSpent && s.hpPct < p.emergencyExitHpPct &&
+        std::uint64_t(s.load) * 100 > std::uint64_t(cap) * p.escapeRatioPct)
+        return TacticOf(f, kSlotEscape);
+    if (InEmergency(s, p, current == TacticOf(f, kSlotEmergency)))
+        return TacticOf(f, kSlotEmergency);
+    if (s.load > p.singleMax)
+        return TacticOf(f, kSlotMulti);
+    return TacticOf(f, kSlotSingle);
+}
+
+inline TacticId ChooseClass(Family f, EngagementSnapshot const& s, ClassParams const& p, TacticId current,
+                            std::uint32_t msInCurrent, bool escapeUsed)
+{
+    bool const escaping = current == TacticOf(f, kSlotEscape);
+    if (escaping && msInCurrent < p.escapeMaxMs)
+        return current;
+    TacticId const want = DesiredClass(f, s, p, current, escapeUsed || escaping);
+    return Hysteresis(want, current, msInCurrent, p.minDwellMs);
+}
+
+// Core class id (CLASS_WARRIOR 1 ... CLASS_DRUID 11; static_assert'ed in the adapter) -> family.
+inline Family FamilyOfClass(std::uint32_t classId)
+{
+    switch (classId)
+    {
+        case 1: return Family::Warrior;
+        case 2: return Family::Paladin;
+        case 3: return Family::Hunter;
+        case 4: return Family::Rogue;
+        case 5: return Family::Priest;
+        case 6: return Family::DeathKnight;
+        case 7: return Family::Shaman;
+        case 8: return Family::Mage;
+        case 9: return Family::Warlock;
+        case 11: return Family::Druid;
+        default: return Family::None;
+    }
+}
+
+// AutoWow.Tactics.Classes: class names separated by ',' or ' ' ("priest,warrior", "all") -> bit (1 << class
+// id) per class. Unknown names are ignored.
+inline std::uint32_t ParseClassMask(std::string_view text)
+{
+    static constexpr std::pair<std::string_view, std::uint32_t> kNames[] = {
+        {"warrior", 1}, {"paladin", 2}, {"hunter", 3}, {"rogue", 4}, {"priest", 5}, {"deathknight", 6},
+        {"dk", 6}, {"shaman", 7}, {"mage", 8}, {"warlock", 9}, {"druid", 11}};
+    std::uint32_t mask = 0;
+    while (!text.empty())
+    {
+        std::size_t const cut = text.find_first_of(", ");
+        std::string_view const word = text.substr(0, cut);
+        text = cut == std::string_view::npos ? std::string_view{} : text.substr(cut + 1);
+        if (word == "all")
+            for (auto const& [name, id] : kNames)
+                mask |= 1u << id;
+        for (auto const& [name, id] : kNames)
+            if (word == name)
+                mask |= 1u << id;
+    }
+    return mask;
 }
 
 // Per-bot A/B arm: 1 = treatment, 0 = control. Pure hash of the guid counter so it is reproducible

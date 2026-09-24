@@ -158,6 +158,125 @@ TEST(TacticalPolicy, HysteresisDwellOnDowngradeImmediateEscalation)
     EXPECT_EQ(ChoosePriest(bad, p, TacticId::PriestEscape, 8000, true), TacticId::PriestMulti);
 }
 
+TEST(TacticalPolicy, TacticIdsAreFamilySlotEncoded)
+{
+    // Wire-stable: id = 10 x family + slot; priest ids keep their T1 values.
+    EXPECT_EQ(TacticOf(Family::Priest, kSlotSingle), TacticId::PriestWand);
+    EXPECT_EQ(TacticOf(Family::Priest, kSlotEscape), TacticId::PriestEscape);
+    EXPECT_EQ(static_cast<std::uint32_t>(TacticId::WarlockSingle), 20u);
+    EXPECT_EQ(static_cast<std::uint32_t>(TacticId::MageMulti), 32u);
+    EXPECT_EQ(static_cast<std::uint32_t>(TacticId::RogueEscape), 54u);
+    EXPECT_EQ(static_cast<std::uint32_t>(TacticId::WarriorEmergency), 63u);
+    EXPECT_EQ(static_cast<std::uint32_t>(TacticId::ShamanSingle), 90u);
+    EXPECT_EQ(static_cast<std::uint32_t>(TacticId::DeathKnightEscape), 104u);
+    EXPECT_LT(static_cast<std::uint32_t>(TacticId::DeathKnightEscape), kMaxTacticId);
+    EXPECT_EQ(FamilyOf(TacticId::HunterMulti), Family::Hunter);
+    EXPECT_EQ(SlotOf(TacticId::PaladinEmergency), kSlotEmergency);
+    // Severity by slot, same for every family.
+    EXPECT_EQ(Severity(TacticId::PriestBurst), 1u);
+    EXPECT_EQ(Severity(TacticId::DruidSingle), 1u);
+    EXPECT_EQ(Severity(TacticId::DruidMulti), 2u);
+    EXPECT_EQ(Severity(TacticId::WarriorEmergency), 3u);
+    EXPECT_EQ(Severity(TacticId::MageEscape), 4u);
+    EXPECT_EQ(Severity(TacticId::None), 0u);
+    // Core class ids -> family; config class list.
+    EXPECT_EQ(FamilyOfClass(1), Family::Warrior);
+    EXPECT_EQ(FamilyOfClass(5), Family::Priest);
+    EXPECT_EQ(FamilyOfClass(11), Family::Druid);
+    EXPECT_EQ(FamilyOfClass(10), Family::None);
+    EXPECT_EQ(ParseClassMask("priest"), 1u << 5);
+    EXPECT_EQ(ParseClassMask("priest,warrior rogue"), (1u << 5) | (1u << 1) | (1u << 4));
+    EXPECT_EQ(ParseClassMask("dk,bogus"), 1u << 6);
+    EXPECT_EQ(ParseClassMask("all"), 0xBFEu);  // classes 1-9 and 11
+    EXPECT_EQ(ParseClassMask(""), 0u);
+}
+
+TEST(TacticalPolicy, ClassLadderMirrorsPriestLadder)
+{
+    ClassParams const p;
+    Family const f = Family::Warrior;
+    EngagementSnapshot s = Single(100, 0);
+    EXPECT_EQ(DesiredClass(f, s, p, TacticId::None, false), TacticId::WarriorSingle);
+    s.attackers = 2;
+    s.load = 200;
+    EXPECT_EQ(DesiredClass(f, s, p, TacticId::None, false), TacticId::WarriorMulti);
+    s.hpPct = 29;
+    EXPECT_EQ(DesiredClass(f, s, p, TacticId::WarriorMulti, false), TacticId::WarriorEmergency);
+    s.hpPct = 40;  // hysteresis band: stays in emergency, does not enter it
+    EXPECT_EQ(DesiredClass(f, s, p, TacticId::WarriorEmergency, false), TacticId::WarriorEmergency);
+    EXPECT_EQ(DesiredClass(f, s, p, TacticId::WarriorMulti, false), TacticId::WarriorMulti);
+
+    // Escape: overwhelmed, losing, known control/defensive tools spent; never without known tools.
+    EngagementSnapshot bad = s;
+    bad.attackers = 3;
+    bad.load = 400;
+    bad.cds = kCdControlKnown | kCdDefensiveKnown;
+    EXPECT_EQ(DesiredClass(f, bad, p, TacticId::WarriorMulti, false), TacticId::WarriorEscape);
+    EXPECT_NE(DesiredClass(f, bad, p, TacticId::WarriorMulti, true), TacticId::WarriorEscape);
+    bad.cds = 0;
+    EXPECT_EQ(DesiredClass(f, bad, p, TacticId::WarriorMulti, false), TacticId::WarriorMulti);
+    bad.cds = kCdControlKnown | kCdControl;  // shout ready: not spent
+    EXPECT_EQ(DesiredClass(f, bad, p, TacticId::WarriorMulti, false), TacticId::WarriorMulti);
+
+    // Hysteresis: immediate escalation, dwell on downgrade, escape hold then no re-entry.
+    EngagementSnapshot single = Single(100, 0);
+    EngagementSnapshot multi = single;
+    multi.attackers = 2;
+    multi.load = 200;
+    EXPECT_EQ(ChooseClass(f, multi, p, TacticId::WarriorSingle, 10, false), TacticId::WarriorMulti);
+    EXPECT_EQ(ChooseClass(f, single, p, TacticId::WarriorMulti, 2999, false), TacticId::WarriorMulti);
+    EXPECT_EQ(ChooseClass(f, single, p, TacticId::WarriorMulti, 3000, false), TacticId::WarriorSingle);
+    bad.cds = kCdControlKnown;
+    EXPECT_EQ(ChooseClass(f, single, p, TacticId::WarriorEscape, 7999, true), TacticId::WarriorEscape);
+    EXPECT_EQ(ChooseClass(f, bad, p, TacticId::WarriorEscape, 8000, true), TacticId::WarriorMulti);
+}
+
+TEST(TacticalPolicy, ClassCapacityCountsPetAndTools)
+{
+    ClassParams const p;
+    EngagementSnapshot s;
+    s.hpPct = 100;
+    s.manaPct = 100;
+    EXPECT_EQ(Capacity(s, p), 100u);
+    s.cds = kCdPet;
+    EXPECT_EQ(Capacity(s, p), 200u);
+    s.cds = kCdPet | kCdControl | kCdDefensive;
+    EXPECT_EQ(Capacity(s, p), 350u);
+    s.hpPct = 50;
+    s.manaPct = 0;
+    EXPECT_EQ(Capacity(s, p), 87u);  // 350 x 0.5 x 0.5, truncated
+    // A hunter with its pet alive handles a pair it would otherwise flee from.
+    EngagementSnapshot pair = Single(100, kCdControlKnown | kCdDefensiveKnown);
+    pair.attackers = 2;
+    pair.load = 130;  // 13000 vs capacity 44 x 160 = 7040 (no pet) / 88 x 160 = 14080 (pet)
+    pair.hpPct = 44;
+    EXPECT_EQ(DesiredClass(Family::Hunter, pair, p, TacticId::HunterMulti, false), TacticId::HunterEscape);
+    pair.cds |= kCdPet;
+    EXPECT_EQ(DesiredClass(Family::Hunter, pair, p, TacticId::HunterMulti, false), TacticId::HunterMulti);
+}
+
+TEST(EngagementTracker, ClassFamilyTickRecordsClassTactics)
+{
+    EngagementTracker t;
+    ClassParams const p;
+    EngageRecord rec;
+    EngagementSnapshot single = Single(100, 0);
+    EngagementSnapshot multi = single;
+    multi.attackers = 2;
+    multi.load = 200;
+    EXPECT_FALSE(t.Tick(Tick(0, true, single), Family::Rogue, p, rec));
+    EXPECT_EQ(t.Current(), TacticId::RogueSingle);
+    EXPECT_FALSE(t.Tick(Tick(500, true, multi), Family::Rogue, p, rec));
+    EXPECT_EQ(t.Current(), TacticId::RogueMulti);
+    EXPECT_EQ(t.CreditId(), TacticId::RogueSingle);  // the 500 ms just spent
+    EXPECT_FALSE(t.Tick(Tick(1000, false, multi), Family::Rogue, p, rec));
+    EXPECT_TRUE(t.Tick(Tick(2000, false, multi), Family::Rogue, p, rec));
+    EXPECT_EQ(rec.tac0, TacticId::RogueSingle);
+    ASSERT_EQ(rec.segN, 2u);
+    EXPECT_EQ(rec.segs[1].id, TacticId::RogueMulti);
+    EXPECT_EQ(rec.outcome, Outcome::NoKill);
+}
+
 TEST(TacticalPolicy, ArmHashIsPinnedAndProportional)
 {
     // Pinned: murmur3 fmix32(guid ^ salt x golden) % 100 < ArmPct. Changing the hash reshuffles arms.

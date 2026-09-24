@@ -263,7 +263,7 @@ TEST(CombatLifetime, TacticsSwitchLineToCv2AndKeepCv1Fields)
     c.RecordTactic(12, 500, 1);
     c.RecordTactic(10, 1500, 1);
     c.RecordTactic(10, 500, 1);
-    c.RecordTactic(99, 700, 1);  // beyond kTacticSlots: ignored
+    c.RecordTactic(200, 700, 1);  // beyond kTacticSlots: ignored
     std::string const cv2 = c.DrainEmitFields(5);
     std::string expectedCv1Body = cv1.substr(std::string(",\"cv\":1").size());
     EXPECT_EQ(cv2, ",\"cv\":2" + expectedCv1Body + ",\"tac_ms\":[[10,2000],[12,500]],\"arm\":1");
