@@ -15,9 +15,13 @@ cv=2 (AutoWow.Tactics.Observe/Enable) = every cv=1 field unchanged, plus tac_ms=
 (cumulative in-engagement ms per tactic) and arm (0 control, 1 treatment). cv=2 lines also feed the
 `class_band_arm` cells and the per-tactic time table. Any other cv is ignored, never guessed.
 `died` lines (killer kind/id/level) are joined for deaths-by-killer.
-`engage` lines (ecv=1, one per solo-priest engagement) fold into cells class/band/arm/tac0 (tac0 = the
-first tactic the policy chose): engagements (= sum over outcomes: sterile), outcome counts, duration
-median/p90, kills, mana_spent, hp_lost, wand_ms, cc_n, shield_n, gap_rest_ms.
+`engage` lines (ecv=1, one per solo engagement of a tactic-tracked class, AutoWow.Tactics.Classes) fold
+into cells class/band/arm/tac0 (tac0 = the first tactic the policy chose): engagements (= sum over
+outcomes: sterile), outcome counts, duration median/p90, kills, mana_spent, hp_lost, wand_ms, cc_n
+(control-tool casts), shield_n (PW:Shield / the class's defensive cooldown), gap_rest_ms. Tactic names:
+priest p-wand/p-burst/p-multi/p-emergency/p-escape (10-14); other classes <tag>-single/-multi/-emergency/
+-escape with tag wl 2x, m 3x, h 4x, r 5x, w 6x, pa 7x, d 8x, s 9x, dk 10x. The tactic time share is one
+table per class.
 
 Folding law (sterile sums): per (run, bot) the delta of every cumulative counter between consecutive
 lines is attributed to the level band of the later line. A counter that decreases means a new login
@@ -40,6 +44,10 @@ CLASSES = {1: "warrior", 2: "paladin", 3: "hunter", 4: "rogue", 5: "priest", 6: 
 BANDS = [(1, 20), (21, 40), (41, 60), (61, 70), (71, 80)]
 GCD_MS = 1500
 TACTICS = {0: "none", 10: "p-wand", 11: "p-burst", 12: "p-multi", 13: "p-emergency", 14: "p-escape"}
+# Non-priest families (TacticalPolicy.h): id = 10 x family + slot (0 single, 2 multi, 3 emergency, 4 escape).
+for _fam, _tag in ((2, "wl"), (3, "m"), (4, "h"), (5, "r"), (6, "w"), (7, "pa"), (8, "d"), (9, "s"), (10, "dk")):
+    for _slot, _name in ((0, "single"), (2, "multi"), (3, "emergency"), (4, "escape")):
+        TACTICS[_fam * 10 + _slot] = "%s-%s" % (_tag, _name)
 OUTCOMES = {0: "win", 1: "died", 2: "escaped", 3: "died_after_escape", 4: "no_kill"}
 ENGAGE_SUMS = ["kills", "mana_spent", "hp_lost", "wand_ms", "cc_n", "shield_n"]
 
@@ -233,16 +241,19 @@ def summarize(rows, profile):
         lines.append("")
     tac = [r for r in rows if r["kind"] == "class_band_arm"]
     if tac:
-        names = sorted({n for r in tac for n in r["tac_ms"]})
-        lines += ["## tactic time share (cv=2, in-engagement ms)", "",
-                  "| class_band_arm | bots | wall h | deaths/h | starved | tactic s | %s |" % " | ".join(names),
-                  "|---|---|---|---|---|---|%s" % ("---|" * len(names))]
-        for r in tac:
-            f = lambda v, d=3: "-" if v is None else ("%.*f" % (d, v))
-            lines.append("| %s | %d | %.2f | %s | %s | %.0f | %s |" % (
-                r["key"], r["bots"], r["wall_ms"] / 3.6e6, f(r["deaths_per_hour"], 2), f(r["starved_share"]),
-                sum(r["tac_ms"].values()) / 1000.0, " | ".join(f(r["tac_share"].get(n)) for n in names)))
-        lines.append("")
+        lines += ["## tactic time share (cv=2, in-engagement ms; one table per class)", ""]
+        for cls in sorted({r["key"].split("/")[0] for r in tac}):
+            sel = [r for r in tac if r["key"].split("/")[0] == cls]
+            names = sorted({n for r in sel for n in r["tac_ms"]})
+            lines += ["### %s" % cls, "",
+                      "| class_band_arm | bots | wall h | deaths/h | starved | tactic s | %s |" % " | ".join(names),
+                      "|---|---|---|---|---|---|%s" % ("---|" * len(names))]
+            for r in sel:
+                f = lambda v, d=3: "-" if v is None else ("%.*f" % (d, v))
+                lines.append("| %s | %d | %.2f | %s | %s | %.0f | %s |" % (
+                    r["key"], r["bots"], r["wall_ms"] / 3.6e6, f(r["deaths_per_hour"], 2), f(r["starved_share"]),
+                    sum(r["tac_ms"].values()) / 1000.0, " | ".join(f(r["tac_share"].get(n)) for n in names)))
+            lines.append("")
     eng = [r for r in rows if r["kind"] == "engage"]
     if eng:
         lines += ["## engagements (engage, cell = class/band/arm/tac0)", "",
@@ -295,9 +306,9 @@ def selftest():
         obj.update(c)
         return "2026-09-23 01:00:00 " + json.dumps(obj, separators=(",", ":"))
 
-    def engage(ms, bot, lvl, arm, tac0, outcome, dur, kills, mana, run="t"):
+    def engage(ms, bot, lvl, arm, tac0, outcome, dur, kills, mana, run="t", cls=5):
         obj = {"v": 1, "run": run, "ms": ms, "ev": "engage", "bot": bot, "lvl": lvl, "quest": 0, "ecv": 1,
-               "cls": 5, "tab": 2, "arm": arm, "eng": 1, "tac0": tac0, "tacs": [[tac0, dur]], "dur_ms": dur,
+               "cls": cls, "tab": 2, "arm": arm, "eng": 1, "tac0": tac0, "tacs": [[tac0, dur]], "dur_ms": dur,
                "kills": kills, "outcome": outcome, "mana_spent": mana, "hp_lost": 10, "wand_ms": dur // 2,
                "cc_n": 0, "shield_n": 1, "gap_ms": -1, "gap_rest_ms": 4000}
         return "2026-09-23 01:00:00 " + json.dumps(obj)
@@ -331,6 +342,9 @@ def selftest():
         engage(50000, 4, 12, 1, 10, 0, 6000, 1, 80),
         engage(90000, 4, 12, 1, 12, 1, 12000, 0, 300),
         engage(40000, 5, 12, 0, 11, 4, 9000, 0, 200),
+        # a tactic-tracked warrior (AutoWow.Tactics.Classes): class-family ids 60/62, own time-share table
+        line(60000, 6, 12, cls=1, cv=2, arm=1, wall_ms=60000, tac_ms=[[60, 20000], [62, 4000]]),
+        engage(45000, 6, 12, 1, 60, 0, 7000, 1, 0, cls=1),
         '{"v":1,"run":"t","ms":2,"ev":"engage","bot":5,"lvl":12,"ecv":9}',  # unknown engage schema -> ignored
     ]
     with tempfile.TemporaryDirectory() as td:
@@ -341,7 +355,7 @@ def selftest():
         by = {(r["kind"], r["key"]): r for r in rows}
         tot = by[("total", "all")]
         assert tot["dmg"] == 1000 + 300 + 3000 + 900 + 400, tot["dmg"]
-        assert tot["wall_ms"] == 120000 + 30000 + 60000 + 120000 + 60000
+        assert tot["wall_ms"] == 120000 + 30000 + 60000 + 120000 + 60000 + 60000
         assert tot["kills"] == 8 + 4 + 1 and tot["ttk_n"] == 8 and tot["ttk_samples"] == 8
         # cv=2: tactic deltas fold like counters; arm cells split treatment/control; cv=1 cells carry none
         arm1 = by[("class_band_arm", "priest/1-20/arm1")]
@@ -356,7 +370,9 @@ def selftest():
         assert w["dur_median_ms"] == 6000 and w["gap_rest_ms"] == 8000
         assert eng["priest/1-20/arm1/p-multi"]["deaths_per_100"] == 100.0
         assert eng["priest/1-20/arm0/p-burst"]["outcomes"] == {"no_kill": 1}
-        assert sum(r["engagements"] for r in eng.values()) == 4
+        assert sum(r["engagements"] for r in eng.values()) == 5
+        assert by[("class_band_arm", "warrior/1-20/arm1")]["tac_ms"] == {"w-single": 20000, "w-multi": 4000}
+        assert eng["warrior/1-20/arm1/w-single"]["outcomes"] == {"win": 1}
         assert all(r["engagements"] == sum(r["outcomes"].values()) for r in eng.values())
         b1 = by[("bot", "1")]
         assert b1["dmg"] == 1300 and b1["combat_ms"] == 60000 and b1["deaths"] == 1
@@ -377,6 +393,9 @@ def selftest():
         md = open(os.path.join(td, "combat-summary.md"), encoding="ascii").read()
         assert "## by class_band" in md and "creature:3382(L13,d+3)" in md
         assert "## tactic time share" in md and "## engagements" in md and "priest/1-20/arm1/p-wand" in md
+        war = md.split("### warrior")[1].split("\n\n")[1]  # per-class table: only that class's tactics
+        assert "w-multi | w-single" in war and "p-wand" not in war, war
+        assert "### priest" in md and "warrior/1-20/arm1/w-single" in md
     print("selftest OK")
     return 0
 
