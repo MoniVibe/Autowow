@@ -2729,6 +2729,22 @@ AutoWow.Errands.HearthMinYards = 800
 AutoWow.Errands.MaxWalkYards = 4000
 AutoWow.Errands.TravelTimeoutMs = 1200000
 
+# Gear upgrades for independent bots (GearUpgradePolicy.h; default 0; the vendor part needs
+# AutoWow.Errands.Enable = 1). Real gold only, no free items. Once per level, with MinBudget gold beyond
+# the reserve (a class-trainer rank + 1 silver per level for food), gear is a soft errand need; urgent when
+# the main hand's DPS is below FarBelowPct of 0.7 x level. At the town the bot shops the plain-gold white /
+# green weapons and armor that the stock "item upgrade" value rates an equip for it: the highest-DPS main
+# hand (off hand for dual wielders) with >= UpgradePct of the equipped DPS, then armor for EMPTY slots
+# (head, shoulders, chest, waist, legs, feet, wrists, hands, back; the off hand without a dual wield / two-
+# hander), each piece <= ArmorSpendPct of what is left, at most MaxArmorBuys; the stock equip action puts
+# them on. Ranged slots are not shopped. Also: a quest choice reward with no equip upgrade among the
+# choices takes the one that sells for most. Logs "[Gear]"; errand ledger done bit 128, needs bit 1024.
+AutoWow.Gear.Upgrades = 0
+AutoWow.Gear.UpgradePct = 150
+AutoWow.Gear.FarBelowPct = 50
+AutoWow.Gear.ArmorSpendPct = 25
+AutoWow.Gear.MaxArmorBuys = 4
+
 # Cohort parties (PartyPolicy.h). Every CheckIntervalMs (world thread) ungrouped independent bots of one faction,
 # one map, the same zone or within HubYards, levels spanning at most LevelSpread, form parties of MinSize..MaxSize
 # when they have a reason: a dungeon of AutoWow.Dungeon.List brackets every level and the roster has a tank and a

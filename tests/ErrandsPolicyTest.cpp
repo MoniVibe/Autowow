@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 3U);
+    EXPECT_EQ(s.version, 4U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -535,5 +535,169 @@ TEST(Errands, RescueLegOncePerRun)
     EXPECT_EQ(RescueLeg(false, Leg::Hearth, true, true), Leg::Flight);
     EXPECT_EQ(RescueLeg(false, Leg::Flight, false, true), Leg::None);
     EXPECT_EQ(RescueLeg(false, Leg::None, true, false), Leg::Hearth);
+}
+
+// ---- AutoWow.Gear.Upgrades (GearUpgradePolicy.h) -------------------------------------------------------
+// soak-s21-full-r1: Worn Dirk 1-2 dmg / 1.6 s at L20; a L20 vendor sword 14 DPS.
+TEST(Gear, DpsMilliAndLevelExpectation)
+{
+    EXPECT_EQ(AutoWowGear::DpsMilli(1, 2, 1600), 937U);    // Worn Dirk ~0.94
+    EXPECT_EQ(AutoWowGear::DpsMilli(2, 5, 1900), 1842U);
+    EXPECT_EQ(AutoWowGear::DpsMilli(10, 20, 0), 0U);        // no delay: not a weapon
+    EXPECT_EQ(AutoWowGear::ExpectedDpsMilli(20), 14000U);
+    AutoWowGear::Params const p;
+    EXPECT_TRUE(AutoWowGear::FarBelow(p, 937, 20));
+    EXPECT_TRUE(AutoWowGear::FarBelow(p, 6999, 20));
+    EXPECT_FALSE(AutoWowGear::FarBelow(p, 7000, 20));   // exactly half of 14.0
+    EXPECT_TRUE(AutoWowGear::Beats(p, 1, 0));           // an empty hand takes anything
+    EXPECT_TRUE(AutoWowGear::Beats(p, 1500, 1000));     // 1.5x
+    EXPECT_FALSE(AutoWowGear::Beats(p, 1499, 1000));
+    EXPECT_FALSE(AutoWowGear::Beats(p, 0, 0));
+}
+
+TEST(Gear, DueOncePerLevelWithBudgetUrgentWhenFarBelow)
+{
+    AutoWowGear::Params const p;
+    std::uint64_t const reserve = AutoWowGear::ReserveCopper(20);  // 2000 + 2000
+    EXPECT_EQ(reserve, 4000U);
+    std::uint64_t const budget = AutoWowGear::MinBudgetCopper(20);  // 8000
+    AutoWowGear::Due d = AutoWowGear::GearDue(p, 20, 19, reserve + budget, 937);
+    EXPECT_TRUE(d.soft);
+    EXPECT_TRUE(d.urgent);
+    d = AutoWowGear::GearDue(p, 20, 19, reserve + budget, 14000);  // on the curve: soft only
+    EXPECT_TRUE(d.soft);
+    EXPECT_FALSE(d.urgent);
+    d = AutoWowGear::GearDue(p, 20, 20, reserve + budget, 937);  // already shopped this level
+    EXPECT_FALSE(d.soft);
+    EXPECT_FALSE(d.urgent);
+    d = AutoWowGear::GearDue(p, 20, 19, reserve + budget - 1, 937);  // the reserve is not spendable
+    EXPECT_FALSE(d.soft);
+    EXPECT_EQ(AutoWowGear::Spendable(3000, 20), 0U);
+}
+
+AutoWowGear::Offer Weapon(std::uint32_t item, std::uint32_t npc, std::uint64_t price, std::uint32_t dps,
+                          std::uint8_t slot, bool twoHand = false)
+{
+    AutoWowGear::Offer o;
+    o.item = item;
+    o.npc = npc;
+    o.price = price;
+    o.dpsMilli = dps;
+    o.slot = slot;
+    o.weapon = true;
+    o.twoHand = twoHand;
+    return o;
+}
+
+AutoWowGear::Offer Armor(std::uint32_t item, std::uint32_t npc, std::uint64_t price, std::uint32_t armor,
+                         std::uint8_t slot)
+{
+    AutoWowGear::Offer o;
+    o.item = item;
+    o.npc = npc;
+    o.price = price;
+    o.armor = armor;
+    o.slot = slot;
+    return o;
+}
+
+TEST(Gear, PickWeaponBestAffordableUpgradeDeterministic)
+{
+    AutoWowGear::Params const p;
+    using AutoWowGear::kSlotMainHand;
+    std::vector<AutoWowGear::Offer> const offers = {
+        Weapon(10, 3, 5000, 12000, kSlotMainHand), Weapon(11, 2, 9000, 16000, kSlotMainHand),
+        Weapon(12, 1, 4000, 12000, kSlotMainHand), Weapon(13, 1, 4000, 12000, AutoWowGear::kSlotOffHand),
+        Weapon(14, 1, 3000, 2000, kSlotMainHand)};
+    EXPECT_EQ(AutoWowGear::PickWeapon(p, offers, kSlotMainHand, 1000, 10000), 1U);   // most DPS in budget
+    EXPECT_EQ(AutoWowGear::PickWeapon(p, offers, kSlotMainHand, 1000, 8999), 2U);    // tie 12.0: cheaper wins
+    EXPECT_EQ(AutoWowGear::PickWeapon(p, offers, kSlotMainHand, 10000, 10000), 1U);  // 16 >= 1.5 x 10
+    EXPECT_EQ(AutoWowGear::PickWeapon(p, offers, kSlotMainHand, 11000, 10000), AutoWowGear::kNone);  // 16 < 16.5
+    EXPECT_EQ(AutoWowGear::PickWeapon(p, offers, kSlotMainHand, 1000, 2999), AutoWowGear::kNone);
+    std::vector<AutoWowGear::Offer> const tie = {Weapon(20, 9, 4000, 12000, kSlotMainHand),
+                                                 Weapon(20, 4, 4000, 12000, kSlotMainHand)};
+    EXPECT_EQ(AutoWowGear::PickWeapon(p, tie, kSlotMainHand, 0, 5000), 1U);  // same item: lower npc spawn
+}
+
+TEST(Gear, ShoppingListWeaponsFirstThenCheapArmorForEmptySlots)
+{
+    AutoWowGear::Params const p;  // armor piece <= 25 % of what is left, 4 pieces
+    using AutoWowGear::kSlotMainHand;
+    using AutoWowGear::kSlotOffHand;
+    std::vector<AutoWowGear::Offer> const offers = {
+        Weapon(1, 7, 6000, 12000, kSlotMainHand), Weapon(1, 7, 6000, 12000, kSlotOffHand),
+        Weapon(2, 7, 1500, 5000, kSlotOffHand),   Armor(30, 8, 900, 40, 4 /* chest */),
+        Armor(31, 8, 500, 30, 4),                 Armor(32, 8, 300, 10, 9 /* hands */),
+        Armor(33, 8, 200, 12, 7 /* feet: worn */)};
+    std::uint32_t const empty = (1u << 4) | (1u << 9);
+    // Rogue: 10000 spendable, dual wield. Main hand 6000, off hand 1500 (the 6000 copy no longer fits),
+    // 2500 left: chest <= 625 -> item 31; 2000 left: hands <= 500 -> item 32.
+    std::vector<AutoWowGear::Offer> list = AutoWowGear::ShoppingList(p, offers, 937, 937, true, empty, 10000);
+    ASSERT_EQ(list.size(), 4U);
+    EXPECT_EQ(list[0].item, 1U);
+    EXPECT_EQ(list[0].slot, kSlotMainHand);
+    EXPECT_EQ(list[1].item, 2U);
+    EXPECT_EQ(list[2].item, 31U);
+    EXPECT_EQ(list[3].item, 32U);
+    // No dual wield: no off hand; 4000 left: chest <= 1000 -> item 30, 3100 left: hands 300 <= 775.
+    list = AutoWowGear::ShoppingList(p, offers, 937, 0, false, empty, 10000);
+    ASSERT_EQ(list.size(), 3U);
+    EXPECT_EQ(list[1].item, 30U);
+    EXPECT_EQ(list[2].item, 32U);
+    // A two-hander main hand leaves no off hand to buy.
+    std::vector<AutoWowGear::Offer> const big = {Weapon(3, 7, 2000, 20000, kSlotMainHand, true),
+                                                 Weapon(2, 7, 1500, 5000, kSlotOffHand)};
+    list = AutoWowGear::ShoppingList(p, big, 937, 0, true, 0, 10000);
+    ASSERT_EQ(list.size(), 1U);
+    EXPECT_EQ(list[0].item, 3U);
+    // Nothing affordable: nothing bought.
+    EXPECT_TRUE(AutoWowGear::ShoppingList(p, offers, 937, 937, true, empty, 100).empty());
+}
+
+TEST(Gear, QuestChoiceWithoutUpgradeTakesMostValuable)
+{
+    EXPECT_EQ(AutoWowGear::MostValuableChoice({120, 450, 450, 30}), 1U);
+    EXPECT_EQ(AutoWowGear::MostValuableChoice({0, 0}), 0U);
+    EXPECT_EQ(AutoWowGear::MostValuableChoice({}), 0U);
+}
+
+TEST(Gear, ErrandNeedServedOnlyByAGearTownAndPlannedAfterTraining)
+{
+    Obs o = Healthy(kClassRogue, 20);
+    o.gear.soft = true;
+    Params const p;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.needs, std::uint32_t(NeedGear));
+    EXPECT_EQ(a.urgent, 0U);
+    o.gear.urgent = true;
+    a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedGear));
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+    TownFacts f;
+    EXPECT_EQ(Serves(f) & NeedGear, 0U);  // flag off / no gear vendor: never served
+    f.gearVendor = true;
+    EXPECT_EQ(Serves(f) & NeedGear, std::uint32_t(NeedGear));
+
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn | RoleVendor, 0);
+    Npc trainer = MakeNpc(8, RoleClassTrainer, 30);
+    Npc weaponsmith = MakeNpc(9, RoleVendor, 40);
+    weaponsmith.gear = {2488};
+    t.npcs = {inn, trainer, weaponsmith};
+    PlanInput in;
+    in.team = kAlliance;
+    in.trainers = {8};
+    in.gearNpcs = {9};
+    in.bind = true;
+    Plan const plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 3U);
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell | OpBind));  // the inn sells junk, binds last (merged)
+    EXPECT_EQ(plan.stops[1].spawn, 8U);
+    EXPECT_EQ(plan.stops[2].spawn, 9U);
+    EXPECT_EQ(plan.stops[2].ops, std::uint32_t(OpGear));
+    BotState s;
+    s.lastGearLevel = 17;
+    EXPECT_EQ(AfterRun(p, s, 1000).lastGearLevel, 17U);
 }
 }  // namespace

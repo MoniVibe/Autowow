@@ -23,6 +23,7 @@
 #include "Formulas.h"
 #include "G3D/Vector2.h"
 #include "GameObject.h"
+#include "GearUpgradePolicy.h"
 #include "GossipDef.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -1923,6 +1924,18 @@ uint32 NewRpgBaseAction::BestRewardIndex(Quest const* quest)
                 bestUsage = usage;
             else if (usage != ITEM_USAGE_NONE && bestUsage == ITEM_USAGE_NONE)
                 bestUsage = usage;
+        }
+        // AutoWow.Gear.Upgrades: no equip upgrade among the choices - take the one that sells for most (gold
+        // for the vendor weapon errand) instead of the stat score of items the bot will never wear.
+        if (AutoWowGear::Enabled() && bestUsage != ITEM_USAGE_EQUIP)
+        {
+            std::vector<std::uint32_t> prices;
+            for (uint8 i = 0; i < quest->GetRewChoiceItemsCount(); ++i)
+            {
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[i]);
+                prices.push_back(proto ? proto->SellPrice : 0);
+            }
+            return static_cast<uint32>(AutoWowGear::MostValuableChoice(prices));
         }
         StatsWeightCalculator calc(bot);
         uint32 best = 0;

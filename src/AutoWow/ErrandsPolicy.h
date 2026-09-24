@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "GearUpgradePolicy.h"
+
 // Town runs for independent AutoWoW bots (AutoWow.Errands.Enable, default 0). Random bots are kept
 // alive by cheats (free repair on revive, re-rolled gear, level teleports); a persistent bot must
 // maintain itself like a player: when its bags fill, its gear wears out, its food/water/ammo/reagents
@@ -29,7 +31,8 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 3;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued
+inline constexpr std::uint8_t kStateVersion = 4;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+                                                  // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -44,7 +47,8 @@ enum Need : std::uint32_t
     NeedClassTrain = 1u << 6,  // two levels since the last class-trainer visit and the budget in hand
     NeedProfTrain = 1u << 7,   // a profession rank is learnable (skill near cap, level reached)
     NeedHearth = 1u << 8,      // hearthstone bound outside the current zone
-    NeedFlightPath = 1u << 9   // current zone's flight master node unknown
+    NeedFlightPath = 1u << 9,  // current zone's flight master node unknown
+    NeedGear = 1u << 10        // AutoWow.Gear.Upgrades: vendor weapon / armor shopping due (AutoWowGear::GearDue)
 };
 inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
 
@@ -277,6 +281,7 @@ struct Obs
     bool profTrainDue = false;
     bool hearthElsewhere = false;
     bool unknownFlightPath = false;
+    AutoWowGear::Due gear;                     // AutoWow.Gear.Upgrades only (all false with the flag off)
 };
 
 struct Assessment
@@ -365,6 +370,10 @@ struct Assessment
         a.needs |= NeedHearth;
     if (o.unknownFlightPath)
         a.needs |= NeedFlightPath;
+    if (o.gear.soft)
+        a.needs |= NeedGear;
+    if (o.gear.urgent)
+        a.urgent |= NeedGear;
     a.needs |= a.urgent;
     return a;
 }
@@ -418,6 +427,7 @@ struct Npc
     std::uint8_t teams = 0;               // teams it does not attack (faction hostile mask)
     std::uint32_t sells = 0;              // (1 << Kind) of tier items on its vendor list
     std::vector<std::uint32_t> items;     // tier items it sells, ascending
+    std::vector<std::uint32_t> gear;      // AutoWow.Gear.Upgrades: weapons / armor it sells, ascending
     std::uint32_t nodeAlliance = 0;       // flight master: nearest taxi node per team
     std::uint32_t nodeHorde = 0;
 };
@@ -577,6 +587,7 @@ struct TownFacts
     bool tradeTrainer = false;
     bool inBotZone = false;
     bool unknownFlightMaster = false;  // town has a flight master whose node the bot lacks
+    bool gearVendor = false;           // AutoWow.Gear.Upgrades: a usable vendor sells weapons / armor
 };
 
 [[nodiscard]] inline std::uint32_t Serves(TownFacts const& f)
@@ -598,6 +609,8 @@ struct TownFacts
         m |= NeedHearth;
     if (f.inBotZone && f.unknownFlightMaster)
         m |= NeedFlightPath;
+    if (f.gearVendor)
+        m |= NeedGear;
     return m;
 }
 
@@ -670,7 +683,8 @@ enum Done : std::uint32_t
     DoneTrained = 1u << 3,
     DoneBound = 1u << 4,
     DoneLearnedFp = 1u << 5,
-    DoneSkipped = 1u << 6  // an item or trainer rank was skipped as unaffordable (logged)
+    DoneSkipped = 1u << 6,  // an item or trainer rank was skipped as unaffordable (logged)
+    DoneGeared = 1u << 7    // AutoWow.Gear.Upgrades: a vendor weapon / armor piece was bought
 };
 
 // Operations at one npc, run in bit order.
@@ -683,7 +697,8 @@ enum Op : std::uint32_t
     OpBind = 1u << 4,
     OpLearnFp = 1u << 5,
     OpAuction = 1u << 6,  // AutoWow.Trade (TradePolicy.h): post / buy at the auctioneer
-    OpMail = 1u << 7      // AutoWow.Trade: collect mail at a mailbox (entry = gameobject entry)
+    OpMail = 1u << 7,     // AutoWow.Trade: collect mail at a mailbox (entry = gameobject entry)
+    OpGear = 1u << 8      // AutoWow.Gear.Upgrades: buy the planned weapon / armor this vendor sells
 };
 
 struct Stop
@@ -714,6 +729,7 @@ struct PlanInput
     bool learnFp = false;                              // town flight master node unknown
     bool auction = false;                              // AutoWow.Trade: visit the town's auctioneer
     bool mail = false;                                 // AutoWow.Trade: visit the town's mailbox
+    std::vector<std::uint32_t> gearNpcs;               // AutoWow.Gear.Upgrades: vendors with a planned buy
 };
 
 // Errand batch in order: sell junk, repair, restock, train, bind, flight path. Operations on the same
@@ -768,6 +784,11 @@ struct PlanInput
         for (Npc const& n : town.npcs)
             if (n.spawn == spawn && usable(n))
                 add(n, OpTrain, 0);
+    // AutoWow.Gear.Upgrades: after training (its gold comes first), before bind / flight path.
+    for (std::uint32_t spawn : in.gearNpcs)
+        for (Npc const& n : town.npcs)
+            if (n.spawn == spawn && usable(n))
+                add(n, OpGear, 0);
     if (in.bind)
         for (Npc const& n : town.npcs)
             if (n.spawn == town.id)
@@ -866,6 +887,11 @@ struct BotState
     std::uint64_t sellRetryMs = 0;          // no detour before this
     // AutoWow.Travel.Safe: the run's one rescue leg is spent.
     bool rescued = false;
+    // AutoWow.Gear.Upgrades: level of the last gear shopping (survives runs, not restarts) and this run's
+    // planned buys (item / vendor spawn pairs, 0 = none).
+    std::uint32_t lastGearLevel = 0;
+    std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearItems{};
+    std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearNpcs{};
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
@@ -895,6 +921,7 @@ struct BotState
 {
     BotState next;
     next.lastClassTrainLevel = s.lastClassTrainLevel;
+    next.lastGearLevel = s.lastGearLevel;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;

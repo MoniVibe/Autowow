@@ -19,6 +19,7 @@
 #include "GameObject.h"
 #include "GameTime.h"
 #include "Item.h"
+#include "ItemUsageValue.h"
 #include "Log.h"
 #include "MapMgr.h"
 #include "NewRpgBaseAction.h"
@@ -152,6 +153,20 @@ void BuildCatalog()
                         }
             std::sort(n.items.begin(), n.items.end());
             n.items.erase(std::unique(n.items.begin(), n.items.end()), n.items.end());
+            // AutoWow.Gear.Upgrades: plain-gold white / green weapons and armor (the bot filters by use).
+            if (AutoWowGear::Enabled())
+                if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id))
+                {
+                    for (VendorItem const* vi : list->m_items)
+                    {
+                        ItemTemplate const* proto = vi && !vi->ExtendedCost ? sObjectMgr->GetItemTemplate(vi->item) : nullptr;
+                        if (proto && (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR) &&
+                            proto->InventoryType != INVTYPE_NON_EQUIP && proto->Quality <= ITEM_QUALITY_UNCOMMON)
+                            n.gear.push_back(vi->item);
+                    }
+                    std::sort(n.gear.begin(), n.gear.end());
+                    n.gear.erase(std::unique(n.gear.begin(), n.gear.end()), n.gear.end());
+                }
         }
         npcs.push_back(std::move(n));
     }
@@ -419,7 +434,123 @@ TownFacts FactsOf(Player* bot, Town const& t, std::uint8_t team)
     }
     if (Npc const* fm = TownFlightMaster(t, team))
         f.unknownFlightMaster = !bot->m_taxi.IsTaximaskNodeKnown(NodeFor(*fm, team));
+    if (AutoWowGear::Enabled())
+        f.gearVendor = std::any_of(t.npcs.begin(), t.npcs.end(),
+                                   [team](Npc const& n) { return (n.teams & team) && !n.gear.empty(); });
     return f;
+}
+
+// ---- AutoWow.Gear.Upgrades ---------------------------------------------------------------------------
+uint32 TemplateDpsMilli(ItemTemplate const* proto)
+{
+    if (!proto || proto->Class != ITEM_CLASS_WEAPON)
+        return 0;
+    // ponytail: template damage truncated to whole points (1.0-2.0 starter daggers stay 1-2); enough to rank.
+    return AutoWowGear::DpsMilli(static_cast<uint32>(std::max(0.0f, proto->Damage[0].DamageMin)),
+                                 static_cast<uint32>(std::max(0.0f, proto->Damage[0].DamageMax)), proto->Delay);
+}
+
+uint32 EquippedDpsMilli(Player* bot, uint8 slot)
+{
+    Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+    return item ? TemplateDpsMilli(item->GetTemplate()) : 0;
+}
+
+// Empty equipment slots vendor armor may fill (no jewellery / trinkets / shirt / tabard: vendors sell none
+// worth it). The off hand counts only for a bot that does not dual wield and holds no two-hander.
+uint32 EmptyArmorSlots(Player* bot)
+{
+    static constexpr uint8 kSlots[] = {EQUIPMENT_SLOT_HEAD,  EQUIPMENT_SLOT_SHOULDERS, EQUIPMENT_SLOT_CHEST,
+                                       EQUIPMENT_SLOT_WAIST, EQUIPMENT_SLOT_LEGS,      EQUIPMENT_SLOT_FEET,
+                                       EQUIPMENT_SLOT_WRISTS, EQUIPMENT_SLOT_HANDS,    EQUIPMENT_SLOT_BACK};
+    uint32 mask = 0;
+    for (uint8 slot : kSlots)
+        if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            mask |= 1u << slot;
+    Item* mh = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+    bool const twoHander = mh && mh->GetTemplate()->InventoryType == INVTYPE_2HWEAPON;
+    if (!bot->CanDualWield() && !twoHander && !bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
+        mask |= 1u << EQUIPMENT_SLOT_OFFHAND;
+    return mask;
+}
+
+// The town's gear the stock "item upgrade" value rates an equip for this bot (class / spec weights, armor
+// type, proficiency, level), as AutoWowGear offers. Ranged slots are not shopped.
+std::vector<AutoWowGear::Offer> GearOffers(Player* bot, PlayerbotAI* botAI, Town const& town, std::uint8_t team)
+{
+    std::vector<AutoWowGear::Offer> offers;
+    bool const dualWield = bot->CanDualWield();
+    for (Npc const& n : town.npcs)
+    {
+        if (!(n.teams & team))
+            continue;
+        for (uint32 const item : n.gear)
+        {
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+            if (!proto || proto->RequiredLevel > bot->GetLevel() || bot->CanUseItem(proto) != EQUIP_ERR_OK)
+                continue;
+            ItemUsage const usage =
+                botAI->GetAiObjectContext()->GetValue<ItemUsage>("item upgrade", std::to_string(item))->Get();
+            if (usage != ITEM_USAGE_EQUIP && usage != ITEM_USAGE_REPLACE)
+                continue;
+            AutoWowGear::Offer o;
+            o.item = item;
+            o.npc = n.spawn;
+            o.price = proto->BuyPrice;
+            o.armor = proto->Armor;
+            if (proto->Class == ITEM_CLASS_WEAPON)
+            {
+                o.weapon = true;
+                o.dpsMilli = TemplateDpsMilli(proto);
+                o.twoHand = proto->InventoryType == INVTYPE_2HWEAPON;
+                bool const main = proto->InventoryType == INVTYPE_WEAPON ||
+                                  proto->InventoryType == INVTYPE_WEAPONMAINHAND || o.twoHand;
+                bool const off = dualWield && (proto->InventoryType == INVTYPE_WEAPON ||
+                                               proto->InventoryType == INVTYPE_WEAPONOFFHAND);
+                if (main)
+                {
+                    o.slot = EQUIPMENT_SLOT_MAINHAND;
+                    offers.push_back(o);
+                }
+                if (off)
+                {
+                    o.slot = EQUIPMENT_SLOT_OFFHAND;
+                    offers.push_back(o);
+                }
+                continue;
+            }
+            uint8 const slot = botAI->FindEquipSlot(proto, NULL_SLOT, true);
+            if (slot >= EQUIPMENT_SLOT_END)
+                continue;
+            o.slot = slot;
+            offers.push_back(o);
+        }
+    }
+    return offers;
+}
+
+// Arrival with NeedGear: the run's shopping list (AutoWowGear ShoppingList) into the state, its vendors
+// into the plan. The level is spent either way (one shopping per level).
+void PlanGear(Player* bot, PlayerbotAI* botAI, Town const& town, std::uint8_t team, BotState& s, PlanInput& in)
+{
+    s.lastGearLevel = bot->GetLevel();
+    s.gearItems.fill(0);
+    s.gearNpcs.fill(0);
+    std::vector<AutoWowGear::Offer> const list = AutoWowGear::ShoppingList(
+        AutoWowGear::Get(), GearOffers(bot, botAI, town, team), EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND),
+        EquippedDpsMilli(bot, EQUIPMENT_SLOT_OFFHAND), bot->CanDualWield(), EmptyArmorSlots(bot),
+        AutoWowGear::Spendable(bot->GetMoney(), bot->GetLevel()));
+    for (std::size_t k = 0; k < list.size() && k < AutoWowGear::kMaxPicks; ++k)
+    {
+        s.gearItems[k] = list[k].item;
+        s.gearNpcs[k] = list[k].npc;
+        in.gearNpcs.push_back(list[k].npc);
+        LOG_INFO("playerbots", "[Gear] bot={} plan item={} npc={} slot={} price={} dps_milli={} armor={} money={}",
+                 bot->GetName(), list[k].item, list[k].npc, static_cast<uint32>(list[k].slot), list[k].price,
+                 list[k].dpsMilli, list[k].armor, bot->GetMoney());
+    }
+    std::sort(in.gearNpcs.begin(), in.gearNpcs.end());
+    in.gearNpcs.erase(std::unique(in.gearNpcs.begin(), in.gearNpcs.end()), in.gearNpcs.end());
 }
 
 LegInput TownLeg(Player* bot, Town const& t, std::uint8_t team)
@@ -513,6 +644,9 @@ Assessment AssessBot(Player* bot, BotState const& s)
     TravelMgr::FlightMasterInfo const* fm = sTravelMgr.GetNearestFlightMasterInfo(bot);
     o.unknownFlightPath =
         fm && fm->taxiNodeId && fm->zoneId == bot->GetZoneId() && !bot->m_taxi.IsTaximaskNodeKnown(fm->taxiNodeId);
+    if (AutoWowGear::Enabled())
+        o.gear = AutoWowGear::GearDue(AutoWowGear::Get(), o.level, s.lastGearLevel, money,
+                                      EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND));
     return Assess(p, o);
 }
 
@@ -583,6 +717,13 @@ void LoadConfig()
     p.travelTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TravelTimeoutMs", 1200000);
     p.keepConsumables = sConfigMgr->GetOption<bool>("AutoWow.Survival.KeepConsumables", false);
     p.sellDetourYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.KeepConsumables.SellDetourYards", 30);
+    // AutoWow.Gear.Upgrades (GearUpgradePolicy.h): read before the catalog (vendors list their gear with it on).
+    AutoWowGear::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.Upgrades", false);
+    AutoWowGear::Params& g = AutoWowGear::detail::gParams;
+    g.upgradePct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.UpgradePct", 150);
+    g.farBelowPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FarBelowPct", 50);
+    g.armorSpendPct = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.ArmorSpendPct", 25));
+    g.maxArmorBuys = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.MaxArmorBuys", 4);
     if (detail::gEnabled)
         BuildCatalog();
 }
@@ -789,6 +930,8 @@ bool NewRpgBaseAction::ErrandsStep()
                                          { return (n.teams & team) && (n.roles & RoleAuction); });
                 in.mail = in.auction || AutoWowTrade::HasCollectableMail(bot);
             }
+            if (AutoWowGear::Enabled() && (s.needs & NeedGear))
+                PlanGear(bot, botAI, *town, team, s, in);
             s.plan = PlanStops(*town, in);
             s.buyItems = in.buyItems;
             s.stop = 0;
@@ -1121,6 +1264,59 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             s.done |= DoneSkipped;
             LOG_INFO("playerbots", "[Errands] bot={} skip trainer={} ranks unaffordable money={}", bot->GetName(),
                      npc->GetEntry(), money());
+        }
+    }
+    // AutoWow.Gear.Upgrades (only planned with the flag on): buy this vendor's planned pieces while the
+    // gear reserve (trainer rank + food) stays in hand, then the stock equip action puts upgrades on.
+    if (st.ops & OpGear)
+    {
+        VendorItemData const* list = npc->GetVendorItems();
+        std::vector<uint32> bought;
+        for (std::size_t k = 0; list && k < s.gearItems.size(); ++k)
+        {
+            uint32 const item = s.gearItems[k];
+            ItemTemplate const* proto = item && s.gearNpcs[k] == st.spawn ? sObjectMgr->GetItemTemplate(item) : nullptr;
+            if (!proto)
+                continue;
+            uint32 slot = list->GetItemCount();
+            for (uint32 i = 0; i < list->GetItemCount(); ++i)
+                if (VendorItem const* vi = list->GetItem(i); vi && vi->item == item && !vi->ExtendedCost)
+                {
+                    slot = i;
+                    break;
+                }
+            uint64 const m0 = money();
+            if (slot == list->GetItemCount() ||
+                m0 < uint64(proto->BuyPrice) + AutoWowGear::ReserveCopper(bot->GetLevel()))
+            {
+                s.done |= DoneSkipped;
+                LOG_INFO("playerbots", "[Gear] bot={} skip item={} npc={} in_list={} money={}", bot->GetName(), item,
+                         npc->GetEntry(), slot != list->GetItemCount(), m0);
+                continue;
+            }
+            uint32 const before = bot->GetItemCount(item, false);
+            bot->BuyItemFromVendorSlot(npc->GetGUID(), slot, item, 1, NULL_BAG, NULL_SLOT);
+            if (bot->GetItemCount(item, false) <= before)
+                continue;  // bags full / stock: the core reports its own error
+            bought.push_back(item);
+            if (m0 > money())
+                s.spent += m0 - money();
+        }
+        if (!bought.empty())
+        {
+            s.done |= DoneGeared;
+            uint32 const mh0 = EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND);
+            botAI->DoSpecificAction("equip upgrades packet action", Event("autowow gear"), true);
+            for (uint32 const item : bought)
+            {
+                bool equipped = false;
+                for (uint8 e = EQUIPMENT_SLOT_START; e < EQUIPMENT_SLOT_END && !equipped; ++e)
+                    if (Item* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, e))
+                        equipped = worn->GetEntry() == item;
+                LOG_INFO("playerbots", "[Gear] bot={} bought item={} npc={} equipped={} mh_dps_milli={}->{} money={} "
+                         "lvl={}", bot->GetName(), item, npc->GetEntry(), equipped, mh0,
+                         EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND), money(), bot->GetLevel());
+            }
         }
     }
     if (st.ops & OpBind)

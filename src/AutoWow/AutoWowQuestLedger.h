@@ -51,7 +51,8 @@
 //   - `errand` (AutoWow.Errands.Enable): one line per finished town run. reason = outcome
 //     (done|travel_gave_up|errands_timeout|return_gave_up); quest is 0; lvl/zone/x/y at the end. Trailing:
 //     town (innkeeper spawn guid), town_zone, needs (AutoWowErrands::Need bits), done (Done bits: sold 1,
-//     repaired 2, restocked 4, trained 8, bound 16, learned_fp 32, skipped 64), spent, sold (copper),
+//     repaired 2, restocked 4, trained 8, bound 16, learned_fp 32, skipped 64, geared 128 with
+//     AutoWow.Gear.Upgrades), spent, sold (copper),
 //     dur0, dur1 (average equipped durability % at arrival / after the errands), bag0, bag1 (free bag
 //     slots, same points), travel_ms (decision to arrival), return_ms, leg (walk|flight|hearth|none: the
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast).
