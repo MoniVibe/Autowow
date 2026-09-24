@@ -5,6 +5,7 @@
  */
 
 #include "ReviveFromCorpseAction.h"
+#include "Config.h"
 
 #include "AutoWowBridge.h"
 #include "AutoWowQuestLedger.h"
@@ -656,6 +657,23 @@ bool SpiritHealerAction::ExecuteNoTeleportCorpseRecovery(Corpse* corpse)
         if (failure.blocked)
         {
             bot->StopMoving();
+            // AutoWow.Survival.CorpsePortal (owner ruling: portals are an acceptable logged fallback): a ghost
+            // that cannot walk to its spirit healer takes the spirit-healer resurrection there (sickness and
+            // durability loss as usual). Without it the bot stayed dead for the rest of the soak
+            // (soak-s30-full-r1: 7 blocked receipts, ~10 of 50 cohort bots dead at any time).
+            if (grave.IsValid() && sConfigMgr->GetOption<bool>("AutoWow.Survival.CorpsePortal", false))
+            {
+                bool const moved = bot->TeleportTo(grave.mapId, grave.x, grave.y, grave.z, bot->GetOrientation());
+                if (moved)
+                {
+                    bot->ResurrectPlayer(0.5f, true);
+                    bot->SpawnCorpseBones();
+                }
+                LOG_INFO("playerbots", "[PersistentCorpseRecovery] bot={} corpse_portal grave_id={} ok={}",
+                         bot->GetName(), grave.graveId, moved);
+                corpseRouteState_.Reset();
+                return;
+            }
             botAI->SetNextCheckDelay(BlockedRetryDelayMs);
             return;
         }

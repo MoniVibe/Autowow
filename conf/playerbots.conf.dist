@@ -2604,6 +2604,8 @@ AutoWow.Survival.HardEscape.WalkZoneMargin = 5
 AutoWow.Survival.HardEscape.ZoneGap = 10
 AutoWow.Survival.HardEscape.Deaths = 4
 AutoWow.Survival.HardEscape.KillerGap = 10
+# CorpsePortal: a ghost whose walk to the spirit healer is blocked takes the spirit-healer resurrection there.
+AutoWow.Survival.CorpsePortal = 0
 # ClusterDeaths: this many deaths inside AutoWow.DeathLoop.WindowMs escape whatever the killer level (0 = off).
 AutoWow.Survival.HardEscape.ClusterDeaths = 8
 AutoWow.Survival.HardEscape.StuckMs = 120000
