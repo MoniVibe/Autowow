@@ -129,3 +129,20 @@ TEST(TacticalClassContract, TriggersActionsFactorsAndRegistrationResolve)
     EXPECT_EQ(rows, 9u);  // every non-priest family has tactics
     EXPECT_TRUE(kClassTables[static_cast<std::uint32_t>(Family::Priest)].key.empty());  // priest: own tables
 }
+
+// S20 tuning contract: the warrior emergency pushes no stance-bound cooldown (stock prerequisites defensive vs
+// battle stance flapped stances and dumped rage), the rogue multi spends no Evasion / Kidney Shot at the pull.
+TEST(TacticalClassContract, S20NoStanceFlapNoPullCooldownDump)
+{
+    std::string const strategy = Read("src/Ai/Base/Strategy/TacticalClassStrategy.cpp");
+    std::string const warrior = FunctionBody(strategy, "void WarriorNodes(");
+    ASSERT_FALSE(warrior.empty());
+    for (char const* action : {"shield wall", "shield block", "retaliation", "defensive stance", "battle stance"})
+        EXPECT_EQ(warrior.find(std::string("NextAction(\"") + action + "\""), std::string::npos) << action;
+    std::string const rogue = FunctionBody(strategy, "void RogueNodes(");
+    std::size_t const multi = rogue.find("TriggerNode(\"tac multi\"");
+    ASSERT_NE(multi, std::string::npos);
+    std::string const multiNode = rogue.substr(multi, rogue.find(");", multi) - multi);
+    EXPECT_EQ(multiNode.find("evasion"), std::string::npos);
+    EXPECT_EQ(multiNode.find("kidney shot"), std::string::npos);
+}

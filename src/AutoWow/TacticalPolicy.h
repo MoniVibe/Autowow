@@ -315,14 +315,15 @@ inline std::uint32_t Capacity(EngagementSnapshot const& s, ClassParams const& p)
 
 // Escape = overwhelmed (load > C x EscapeRatio) AND losing (hp below the emergency exit line) AND >= 2
 // attackers AND the control/defensive tools the bot knows are all on cooldown (a bot that knows none
-// fights on). The escape tool itself (vanish, blink, feign death ...) is what the escape tactic spends.
+// fights on) AND an escape tool is ready (kCdEscape: vanish, feign death ...). Without a ready escape tool a
+// bot fights on in emergency: a plain run-away at mob speed died 14 of 15 times in S20 (mage / paladin).
 inline TacticId DesiredClass(Family f, EngagementSnapshot const& s, ClassParams const& p, TacticId current,
                              bool escapeUsed)
 {
     std::uint32_t const cap = Capacity(s, p);
     bool const toolsKnown = (s.cds & (kCdControlKnown | kCdDefensiveKnown)) != 0;
     bool const toolsSpent = toolsKnown && !(s.cds & (kCdControl | kCdDefensive));
-    if (!escapeUsed && s.attackers >= 2 && toolsSpent && s.hpPct < p.emergencyExitHpPct &&
+    if (!escapeUsed && (s.cds & kCdEscape) && s.attackers >= 2 && toolsSpent && s.hpPct < p.emergencyExitHpPct &&
         std::uint64_t(s.load) * 100 > std::uint64_t(cap) * p.escapeRatioPct)
         return TacticOf(f, kSlotEscape);
     if (InEmergency(s, p, current == TacticOf(f, kSlotEmergency)))
@@ -359,7 +360,7 @@ enum class ClassTacticCondition : std::uint8_t
     LowMana = 10,          // single/multi, mana user below LowManaPct
     LifeTap = 11,          // single/multi, mana below LowManaPct and hp >= EmergencyExitHpPct + 15
     PetLow = 12,           // single/multi, combat pet alive below 40 % hp
-    Kite = 13              // single/multi, the current target is rooted/frozen in melee range (step out)
+    Kite = 13              // single, lone attacker, no idle adds near, target rooted/frozen in melee (step out)
 };
 
 // Live facts a trigger reads besides the snapshot (filled by the adapter from the bot / pet / target).
@@ -405,7 +406,9 @@ inline bool ConditionHolds(ClassTacticCondition c, TacticId id, EngagementSnapsh
         case ClassTacticCondition::LifeTap:
             return fighting && f.usesMana && f.manaPct < p.lowManaPct && f.hpPct >= p.emergencyExitHpPct + 15;
         case ClassTacticCondition::PetLow: return fighting && f.petLow;
-        case ClassTacticCondition::Kite: return fighting && f.targetRootedInMelee;
+        // Step out only from a lone rooted target: with a second attacker or idle adds near, the step-out
+        // stops casting while the unrooted mob keeps hitting and the move can pull the adds (S20 mage multi).
+        case ClassTacticCondition::Kite: return single && s.attackers <= 1 && !s.addsNear && f.targetRootedInMelee;
         default: return false;
     }
 }

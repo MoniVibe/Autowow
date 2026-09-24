@@ -68,7 +68,7 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
          "blizzard:0,cone of cold:0,shoot:0"},
      {"frost nova"},
      {"ice block", "ice barrier", "mana shield"},
-     {"blink"},
+     {},  // no escape tool: Blink + run-away died 10 of 11 times in S20; a mage fights on in emergency
      50},  // Mage
     {"Hunter",
      {"",
@@ -100,19 +100,18 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
          "mocking blow:0,overpower:0,mortal strike:0,execute:0,slam:0,whirlwind:0,bloodthirst:0,"
          "melee:0,reach melee:0"},
      {"intimidating shout"},
-     {"shield wall", "retaliation", "last stand"},
+     {"retaliation", "last stand"},  // no Shield Wall: it needs a shield (read "ready" on 2H warriors)
      {},
      50},  // Warrior
     {"Paladin",
      {"",
       "",
-      "consecration:0,exorcism:0,holy wrath:0,crusader strike:0,divine storm:0,judgement:0,"
-         "judgement of light:0,judgement of wisdom:0,hammer of wrath:0",
+      "consecration:0,holy wrath:0",  // offence on: heals alone never killed the mob (S20: 0 kills, 180 s)
       "consecration:0,exorcism:0,holy wrath:0,crusader strike:0,divine storm:0,judgement:0,"
          "judgement of light:0,judgement of wisdom:0,hammer of wrath:0,melee:0,reach melee:0"},
      {"hammer of justice"},
      {"divine protection", "divine shield", "lay on hands"},
-     {"divine shield"},
+     {},  // no escape tool: bubble + run-away died 4 of 4 times in S20; bubble is an emergency heal window
      50},  // Paladin
     {"Druid",
      {"",

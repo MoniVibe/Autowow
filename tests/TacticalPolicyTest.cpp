@@ -210,11 +210,16 @@ TEST(TacticalPolicy, ClassLadderMirrorsPriestLadder)
     EXPECT_EQ(DesiredClass(f, s, p, TacticId::WarriorEmergency, false), TacticId::WarriorEmergency);
     EXPECT_EQ(DesiredClass(f, s, p, TacticId::WarriorMulti, false), TacticId::WarriorMulti);
 
-    // Escape: overwhelmed, losing, known control/defensive tools spent; never without known tools.
+    // Escape: overwhelmed, losing, known control/defensive tools spent, an escape tool ready; never without
+    // known tools, never without a ready escape tool (S20: run-away without one died 14 of 15 times).
     EngagementSnapshot bad = s;
     bad.attackers = 3;
     bad.load = 400;
     bad.cds = kCdControlKnown | kCdDefensiveKnown;
+    EXPECT_EQ(DesiredClass(f, bad, p, TacticId::WarriorMulti, false), TacticId::WarriorMulti);
+    bad.cds |= kCdEscapeKnown;  // known but on cooldown
+    EXPECT_EQ(DesiredClass(f, bad, p, TacticId::WarriorMulti, false), TacticId::WarriorMulti);
+    bad.cds |= kCdEscape;
     EXPECT_EQ(DesiredClass(f, bad, p, TacticId::WarriorMulti, false), TacticId::WarriorEscape);
     EXPECT_NE(DesiredClass(f, bad, p, TacticId::WarriorMulti, true), TacticId::WarriorEscape);
     bad.cds = 0;
@@ -250,7 +255,7 @@ TEST(TacticalPolicy, ClassCapacityCountsPetAndTools)
     s.manaPct = 0;
     EXPECT_EQ(Capacity(s, p), 87u);  // 350 x 0.5 x 0.5, truncated
     // A hunter with its pet alive handles a pair it would otherwise flee from.
-    EngagementSnapshot pair = Single(100, kCdControlKnown | kCdDefensiveKnown);
+    EngagementSnapshot pair = Single(100, kCdControlKnown | kCdDefensiveKnown | kCdEscapeKnown | kCdEscape);
     pair.attackers = 2;
     pair.load = 130;  // 13000 vs capacity 44 x 160 = 7040 (no pet) / 88 x 160 = 14080 (pet)
     pair.hpPct = 44;
@@ -604,6 +609,14 @@ TEST(TacticalClassPolicy, ResourcePetKiteAndRunnerConditions)
     f.targetRootedInMelee = true;
     EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageSingle, s, p, f));
     EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageEmergency, s, p, f));
+    // Step-out only from a lone target: never in multi, never with a second attacker or idle adds near.
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageMulti, s, p, f));
+    EngagementSnapshot two = s;
+    two.attackers = 2;
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageSingle, two, p, f));
+    EngagementSnapshot adds = s;
+    adds.addsNear = 1;
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageSingle, adds, p, f));
     f = Facts(90);
     f.targetFleeing = true;
     EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Runner, TacticId::WarriorSingle, s, p, f));
@@ -636,5 +649,56 @@ TEST(TacticalClassTables, RowsAreWellFormed)
         for (auto const& [name, permille] : ParseFactors(t.factors[3]))
             zero = zero || permille == 0;
         EXPECT_TRUE(zero);
+    }
+}
+
+// S20 A/B (soak-s20-tactics-r1) tuning: the classes whose run-away escapes died (mage 10/11, paladin 4/4) or that
+// have no escape tool (warrior) never escape; the fighting tactics never switch a class's core damage off, so a
+// bot in emergency still kills its mob (S20 paladin emergency had offence x0: 0 kills in 180 s fights).
+TEST(TacticalClassTables, S20NoRunAwayAndCoreDamageStaysOn)
+{
+    for (Family const f : {Family::Warrior, Family::Mage, Family::Paladin})
+        for (std::string_view const tool : kClassTables[static_cast<std::uint32_t>(f)].escape)
+            EXPECT_TRUE(tool.empty()) << kClassTables[static_cast<std::uint32_t>(f)].key << " escape tool " << tool;
+    // Warrior readiness: no Shield Wall (needs a shield; read "ready" on two-handed warriors).
+    for (std::string_view const tool : kClassTables[static_cast<std::uint32_t>(Family::Warrior)].defensive)
+        EXPECT_NE(tool, "shield wall");
+
+    struct Core
+    {
+        Family family;
+        std::initializer_list<char const*> actions;
+    };
+    Core const cores[] = {
+        {Family::Warrior, {"mortal strike", "execute", "overpower", "bloodthirst", "slam", "whirlwind", "melee"}},
+        {Family::Rogue, {"sinister strike", "eviscerate", "backstab", "mutilate", "melee"}},
+        {Family::Mage, {"frostbolt", "fireball", "fire blast", "arcane blast", "frostfire bolt", "shoot"}},
+        {Family::Paladin, {"crusader strike", "judgement", "hammer of wrath", "divine storm", "melee"}},
+    };
+    for (Core const& c : cores)
+        for (std::uint32_t i = 0; i < 3; ++i)  // single, multi, emergency (escape switches damage off)
+        {
+            FactorTable const table = ParseFactors(kClassTables[static_cast<std::uint32_t>(c.family)].factors[i]);
+            for (char const* action : c.actions)
+                EXPECT_GT(FactorOf(table, action), 0u)
+                    << kClassTables[static_cast<std::uint32_t>(c.family)].key << " " << kClassSlotKeys[i] << " " << action;
+        }
+}
+
+// With no escape tool in its table the ladder tops out at emergency: a warrior / mage / paladin snapshot that
+// used to pick escape (overwhelmed, losing, tools spent) now stays in emergency and keeps fighting.
+TEST(TacticalClassPolicy, S20OverwhelmedWithoutEscapeToolStaysInEmergency)
+{
+    ClassParams const p;
+    EngagementSnapshot s = Single(100, kCdControlKnown | kCdDefensiveKnown);  // no kCdEscape*: table has none
+    s.attackers = 3;
+    s.melee = 3;
+    s.load = 400;
+    s.hpPct = 25;
+    for (Family const f : {Family::Warrior, Family::Mage, Family::Paladin})
+    {
+        SCOPED_TRACE(static_cast<int>(f));
+        EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotMulti), 100, false), TacticOf(f, kSlotEmergency));
+        EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotEmergency), 60000, false), TacticOf(f, kSlotEmergency));
     }
 }

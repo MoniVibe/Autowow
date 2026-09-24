@@ -79,8 +79,9 @@ namespace
 // Warrior (60-64): rage pacing (Sunder off, Heroic Strike x0.5 so rage goes to Rend / Overpower / Victory
 // Rush), Hamstring a fleeing target, Victory Rush below HealHpPct; multi: Thunder Clap + Demoralizing Shout +
 // Cleave, Intimidating Shout on >= ControlMinMelee melee; emergency: Intimidating Shout on any melee, Victory
-// Rush, Last Stand, Shield Wall, Retaliation, Shield Block (stance prerequisites are stock); escape: shout,
-// Hamstring, flee (all damage x0).
+// Rush, Last Stand. No Shield Wall / Shield Block / Retaliation: their stock stance prerequisites (defensive vs
+// battle) flapped stances every GCD and dumped rage, and Shield Wall / Block need a shield. Escape: shout,
+// Hamstring, flee (all damage x0; unreachable while the warrior has no escape tool).
 void WarriorNodes(std::vector<TriggerNode*>& t)
 {
     t.push_back(new TriggerNode("tac runner", {NextAction("hamstring", ACTION_HIGH + 9)}));
@@ -91,22 +92,18 @@ void WarriorNodes(std::vector<TriggerNode*>& t)
     t.push_back(new TriggerNode("tac control", {NextAction("intimidating shout", ACTION_INTERRUPT + 5)}));
     t.push_back(new TriggerNode("tac emergency control", {NextAction("intimidating shout", ACTION_EMERGENCY + 7)}));
     t.push_back(new TriggerNode("tac emergency", {NextAction("victory rush", ACTION_EMERGENCY + 6),
-                                                  NextAction("last stand", ACTION_EMERGENCY + 5),
-                                                  NextAction("shield wall", ACTION_EMERGENCY + 4),
-                                                  NextAction("retaliation", ACTION_EMERGENCY + 3),
-                                                  NextAction("shield block", ACTION_EMERGENCY + 2)}));
+                                                  NextAction("last stand", ACTION_EMERGENCY + 5)}));
     t.push_back(new TriggerNode("tac escape", {NextAction("hamstring", ACTION_EMERGENCY + 3),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
 // Rogue (50-54): stock stealth opener and combo-point logic; long-fight finishers off (Rupture, Expose Armor,
-// Feint); Evasion below HealHpPct; multi: Evasion, Blade Flurry, Kidney Shot on the target; emergency: Evasion,
-// Kidney Shot; escape: Vanish, Gouge, Sprint, flee (all damage x0, so the Gouge is not broken by auto-attack).
+// Feint); Evasion below HealHpPct; multi: Blade Flurry (Evasion waits for HealHpPct instead of burning its 5 min
+// cooldown at the pull; no Kidney Shot, which spent 1-point combo stacks meant for Eviscerate); emergency:
+// Evasion, Kidney Shot; escape: Vanish, Gouge, Sprint, flee (all damage x0, so the Gouge is not broken).
 void RogueNodes(std::vector<TriggerNode*>& t)
 {
     t.push_back(new TriggerNode("tac heal", {NextAction("evasion", ACTION_HIGH + 9)}));
-    t.push_back(new TriggerNode("tac multi", {NextAction("evasion", ACTION_HIGH + 9),
-                                              NextAction("blade flurry", ACTION_HIGH + 8),
-                                              NextAction("kidney shot", ACTION_HIGH + 7)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("blade flurry", ACTION_HIGH + 8)}));
     t.push_back(new TriggerNode("tac emergency", {NextAction("evasion", ACTION_EMERGENCY + 6),
                                                   NextAction("kidney shot", ACTION_EMERGENCY + 5)}));
     t.push_back(new TriggerNode("tac escape", {NextAction("vanish", ACTION_EMERGENCY + 6),
@@ -114,10 +111,11 @@ void RogueNodes(std::vector<TriggerNode*>& t)
                                                NextAction("sprint", ACTION_EMERGENCY + 4),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
-// Mage (30-34): frost kite - Frost Nova on a melee attacker, then step out of the rooted/frozen target (flee,
-// below the stock Blink-back); multi: Frost Nova on >= ControlMinMelee melee, Polymorph the add, Ice Barrier,
+// Mage (30-34): frost kite - Frost Nova on a melee attacker, then step out of a lone rooted/frozen target (flee,
+// below the stock Blink-back; ConditionHolds Kite); multi: Frost Nova on >= ControlMinMelee melee, Polymorph the add, Ice Barrier,
 // Cone of Cold; emergency: Frost Nova on any melee, Ice Barrier, Mana Shield, Ice Block (Evocation and long
-// casts off); escape: Frost Nova, Blink back, flee (all damage x0).
+// casts off); escape: Frost Nova, Blink back, flee (all damage x0; unreachable while the mage has no escape
+// tool in kClassTables).
 void MageNodes(std::vector<TriggerNode*>& t)
 {
     t.push_back(new TriggerNode("tac melee on me", {NextAction("frost nova", ACTION_INTERRUPT + 3)}));
@@ -192,7 +190,8 @@ void WarlockNodes(std::vector<TriggerNode*>& t)
 }
 // Paladin (70-74): Flash of Light / Holy Light below HealHpPct; multi: Consecration, Hammer of Justice on the
 // target; emergency: Hammer of Justice on melee, Divine Shield, Lay on Hands, Divine Protection, Flash of
-// Light, Holy Light (offence off); escape: Divine Shield, flee.
+// Light, Holy Light (offence stays on; Consecration / Holy Wrath off); escape: Divine Shield, flee (unreachable
+// while the paladin has no escape tool in kClassTables).
 void PaladinNodes(std::vector<TriggerNode*>& t)
 {
     t.push_back(new TriggerNode("tac heal", {NextAction("flash of light", ACTION_CRITICAL_HEAL + 2),
