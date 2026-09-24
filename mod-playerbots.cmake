@@ -134,6 +134,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/OracleTravelExecutorTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/src/AutoWow/OracleTravelExecutor.cpp")
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/TradePolicyTest.cpp")
+  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES "${CMAKE_CURRENT_LIST_DIR}/tests/ContractsPolicyTest.cpp")
  set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_INCLUDES
     "${CMAKE_CURRENT_LIST_DIR}/src/Ai/Base"
     "${CMAKE_CURRENT_LIST_DIR}/src/Ai/World/Rpg"

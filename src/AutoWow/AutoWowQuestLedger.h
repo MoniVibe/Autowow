@@ -70,6 +70,11 @@
 //     wiped|abandoned|approach_gave_up|stage_failed|portal_fallback. Trailing: pid, dmap, inst (instance id,
 //     0 before entry), enc (encounter index for boss_killed, else -1), mask / all (completed / all
 //     DungeonEncounter bits), dur_ms (since the approach started), members.
+//   - `contract` (event 18; AutoWow.Contracts.Enable): one line per hunt contract issued and one when it
+//     ends (ContractsPolicy.h). reason = issued|done|expired|abandoned; quest is 0; lvl/zone/x/y the bot's.
+//     Trailing: issuer (faction_board), cid (run-scoped contract id, never reused), amap, ax, ay (anchor
+//     map and integer yards), anchor (anchor spawn id), entries (target entry count), kills, target,
+//     dur_ms (since issue; 0 on issued).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -107,7 +112,8 @@ enum class Event : std::uint8_t
     Errand = 14,
     Party = 15,
     Dungeon = 16,
-    Trade = 17
+    Trade = 17,
+    Contract = 18
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -132,6 +138,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Party: return "party";
         case Event::Dungeon: return "dungeon";
         case Event::Trade: return "trade";
+        case Event::Contract: return "contract";
     }
     return "unknown";
 }
@@ -402,7 +409,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
     }
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
              row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
-             row.ev == Event::Party || row.ev == Event::Dungeon)
+             row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -464,6 +471,9 @@ void EmitTrade(Player* player, char const* reason, std::string_view fields);
 // AutoWowParty::PartyFields / DungeonFields.
 void EmitParty(Player* player, char const* reason, std::string_view fields);
 void EmitDungeon(Player* player, char const* reason, std::string_view fields);
+// `contract` (no-op unless the player is a recorded bot); reason is a static literal (ReasonName), fields
+// from AutoWowContracts::LedgerFields.
+void EmitContract(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);
