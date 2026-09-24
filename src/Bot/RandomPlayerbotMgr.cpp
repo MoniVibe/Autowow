@@ -1476,6 +1476,24 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
     // if death revive
     if (bot->isDead())
     {
+        // Independent (cohort) bots never take the random-bot revive: its Refresh tops money up to
+        // level x 1000..5000 copper, repairs and resurrects in place (soak-s29/s30: 4 cohort bots gained
+        // 4.6-12g; owner rule: no free gold / gear). The no-teleport flag arrives only when cohort-start arms
+        // the bot, so a bot off the random-bot accounts counts too. An unreleased corpse (a bot that logged
+        // in dead waited the 30-40 min revive timer) is released to its graveyard at once, like a player;
+        // SafeRevive / corpse recovery own the rest.
+        if (AutoWowPolicy::IsNoTeleport(botId) ||
+            !sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()))
+        {
+            if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+            {
+                bot->BuildPlayerRepop();
+                bot->RepopAtGraveyard();
+                return true;
+            }
+            return false;
+        }
+
         if (!GetEventValue(botId, "dead"))
         {
             uint32 randomTime =
@@ -1489,24 +1507,6 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
 
         if (!GetEventValue(botId, "revive"))
         {
-            // Independent (cohort) bots never take the random-bot revive: its Refresh tops money up to
-            // level x 1000..5000 copper, repairs and resurrects in place (soak-s29-full-r1: a L26 cohort bot
-            // gained 12g; owner rule: no free gold / gear). A corpse still unreleased is released to its
-            // graveyard like a player; SafeRevive owns the rest.
-            // The no-teleport flag arrives only when cohort-start arms the bot; a bot logging in dead is
-            // processed first (soak-s30-full-r1: 3 cohort bots revived with 4.6-5.9g at ~70 s), so a bot off
-            // the random-bot accounts counts as independent too.
-            if (AutoWowPolicy::IsNoTeleport(botId) ||
-                !sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()))
-            {
-                SetEventValue(botId, "dead", 0, 0);
-                if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
-                {
-                    bot->BuildPlayerRepop();
-                    bot->RepopAtGraveyard();
-                }
-                return true;
-            }
             Revive(bot);
             return true;
         }
