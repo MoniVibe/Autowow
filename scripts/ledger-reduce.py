@@ -17,6 +17,11 @@ expired|mail|fee with item, count, price, gold (signed copper change). Summed pe
 faction treasury (copper paid to the world): fee lines by kind (flight|repair|train) plus auction fees
 (post deposits: -gold; per sale price - gold = cut - deposit refund, so the sum nets refunded deposits).
 
+Bot-level `party` (event 15, AutoWow.Party; never a row): reason formed (why, members) or the disband reason
+(age_ms). Bot-level `dungeon` (event 16, AutoWow.Dungeon; never a row): reason entered|boss_killed|completed|
+wiped|abandoned|approach_gave_up|stage_failed|portal_fallback per dungeon map (dmap, dur_ms). Parties and
+Dungeon runs tables.
+
 Blocked lines may carry `n` (AutoWow.Ledger.BlockedDedupeMs > 0): the number of occurrences the
 line stands for. Lines without `n` (older logs, dedupe off) count as one; blocked_count sums n.
 
@@ -57,6 +62,8 @@ SETUP_REASONS = {"rndbot_randomize", "setup_reroll", "rndbot_teleport", "bridge_
 TRADE_ACTIONS = ["post", "buy", "sold", "expired", "mail", "fee"]
 TREASURY_KINDS = ["flight", "repair", "train", "ah_fees"]
 TEAM_NAMES = {0: "alliance", 1: "horde"}
+RUN_EVENTS = ["entered", "boss_killed", "completed", "wiped", "abandoned", "approach_gave_up", "stage_failed",
+              "portal_fallback"]
 BUCKET_YARDS = 50
 _DECODER = json.JSONDecoder()
 
@@ -122,6 +129,10 @@ def fold(events):
     leg_ms = Counter()               # same key -> summed leg ms
     trade = Counter()                # (action, "lines"|"count"|"gold") -> sum over trade events
     treasury = Counter()             # (team, kind) -> copper paid to the world
+    parties = Counter()              # ("formed", why) / ("disband", reason) -> party events
+    party_n = Counter()              # same key -> summed members (formed) / age_ms (disband)
+    runs = Counter()                 # (dmap, dungeon reason) -> dungeon events
+    run_ms = Counter()               # same key -> summed dur_ms
 
     def get(run, bot, quest):
         key = (run, bot, quest)
@@ -208,6 +219,20 @@ def fold(events):
                 treasury[(team, "ah_fees")] += int(ev.get("price", 0)) - gold
             continue
 
+        if kind == "party":
+            # Bot-level cohort party formed / disbanded (AutoWow.Party): never a quest row.
+            formed = ev.get("reason") == "formed"
+            key = ("formed", ev.get("why") or "") if formed else ("disband", ev.get("reason") or "")
+            parties[key] += 1
+            party_n[key] += len(ev.get("members") or []) if formed else int(ev.get("age_ms", 0))
+            continue
+        if kind == "dungeon":
+            # Bot-level dungeon run event (AutoWow.Dungeon): never a quest row.
+            key = (int(ev.get("dmap", 0)), ev.get("reason") or "")
+            runs[key] += 1
+            run_ms[key] += int(ev.get("dur_ms", 0))
+            continue
+
         if kind not in QUEST_EVENTS:
             continue  # bot-level (combat) or unknown future event: never creates a quest row
         row = get(run, bot, quest)
@@ -246,7 +271,8 @@ def fold(events):
             continue  # unknown future event name: ignore, never guess
         touch(row, ev)
 
-    return rows, run_end, deaths, pvp, voided, (moves, move_ms, legs, leg_ms), (trade, treasury)
+    return rows, run_end, deaths, pvp, voided, (moves, move_ms, legs, leg_ms), (trade, treasury), \
+        (parties, party_n, runs, run_ms)
 
 
 def outcome(row, run_end, stall_ms):
@@ -298,7 +324,7 @@ def reduce_rows(rows, run_end, catalog, stall_ms):
     return out
 
 
-def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None, trade=None):
+def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None, trade=None, groups=None):
     deaths = deaths or Counter()
     pvp = pvp or Counter()
     lines = ["# AutoWoW quest ledger summary", ""]
@@ -388,19 +414,32 @@ def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None, trade=No
         lines.append("| **total** | %s | **%d** |" % (" | ".join(str(sum(treasury[(t, k)] for t in teams))
                                                               for k in TREASURY_KINDS),
                                                     sum(treasury[(t, k)] for t in teams for k in TREASURY_KINDS)))
+    parties, party_n, runs, run_ms = groups or (Counter(), Counter(), Counter(), Counter())
+    if parties or runs:  # only ledgers written with AutoWow.Party / AutoWow.Dungeon
+        lines += ["", "## Parties", "", "mean = members at formation / age_ms at disband.", "",
+                  "| event | why / reason | parties | mean |", "|---|---|---:|---:|"]
+        for k in sorted(parties):
+            lines.append("| %s | %s | %d | %d |" % (k[0], k[1], parties[k], party_n[k] // parties[k]))
+        lines.append("| **formed** | | **%d** | |" % sum(n for k, n in parties.items() if k[0] == "formed"))
+        lines += ["", "## Dungeon runs", "", "| dmap | " + " | ".join(RUN_EVENTS) + " | mean completed dur_ms |",
+                  "|---:|" + "---:|" * (len(RUN_EVENTS) + 1)]
+        for dmap in sorted({k[0] for k in runs}):
+            done = runs[(dmap, "completed")]
+            lines.append("| %d | %s | %d |" % (dmap, " | ".join(str(runs[(dmap, e)]) for e in RUN_EVENTS),
+                                              run_ms[(dmap, "completed")] // done if done else 0))
     return "\n".join(lines) + "\n"
 
 
 def run(paths, out_dir, catalog_path, stall_ms):
     events = read_events(paths)
-    rows, run_end, deaths, pvp, voided, zone_moves, trade = fold(events)
+    rows, run_end, deaths, pvp, voided, zone_moves, trade, groups = fold(events)
     out = reduce_rows(rows, run_end, load_catalog(catalog_path), stall_ms)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "ledger-rows.jsonl"), "w", encoding="ascii", newline="\n") as fh:
         for r in out:
             fh.write(json.dumps(r, sort_keys=False, ensure_ascii=True) + "\n")
     with open(os.path.join(out_dir, "ledger-summary.md"), "w", encoding="ascii", newline="\n") as fh:
-        fh.write(summarize(out, deaths, pvp, voided, zone_moves, trade))
+        fh.write(summarize(out, deaths, pvp, voided, zone_moves, trade, groups))
     return events, out
 
 
@@ -462,6 +501,13 @@ def selftest():
                  kind="flight"),
             line(5400, "trade", 20, 0, reason="fee", action="fee", item=0, count=0, price=30, gold=-30, ah=0,
                  kind="repair")]
+    # party / dungeon (bot-level): one RFC party formed, entered, killed a boss, completed, disbanded.
+    log += [line(10000, "party", 15, 0, reason="formed", pid=1, members=[15, 16, 17], why="dungeon", dmap=389),
+            line(11000, "dungeon", 15, 0, reason="entered", pid=1, dmap=389, dur_ms=600000),
+            line(12000, "dungeon", 15, 0, reason="boss_killed", pid=1, dmap=389, enc=0, dur_ms=700000),
+            line(13000, "dungeon", 15, 0, reason="completed", pid=1, dmap=389, dur_ms=900000),
+            line(14000, "party", 15, 0, reason="dungeon_done", pid=1, members=[15, 16, 17], why="dungeon",
+                 age_ms=1200000)]
     catalog ={"quests": [{"id": 100, "family": "KILL", "zoneName": "Elwynn Forest", "title": "A"},
                           {"id": 200, "family": "KILL", "zoneName": "Elwynn Forest", "title": "B"}]}
     with tempfile.TemporaryDirectory() as td:
@@ -508,6 +554,10 @@ def selftest():
         assert "| alliance | 0 | 30 | 0 | 39 | 69 |" in md, md          # ah fee = the 39 cut (deposit refunded)
         assert "| horde | 55 | 0 | 0 | 0 | 55 |" in md, md
         assert "| **total** | 55 | 30 | 0 | 39 | **124** |" in md, md
+        assert (15, 0) not in got  # party / dungeon never make a quest row
+        assert "| formed | dungeon | 1 | 3 |" in md and "| disband | dungeon_done | 1 | 1200000 |" in md, md
+        assert "| **formed** | | **1** | |" in md, md
+        assert "| 389 | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 900000 |" in md, md
         # Idempotent: same input -> identical bytes.
         first = open(os.path.join(td, "ledger-rows.jsonl"), "rb").read()
         run([lp], td, cp, 600000)
