@@ -55,6 +55,7 @@ struct Params
     std::uint32_t approachStuckTicks = 60;
     std::uint32_t stageYards = 40;
     std::uint64_t stageTimeoutMs = 120000;
+    std::uint64_t memberGraceMs = 180000;  // AutoWow.Dungeon.MemberGraceMs: Inside, a member dead / outside this long
     std::uint64_t insideTimeoutMs = 3600000;
     std::uint64_t exitTimeoutMs = 120000;
     std::uint64_t runCooldownMs = 3600000;
@@ -100,6 +101,7 @@ struct Party
     bool approachGaveUp = false;
     bool leaderRpgOff = false;
     bool stagePortalDone = false;  // this Stage phase already used its portal fallback
+    std::uint64_t missingSinceMs = 0;  // Inside: a member dead or outside since (0 = everyone in)
     std::vector<std::uint32_t> hearthTried;
 };
 
@@ -478,6 +480,7 @@ void SetPhase(Party& p, Phase ph, std::uint64_t now)
     p.phase = ph;
     p.phaseMs = now;
     p.stagePortalDone = false;
+    p.missingSinceMs = 0;
 }
 
 // Step through an entrance trigger like a client does (the stock DungeonTransition waits for the whole
@@ -605,7 +608,12 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                 {
                     if (bot == leader)
                     {
-                        FireTrigger(bot, ai, e.trigger);
+                        // Only with the whole party alive out here: the dungeon navigator will not lead
+                        // while a member is dead or elsewhere (soak-s29-full-r1: a ghost left behind
+                        // stalled a Ragefire run at the entrance for 20+ min).
+                        if (std::all_of(bots.begin(), bots.end(), [&e](Player* b)
+                                        { return b->IsAlive() && b->GetMapId() == e.map; }))
+                            FireTrigger(bot, ai, e.trigger);
                         continue;
                     }
                     if (bot->isMoving())
@@ -632,6 +640,20 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                 if (bot != leader && bot->GetMapId() == p.dungeonMap && !ai->IsAutoWowPaused() &&
                     !ai->HasStrategy("follow", BOT_STATE_NON_COMBAT))
                     ai->ChangeStrategy("+follow", BOT_STATE_NON_COMBAT);
+            }
+            bool const missing = std::any_of(bots.begin(), bots.end(), [&p](Player* b)
+                                             { return !b->IsAlive() || b->GetMapId() != p.dungeonMap; });
+            if (!missing)
+                p.missingSinceMs = 0;
+            else if (!p.missingSinceMs)
+                p.missingSinceMs = now;
+            else if (anyAlive && now >= p.missingSinceMs + gParams.memberGraceMs)
+            {
+                // The navigator waits for the whole party; bots do not corpse-run into instances yet.
+                LOG_INFO("playerbots", "[Party] pid={} dungeon member missing {} ms: abandon", p.id, now - p.missingSinceMs);
+                EmitRun(p, RunEvent::Abandoned, -1, now);
+                SetPhase(p, Phase::Exit, now);
+                return Disband::None;
             }
             if (!anyAlive)
             {
@@ -843,6 +865,7 @@ void LoadConfig()
     p.approachStuckTicks = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.ApproachStuckTicks", 60);
     p.stageYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.StageYards", 40);
     p.stageTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.StageTimeoutMs", 120000);
+    p.memberGraceMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.MemberGraceMs", 180000);
     p.insideTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.InsideTimeoutMs", 3600000);
     p.exitTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.ExitTimeoutMs", 120000);
     p.runCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.CooldownMs", 3600000);
