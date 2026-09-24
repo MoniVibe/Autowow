@@ -12,6 +12,11 @@ Output (in --out-dir):
 Bot-level events (quest 0, never a row): `died` (killer, kid, klvl) and `pvp_kill` (victim, vlvl,
 honorable). They feed the death / PvP tables and the `contested` outcome.
 
+Bot-level `trade` (event 17, AutoWow.Trade / AutoWow.Ledger.Treasury; never a row): action post|buy|sold|
+expired|mail|fee with item, count, price, gold (signed copper change). Summed per action, and into a stage-1
+faction treasury (copper paid to the world): fee lines by kind (flight|repair|train) plus auction fees
+(post deposits: -gold; per sale price - gold = cut - deposit refund, so the sum nets refunded deposits).
+
 Blocked lines may carry `n` (AutoWow.Ledger.BlockedDedupeMs > 0): the number of occurrences the
 line stands for. Lines without `n` (older logs, dedupe off) count as one; blocked_count sums n.
 
@@ -49,6 +54,9 @@ QUEST_EVENTS = {"accepted", "rewarded", "abandoned", "blocked", "deferred", "pro
 # voided (dropped, counted per reason in the summary) instead of scored. zone_travel_assist stays contamination.
 SETUP_REASONS = {"rndbot_randomize", "setup_reroll", "rndbot_teleport", "bridge_rally_teleport", "bridge_route_teleport",
                  "probe_reset_teleport"}
+TRADE_ACTIONS = ["post", "buy", "sold", "expired", "mail", "fee"]
+TREASURY_KINDS = ["flight", "repair", "train", "ah_fees"]
+TEAM_NAMES = {0: "alliance", 1: "horde"}
 BUCKET_YARDS = 50
 _DECODER = json.JSONDecoder()
 
@@ -112,6 +120,8 @@ def fold(events):
     move_ms = Counter()              # same key -> summed travel_ms
     legs = Counter()                 # zone_move leg mode (walk|flight|travel_object|transport|portal) -> legs
     leg_ms = Counter()               # same key -> summed leg ms
+    trade = Counter()                # (action, "lines"|"count"|"gold") -> sum over trade events
+    treasury = Counter()             # (team, kind) -> copper paid to the world
 
     def get(run, bot, quest):
         key = (run, bot, quest)
@@ -183,6 +193,21 @@ def fold(events):
                 leg_ms[leg[0]] += int(leg[1])
             continue
 
+        if kind == "trade":
+            # Bot-level auction/mail result or fee (AutoWow.Trade, AutoWow.Ledger.Treasury): never a quest row.
+            action, gold = ev.get("action", ""), int(ev.get("gold", 0))
+            trade[(action, "lines")] += 1
+            trade[(action, "count")] += int(ev.get("count", 0))
+            trade[(action, "gold")] += gold
+            team = TEAM_NAMES.get(ev.get("team"), str(ev.get("team")))
+            if action == "fee":
+                treasury[(team, ev.get("kind", ""))] += -gold
+            elif action == "post":
+                treasury[(team, "ah_fees")] += -gold
+            elif action == "sold":
+                treasury[(team, "ah_fees")] += int(ev.get("price", 0)) - gold
+            continue
+
         if kind not in QUEST_EVENTS:
             continue  # bot-level (combat) or unknown future event: never creates a quest row
         row = get(run, bot, quest)
@@ -221,7 +246,7 @@ def fold(events):
             continue  # unknown future event name: ignore, never guess
         touch(row, ev)
 
-    return rows, run_end, deaths, pvp, voided, (moves, move_ms, legs, leg_ms)
+    return rows, run_end, deaths, pvp, voided, (moves, move_ms, legs, leg_ms), (trade, treasury)
 
 
 def outcome(row, run_end, stall_ms):
@@ -273,7 +298,7 @@ def reduce_rows(rows, run_end, catalog, stall_ms):
     return out
 
 
-def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None):
+def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None, trade=None):
     deaths = deaths or Counter()
     pvp = pvp or Counter()
     lines = ["# AutoWoW quest ledger summary", ""]
@@ -343,19 +368,39 @@ def summarize(out, deaths=None, pvp=None, voided=None, zone_moves=None):
         lines += ["", "## Zone move legs", "", "| leg | legs | total ms | mean ms |", "|---|---:|---:|---:|"]
         for k in sorted(legs):
             lines.append("| %s | %d | %d | %d |" % (k, legs[k], leg_ms[k], leg_ms[k] // legs[k]))
+    trades, treasury = trade or (Counter(), Counter())
+    if trades or treasury:  # only ledgers written with AutoWow.Trade / AutoWow.Ledger.Treasury
+        lines += ["", "## Trade", "", "gold = summed copper change of the bots' money.", "",
+                  "| action | lines | items | gold |", "|---|---:|---:|---:|"]
+        names = TRADE_ACTIONS + sorted({a for a, _ in trades} - set(TRADE_ACTIONS))
+        for a in names:
+            lines.append("| %s | %d | %d | %d |" % (a, trades[(a, "lines")], trades[(a, "count")], trades[(a, "gold")]))
+        lines.append("| **total** | **%d** | | **%d** |" % (sum(trades[(a, "lines")] for a in names),
+                                                          sum(trades[(a, "gold")] for a in names)))
+        lines += ["", "## Faction treasury (stage 1)", "",
+                  "Copper paid to the world (no gameplay effect yet): flight fares, repairs, training (fee lines), "
+                  "auction fees (deposits + cuts - refunded deposits).", "",
+                  "| faction | " + " | ".join(TREASURY_KINDS) + " | total |", "|---|" + "---:|" * (len(TREASURY_KINDS) + 1)]
+        teams = sorted({t for t, _ in treasury})
+        for t in teams:
+            vals = [treasury[(t, k)] for k in TREASURY_KINDS]
+            lines.append("| %s | %s | %d |" % (t, " | ".join(str(v) for v in vals), sum(vals)))
+        lines.append("| **total** | %s | **%d** |" % (" | ".join(str(sum(treasury[(t, k)] for t in teams))
+                                                              for k in TREASURY_KINDS),
+                                                    sum(treasury[(t, k)] for t in teams for k in TREASURY_KINDS)))
     return "\n".join(lines) + "\n"
 
 
 def run(paths, out_dir, catalog_path, stall_ms):
     events = read_events(paths)
-    rows, run_end, deaths, pvp, voided, zone_moves = fold(events)
+    rows, run_end, deaths, pvp, voided, zone_moves, trade = fold(events)
     out = reduce_rows(rows, run_end, load_catalog(catalog_path), stall_ms)
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "ledger-rows.jsonl"), "w", encoding="ascii", newline="\n") as fh:
         for r in out:
             fh.write(json.dumps(r, sort_keys=False, ensure_ascii=True) + "\n")
     with open(os.path.join(out_dir, "ledger-summary.md"), "w", encoding="ascii", newline="\n") as fh:
-        fh.write(summarize(out, deaths, pvp, voided, zone_moves))
+        fh.write(summarize(out, deaths, pvp, voided, zone_moves, trade))
     return events, out
 
 
@@ -407,7 +452,17 @@ def selftest():
                                                                           "legs": [["walk", 1000],
                                                                                    ["travel_object", 5],
                                                                                    ["walk", 2000]]})]
-    catalog = {"quests": [{"id": 100, "family": "KILL", "zoneName": "Elwynn Forest", "title": "A"},
+    # trade (bot-level): alliance posts 20 linen (deposit 117), sells at 780 (profit 780 + 117 - 39 cut), pays a
+    # repair; horde buys an upgrade and pays a flight.
+    log += [line(5000, "trade", 20, 0, reason="post", action="post", item=2589, count=20, price=780, gold=-117, ah=0),
+            line(5100, "trade", 20, 0, reason="sold", action="sold", item=2589, count=20, price=780, gold=858, ah=5),
+            line(5200, "trade", 21, 0, reason="buy", team=1, action="buy", item=600, count=1, price=400, gold=-400,
+                 ah=6),
+            line(5300, "trade", 21, 0, reason="fee", team=1, action="fee", item=0, count=0, price=55, gold=-55, ah=0,
+                 kind="flight"),
+            line(5400, "trade", 20, 0, reason="fee", action="fee", item=0, count=0, price=30, gold=-30, ah=0,
+                 kind="repair")]
+    catalog ={"quests": [{"id": 100, "family": "KILL", "zoneName": "Elwynn Forest", "title": "A"},
                           {"id": 200, "family": "KILL", "zoneName": "Elwynn Forest", "title": "B"}]}
     with tempfile.TemporaryDirectory() as td:
         lp = os.path.join(td, "ledger.log")
@@ -446,6 +501,13 @@ def selftest():
         assert "| 141 | 148 | no_quests | no | 1 | 3600001 |" in md, md
         assert "| **total** | | | | **2** | |" in md, md
         assert "| walk | 2 | 3000 | 1500 |" in md and "| travel_object | 1 | 5 | 5 |" in md, md
+        assert (20, 0) not in got and (21, 0) not in got  # trade never makes a quest row
+        assert "| post | 1 | 20 | -117 |" in md and "| sold | 1 | 20 | 858 |" in md, md
+        assert "| buy | 1 | 1 | -400 |" in md and "| fee | 2 | 0 | -85 |" in md, md
+        assert "| **total** | **5** | | **256** |" in md, md
+        assert "| alliance | 0 | 30 | 0 | 39 | 69 |" in md, md          # ah fee = the 39 cut (deposit refunded)
+        assert "| horde | 55 | 0 | 0 | 0 | 55 |" in md, md
+        assert "| **total** | 55 | 30 | 0 | 39 | **124** |" in md, md
         # Idempotent: same input -> identical bytes.
         first = open(os.path.join(td, "ledger-rows.jsonl"), "rb").read()
         run([lp], td, cp, 600000)
