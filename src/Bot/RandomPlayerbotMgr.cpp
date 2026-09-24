@@ -5,6 +5,7 @@
  */
 
 #include "RandomPlayerbotMgr.h"
+#include "AutoWowBridge.h"
 
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
@@ -1488,6 +1489,20 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
 
         if (!GetEventValue(botId, "revive"))
         {
+            // Independent (cohort) bots never take the random-bot revive: its Refresh tops money up to
+            // level x 1000..5000 copper, repairs and resurrects in place (soak-s29-full-r1: a L26 cohort bot
+            // gained 12g; owner rule: no free gold / gear). A corpse still unreleased is released to its
+            // graveyard like a player; SafeRevive owns the rest.
+            if (AutoWowPolicy::IsNoTeleport(botId))
+            {
+                SetEventValue(botId, "dead", 0, 0);
+                if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+                {
+                    bot->BuildPlayerRepop();
+                    bot->RepopAtGraveyard();
+                }
+                return true;
+            }
             Revive(bot);
             return true;
         }

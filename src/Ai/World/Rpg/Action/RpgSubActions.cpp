@@ -177,9 +177,6 @@ bool RpgTaxiAction::Execute(Event /*event*/)
     }
 
     uint32 path = nodes[urand(0, nodes.size() - 1)];
-    uint32 money = bot->GetMoney();
-    bot->SetMoney(money + 100000);
-
     TaxiPathEntry const* entry = sTaxiPathStore.LookupEntry(path);
     if (!entry)
         return false;
@@ -195,7 +192,13 @@ bool RpgTaxiAction::Execute(Event /*event*/)
         return false;
     }
 
-    if (!bot->ActivateTaxiPathTo({entry->from, entry->to}, flightMaster, 0))
+    // The fare is covered and handed back around the activation only: the early returns used to keep the
+    // 10 gold (soak-s29-full-r1: a cohort bot gained 12g across a restart; owner rule: no free gold).
+    uint32 const money = bot->GetMoney();
+    bot->SetMoney(money + 100000);
+    bool const flying = bot->ActivateTaxiPathTo({entry->from, entry->to}, flightMaster, 0);
+    bot->SetMoney(money);
+    if (!flying)
     {
         LOG_ERROR("playerbots", "Bot {} cannot fly {} ({} location available)", bot->GetName(), path, nodes.size());
         return false;
@@ -203,8 +206,6 @@ bool RpgTaxiAction::Execute(Event /*event*/)
 
     LOG_INFO("playerbots", "Bot {} <{}> is flying from {} to {} ({} location available)",
              bot->GetGUID().ToString().c_str(), bot->GetName(), nodeFrom->name[0], nodeTo->name[0], nodes.size());
-
-    bot->SetMoney(money);
 
     rpg->AfterExecute();
 
