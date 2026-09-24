@@ -775,6 +775,18 @@ bool SpiritHealerAction::TrySpiritHealerInteraction(CorpseRouteRetryPolicy::Rout
         return true;
     }
 
+    // AutoWow.Survival.CorpsePortal: a ghost standing on the graveyard point with no spirit healer among its
+    // nearest npcs (soak-s31-full-r1: 4 cohort bots waited at the Ashenvale graveyard 2421,-2954 for 40+ min)
+    // takes the spirit-healer resurrection there.
+    if (bot->GetDistance2d(grave.x, grave.y) < 15.0f && sConfigMgr->GetOption<bool>("AutoWow.Survival.CorpsePortal", false))
+    {
+        LOG_INFO("playerbots", "[PersistentCorpseRecovery] bot={} grave_resurrect grave_id={} no_spirit_healer=true",
+                 bot->GetName(), grave.graveId);
+        bot->ResurrectPlayer(0.5f, true);
+        bot->SpawnCorpseBones();
+        return true;
+    }
+
     return false;
 }
 
