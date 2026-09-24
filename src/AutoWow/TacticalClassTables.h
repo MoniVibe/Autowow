@@ -48,7 +48,17 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
     {},  // None
     {},  // Priest
     {},  // Warlock
-    {},  // Mage
+    {"Mage",
+     {"",
+      "pyroblast:0,evocation:0",
+      "pyroblast:0,fireball:0.5,arcane missiles:0,evocation:0,flamestrike:0,blizzard:0",
+      "frostbolt:0,fireball:0,pyroblast:0,arcane missiles:0,fire blast:0,scorch:0,"
+         "frostfire bolt:0,ice lance:0,arcane blast:0,arcane barrage:0,evocation:0,flamestrike:0,"
+         "blizzard:0,cone of cold:0,shoot:0"},
+     {"frost nova"},
+     {"ice block", "ice barrier", "mana shield"},
+     {"blink"},
+     50},  // Mage
     {},  // Hunter
     {"Rogue",
      {"rupture:0,expose armor:0,feint:0",

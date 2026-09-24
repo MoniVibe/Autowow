@@ -150,12 +150,34 @@ void RogueNodes(std::vector<TriggerNode*>& t)
                                                NextAction("sprint", ACTION_EMERGENCY + 4),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
+// Mage (30-34): frost kite - Frost Nova on a melee attacker, then step out of the rooted/frozen target (flee,
+// below the stock Blink-back); multi: Frost Nova on >= ControlMinMelee melee, Polymorph the add, Ice Barrier,
+// Cone of Cold; emergency: Frost Nova on any melee, Ice Barrier, Mana Shield, Ice Block (Evocation and long
+// casts off); escape: Frost Nova, Blink back, flee (all damage x0).
+void MageNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac melee on me", {NextAction("frost nova", ACTION_INTERRUPT + 3)}));
+    t.push_back(new TriggerNode("tac kite", {NextAction("flee", ACTION_MOVE + 4)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("ice barrier", ACTION_HIGH + 9),
+                                              NextAction("cone of cold", ACTION_HIGH + 5)}));
+    t.push_back(new TriggerNode("tac control", {NextAction("frost nova", ACTION_INTERRUPT + 5)}));
+    t.push_back(new TriggerNode("tac control add", {NextAction("polymorph", ACTION_INTERRUPT + 4)}));
+    t.push_back(new TriggerNode("tac emergency control", {NextAction("frost nova", ACTION_EMERGENCY + 7)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("ice barrier", ACTION_EMERGENCY + 5),
+                                                  NextAction("mana shield", ACTION_EMERGENCY + 4),
+                                                  NextAction("ice block", ACTION_EMERGENCY + 3)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("blink back", ACTION_EMERGENCY + 4),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
 }  // namespace
 
 void TacticalClassStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     switch (family)
     {
+        case Family::Mage:
+            MageNodes(triggers);
+            break;
         case Family::Rogue:
             RogueNodes(triggers);
             break;

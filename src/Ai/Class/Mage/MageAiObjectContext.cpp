@@ -15,6 +15,7 @@
 #include "NamedObjectContext.h"
 #include "Playerbots.h"
 #include "PullStrategy.h"
+#include "TacticalClassStrategy.h"
 
 class MageStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -22,6 +23,9 @@ public:
     MageStrategyFactoryInternal()
     {
         creators["nc"] = &MageStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Mage);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &MageStrategyFactoryInternal::pull;
         creators["aoe"] = &MageStrategyFactoryInternal::aoe;
         creators["cure"] = &MageStrategyFactoryInternal::cure;

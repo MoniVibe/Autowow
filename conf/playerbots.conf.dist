@@ -2428,6 +2428,22 @@ AutoWow.Tactics.Rogue.Factors.Single = "rupture:0,expose armor:0,feint:0"
 AutoWow.Tactics.Rogue.Factors.Multi = "rupture:0,expose armor:0,feint:0,slice and dice:0.5"
 AutoWow.Tactics.Rogue.Factors.Emergency = "rupture:0,expose armor:0,feint:0,slice and dice:0"
 AutoWow.Tactics.Rogue.Factors.Escape = "rupture:0,expose armor:0,feint:0,slice and dice:0,sinister strike:0,eviscerate:0,backstab:0,mutilate:0,kick:0,melee:0,reach melee:0"
+# Mage (30/32/33/34; MageNodes): Frost Nova on a melee attacker and step out of a rooted/frozen target;
+# multi Frost Nova / Polymorph the add / Ice Barrier / Cone of Cold; emergency Nova / Ice Barrier / Mana Shield
+# / Ice Block; escape Nova / Blink back / flee. Tools: Frost Nova (control), Ice Block / Ice Barrier / Mana
+# Shield (defensive), Blink (escape).
+AutoWow.Tactics.Mage.SingleMaxPct = 120
+AutoWow.Tactics.Mage.BasePct = 100
+AutoWow.Tactics.Mage.HealHpPct = 50
+AutoWow.Tactics.Mage.LowManaPct = 25
+AutoWow.Tactics.Mage.EmergencyHpPct = 30
+AutoWow.Tactics.Mage.EmergencyExitHpPct = 45
+AutoWow.Tactics.Mage.ControlMinMelee = 2
+AutoWow.Tactics.Mage.ControlHpPct = 60
+AutoWow.Tactics.Mage.Factors.Single = ""
+AutoWow.Tactics.Mage.Factors.Multi = "pyroblast:0,evocation:0"
+AutoWow.Tactics.Mage.Factors.Emergency = "pyroblast:0,fireball:0.5,arcane missiles:0,evocation:0,flamestrike:0,blizzard:0"
+AutoWow.Tactics.Mage.Factors.Escape = "frostbolt:0,fireball:0,pyroblast:0,arcane missiles:0,fire blast:0,scorch:0,frostfire bolt:0,ice lance:0,arcane blast:0,arcane barrage:0,evocation:0,flamestrike:0,blizzard:0,cone of cold:0,shoot:0"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within
