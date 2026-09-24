@@ -18,6 +18,7 @@
 #include "QuestObjectiveContext.h"
 #include "ReputationMgr.h"
 #include "RestGate.h"
+#include "SafeTravel.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "TacticalRuntime.h"
@@ -113,6 +114,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     // ponytail: one breaker lock per candidate (tens per selection); snapshot the areas if it ever shows.
     bool const dangerSkip = AutoWowDeathLoop::V2Enabled();
     std::uint32_t const botGuid = static_cast<std::uint32_t>(bot->GetGUID().GetCounter());
+    // AutoWow.Travel.Safe (default 0): no proactive pull on an errand / zone-progression trip. Self-defence
+    // returned above.
+    if (AutoWowSafeTravel::OnTravelLeg(botGuid))
+        return nullptr;
 
     // A completed/transitioning/blocked Director quest has no objective lock, but it still owns the
     // bot. Do not let legacy grind proactively acquire a fresh mob while the phase machine is walking

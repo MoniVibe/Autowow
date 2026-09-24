@@ -483,8 +483,21 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 2U);
+    EXPECT_EQ(s.version, 3U);
+    EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
+}
+// AutoWow.Travel.Safe: one rescue leg per run; hearth to a serving bound town first, else a known flight;
+// the exhausted leg is never its own rescue.
+TEST(Errands, RescueLegOncePerRun)
+{
+    EXPECT_EQ(RescueLeg(false, Leg::Walk, true, true), Leg::Hearth);
+    EXPECT_EQ(RescueLeg(false, Leg::Walk, false, true), Leg::Flight);
+    EXPECT_EQ(RescueLeg(false, Leg::Walk, false, false), Leg::None);
+    EXPECT_EQ(RescueLeg(true, Leg::Walk, true, true), Leg::None);
+    EXPECT_EQ(RescueLeg(false, Leg::Hearth, true, true), Leg::Flight);
+    EXPECT_EQ(RescueLeg(false, Leg::Flight, false, true), Leg::None);
+    EXPECT_EQ(RescueLeg(false, Leg::None, true, false), Leg::Hearth);
 }
 }  // namespace

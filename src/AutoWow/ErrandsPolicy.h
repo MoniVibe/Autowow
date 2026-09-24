@@ -29,7 +29,7 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 2;  // 2: sellUntilMs / sellRetryMs (KeepConsumables)
+inline constexpr std::uint8_t kStateVersion = 3;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -839,12 +839,30 @@ struct BotState
     // AutoWow.Survival.KeepConsumables: passing-vendor grey sale (Phase::None only).
     std::uint64_t sellUntilMs = 0;          // current detour deadline (0 = none)
     std::uint64_t sellRetryMs = 0;          // no detour before this
+    // AutoWow.Travel.Safe: the run's one rescue leg is spent.
+    bool rescued = false;
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
 [[nodiscard]] inline bool LegExhausted(Params const& p, BotState const& s, std::uint64_t nowMs, std::uint32_t timeoutMs)
 {
     return (nowMs >= s.phaseMs && nowMs - s.phaseMs > timeoutMs) || s.reissues > p.maxReissues;
+}
+
+// AutoWow.Travel.Safe: the rescue leg of an exhausted travel phase, once per run. soak-s16-full-r1: all 15
+// travel_gave_up runs were walks that never got going (7 intent_replan_exhausted give-ups from a spot the
+// navmesh routes nothing out of: 11 frozen in place, 4 circling a local minimum); the same bots blocked
+// every quest walk too. A hearthstone bound at a town serving the run leaves that spot legitimately;
+// else a known flight. `failed` = the leg that was exhausted (never retried as its own rescue).
+[[nodiscard]] inline Leg RescueLeg(bool rescued, Leg failed, bool hearthToServingTown, bool flight)
+{
+    if (rescued)
+        return Leg::None;
+    if (hearthToServingTown && failed != Leg::Hearth)
+        return Leg::Hearth;
+    if (flight && failed != Leg::Flight)
+        return Leg::Flight;
+    return Leg::None;
 }
 
 // State after a finished run: cooldown, keep the class-trainer level.

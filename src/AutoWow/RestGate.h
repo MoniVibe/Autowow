@@ -60,6 +60,10 @@ inline bool Enabled() { return detail::gEnabled; }
 // death-loop breaker escalated, with or without this flag; it clears itself once rested.
 void LoadConfig();
 bool HoldProactivePull(PlayerbotAI* botAI);
+// AutoWow.Travel.Safe (the caller holds the flag): out of combat below MinHpPct / MinManaPct, a travel leg
+// does not resume. Independent of AutoWow.Survival.RestGate; Resurrection Sickness does not hold (it
+// outlasts any rest, and a safe trip pulls nothing).
+bool HoldTravel(PlayerbotAI* botAI);
 bool NeedsRestHealth(PlayerbotAI* botAI);
 bool NeedsRestMana(PlayerbotAI* botAI);
 }  // namespace AutoWowRestGate

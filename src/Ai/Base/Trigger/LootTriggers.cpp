@@ -8,6 +8,7 @@
 
 #include "LootObjectStack.h"
 #include "Playerbots.h"
+#include "SafeTravel.h"
 #include "ServerFacade.h"
 
 bool LootAvailableTrigger::IsActive()
@@ -27,6 +28,10 @@ bool LootAvailableTrigger::IsActive()
                                                                  INTERACTION_DISTANCE - 2.0f);
     }
 
+    // AutoWow.Travel.Safe: no loot detour on a travel leg (a corpse already in range is still looted).
+    if (!distanceCheck && AutoWowSafeTravel::OnTravelLeg(bot->GetGUID().GetCounter()))
+        return false;
+
     // Loot target in range, or no hostile targets to deal with first.
     if (distanceCheck || AI_VALUE(GuidVector, "all targets").empty())
         return true;
@@ -43,6 +48,9 @@ bool FarFromCurrentLootTrigger::IsActive()
 {
     LootObject loot = AI_VALUE(LootObject, "loot target");
     if (!loot.IsLootPossible(bot))
+        return false;
+    // AutoWow.Travel.Safe: no walk to a loot target on a travel leg.
+    if (AutoWowSafeTravel::OnTravelLeg(bot->GetGUID().GetCounter()))
         return false;
 
     return AI_VALUE2(float, "distance", "loot target") >= INTERACTION_DISTANCE - 2.0f;

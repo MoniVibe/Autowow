@@ -67,6 +67,12 @@ bool HoldProactivePull(PlayerbotAI* botAI)
     return hold;
 }
 
+bool HoldTravel(PlayerbotAI* botAI)
+{
+    Player* bot = EligibleBot(botAI, false);
+    return bot && !bot->IsInCombat() && Hold(detail::gParams, HpPct(bot), ManaPct(bot), UsesMana(bot), false);
+}
+
 bool NeedsRestHealth(PlayerbotAI* botAI)
 {
     bool const forced = Forced(botAI);

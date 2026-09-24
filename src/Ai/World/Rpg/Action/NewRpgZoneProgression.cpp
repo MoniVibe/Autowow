@@ -24,6 +24,7 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
+#include "RestGate.h"
 #include "GameObject.h"
 #include "Transport.h"
 #include "TransportCrossingPolicy.h"
@@ -680,6 +681,10 @@ bool NewRpgBaseAction::WalkLeg(WorldPosition const& dest)
 {
     if (botAI->rpgInfo.GetStatus() != RPG_IDLE)
         botAI->rpgInfo.ChangeToIdle();
+    // AutoWow.Travel.Safe: rest first (below the rest-gate thresholds) - no move is issued, so an eating bot
+    // stays seated; the tick is not stuck.
+    if (sPlayerbotAIConfig.autoWowTravelSafe && AutoWowRestGate::HoldTravel(botAI))
+        return false;
     bool stuck = false;
     MoveFarTo(dest, /*questNoTeleport*/ true, &stuck);
     return stuck;

@@ -771,6 +771,34 @@ bool NewRpgBaseAction::ErrandsStep()
         }
         if (LegExhausted(p, s, now, p.travelTimeoutMs))
         {
+            // AutoWow.Travel.Safe: one rescue leg per run (ErrandsPolicy RescueLeg) before giving up.
+            if (sPlayerbotAIConfig.autoWowTravelSafe && !s.rescued)
+            {
+                Town const* hearthTown = nullptr;
+                if (HearthReady(bot))
+                    for (Town const& t : detail::gTowns)
+                        if ((t.teams & team) && HearthBoundAt(bot, t) && (s.needs & Serves(FactsOf(bot, t, team))))
+                        {
+                            hearthTown = &t;
+                            break;
+                        }
+                Leg const rescue = RescueLeg(s.rescued, s.travelLeg, hearthTown != nullptr,
+                                             TownLeg(bot, *town, team).flight);
+                s.rescued = true;
+                if (rescue != Leg::None)
+                {
+                    if (rescue == Leg::Hearth)
+                        s.town = hearthTown->id;
+                    s.leg = s.travelLeg = rescue;
+                    s.legIssued = false;
+                    s.reissues = 0;
+                    s.phaseMs = s.legMs = now;
+                    LOG_INFO("playerbots", "[Errands] bot={} rescue leg={} town={} at ({},{})", bot->GetName(),
+                             LegName(rescue), s.town, bx, by);
+                    StoreState(guid, s);
+                    return true;
+                }
+            }
             s.outcome = Outcome::TravelGaveUp;
             return finish();
         }

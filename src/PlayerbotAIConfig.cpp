@@ -713,6 +713,7 @@ bool PlayerbotAIConfig::Initialize()
     autoWowTravelIntentProgressWindowMs = sConfigMgr->GetOption<uint32>("AutoWow.TravelIntent.ProgressWindowMs", 90000);
     autoWowTravelIntentHysteresisPct = sConfigMgr->GetOption<uint32>("AutoWow.TravelIntent.HysteresisPct", 20);
     autoWowWalkingV2 = sConfigMgr->GetOption<bool>("AutoWow.Walking.V2", false);
+    autoWowTravelSafe = sConfigMgr->GetOption<bool>("AutoWow.Travel.Safe", false);
     autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
     autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
     autoWowQuestScheduler = sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.Enable", false);

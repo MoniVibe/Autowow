@@ -2568,6 +2568,15 @@ AutoWow.TravelIntent.HysteresisPct = 20
 # the bot is already past. Fixes long walks (zone moves, town runs) that asked the navmesh for the whole
 # 300-2000 yd route, which its 74-point path cap refuses. 0 = legacy.
 AutoWow.Walking.V2 = 0
+# Safe travel for independent bots on an errand run or a zone-progression trip (SafeTravel.h). 1 = on such
+# a trip no proactive pull and no optional looting (attackers are still fought), and a walk leg does not
+# resume below the AutoWow.Survival.RestGate hp/mana thresholds (eats/drinks when that flag is on, else
+# regenerates); with AutoWow.Walking.V2 a chunk whose mmap path passes within aggro range (+5 yd) of an
+# idle hostile mob at or above the bot's level (or any elite) is taken only when no clear chunk exists,
+# and a chunk path through a death-loop danger area is refused; a town run whose walk is exhausted gets
+# one rescue leg (hearthstone to a serving bound town, else a known flight) before travel_gave_up.
+# 0 = legacy.
+AutoWow.Travel.Safe = 0
 # Blocked-quest defer-and-return (non-Oracle directives only). 1 = a quest held in Blocked for 30 s is
 # deferred for 10 minutes (ledger `deferred` reason blocked_deferred) and the bot returns to Idle to pick
 # other work; the quest is eligible again after the deferral. 0 = hold Blocked until the 30-minute

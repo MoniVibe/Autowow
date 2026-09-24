@@ -394,6 +394,7 @@ public:
     uint32 autoWowTravelIntentProgressWindowMs;   // AutoWow.TravelIntent.ProgressWindowMs (default 90000)
     uint32 autoWowTravelIntentHysteresisPct;      // AutoWow.TravelIntent.HysteresisPct (default 20)
     bool autoWowWalkingV2;                        // AutoWow.Walking.V2 (default off; WalkingV2Policy.h)
+    bool autoWowTravelSafe;                       // AutoWow.Travel.Safe (default off; SafeTravel.h)
     bool autoWowQuestBlockedDefer;          // AutoWow.QuestBlockedDefer.Enable (default off)
     bool autoWowQuestItemTargetConditions;  // AutoWow.QuestItemTargetConditions.Enable (default off)
     bool autoWowQuestScheduler;             // AutoWow.QuestScheduler.Enable (default off; QuestSchedulerPolicy.h)

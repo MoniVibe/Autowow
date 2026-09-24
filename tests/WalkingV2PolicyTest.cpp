@@ -201,4 +201,115 @@ TEST(WalkingV2PolicyTest, ReplayFansAroundABlockedBearing)
     EXPECT_FALSE(walled.arrived);
     EXPECT_EQ(walled.segments, 0u);
 }
+// ---- AutoWow.Travel.Safe: aggro-aware chunk choice ------------------------------------------------
+TEST(WalkingV2PolicyTest, Dist2ToSegmentIsIntegerAndClamped)
+{
+    EXPECT_EQ(Dist2ToSegment(5, 3, P(0, 0), P(10, 0)), 9);     // beside the segment
+    EXPECT_EQ(Dist2ToSegment(-4, 3, P(0, 0), P(10, 0)), 25);   // before a: distance to a
+    EXPECT_EQ(Dist2ToSegment(13, 4, P(0, 0), P(10, 0)), 25);   // past b: distance to b
+    EXPECT_EQ(Dist2ToSegment(3, 4, P(0, 0), P(0, 0)), 25);     // degenerate segment
+    EXPECT_EQ(Dist2ToSegment(1, 2, P(0, 0), P(3, 3)), 0);      // 1/sqrt2 truncated: 0.5 -> 0
+    // World-scale coordinates do not overflow.
+    EXPECT_EQ(Dist2ToSegment(0, 20000, P(-17000, 0), P(17000, 0)), 400000000);
+}
+
+TEST(WalkingV2PolicyTest, PathThreatCountsThreateningMobsOnce)
+{
+    std::vector<Point> const path{P(0, 0), P(50, 0), P(100, 0)};
+    std::vector<Mob> const mobs{
+        {50, 20, 12, false, 15},   // at level, 20 yd off, reach 15+5: counted once (two segments touch)
+        {50, 21, 12, false, 15},   // 21 yd off: just out of reach
+        {80, 5, 10, false, 20},    // below the bot's level: ignored
+        {80, 5, 8, true, 20},      // elite of any level: counted
+        {-30, 0, 20, false, 24},   // before the path start: reach 29 < 30, out
+        {-29, 0, 20, false, 24}};  // reach 29 covers the start point
+    EXPECT_EQ(PathThreat(path, mobs, 12), 3u);
+    EXPECT_EQ(PathThreat({}, mobs, 12), 0u);
+    EXPECT_EQ(PathThreat({P(50, 0)}, mobs, 12), 1u);  // single point: only the first reaches it
+    EXPECT_TRUE(Threatens(Mob{0, 0, 12, false, 0}, 12));
+    EXPECT_FALSE(Threatens(Mob{0, 0, 11, false, 0}, 12));
+    EXPECT_TRUE(Threatens(Mob{0, 0, 1, true, 0}, 12));
+}
+
+TEST(WalkingV2PolicyTest, PickChunkPrefersFirstClearThenLeastThreat)
+{
+    EXPECT_EQ(PickChunk({}), kNoChunk);
+    EXPECT_EQ(PickChunk({{false, 0}, {false, 0}}), kNoChunk);
+    EXPECT_EQ(PickChunk({{true, 2}, {false, 0}, {true, 0}, {true, 0}}), 2u);  // first clear, fan order
+    EXPECT_EQ(PickChunk({{true, 3}, {true, 1}, {true, 1}, {false, 0}}), 1u); // least threat, earlier on tie
+    EXPECT_EQ(PickChunk({{true, 0}}), 0u);
+}
+
+// The V2 chunk planner on the ideal navmesh (straight probe paths), with or without the safe choice.
+// `touches` = committed chunks whose straight path came within aggro reach of a threatening mob.
+struct SafeWalkResult
+{
+    bool arrived = false;
+    std::uint32_t segments = 0;
+    std::uint32_t touches = 0;
+};
+
+SafeWalkResult ReplaySafeWalk(Point start, Point goal, std::vector<Mob> const& mobs, std::uint32_t botLevel, bool safe)
+{
+    SafeWalkResult out;
+    Point here = start;
+    for (int step = 0; step < 100; ++step)
+    {
+        if (!UseChunks(here, goal))
+        {
+            out.touches += PathThreat({here, goal}, mobs, botLevel) ? 1 : 0;
+            ++out.segments;
+            out.arrived = true;
+            return out;
+        }
+        std::vector<ChunkChoice> choices;
+        std::vector<Point> ends;
+        for (std::size_t k = 0; k < kChunkProbes; ++k)
+        {
+            Point const probe = ChunkProbe(here, goal, k);
+            ends.push_back(probe);
+            choices.push_back({AdmitChunk(here, probe, goal, false), 0});
+            if (!choices.back().admissible)
+                continue;
+            if (!safe)
+                break;  // step 0: the first admissible chunk
+            choices.back().threat = PathThreat({here, probe}, mobs, botLevel);
+            if (choices.back().threat == 0)
+                break;
+        }
+        std::size_t const pick = PickChunk(choices);
+        if (pick == kNoChunk)
+            return out;
+        out.touches += choices[pick].threat || (!safe && PathThreat({here, ends[pick]}, mobs, botLevel)) ? 1 : 0;
+        here = ends[pick];
+        ++out.segments;
+    }
+    return out;
+}
+
+TEST(WalkingV2PolicyTest, SafeReplayWalksAroundACampOnTheBearing)
+{
+    // soak-s16 shape: a 1000 yd errand walk whose straight bearing crosses a camp of three at-level mobs
+    // (aggro 20) 180 yd out; a lower-level mob sits on the detour and is ignored.
+    std::vector<Mob> const camp{{180, 0, 12, false, 20}, {190, 10, 12, false, 20}, {185, -10, 13, false, 20},
+                                {230, 55, 9, false, 20}};
+    SafeWalkResult const plain = ReplaySafeWalk(P(0, 0), P(1000, 0), camp, 12, false);
+    SafeWalkResult const safe = ReplaySafeWalk(P(0, 0), P(1000, 0), camp, 12, true);
+    EXPECT_TRUE(plain.arrived);
+    EXPECT_GE(plain.touches, 1u);
+    EXPECT_TRUE(safe.arrived);
+    EXPECT_EQ(safe.touches, 0u);
+    EXPECT_LE(safe.segments, plain.segments + 2);
+    // Deterministic: the same inputs replay the same walk.
+    SafeWalkResult const again = ReplaySafeWalk(P(0, 0), P(1000, 0), camp, 12, true);
+    EXPECT_EQ(again.segments, safe.segments);
+    // A wall of mobs across the whole route: no clear chunk crosses it, so the least threatened one is
+    // taken (the trip never stalls on mobs).
+    std::vector<Mob> wall;
+    for (std::int32_t y = -1000; y <= 1000; y += 10)
+        wall.push_back({125, y, 12, false, 20});
+    SafeWalkResult const forced = ReplaySafeWalk(P(0, 0), P(1000, 0), wall, 12, true);
+    EXPECT_TRUE(forced.arrived);
+    EXPECT_GE(forced.touches, 1u);
+}
 }  // namespace

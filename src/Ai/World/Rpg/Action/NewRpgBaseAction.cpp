@@ -13,6 +13,7 @@
 #include "AutoWowOracleRuntime.h"
 #include "AutonomousRpgTravelPolicy.h"
 #include "BroadcastHelper.h"
+#include "CellImpl.h"
 #include "ChatHelper.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -23,6 +24,8 @@
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GossipDef.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
 #include "ItemTemplate.h"
@@ -630,6 +633,32 @@ bool NewRpgBaseAction::MoveFarToIntent(WorldPosition const& dest, bool questNoTe
     return false;
 }
 
+// AutoWow.Travel.Safe: idle hostile creatures near the bot, for chunk threat scoring (WalkingV2Policy
+// PathThreat). The scan covers the 120 yd chunk ring plus aggro reach; the count is order-independent.
+static std::vector<WalkingV2Policy::Mob> ScanTravelMobs(Player* bot)
+{
+    constexpr float kScanYards = 150.0f;
+    std::list<Creature*> found;
+    Acore::AllWorldObjectsInRange check(bot, kScanYards);
+    Acore::CreatureListSearcher<Acore::AllWorldObjectsInRange> searcher(bot, found, check);
+    Cell::VisitObjects(bot, searcher, kScanYards);
+    std::vector<WalkingV2Policy::Mob> mobs;
+    for (Creature* c : found)
+    {
+        if (!c || !c->IsInWorld() || !c->IsAlive() || c->IsInCombat() || c->IsCivilian() ||
+            c->HasReactState(REACT_PASSIVE) || !c->IsHostileTo(bot))
+            continue;
+        WalkingV2Policy::Mob m;
+        m.x = static_cast<std::int32_t>(std::floor(c->GetPositionX()));
+        m.y = static_cast<std::int32_t>(std::floor(c->GetPositionY()));
+        m.level = c->GetLevel();
+        m.elite = c->isElite();
+        m.aggroYards = static_cast<std::uint32_t>(std::max(0.0f, c->GetAggroRange(bot)));
+        mobs.push_back(m);
+    }
+    return mobs;
+}
+
 // AutoWow.Walking.V2 (WalkingV2Policy.h has the root cause). The committed intent of MoveFarToIntent with
 // two changes: a goal beyond the chunk ring is first walked by per-chunk mmap paths (goal-monotone
 // admission), and an interrupted segment is dropped and replanned from where the bot stands - only a
@@ -729,8 +758,57 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNo
             break;
     }
 
+    // 0s. AutoWow.Travel.Safe: the same fan, but each admissible chunk is scored by the idle hostile mobs
+    //     its mmap path passes (WalkingV2Policy PickChunk: first clear chunk, else the least threatened),
+    //     and a chunk path through a death-loop danger area is not admissible. OFF = step 0 unchanged.
+    if (sPlayerbotAIConfig.autoWowTravelSafe && WalkingV2Policy::UseChunks(here, goal))
+    {
+        Map* map = bot->GetMap();
+        std::vector<WalkingV2Policy::ChunkChoice> choices;
+        std::vector<G3D::Vector3> ends;
+        std::vector<WalkingV2Policy::Mob> mobs;
+        bool mobsScanned = false;
+        for (std::size_t k = 0; k < WalkingV2Policy::kChunkProbes; ++k)
+        {
+            Point const probe = WalkingV2Policy::ChunkProbe(here, goal, k);
+            float const px = static_cast<float>(probe.x);
+            float const py = static_cast<float>(probe.y);
+            float pz = map->GetHeight(bot->GetPhaseMask(), px, py, bot->GetPositionZ() + 50.0f, true, 100.0f);
+            if (!std::isfinite(pz) || pz <= INVALID_HEIGHT)
+                pz = bot->GetPositionZ();
+            PathGenerator path(bot);
+            path.SetSlopeCheck(true);
+            path.CalculatePath(px, py, pz);
+            choices.emplace_back();
+            ends.push_back(path.GetActualEndPosition());
+            if (path.GetPathType() & ~typeOk)
+                continue;
+            Point const candidate = MakePoint(bot->GetMapId(), ends.back().x, ends.back().y, ends.back().z);
+            std::vector<Point> points;
+            for (G3D::Vector3 const& v : path.GetPath())
+                points.push_back(MakePoint(bot->GetMapId(), v.x, v.y, v.z));
+            bool danger = dangerous(candidate);
+            // ponytail: every 4th path point (~16 yd) against the 60 yd danger circles, one breaker lock each.
+            for (std::size_t i = 0; !danger && i < points.size(); i += 4)
+                danger = dangerous(points[i]);
+            if (!WalkingV2Policy::AdmitChunk(here, candidate, goal, danger))
+                continue;
+            if (!mobsScanned)
+            {
+                mobs = ScanTravelMobs(bot);
+                mobsScanned = true;
+            }
+            choices.back() = {true, WalkingV2Policy::PathThreat(points, mobs, bot->GetLevel())};
+            if (choices.back().threat == 0)
+                break;  // PickChunk takes the first clear chunk
+        }
+        std::size_t const pick = WalkingV2Policy::PickChunk(choices);
+        if (pick != WalkingV2Policy::kNoChunk &&
+            walkSegment(ends[pick], MakePoint(bot->GetMapId(), ends[pick].x, ends[pick].y, ends[pick].z)))
+            return true;
+    }
     // 0. Chunked walk: path each chunk probe on its own, commit the first goal-monotone endpoint.
-    if (WalkingV2Policy::UseChunks(here, goal))
+    else if (WalkingV2Policy::UseChunks(here, goal))
     {
         Map* map = bot->GetMap();
         for (std::size_t k = 0; k < WalkingV2Policy::kChunkProbes; ++k)

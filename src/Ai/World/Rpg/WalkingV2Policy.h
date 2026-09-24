@@ -27,6 +27,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace WalkingV2Policy
 {
@@ -83,6 +84,87 @@ inline constexpr std::size_t kChunkProbes = kRotations.size() * 2;
     std::uint64_t const from = DistanceYards(here, goal);
     std::uint64_t const to = DistanceYards(candidate, goal);
     return to + kMinGainYards <= from;
+}
+
+// ---- AutoWow.Travel.Safe (default 0): aggro-aware chunk choice --------------------------------------
+// soak-s16-full-r1: the fan committed the first goal-monotone chunk even when its path ran through a
+// camp. With the flag on, each admissible chunk's mmap path (its point list) is scored by the idle
+// hostile mobs whose aggro radius (+kAggroMarginYards) reaches it; a clear chunk is taken in fan order,
+// else the least threatened one (earlier on ties). Same purity as above: integer yards, no floats.
+inline constexpr std::uint8_t kSafePolicyVersion = 1;
+inline constexpr std::uint32_t kAggroMarginYards = 5;
+
+// An idle hostile creature near the walk (the caller filters: alive, not in combat, hostile, not civilian).
+struct Mob
+{
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::uint32_t level = 0;
+    bool elite = false;
+    std::uint32_t aggroYards = 0;  // Creature::GetAggroRange(bot), truncated
+};
+
+// Worth walking around: at or above the bot's level, or any elite.
+[[nodiscard]] inline bool Threatens(Mob const& m, std::uint32_t botLevel) { return m.elite || m.level >= botLevel; }
+
+// Squared 2D distance (truncated) from (px, py) to the segment a-b.
+[[nodiscard]] inline std::int64_t Dist2ToSegment(std::int32_t px, std::int32_t py, Point const& a, Point const& b)
+{
+    std::int64_t const abx = std::int64_t(b.x) - a.x, aby = std::int64_t(b.y) - a.y;
+    std::int64_t const apx = std::int64_t(px) - a.x, apy = std::int64_t(py) - a.y;
+    std::int64_t const len2 = abx * abx + aby * aby;
+    std::int64_t const t = apx * abx + apy * aby;
+    if (len2 == 0 || t <= 0)
+        return apx * apx + apy * apy;
+    if (t >= len2)
+    {
+        std::int64_t const bpx = std::int64_t(px) - b.x, bpy = std::int64_t(py) - b.y;
+        return bpx * bpx + bpy * bpy;
+    }
+    std::int64_t const cross = apx * aby - apy * abx;  // |cross| <= |ap| * |ab|: no overflow on map coords
+    return cross * cross / len2;
+}
+
+// Threatening mobs whose aggro radius (+kAggroMarginYards) reaches the path polyline (one count per mob).
+[[nodiscard]] inline std::uint32_t PathThreat(std::vector<Point> const& path, std::vector<Mob> const& mobs,
+                                              std::uint32_t botLevel)
+{
+    std::uint32_t n = 0;
+    for (Mob const& m : mobs)
+    {
+        if (!Threatens(m, botLevel) || path.empty())
+            continue;
+        std::int64_t const r = std::int64_t(m.aggroYards) + kAggroMarginYards;
+        bool hit = Dist2ToSegment(m.x, m.y, path.front(), path.front()) <= r * r;
+        for (std::size_t i = 1; !hit && i < path.size(); ++i)
+            hit = Dist2ToSegment(m.x, m.y, path[i - 1], path[i]) <= r * r;
+        n += hit ? 1 : 0;
+    }
+    return n;
+}
+
+struct ChunkChoice
+{
+    bool admissible = false;  // AdmitChunk, and no death-loop danger along its path
+    std::uint32_t threat = 0;
+};
+inline constexpr std::size_t kNoChunk = static_cast<std::size_t>(-1);
+
+// Fan order: the first admissible chunk with no threat, else the least threatened admissible one
+// (earlier on ties); kNoChunk when none is admissible. The caller may stop probing at the first clear one.
+[[nodiscard]] inline std::size_t PickChunk(std::vector<ChunkChoice> const& choices)
+{
+    std::size_t best = kNoChunk;
+    for (std::size_t i = 0; i < choices.size(); ++i)
+    {
+        if (!choices[i].admissible)
+            continue;
+        if (choices[i].threat == 0)
+            return i;
+        if (best == kNoChunk || choices[i].threat < choices[best].threat)
+            best = i;
+    }
+    return best;
 }
 }  // namespace WalkingV2Policy
 
