@@ -68,6 +68,7 @@ struct BotState
     bool spiritHealer = false;             // escalated death: spirit healer instead of corpse run
     bool relocate = false;                 // one relocation attempt pending
     std::uint32_t deferQuest = 0;          // Oracle-managed quest to defer at the next Oracle pass
+    bool restPending = false;              // V2: spirit-healer res taken, full rest before any pull
 };
 
 // Wire-stable ledger reason names; append only.
@@ -187,8 +188,9 @@ inline Decision Evaluate(Params const& p, std::uint32_t clusterDeaths, std::uint
 
 // Marks a danger area until untilMs. Reuses the slot of an area overlapping the center (same map,
 // center within that area's radius), else the first free or expired slot, else the one expiring
-// first (lowest index on ties).
-inline void MarkDanger(BotState& s, DeathSample const& center, std::uint32_t radius, std::uint64_t nowMs,
+// first (lowest index on ties). True when a live overlapping area was reused: a repeat escalation in
+// the same area (AutoWow.DeathLoop.V2 relocates then even when the zone bracket fits).
+inline bool MarkDanger(BotState& s, DeathSample const& center, std::uint32_t radius, std::uint64_t nowMs,
                        std::uint64_t untilMs)
 {
     std::size_t slot = kMaxDangerAreas;
@@ -208,9 +210,11 @@ inline void MarkDanger(BotState& s, DeathSample const& center, std::uint32_t rad
         if (a.untilMs < s.danger[soonest].untilMs)
             soonest = k;
     }
+    bool const repeat = slot != kMaxDangerAreas;
     if (slot == kMaxDangerAreas)
         slot = free != kMaxDangerAreas ? free : soonest;
     s.danger[slot] = DangerArea{untilMs, center.map, center.x, center.y, radius};
+    return repeat;
 }
 
 inline bool IsDangerous(BotState const& s, std::uint32_t map, std::int32_t x, std::int32_t y, std::uint64_t nowMs)
@@ -251,6 +255,7 @@ namespace detail
 {
 inline bool gEnabled = false;
 inline bool gEscape = false;
+inline bool gV2 = false;
 inline Params gParams;
 }
 inline bool Enabled() { return detail::gEnabled; }
@@ -258,6 +263,15 @@ inline bool Enabled() { return detail::gEnabled; }
 // the relocation (and an over-level zone, even without a death) becomes a zone-progression trip to the
 // nearest level-appropriate hub (ZoneProgression PickEscapeRoute), ledger zone_move reason death_loop.
 inline bool EscapeEnabled() { return detail::gEnabled && detail::gEscape; }
+
+// AutoWow.DeathLoop.V2 (default 0; needs Enable; FAIR_FIGHT_DEATHS_S14 cause 3):
+//   (a) GrindTargetValue skips proactive targets standing in the bot's live danger areas (self-defence
+//       unchanged; before, only travel/quest POIs were filtered);
+//   (b) the second escalation in the same live area relocates even when the zone bracket fits; with
+//       EscapeViaZoneProgression the hub is the lowest-band level fit (ZoneProgression PickLowEscapeRoute);
+//   (c) after the spirit-healer res of an escalated death the bot rests fully (AutoWowRestGate thresholds
+//       and no Resurrection Sickness) before any proactive pull, whether or not the rest gate flag is on.
+inline bool V2Enabled() { return detail::gEnabled && detail::gV2; }
 
 void LoadConfig();
 void AddScripts();
@@ -270,6 +284,9 @@ bool TakeRelocation(std::uint32_t botGuid);
 std::uint32_t RecentDeaths(std::uint32_t botGuid);
 // Consumes the pending Oracle deferral when it names questId.
 bool TakeQuestDeferral(std::uint32_t botGuid, std::uint32_t questId);
+// V2 (c): forced rest pending after a spirit-healer res; cleared by the rest gate once rested.
+bool RestPending(std::uint32_t botGuid);
+void ClearRestPending(std::uint32_t botGuid);
 // Non-Oracle deferral: lowPriorityQuest + ledger `deferred` reason `death_loop_area`. Bot thread only.
 void DeferQuest(Player* bot, std::uint32_t questId);
 }  // namespace AutoWowDeathLoop

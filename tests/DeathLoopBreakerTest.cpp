@@ -170,6 +170,27 @@ TEST(DeathLoopBreaker, EscapePortalAfterPortalDeaths)
     EXPECT_EQ(Params{}.escapePortalDeaths, 3U);
 }
 
+// AutoWow.DeathLoop.V2 (b), soak-s14-full-r1: 20 escalations, 1 relocation - the zone bracket fit, so the
+// bot rezzed at the same graveyard (62964: DeathLoop count 5, 6, 7 in one 60 yd circle, relocate=false).
+TEST(DeathLoopBreaker, MarkDangerReportsARepeatInTheSameLiveArea)
+{
+    BotState s;
+    EXPECT_FALSE(MarkDanger(s, At(0, -5347, -2850), 60, 1000, 1000 + 3600000));  // first escalation
+    EXPECT_TRUE(MarkDanger(s, At(0, -5330, -2840), 60, 2000, 2000 + 3600000));   // same circle
+    EXPECT_FALSE(MarkDanger(s, At(0, -5000, -2850), 60, 3000, 3000 + 3600000));  // elsewhere
+    EXPECT_FALSE(MarkDanger(s, At(0, -5347, -2850, 1), 60, 3000, 3000 + 3600000));  // other map
+    // Once the first area expired, dying there again is a first escalation again.
+    EXPECT_FALSE(MarkDanger(s, At(0, -5347, -2850), 60, 2000 + 3600000, 2000 + 7200000));
+}
+
+TEST(DeathLoopBreaker, V2DefaultsOff)
+{
+    BotState const s;
+    EXPECT_FALSE(s.restPending);
+    EXPECT_FALSE(V2Enabled());
+    EXPECT_FALSE(RestPending(62964));
+}
+
 TEST(DeathLoopBreaker, RuntimeQueriesAreInertWhenDisabled)
 {
     ASSERT_FALSE(Enabled());

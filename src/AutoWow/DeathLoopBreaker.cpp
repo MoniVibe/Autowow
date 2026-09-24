@@ -115,7 +115,13 @@ void HandleDeath(Player* bot)
         s->spiritHealer = true;
         s->relocate = decision.relocate;
         s->deferQuest = 0;
-        MarkDanger(*s, center, p.radiusYards, nowMs, nowMs + p.dangerCooldownMs);
+        bool const repeat = MarkDanger(*s, center, p.radiusYards, nowMs, nowMs + p.dangerCooldownMs);
+        // AutoWow.DeathLoop.V2 (b): a second escalation in the same live area relocates in any bracket.
+        if (V2Enabled() && repeat && !decision.relocate)
+        {
+            decision.relocate = true;
+            s->relocate = true;
+        }
     }
 
     // The quest the bot was working when it died there. Oracle-managed quests are deferred by the Oracle
@@ -162,6 +168,25 @@ void LoadConfig()
     p.relocateLevelMargin = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.RelocateLevelMargin", 5);
     detail::gEscape = sConfigMgr->GetOption<bool>("AutoWow.DeathLoop.EscapeViaZoneProgression", false);
     p.escapePortalDeaths = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.EscapePortalDeaths", 3);
+    detail::gV2 = sConfigMgr->GetOption<bool>("AutoWow.DeathLoop.V2", false);
+}
+
+bool RestPending(std::uint32_t botGuid)
+{
+    if (!V2Enabled())
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState const* s = Find(botGuid);
+    return s && s->restPending;
+}
+
+void ClearRestPending(std::uint32_t botGuid)
+{
+    if (!V2Enabled())
+        return;
+    std::lock_guard<std::mutex> guard(gLock);
+    if (BotState* s = Find(botGuid))
+        s->restPending = false;
 }
 
 std::uint32_t RecentDeaths(std::uint32_t botGuid)
@@ -269,7 +294,12 @@ public:
             return;
         std::lock_guard<std::mutex> guard(gLock);
         if (BotState* s = Find(GuidOf(player)))
+        {
+            // AutoWow.DeathLoop.V2 (c): the escalated death took the spirit healer: rest before pulling.
+            if (V2Enabled() && s->spiritHealer)
+                s->restPending = true;
             s->spiritHealer = false;
+        }
     }
 
     void OnPlayerLogout(Player* player) override

@@ -8,6 +8,7 @@
 
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "DeathLoopBreaker.h"
 #include "RestGate.h"
 
 void UseFoodStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -26,7 +27,8 @@ void UseFoodStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 
     // AutoWow.Survival.RestGate (default 0): a solo independent bot eats / drinks up to the pull thresholds
     // (above the New RPG moves at 3.0). Without food it just regenerates while the pull hold lasts.
-    if (AutoWowRestGate::Enabled())
+    // AutoWow.DeathLoop.V2 uses the same triggers for its forced rest after a spirit-healer res.
+    if (AutoWowRestGate::Enabled() || AutoWowDeathLoop::V2Enabled())
     {
         triggers.push_back(new TriggerNode("rest gate health", { NextAction("food", 4.1f) }));
         triggers.push_back(new TriggerNode("rest gate mana", { NextAction("drink", 4.1f) }));

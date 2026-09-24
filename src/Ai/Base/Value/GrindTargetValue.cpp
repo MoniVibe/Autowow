@@ -13,6 +13,7 @@
 #include "NewRpgInfo.h"
 #include "Playerbots.h"
 #include "AutoWowAcceptance.h"
+#include "DeathLoopBreaker.h"
 #include "PullLevelCap.h"
 #include "QuestObjectiveContext.h"
 #include "ReputationMgr.h"
@@ -99,7 +100,8 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         return nullptr;
     // AutoWow.Survival.RestGate (default 0), every solo independent bot: the same hold below MinHpPct /
     // MinManaPct, and while Resurrection Sickness lasts. Self-defence returned above.
-    if (AutoWowRestGate::Enabled() && AutoWowRestGate::HoldProactivePull(botAI))
+    // AutoWow.DeathLoop.V2: the same hold forced after an escalated death's spirit-healer res.
+    if ((AutoWowRestGate::Enabled() || AutoWowDeathLoop::V2Enabled()) && AutoWowRestGate::HoldProactivePull(botAI))
         return nullptr;
     // Same arm: pack-risk pull choice (hard reject + risk band sort key / distance penalty).
     bool const packRisk = AutoWowTactics::Enabled() && AutoWowTactics::PullRiskActive(botAI);
@@ -107,6 +109,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     // AutoWow.Survival.PullLevelCap (default 0): solo independent bots only.
     bool const pullCap = AutoWowPullCap::Enabled() && botAI->IsAutoWowIndependentParty() && !bot->InBattleground() &&
                          (!group || group->GetMembersCount() <= 1);
+    // AutoWow.DeathLoop.V2 (a): no proactive target inside one of the bot's live danger areas.
+    // ponytail: one breaker lock per candidate (tens per selection); snapshot the areas if it ever shows.
+    bool const dangerSkip = AutoWowDeathLoop::V2Enabled();
+    std::uint32_t const botGuid = static_cast<std::uint32_t>(bot->GetGUID().GetCounter());
 
     // A completed/transitioning/blocked Director quest has no objective lock, but it still owns the
     // bot. Do not let legacy grind proactively acquire a fresh mob while the phase machine is walking
@@ -240,6 +246,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
                     isElite = true;
                 }
+
+            if (dangerSkip &&
+                AutoWowDeathLoop::IsDangerous(botGuid, unit->GetMapId(), unit->GetPositionX(), unit->GetPositionY()))
+                continue;
 
             // Every candidate here is an objective creature: the cap's quest exception applies.
             if (pullCap && AutoWowPullCap::OverCap(AutoWowPullCap::Get(), bot->GetLevel(), unit->GetLevel(), isElite) &&
@@ -411,6 +421,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             if (CreatureTemplate const* CreatureTemplate = creature->GetCreatureTemplate())
                 if (CreatureTemplate->rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, "can fight elite"))
                     continue;
+
+        if (dangerSkip &&
+            AutoWowDeathLoop::IsDangerous(botGuid, unit->GetMapId(), unit->GetPositionX(), unit->GetPositionY()))
+            continue;
 
         if (pullCap)
             if (Creature* creature = unit->ToCreature())

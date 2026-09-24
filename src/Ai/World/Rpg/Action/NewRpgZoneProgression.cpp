@@ -420,9 +420,14 @@ static bool StartEscape(Player* bot, AutoWowZoneProgression::BotState& s, AutoWo
         return true;
     }
     std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
-    Route const* hub = PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(),
-                                       static_cast<std::int32_t>(std::floor(bot->GetPositionX())),
-                                       static_cast<std::int32_t>(std::floor(bot->GetPositionY())));
+    std::int32_t const bx = static_cast<std::int32_t>(std::floor(bot->GetPositionX()));
+    std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
+    // AutoWow.DeathLoop.V2: back toward the lowest level band that fits, not the nearest same-level hub.
+    Route const* hub = AutoWowDeathLoop::V2Enabled()
+                           ? PickLowEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(),
+                                                bot->GetMapId(), bx, by)
+                           : PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(),
+                                             bot->GetMapId(), bx, by);
     if (!hub)
         return false;
     if (s.phase != Phase::None)

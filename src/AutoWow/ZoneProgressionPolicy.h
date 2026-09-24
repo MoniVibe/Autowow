@@ -174,6 +174,43 @@ inline std::vector<Route> DefaultRoutes()
     return best;
 }
 
+// AutoWow.DeathLoop.V2: the same candidates as PickEscapeRoute (team, band holds `level`, not the bot's
+// zone) but the lowest level band first (minLevel, then maxLevel) - back toward easier zones rather than
+// the nearest same-level hub - then hubs on the bot's map by squared distance, then table order.
+[[nodiscard]] inline Route const* PickLowEscapeRoute(std::vector<Route> const& routes, std::uint32_t team,
+                                                     std::uint32_t level, std::uint32_t zone, std::uint32_t map,
+                                                     std::int32_t x, std::int32_t y)
+{
+    Route const* best = nullptr;
+    bool bestSameMap = false;
+    std::int64_t bestDist2 = 0;
+    for (Route const& r : routes)
+    {
+        if (r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+            continue;
+        bool const sameMap = r.map == map;
+        std::int64_t const dx = std::int64_t(r.x) - x;
+        std::int64_t const dy = std::int64_t(r.y) - y;
+        std::int64_t const dist2 = sameMap ? dx * dx + dy * dy : 0;
+        bool take = !best;
+        if (!take && r.minLevel != best->minLevel)
+            take = r.minLevel < best->minLevel;
+        else if (!take && r.maxLevel != best->maxLevel)
+            take = r.maxLevel < best->maxLevel;
+        else if (!take && sameMap != bestSameMap)
+            take = sameMap;
+        else if (!take)
+            take = dist2 < bestDist2;
+        if (take)
+        {
+            best = &r;
+            bestSameMap = sameMap;
+            bestDist2 = dist2;
+        }
+    }
+    return best;
+}
+
 // Wire-stable ledger reason names; append only.
 enum class Trigger : std::uint8_t
 {

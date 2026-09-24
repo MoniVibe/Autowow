@@ -195,6 +195,32 @@ TEST(ZoneProgression, EscapeHubIsNearestLevelFitOnTheBotsMap)
     EXPECT_EQ(PickEscapeRoute(routes, 1, 31, 10, 0, -10603, 292), nullptr);
 }
 
+// AutoWow.DeathLoop.V2: lowest fitting band first. soak-s14-full-r1: 62964 (alliance L10) died 3 times in
+// one circle at Loch Modan (-5347,-2850) with relocate=false.
+TEST(ZoneProgression, LowEscapeHubPrefersTheLowestFittingBand)
+{
+    std::vector<Route> const routes = DefaultRoutes();
+    // L10 in Loch Modan: Westfall (9-14) beats Darkshore / Bloodmyst (9-18); never Loch Modan itself.
+    Route const* r = PickLowEscapeRoute(routes, 1, 10, 38, 0, -5347, -2850);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 40U);
+    // L16: Westfall no longer fits; Redridge (15-20) before Loch Modan / Darkshore / Bloodmyst (9-18).
+    r = PickLowEscapeRoute(routes, 1, 16, 10, 0, -10603, 292);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 38U);  // 9-18 bands start lower than Redridge's 15: Loch Modan, nearest of them on map 0
+    // Same band, same map: the nearer hub (PickEscapeRoute's order).
+    std::vector<Route> const two = {{1, 0, 501, 9, 14, 0, 1000, 0, 0, 1, false},
+                                    {1, 0, 502, 9, 14, 0, 100, 0, 0, 2, false}};
+    r = PickLowEscapeRoute(two, 1, 10, 7, 0, 0, 0);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 502U);
+    // Horde L11 in the Barrens: no other hub on Kalimdor fits; Silverpine (9-18) before Ghostlands (9-20).
+    r = PickLowEscapeRoute(routes, 2, 11, 17, 1, -727, -2542);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 130U);
+    EXPECT_EQ(PickLowEscapeRoute(routes, 1, 31, 10, 0, -10603, 292), nullptr);
+}
+
 TEST(ZoneProgression, BeginEscapeStartsADeathLoopTrip)
 {
     std::vector<Route> const routes = DefaultRoutes();

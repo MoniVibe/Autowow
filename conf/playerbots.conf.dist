@@ -2412,6 +2412,13 @@ AutoWow.DeathLoop.RelocateLevelMargin = 5
 # PortalAfterMs / MaxReissues fallback still applies). Ledger `zone_move` reason death_loop.
 AutoWow.DeathLoop.EscapeViaZoneProgression = 0
 AutoWow.DeathLoop.EscapePortalDeaths = 3
+# V2 (default 0; needs Enable): (a) grind / quest-kill target picks skip creatures standing in the bot's
+# live danger areas (self-defence unchanged); (b) the second escalation in the same live area relocates
+# even when the zone bracket fits (with EscapeViaZoneProgression: to the level-fitting hub of the lowest
+# band, then nearest on the bot's map); (c) after the spirit-healer res of an escalated death the bot takes
+# no proactive pull until hp/mana reach AutoWow.Survival.RestGate.MinHpPct/MinManaPct and Resurrection
+# Sickness is gone (eats/drinks what it carries), whether or not AutoWow.Survival.RestGate is on.
+AutoWow.DeathLoop.V2 = 0
 
 # Pull level cap for solo independent bots (PullLevelCap.h; default 0). Grind and quest-objective target
 # picks skip creatures whose level (+ElitePenalty for elites) is more than MaxLevelAbove above the bot,

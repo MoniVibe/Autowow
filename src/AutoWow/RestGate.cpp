@@ -7,6 +7,7 @@
 #include "RestGate.h"
 
 #include "Config.h"
+#include "DeathLoopBreaker.h"
 #include "Group.h"
 #include "Map.h"
 #include "Player.h"
@@ -19,10 +20,19 @@ namespace
 {
 std::uint32_t Pct(std::uint64_t cur, std::uint64_t max) { return max ? static_cast<std::uint32_t>(cur * 100 / max) : 100; }
 
-Player* EligibleBot(PlayerbotAI* botAI)
+// AutoWow.DeathLoop.V2 (c): forced rest pending for this bot (false with V2 off).
+bool Forced(PlayerbotAI* botAI)
 {
     Player* bot = botAI ? botAI->GetBot() : nullptr;
-    if (!bot || !botAI->IsAutoWowIndependentParty() || !bot->IsAlive() || bot->InBattleground())
+    return bot && AutoWowDeathLoop::V2Enabled() &&
+           AutoWowDeathLoop::RestPending(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
+}
+
+// forced: any bot (the death-loop breaker only escalates autonomous ones), else independent party only.
+Player* EligibleBot(PlayerbotAI* botAI, bool forced)
+{
+    Player* bot = botAI ? botAI->GetBot() : nullptr;
+    if (!bot || (!forced && !botAI->IsAutoWowIndependentParty()) || !bot->IsAlive() || bot->InBattleground())
         return nullptr;
     Group const* group = bot->GetGroup();
     if (group && group->GetMembersCount() > 1)
@@ -46,19 +56,28 @@ void LoadConfig()
 
 bool HoldProactivePull(PlayerbotAI* botAI)
 {
-    Player* bot = Enabled() ? EligibleBot(botAI) : nullptr;
-    return bot && Hold(detail::gParams, HpPct(bot), ManaPct(bot), UsesMana(bot), bot->HasAura(kResurrectionSicknessAura));
+    bool const forced = Forced(botAI);
+    Player* bot = Enabled() || forced ? EligibleBot(botAI, forced) : nullptr;
+    if (!bot)
+        return false;
+    bool const hold =
+        Hold(detail::gParams, HpPct(bot), ManaPct(bot), UsesMana(bot), bot->HasAura(kResurrectionSicknessAura));
+    if (forced && !hold)
+        AutoWowDeathLoop::ClearRestPending(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
+    return hold;
 }
 
 bool NeedsRestHealth(PlayerbotAI* botAI)
 {
-    Player* bot = Enabled() ? EligibleBot(botAI) : nullptr;
+    bool const forced = Forced(botAI);
+    Player* bot = Enabled() || forced ? EligibleBot(botAI, forced) : nullptr;
     return bot && !bot->IsInCombat() && NeedHealth(detail::gParams, HpPct(bot));
 }
 
 bool NeedsRestMana(PlayerbotAI* botAI)
 {
-    Player* bot = Enabled() ? EligibleBot(botAI) : nullptr;
+    bool const forced = Forced(botAI);
+    Player* bot = Enabled() || forced ? EligibleBot(botAI, forced) : nullptr;
     return bot && !bot->IsInCombat() && NeedMana(detail::gParams, ManaPct(bot), UsesMana(bot));
 }
 }  // namespace AutoWowRestGate

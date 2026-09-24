@@ -55,7 +55,9 @@ inline Params gParams;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
 
-// Reads AutoWow.Survival.RestGate.*. Called once at world init.
+// Reads AutoWow.Survival.RestGate.*. Called once at world init. The thresholds are also the forced
+// rest of AutoWow.DeathLoop.V2 (after a spirit-healer res), which applies to any autonomous bot the
+// death-loop breaker escalated, with or without this flag; it clears itself once rested.
 void LoadConfig();
 bool HoldProactivePull(PlayerbotAI* botAI);
 bool NeedsRestHealth(PlayerbotAI* botAI);
