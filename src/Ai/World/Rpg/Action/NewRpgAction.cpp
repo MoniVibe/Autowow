@@ -371,6 +371,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     if (AutoWowDeathLoop::Enabled() && status != RPG_TRAVEL_FLIGHT && bot->IsAlive() &&
         AutoWowDeathLoop::TakeRelocation(bot->GetGUID().GetCounter()))
     {
+        // AutoWow.DeathLoop.EscapeViaZoneProgression (default 0): a zone-progression trip to the nearest
+        // level hub instead (soak-s13-full-r1: the flight relocation never got a L13 out of Duskwood).
+        if (AutoWowDeathLoop::EscapeEnabled() && AutoWowZoneProgression::Enabled() && DeathLoopEscape())
+            return true;
         uint32 flightMasterEntry = 0;
         WorldPosition flightMasterPos;
         std::vector<uint32> path;

@@ -16,6 +16,7 @@
 #include "AutoWowQuestLedger.h"
 #include "Config.h"
 #include "Creature.h"
+#include "DeathLoopBreaker.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
 #include "Log.h"
@@ -360,6 +361,99 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
     return true;
 }
 
+// Ledger `zone_move` + log line for a trip that arrived or was abandoned.
+static void EmitMove(Player* bot, AutoWowZoneProgression::BotState const& s, AutoWowTransports::ChainState& chain,
+                     std::uint64_t now, bool arrived, bool transports)
+{
+    using namespace AutoWowZoneProgression;
+    if (AutoWowQuestLedger::Enabled() && transports)
+    {
+        // AutoWow.Transports: append the per-leg log (fields append-only, event id unchanged).
+        chain.legs.Close(now);
+        AutoWowQuestLedger::EmitZoneMove(bot, TriggerName(s.trigger),
+            LedgerFields(s.fromZone, s.route.to, now >= s.startMs ? now - s.startMs : 0, arrived, s.mode) +
+                AutoWowTransports::LegsField(chain.legs));
+    }
+    else if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::EmitZoneMove(bot, TriggerName(s.trigger),
+            LedgerFields(s.fromZone, s.route.to, now >= s.startMs ? now - s.startMs : 0, arrived, s.mode));
+    LOG_INFO("playerbots", "[ZoneProgression] bot={} {} from={} to={} lvl={} trigger={} mode={} ms={}",
+             bot->GetName(), arrived ? "arrived" : "gave_up", s.fromZone, s.route.to, bot->GetLevel(),
+             TriggerName(s.trigger), ModeName(s.mode), now - s.startMs);
+}
+
+// Independent, open-world, idle-able bot that zone progression may move.
+static bool Movable(Player* bot, PlayerbotAI* botAI)
+{
+    uint32 const guid = bot->GetGUID().GetCounter();
+    if (!bot->IsAlive() || bot->IsInFlight() || bot->IsInCombat() || !botAI->IsAutoWowIndependentParty() ||
+        AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return false;
+    // AutoWow.Errands: a town run under way owns the bot (flag off: never true).
+    return !(AutoWowErrands::Enabled() && AutoWowErrands::Active(guid));
+}
+
+// AutoWow.DeathLoop.EscapeViaZoneProgression: start a death_loop trip to the nearest level-appropriate hub
+// (abandoning, with its zone_move, any trip under way), or move a running escape onto the portal leg once
+// the bot has EscapePortalDeaths recent deaths (Transports mode auto/portal only). False when no hub fits.
+static bool StartEscape(Player* bot, AutoWowZoneProgression::BotState& s, AutoWowTransports::ChainState& chain,
+                        std::uint64_t now, bool transports)
+{
+    using namespace AutoWowZoneProgression;
+    using AutoWowZoneProgression::Mode;
+    using AutoWowZoneProgression::Phase;
+    using AutoWowZoneProgression::Route;
+    using AutoWowZoneProgression::Trigger;
+    std::uint32_t const deaths = AutoWowDeathLoop::RecentDeaths(bot->GetGUID().GetCounter());
+    bool const portal = transports &&
+                        AutoWowTransports::detail::gParams.mode != AutoWowTransports::TransportMode::Real &&
+                        AutoWowDeathLoop::EscapePortalNow(deaths, AutoWowDeathLoop::detail::gParams.escapePortalDeaths);
+    if (s.phase == Phase::Travel && s.trigger == Trigger::DeathLoop)
+    {
+        if (portal && s.mode != Mode::Portal)
+        {
+            LOG_INFO("playerbots", "[ZoneProgression] bot={} escape to={} portal deaths={}", bot->GetName(),
+                     s.route.to, deaths);
+            s.mode = Mode::Portal;
+            s.reissues = 0;
+        }
+        return true;
+    }
+    std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
+    Route const* hub = PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(),
+                                       static_cast<std::int32_t>(std::floor(bot->GetPositionX())),
+                                       static_cast<std::int32_t>(std::floor(bot->GetPositionY())));
+    if (!hub)
+        return false;
+    if (s.phase != Phase::None)
+        EmitMove(bot, s, chain, now, false, transports);
+    BeginEscape(s, *hub, bot->GetZoneId(), now, portal);
+    if (transports)
+        chain = AutoWowTransports::ChainState{};
+    LOG_INFO("playerbots", "[ZoneProgression] bot={} escape from={} to={} lvl={} deaths={} mode={}", bot->GetName(),
+             s.fromZone, s.route.to, bot->GetLevel(), deaths, ModeName(s.mode));
+    return true;
+}
+
+bool NewRpgBaseAction::DeathLoopEscape()
+{
+    uint32 const guid = bot->GetGUID().GetCounter();
+    if (!Movable(bot, botAI))
+        return false;
+    std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+    AutoWowZoneProgression::BotState s = AutoWowZoneProgression::LoadState(guid);
+    bool const transports = AutoWowTransports::Enabled();
+    AutoWowTransports::ChainState chain =
+        transports ? AutoWowZoneProgression::LoadChain(guid) : AutoWowTransports::ChainState{};
+    if (!StartEscape(bot, s, chain, now, transports))
+        return false;
+    AutoWowZoneProgression::StoreState(guid, s);
+    if (transports)
+        AutoWowZoneProgression::StoreChain(guid, chain);
+    botAI->rpgInfo.ChangeToIdle();
+    return true;
+}
+
 bool NewRpgBaseAction::ZoneProgressionStep()
 {
     using namespace AutoWowZoneProgression;
@@ -370,11 +464,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     using AutoWowZoneProgression::Route;
     using AutoWowZoneProgression::Trigger;
     uint32 const guid = bot->GetGUID().GetCounter();
-    if (!bot->IsAlive() || bot->IsInFlight() || bot->IsInCombat() || !botAI->IsAutoWowIndependentParty() ||
-        AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable())
-        return false;
-    // AutoWow.Errands: a town run under way owns the bot (flag off: never true).
-    if (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid))
+    if (!Movable(bot, botAI))
         return false;
 
     Params const& p = detail::gParams;
@@ -385,23 +475,20 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     bool const transports = AutoWowTransports::Enabled();
     AutoWowTransports::ChainState chain = transports ? LoadChain(guid) : AutoWowTransports::ChainState{};
 
-    auto finish = [&](bool arrived)
+    auto finish = [&](bool arrived) { EmitMove(bot, s, chain, now, arrived, transports); };
+
+    // AutoWow.DeathLoop.EscapeViaZoneProgression: a bot whose zone bracket starts more than
+    // RelocateLevelMargin above it escapes to the nearest level hub even without an escalated death.
+    if (AutoWowDeathLoop::EscapeEnabled() && s.phase == Phase::None && now >= s.nextCheckMs &&
+        now >= s.cooldownUntilMs &&
+        AutoWowDeathLoop::Overshoot(sTravelMgr.GetZoneBracketLow(bot->GetZoneId()), bot->GetLevel(),
+                                    AutoWowDeathLoop::detail::gParams.relocateLevelMargin) &&
+        StartEscape(bot, s, chain, now, transports))
     {
-        if (AutoWowQuestLedger::Enabled() && transports)
-        {
-            // AutoWow.Transports: append the per-leg log (fields append-only, event id unchanged).
-            chain.legs.Close(now);
-            AutoWowQuestLedger::EmitZoneMove(bot, TriggerName(s.trigger),
-                LedgerFields(s.fromZone, s.route.to, now >= s.startMs ? now - s.startMs : 0, arrived, s.mode) +
-                    AutoWowTransports::LegsField(chain.legs));
-        }
-        else if (AutoWowQuestLedger::Enabled())
-            AutoWowQuestLedger::EmitZoneMove(bot, TriggerName(s.trigger),
-                LedgerFields(s.fromZone, s.route.to, now >= s.startMs ? now - s.startMs : 0, arrived, s.mode));
-        LOG_INFO("playerbots", "[ZoneProgression] bot={} {} from={} to={} lvl={} trigger={} mode={} ms={}",
-                 bot->GetName(), arrived ? "arrived" : "gave_up", s.fromZone, s.route.to, bot->GetLevel(),
-                 TriggerName(s.trigger), ModeName(s.mode), now - s.startMs);
-    };
+        StoreState(guid, s);
+        if (transports)
+            StoreChain(guid, chain);
+    }
 
     if (s.phase == Phase::None)
     {

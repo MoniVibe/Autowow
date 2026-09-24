@@ -168,6 +168,67 @@ TEST(ZoneProgression, PortalFallbackDecision)
     EXPECT_STREQ(ModeName(Mode::Portal), "portal");
 }
 
+// soak-s13-full-r1: bot 62957 (alliance L13) died 61 times at Duskwood (-10603,292); no route leaves zone 10.
+TEST(ZoneProgression, EscapeHubIsNearestLevelFitOnTheBotsMap)
+{
+    std::vector<Route> const routes = DefaultRoutes();
+    Route const* r = PickEscapeRoute(routes, 1, 13, 10, 0, -10603, 292);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 40U);  // Westfall, Sentinel Hill
+    // Standing in Westfall already: the next nearest level fit on map 0 (Loch Modan), never its own zone.
+    r = PickEscapeRoute(routes, 1, 13, 40, 0, -10653, 1166);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 38U);
+    // L16: Westfall's band (9-14) no longer fits; Redridge (band 15-20) is nearer than Loch Modan.
+    r = PickEscapeRoute(routes, 1, 16, 10, 0, -10603, 292);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 44U);
+    // Horde L12 on Kalimdor: the Barrens (Crossroads).
+    r = PickEscapeRoute(routes, 2, 12, 406, 1, 900, 900);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 17U);
+    // No hub on the bot's map: first level fit in table order (a flight/portal leg must carry it).
+    r = PickEscapeRoute(routes, 1, 13, 65, 571, 0, 0);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->to, 40U);
+    // No band holds the level: none (caller keeps the flight relocation).
+    EXPECT_EQ(PickEscapeRoute(routes, 1, 31, 10, 0, -10603, 292), nullptr);
+}
+
+TEST(ZoneProgression, BeginEscapeStartsADeathLoopTrip)
+{
+    std::vector<Route> const routes = DefaultRoutes();
+    Route const* hub = PickEscapeRoute(routes, 1, 13, 10, 0, -10603, 292);
+    ASSERT_NE(hub, nullptr);
+    BotState s;
+    s.nextCheckMs = 777;
+    s.cooldownUntilMs = 888;
+    s.reissues = 5;
+    s.roadJoined = true;
+    s.wp = 2;
+    BeginEscape(s, *hub, 10, 5000, true);
+    EXPECT_EQ(s.phase, Phase::Travel);
+    EXPECT_EQ(s.trigger, Trigger::DeathLoop);
+    EXPECT_EQ(s.fromZone, 10U);
+    EXPECT_EQ(s.route.from, 10U);  // no Elwynn road: straight to the hub
+    EXPECT_EQ(s.route.to, 40U);
+    EXPECT_EQ(s.startMs, 5000U);
+    EXPECT_EQ(s.reissues, 0U);
+    EXPECT_EQ(s.mode, Mode::Portal);  // the Travel phase portals at once (reissues <= MaxReissues)
+    EXPECT_FALSE(s.roadJoined);
+    EXPECT_EQ(s.wp, 0U);
+    EXPECT_EQ(s.nextCheckMs, 777U);
+    EXPECT_EQ(s.cooldownUntilMs, 888U);
+    EXPECT_TRUE(RoadFor(DefaultRoads(), s.route.from, s.route.to).empty());
+    BeginEscape(s, *hub, 10, 6000, false);
+    EXPECT_EQ(s.mode, Mode::Unreachable);  // flight / walk choice, then the ordinary portal fallback
+    // Walk leg of an escape still falls back to the portal after PortalAfterMs.
+    EXPECT_TRUE(PortalFallback(true, Mode::Walk, false, 0, 8, 1200000, 1200000));
+    EXPECT_STREQ(TriggerName(Trigger::DeathLoop), "death_loop");
+    EXPECT_EQ(LedgerFields(10, 40, 1654, true, Mode::Portal),
+              ",\"from\":10,\"to\":40,\"travel_ms\":1654,\"arrived\":true,\"mode\":\"portal\"");
+}
+
 TEST(ZoneProgression, LedgerFieldsAreStable)
 {
     EXPECT_EQ(LedgerFields(12, 40, 123456, true, Mode::Walk),

@@ -43,9 +43,10 @@
 //     outcome (0 win, 1 died, 2 escaped, 3 died after escape, 4 no kill), hp0, hp1, mp0, mp1 (pct),
 //     mana_spent, hp_lost (absolute), casts, wand_ms, cc_n, shield_n, gap_ms, gap_rest_ms, pull_risk.
 //   - `zone_move` (AutoWow.ZoneProgression.Enable): one line per finished or abandoned zone graduation.
-//     reason = trigger (level|no_quests); quest is 0; lvl/zone/x/y at the end of the move. Trailing:
+//     reason = trigger (level|no_quests|death_loop: AutoWow.DeathLoop.EscapeViaZoneProgression escape,
+//     from = the zone escaped); quest is 0; lvl/zone/x/y at the end of the move. Trailing:
 //     from, to (zone ids), travel_ms (graduation to hub arrival or give-up), arrived (bool),
-//     mode (walk|flight|chain|none: the last travel mode issued). With AutoWow.Transports.Enable also
+//     mode (walk|flight|chain|portal|none: the last travel mode issued). With AutoWow.Transports.Enable also
 //     legs=[[walk|flight|travel_object|transport|portal, ms], ...] in travel order (same event id).
 //   - `errand` (AutoWow.Errands.Enable): one line per finished town run. reason = outcome
 //     (done|travel_gave_up|errands_timeout|return_gave_up); quest is 0; lvl/zone/x/y at the end. Trailing:

@@ -112,6 +112,10 @@ protected:
     // AutoWow.ZoneProgression.Enable (ZoneProgressionPolicy.h): graduate an independent bot to the next
     // zone by walk/flight. True when it changed the RPG status this tick. Caller checks the flag.
     bool ZoneProgressionStep();
+    // AutoWow.DeathLoop.EscapeViaZoneProgression: turn a death-loop relocation into a zone-progression trip
+    // to the nearest level-appropriate hub (ledger zone_move reason death_loop). False: not movable / no
+    // hub (caller keeps the flight relocation). Caller checks both flags.
+    bool DeathLoopEscape();
     // AutoWow.Errands.Enable (ErrandsPolicy.h): town run of an independent bot (sell, repair, restock,
     // train, bind, flight path; real gold) and the way back. True when it consumed the tick. Caller
     // checks the flag.

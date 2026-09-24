@@ -135,12 +135,49 @@ TEST(DeathLoopBreaker, LedgerFieldsAreStable)
     EXPECT_STREQ(TriggerName(Trigger::ClusterAndLevelGap), "cluster_level_gap");
 }
 
+// soak-s13-full-r1 bot 62957: L13 in Duskwood (bracket low 19), margin 5.
+TEST(DeathLoopBreaker, OvershootIsBracketLowAboveLevelPlusMargin)
+{
+    EXPECT_TRUE(Overshoot(19, 13, 5));
+    EXPECT_FALSE(Overshoot(18, 13, 5));  // strictly above
+    EXPECT_FALSE(Overshoot(0, 13, 5));   // unknown bracket: never
+    EXPECT_TRUE(Overshoot(15, 13, 0));
+    // Evaluate's relocation keeps the same rule.
+    Params p;
+    EXPECT_TRUE(Evaluate(p, 1, 13, 24, 19).relocate);
+    EXPECT_FALSE(Evaluate(p, 1, 13, 24, 18).relocate);
+}
+
+TEST(DeathLoopBreaker, RecentDeathsCountsTheWindowOnly)
+{
+    BotState s;
+    DeathSample c;
+    RecordDeath(s, At(1000, 0, 0), 1800000, 60, c);
+    RecordDeath(s, At(500000, 900, 900), 1800000, 60, c);  // another spot still counts
+    RecordDeath(s, At(900000, 0, 0), 1800000, 60, c);
+    EXPECT_EQ(RecentDeaths(s, 900000, 1800000), 3U);
+    EXPECT_EQ(RecentDeaths(s, 1801000, 1800000), 3U);  // the first is exactly WindowMs old
+    EXPECT_EQ(RecentDeaths(s, 1801001, 1800000), 2U);
+    EXPECT_EQ(RecentDeaths(s, 999, 1800000), 0U);      // clock stepped back: all in the future
+}
+
+TEST(DeathLoopBreaker, EscapePortalAfterPortalDeaths)
+{
+    EXPECT_FALSE(EscapePortalNow(2, 3));
+    EXPECT_TRUE(EscapePortalNow(3, 3));
+    EXPECT_TRUE(EscapePortalNow(8, 3));   // 61 deaths in soak-s13: portal at once
+    EXPECT_FALSE(EscapePortalNow(8, 0));  // 0 = never at once
+    EXPECT_EQ(Params{}.escapePortalDeaths, 3U);
+}
+
 TEST(DeathLoopBreaker, RuntimeQueriesAreInertWhenDisabled)
 {
     ASSERT_FALSE(Enabled());
+    EXPECT_FALSE(EscapeEnabled());
     EXPECT_FALSE(WantsSpiritHealer(112));
     EXPECT_FALSE(IsDangerous(112, 0, -7988.0f, -2371.0f));
     EXPECT_FALSE(TakeRelocation(112));
     EXPECT_FALSE(TakeQuestDeferral(112, 4183));
+    EXPECT_EQ(RecentDeaths(112U), 0U);
 }
 }  // namespace

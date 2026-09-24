@@ -38,6 +38,7 @@ struct Params
     std::uint32_t killerLevelGap = 10;          // AutoWow.DeathLoop.KillerLevelGap (0 = rule off)
     std::uint64_t dangerCooldownMs = 3600000;   // AutoWow.DeathLoop.DangerCooldownMs
     std::uint32_t relocateLevelMargin = 5;      // AutoWow.DeathLoop.RelocateLevelMargin
+    std::uint32_t escapePortalDeaths = 3;       // AutoWow.DeathLoop.EscapePortalDeaths (0 = never at once)
 };
 
 struct DeathSample
@@ -144,6 +145,29 @@ inline std::uint32_t RecordDeath(BotState& s, DeathSample const& death, std::uin
     return n;
 }
 
+// The zone's level bracket starts more than `margin` above the bot (zoneMinLevel 0 = unknown: never).
+inline bool Overshoot(std::uint32_t zoneMinLevel, std::uint32_t botLevel, std::uint32_t margin)
+{
+    return zoneMinLevel && zoneMinLevel > botLevel + margin;
+}
+
+// Deaths remembered within windowMs of nowMs (any spot; a death from the future is not counted).
+inline std::uint32_t RecentDeaths(BotState const& s, std::uint64_t nowMs, std::uint64_t windowMs)
+{
+    std::uint32_t n = 0;
+    for (std::uint32_t k = 0; k < s.deathCount; ++k)
+        if (s.deaths[k].ms <= nowMs && nowMs - s.deaths[k].ms <= windowMs)
+            ++n;
+    return n;
+}
+
+// AutoWow.DeathLoop.EscapeViaZoneProgression: the escape trip takes the portal leg at once (no walk
+// through the zone that keeps killing the bot) after portalDeaths recent deaths.
+inline bool EscapePortalNow(std::uint32_t recentDeaths, std::uint32_t portalDeaths)
+{
+    return portalDeaths && recentDeaths >= portalDeaths;
+}
+
 // zoneMinLevel = low end of the curated level bracket of the zone the bot died in (0 = unknown).
 inline Decision Evaluate(Params const& p, std::uint32_t clusterDeaths, std::uint32_t botLevel,
                          std::uint32_t killerLevel, std::uint32_t zoneMinLevel)
@@ -157,7 +181,7 @@ inline Decision Evaluate(Params const& p, std::uint32_t clusterDeaths, std::uint
         out.trigger = Trigger::Cluster;
     else if (levelGap)
         out.trigger = Trigger::LevelGap;
-    out.relocate = out.Escalate() && zoneMinLevel && zoneMinLevel > botLevel + p.relocateLevelMargin;
+    out.relocate = out.Escalate() && Overshoot(zoneMinLevel, botLevel, p.relocateLevelMargin);
     return out;
 }
 
@@ -226,9 +250,14 @@ inline std::string LedgerFields(std::uint32_t clusterDeaths, std::uint32_t kille
 namespace detail
 {
 inline bool gEnabled = false;
+inline bool gEscape = false;
 inline Params gParams;
 }
 inline bool Enabled() { return detail::gEnabled; }
+// AutoWow.DeathLoop.EscapeViaZoneProgression (default 0; needs Enable and AutoWow.ZoneProgression.Enable):
+// the relocation (and an over-level zone, even without a death) becomes a zone-progression trip to the
+// nearest level-appropriate hub (ZoneProgression PickEscapeRoute), ledger zone_move reason death_loop.
+inline bool EscapeEnabled() { return detail::gEnabled && detail::gEscape; }
 
 void LoadConfig();
 void AddScripts();
@@ -237,6 +266,8 @@ bool WantsSpiritHealer(std::uint32_t botGuid);
 bool IsDangerous(std::uint32_t botGuid, std::uint32_t map, float x, float y);
 // Consumes the pending relocation (one attempt per escalation).
 bool TakeRelocation(std::uint32_t botGuid);
+// Deaths of this bot within WindowMs of now (0 with the flag off). Escape portal rule input.
+std::uint32_t RecentDeaths(std::uint32_t botGuid);
 // Consumes the pending Oracle deferral when it names questId.
 bool TakeQuestDeferral(std::uint32_t botGuid, std::uint32_t questId);
 // Non-Oracle deferral: lowPriorityQuest + ledger `deferred` reason `death_loop_area`. Bot thread only.

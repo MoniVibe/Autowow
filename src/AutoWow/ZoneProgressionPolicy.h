@@ -145,12 +145,42 @@ inline std::vector<Route> DefaultRoutes()
     return fit.empty() ? nullptr : fit[guid % fit.size()];
 }
 
+// Death-loop escape hub (AutoWow.DeathLoop.EscapeViaZoneProgression): among the routes for the bot's
+// team whose band holds `level`, whatever zone they leave, the nearest destination hub other than the
+// bot's zone. Hubs on the bot's map first (by squared distance), then other maps; ties keep table
+// order. soak-s13-full-r1: a L13 in Duskwood (no route leaves zone 10) -> Sentinel Hill. nullptr = none.
+[[nodiscard]] inline Route const* PickEscapeRoute(std::vector<Route> const& routes, std::uint32_t team,
+                                                  std::uint32_t level, std::uint32_t zone, std::uint32_t map,
+                                                  std::int32_t x, std::int32_t y)
+{
+    Route const* best = nullptr;
+    bool bestSameMap = false;
+    std::int64_t bestDist2 = 0;
+    for (Route const& r : routes)
+    {
+        if (r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+            continue;
+        bool const sameMap = r.map == map;
+        std::int64_t const dx = std::int64_t(r.x) - x;
+        std::int64_t const dy = std::int64_t(r.y) - y;
+        std::int64_t const dist2 = sameMap ? dx * dx + dy * dy : 0;
+        if (!best || (sameMap && !bestSameMap) || (sameMap == bestSameMap && dist2 < bestDist2))
+        {
+            best = &r;
+            bestSameMap = sameMap;
+            bestDist2 = dist2;
+        }
+    }
+    return best;
+}
+
 // Wire-stable ledger reason names; append only.
 enum class Trigger : std::uint8_t
 {
     None = 0,
     Level = 1,     // level >= zone bracket max - margin
-    NoQuests = 2   // nothing actionable in the quest log for N consecutive checks
+    NoQuests = 2,  // nothing actionable in the quest log for N consecutive checks
+    DeathLoop = 3  // AutoWow.DeathLoop.EscapeViaZoneProgression: escape from an over-level zone
 };
 
 inline constexpr char const* TriggerName(Trigger t)
@@ -160,6 +190,7 @@ inline constexpr char const* TriggerName(Trigger t)
         case Trigger::None: return "none";
         case Trigger::Level: return "level";
         case Trigger::NoQuests: return "no_quests";
+        case Trigger::DeathLoop: return "death_loop";
     }
     return "none";
 }
@@ -335,6 +366,24 @@ struct BotState
     bool roadJoined = false;  // road index chosen for this travel
     std::uint32_t wp = 0;     // next road point (== road size: the hub)
 };
+
+// Starts (or restarts) a death_loop trip from `zone` to `hub`. The route leaves the bot's actual zone
+// (no road table applies: straight to the hub). portal = take the portal leg at once (the Travel phase
+// portals while mode is Portal and reissues <= MaxReissues). Check timers are kept.
+inline void BeginEscape(BotState& s, Route const& hub, std::uint32_t zone, std::uint64_t nowMs, bool portal)
+{
+    s.phase = Phase::Travel;
+    s.route = hub;
+    s.route.from = zone;
+    s.trigger = Trigger::DeathLoop;
+    s.fromZone = zone;
+    s.startMs = nowMs;
+    s.reissues = 0;
+    s.stall = 0;
+    s.mode = portal ? Mode::Portal : Mode::Unreachable;
+    s.roadJoined = false;
+    s.wp = 0;
+}
 
 // True when the travel leg is spent: past the timeout or out of reissues.
 [[nodiscard]] inline bool TravelExhausted(Params const& p, BotState const& s, std::uint64_t nowMs)

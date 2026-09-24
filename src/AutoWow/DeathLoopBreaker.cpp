@@ -160,6 +160,18 @@ void LoadConfig()
     p.killerLevelGap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.KillerLevelGap", 10);
     p.dangerCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.DangerCooldownMs", 3600000);
     p.relocateLevelMargin = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.RelocateLevelMargin", 5);
+    detail::gEscape = sConfigMgr->GetOption<bool>("AutoWow.DeathLoop.EscapeViaZoneProgression", false);
+    p.escapePortalDeaths = sConfigMgr->GetOption<std::uint32_t>("AutoWow.DeathLoop.EscapePortalDeaths", 3);
+}
+
+std::uint32_t RecentDeaths(std::uint32_t botGuid)
+{
+    if (!Enabled())
+        return 0;
+    std::uint64_t const nowMs = NowMs();
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState const* s = Find(botGuid);
+    return s ? RecentDeaths(*s, nowMs, detail::gParams.windowMs) : 0;
 }
 
 bool WantsSpiritHealer(std::uint32_t botGuid)
