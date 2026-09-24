@@ -1493,7 +1493,11 @@ bool RandomPlayerbotMgr::ProcessBot(Player* bot)
             // level x 1000..5000 copper, repairs and resurrects in place (soak-s29-full-r1: a L26 cohort bot
             // gained 12g; owner rule: no free gold / gear). A corpse still unreleased is released to its
             // graveyard like a player; SafeRevive owns the rest.
-            if (AutoWowPolicy::IsNoTeleport(botId))
+            // The no-teleport flag arrives only when cohort-start arms the bot; a bot logging in dead is
+            // processed first (soak-s30-full-r1: 3 cohort bots revived with 4.6-5.9g at ~70 s), so a bot off
+            // the random-bot accounts counts as independent too.
+            if (AutoWowPolicy::IsNoTeleport(botId) ||
+                !sPlayerbotAIConfig.IsInRandomAccountList(bot->GetSession()->GetAccountId()))
             {
                 SetEventValue(botId, "dead", 0, 0);
                 if (!bot->HasPlayerFlag(PLAYER_FLAGS_GHOST))
