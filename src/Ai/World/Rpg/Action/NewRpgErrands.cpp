@@ -222,6 +222,101 @@ uint32 Stock(Player* bot, Kind kind)
     return n;
 }
 
+// AutoWow.Survival.KeepConsumables: vendor value (copper) of the grey items the stock "autowow-gray" sell
+// mode may sell (trade goods, reagents, recipes and quest items are kept, as it keeps them).
+uint64 GreyCopper(Player* bot)
+{
+    uint64 copper = 0;
+    auto add = [&copper](Item const* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && proto->Quality == ITEM_QUALITY_POOR && proto->Class != ITEM_CLASS_TRADE_GOODS &&
+            proto->Class != ITEM_CLASS_REAGENT && proto->Class != ITEM_CLASS_RECIPE && proto->Class != ITEM_CLASS_QUEST)
+            copper += uint64(proto->SellPrice) * item->GetCount();
+    };
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        add(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        if (Bag const* pBag = static_cast<Bag*>(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag)))
+            for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                add(pBag->GetItemByPos(slot));
+    return copper;
+}
+
+// Friendly living vendor within `yards` among the bot's "nearest npcs" (nearest; lower guid on ties).
+Creature* NearestVendor(Player* bot, PlayerbotAI* botAI, uint32 yards)
+{
+    Creature* best = nullptr;
+    float bestDist = 0.0f;
+    for (ObjectGuid const guid : botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get())
+    {
+        Creature* c = botAI->GetCreature(guid);
+        if (!c || !c->IsAlive() || !c->HasNpcFlag(UNIT_NPC_FLAG_VENDOR) || bot->IsHostileTo(c))
+            continue;
+        float const d = bot->GetExactDist2d(c);
+        if (d > float(yards))
+            continue;
+        if (!best || d < bestDist || (d == bestDist && c->GetGUID().GetCounter() < best->GetGUID().GetCounter()))
+        {
+            best = c;
+            bestDist = d;
+        }
+    }
+    return best;
+}
+
+// AutoWow.Survival.KeepConsumables restock at one vendor: two passes over the kinds (PassTarget: to Low,
+// then to Target; the class-trainer reserve only in pass 1, so food comes before training). Purchases are
+// counted by the stock change: the core BuyItemFromVendorSlot returns `maxcount != 0` (false after a
+// successful buy from an unlimited slot), which stopped the plain loop after its first pack.
+void KeepBuy(Player* bot, Creature* npc, Stop const& st, BotState& s, Params const& p)
+{
+    VendorItemData const* list = npc->GetVendorItems();
+    uint64 const reserve = (s.needs & NeedClassTrain) ? ClassTrainBudgetCopper(bot->GetLevel()) : 0;
+    for (std::uint32_t pass = 0; list && pass < 2; ++pass)
+        for (std::size_t k = 0; k < kKinds; ++k)
+        {
+            uint32 const item = s.buyItems[k];
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+            if (!(st.buyKinds & (1u << k)) || !proto)
+                continue;
+            uint32 slot = list->GetItemCount();
+            for (uint32 i = 0; i < list->GetItemCount(); ++i)
+                if (VendorItem const* vi = list->GetItem(i); vi && vi->item == item && !vi->ExtendedCost)
+                {
+                    slot = i;
+                    break;
+                }
+            Kind const kind = static_cast<Kind>(k);
+            uint32 const have = Stock(bot, kind);
+            uint32 const target = PassTarget(p, kind, pass);
+            if (slot == list->GetItemCount() || have >= target)
+                continue;
+            uint64 const money = bot->GetMoney();
+            uint64 const keep = pass ? reserve : 0;
+            PackBuy const b = PacksToBuy(target - have, proto->BuyCount, proto->BuyPrice, money > keep ? money - keep : 0);
+            uint32 bought = 0;
+            while (bought < b.packs)
+            {
+                uint32 const before = bot->GetItemCount(item, false);
+                bot->BuyItemFromVendorSlot(npc->GetGUID(), slot, item, 1, NULL_BAG, NULL_SLOT);
+                if (bot->GetItemCount(item, false) <= before)
+                    break;  // bags full, out of money after the reputation price, vendor stock
+                ++bought;
+            }
+            if (money > bot->GetMoney())
+                s.spent += money - bot->GetMoney();
+            if (bought)
+                s.done |= DoneRestocked;
+            if (bought < b.packs || (pass && b.shortOfMoney))
+            {
+                s.done |= DoneSkipped;
+                LOG_INFO("playerbots", "[Errands] bot={} skip item={} pass={} bought={}/{} short_of_money={} money={}",
+                         bot->GetName(), item, pass, bought, b.packs, b.shortOfMoney, bot->GetMoney());
+            }
+        }
+}
+
 bool HearthReady(Player* bot)
 {
     return bot->HasItemCount(kHearthstoneItem, 1, false) && !bot->HasSpellCooldown(kHearthstoneSpell);
@@ -362,6 +457,7 @@ Assessment AssessBot(Player* bot, BotState const& s)
     o.ammo = AmmoOf(bot);
     uint64 const money = bot->GetMoney();
     uint64 restockCopper = 0;
+    uint64 onePackCopper = 0;  // AutoWow.Survival.KeepConsumables only
     std::uint32_t const kinds = KindsFor(o.cls, o.level, o.ammo);
     for (std::size_t k = 0; k < kKinds; ++k)
     {
@@ -372,10 +468,16 @@ Assessment AssessBot(Player* bot, BotState const& s)
         if (o.have[k] >= LowOf(p, kind))
             continue;
         if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(BestTier(kind, o.level, nullptr)))
+        {
             restockCopper += uint64(TargetOf(p, kind) - o.have[k]) * proto->BuyPrice /
                              std::max<uint32>(1, proto->BuyCount);
+            if (p.keepConsumables)
+                onePackCopper += proto->BuyPrice;
+        }
     }
     o.restockAffordable = money * 4 >= restockCopper;
+    if (p.keepConsumables)
+        o.restockAffordable = KeepAffordable(money, GreyCopper(bot), onePackCopper);
     o.classTrainDue = ClassTrainDue(o.level, s.lastClassTrainLevel, money);
     if (sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter()))
         for (uint32 skill : kProfessionSkills)
@@ -454,6 +556,8 @@ void LoadConfig()
     p.hearthMinYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.HearthMinYards", 800);
     p.maxWalkYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MaxWalkYards", 4000);
     p.travelTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TravelTimeoutMs", 1200000);
+    p.keepConsumables = sConfigMgr->GetOption<bool>("AutoWow.Survival.KeepConsumables", false);
+    p.sellDetourYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.KeepConsumables.SellDetourYards", 30);
     if (detail::gEnabled)
         BuildCatalog();
 }
@@ -495,6 +599,45 @@ bool NewRpgBaseAction::ErrandsStep()
         info.ChangeToIdle();
         return true;
     };
+
+    // AutoWow.Survival.KeepConsumables: sell the greys at a friendly vendor the bot passes (one detour of
+    // at most SellDetourMs, then SellRetryMs before the next). No run under way, no flight or zone trip.
+    if (p.keepConsumables && s.phase == Phase::None && now >= s.sellRetryMs &&
+        !(AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(guid)) &&
+        info.GetStatus() != RPG_TRAVEL_FLIGHT && GreyCopper(bot))
+    {
+        if (Creature* vendor = NearestVendor(bot, botAI, p.sellDetourYards))
+        {
+            if (!s.sellUntilMs)
+                s.sellUntilMs = now + p.sellDetourMs;
+            bool const inReach = bot->IsWithinDistInMap(vendor, INTERACTION_DISTANCE - 0.5f);
+            if (inReach || now >= s.sellUntilMs)
+            {
+                if (inReach)
+                {
+                    bot->StopMoving();
+                    uint64 const m0 = bot->GetMoney();
+                    botAI->DoSpecificAction("sell", Event("autowow errands", "autowow-gray"), true);
+                    LOG_INFO("playerbots", "[Errands] bot={} sold greys at passing vendor={} copper={}", bot->GetName(),
+                             vendor->GetEntry(), bot->GetMoney() > m0 ? bot->GetMoney() - m0 : 0);
+                }
+                s.sellUntilMs = 0;
+                s.sellRetryMs = now + p.sellRetryMs;
+                StoreState(guid, s);
+                return inReach;
+            }
+            if (!bot->isMoving())
+                bot->GetMotionMaster()->MovePoint(0, vendor->GetPositionX(), vendor->GetPositionY(),
+                                                  vendor->GetPositionZ());
+            StoreState(guid, s);
+            return true;
+        }
+        if (s.sellUntilMs)
+        {
+            s.sellUntilMs = 0;
+            StoreState(guid, s);
+        }
+    }
 
     if (s.phase == Phase::None)
     {
@@ -814,7 +957,21 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             s.done |= DoneRepaired;
         }
     }
-    if (st.ops & OpBuy)
+    // AutoWow.Survival.KeepConsumables: greys go at every vendor stop (the sell stop may be unreachable or
+    // sell by item usage only), then the two-pass restock.
+    if (p.keepConsumables && (st.ops & (OpSell | OpBuy)))
+    {
+        uint64 const m0 = money();
+        botAI->DoSpecificAction("sell", Event("autowow errands", "autowow-gray"), true);
+        if (money() > m0)
+        {
+            s.sold += money() - m0;
+            s.done |= DoneSold;
+        }
+    }
+    if ((st.ops & OpBuy) && p.keepConsumables)
+        KeepBuy(bot, npc, st, s, p);
+    else if (st.ops & OpBuy)
     {
         VendorItemData const* list = npc->GetVendorItems();
         // Keep a class-trainer budget when training is one of the needs (training comes after).

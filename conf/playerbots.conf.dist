@@ -2516,6 +2516,17 @@ AutoWow.Errands.HearthMinYards = 800
 AutoWow.Errands.MaxWalkYards = 4000
 AutoWow.Errands.TravelTimeoutMs = 1200000
 
+# Consumable economy for independent bots (ErrandsPolicy.h; default 0; needs AutoWow.Errands.Enable = 1,
+# inert otherwise). Real gold only, no free items. With it on: no food left (no drink, mana users) is an
+# urgent errand need; a restock counts as affordable when money + the vendor value of the grey loot covers
+# one pack of each needed kind; at the town every vendor stop sells greys first and the restock buys to
+# FoodLow/WaterLow for every kind (food first) before topping up to the targets, counting purchases by
+# the stock change (the core buy call reports false after a buy from an unlimited vendor slot, so the
+# plain loop bought one pack per run); a bot passing a friendly vendor within SellDetourYards walks over
+# and sells its greys (one 30 s detour, then 5 min before the next). Read once at world init.
+AutoWow.Survival.KeepConsumables = 0
+AutoWow.Survival.KeepConsumables.SellDetourYards = 30
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,

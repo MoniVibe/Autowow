@@ -29,7 +29,7 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 2;  // 2: sellUntilMs / sellRetryMs (KeepConsumables)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -189,6 +189,14 @@ struct Params
     std::uint32_t flightOverheadMs = 10000;    // taxi activation + landing
     std::uint32_t walkYardsPerSec = 7;
     std::uint32_t flyYardsPerSec = 30;
+    // AutoWow.Survival.KeepConsumables (default 0; needs AutoWow.Errands.Enable): out of food (drink for
+    // mana users) is urgent, a restock is affordable when money + grey loot value covers one pack of each
+    // needed kind, the town buys to Low first (food before water) then to Target, greys are sold at every
+    // vendor stop and at a vendor the bot passes (within SellDetourYards).
+    bool keepConsumables = false;
+    std::uint32_t sellDetourYards = 30;        // AutoWow.Survival.KeepConsumables.SellDetourYards
+    std::uint32_t sellDetourMs = 30000;        // walk-to-vendor budget per detour
+    std::uint32_t sellRetryMs = 300000;        // after a detour (sold or given up)
 };
 
 // Integer yards / percentages ------------------------------------------------------------------------
@@ -339,6 +347,10 @@ struct Assessment
         a.needs |= NeedOf(kind);
         if ((kind == KindArrow || kind == KindBullet) && o.have[k] == 0)
             a.urgent |= NeedAmmo;
+        // AutoWow.Survival.KeepConsumables: nothing to eat / drink left is urgent (a rest without it
+        // takes the full regen time; soak-s14: 33 of 50 bots carried none).
+        if (p.keepConsumables && (kind == KindFood || kind == KindWater) && o.have[k] == 0)
+            a.urgent |= NeedOf(kind);
     }
     if (!o.restockAffordable)
     {
@@ -364,6 +376,13 @@ struct Assessment
     for (std::uint32_t v = needs; v; v &= v - 1)
         ++n;
     return urgent != 0 || n >= 2;
+}
+
+// AutoWow.Survival.KeepConsumables affordability: money plus the vendor value of the grey loot the town
+// visit sells first covers one pack of every needed kind (the plain rule wants a quarter of the deficit).
+[[nodiscard]] inline bool KeepAffordable(std::uint64_t money, std::uint64_t greyCopper, std::uint64_t onePackCopper)
+{
+    return money + greyCopper >= onePackCopper;
 }
 
 // ---- towns ---------------------------------------------------------------------------------------
@@ -606,6 +625,13 @@ struct RestockLine
     return out;
 }
 
+// AutoWow.Survival.KeepConsumables buys in two passes over the kinds (food first): pass 0 up to Low,
+// pass 1 up to Target, so scarce gold buys some food and some drink before topping either up.
+[[nodiscard]] inline std::uint32_t PassTarget(Params const& p, Kind kind, std::uint32_t pass)
+{
+    return pass == 0 ? std::min(LowOf(p, kind), TargetOf(p, kind)) : TargetOf(p, kind);
+}
+
 // Packs to buy for `deficit` items sold `perPack` at a time, `packPrice` copper each, `spendable`
 // copper in hand. Short = money limited the purchase.
 struct PackBuy
@@ -810,6 +836,9 @@ struct BotState
     std::uint8_t stop = 0;
     std::array<std::uint32_t, kKinds> buyItems{};
     Outcome outcome = Outcome::Done;
+    // AutoWow.Survival.KeepConsumables: passing-vendor grey sale (Phase::None only).
+    std::uint64_t sellUntilMs = 0;          // current detour deadline (0 = none)
+    std::uint64_t sellRetryMs = 0;          // no detour before this
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.

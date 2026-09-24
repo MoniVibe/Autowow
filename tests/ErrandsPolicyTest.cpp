@@ -432,4 +432,59 @@ TEST(Errands, LedgerFieldsAreStable)
     EXPECT_STREQ(OutcomeName(Outcome::ReturnGaveUp), "return_gave_up");
     EXPECT_STREQ(LegName(Leg::Flight), "flight");
 }
+
+// ---- AutoWow.Survival.KeepConsumables ------------------------------------------------------------
+// soak-s14-full-r1: 33 of 50 bots carried no food/drink; a lone "food" soft need never started a run.
+TEST(Errands, KeepConsumablesMakesEmptyFoodAndDrinkUrgent)
+{
+    Params p;
+    Obs o = Healthy(kClassRogue, 11);
+    o.have = {0, 0, 0, 0, 0};
+    EXPECT_EQ(Assess(p, o).urgent, 0U);  // flag off: soft only
+    EXPECT_FALSE(ShouldRun(Assess(p, o).needs, Assess(p, o).urgent));
+    p.keepConsumables = true;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedFood));  // rogue: no water
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+    o.cls = kClassPriest;
+    EXPECT_EQ(Assess(p, o).urgent, std::uint32_t(NeedFood | NeedWater));
+    o.have = {3, 0, 0, 0, 0};  // some food left: soft
+    EXPECT_EQ(Assess(p, o).urgent, std::uint32_t(NeedWater));
+    o.restockAffordable = false;  // still dropped when nothing can be bought
+    EXPECT_EQ(Assess(p, o).urgent, 0U);
+}
+
+TEST(Errands, KeepAffordableCountsGreyLootAgainstOnePack)
+{
+    // Median cohort purse 228 c; Freshly Baked Bread 4541 is 125 c per 5-pack.
+    EXPECT_TRUE(KeepAffordable(228, 0, 125));
+    EXPECT_FALSE(KeepAffordable(39, 0, 125));
+    EXPECT_TRUE(KeepAffordable(39, 100, 125));  // selling the greys first pays for it
+    EXPECT_TRUE(KeepAffordable(0, 0, 0));
+}
+
+TEST(Errands, KeepBuysToLowThenTarget)
+{
+    Params p;  // food/water low 5 target 20, ammo 200/1000, reagent 1/5
+    EXPECT_EQ(PassTarget(p, KindFood, 0), 5U);
+    EXPECT_EQ(PassTarget(p, KindFood, 1), 20U);
+    EXPECT_EQ(PassTarget(p, KindWater, 0), 5U);
+    EXPECT_EQ(PassTarget(p, KindArrow, 0), 200U);
+    EXPECT_EQ(PassTarget(p, KindReagent, 1), 5U);
+    p.foodLow = 30;  // a low above the target never overbuys
+    EXPECT_EQ(PassTarget(p, KindFood, 0), 20U);
+}
+
+TEST(Errands, KeepConsumablesDefaults)
+{
+    Params const p;
+    EXPECT_FALSE(p.keepConsumables);
+    EXPECT_EQ(p.sellDetourYards, 30U);
+    EXPECT_EQ(p.sellDetourMs, 30000U);
+    EXPECT_EQ(p.sellRetryMs, 300000U);
+    BotState const s;
+    EXPECT_EQ(s.version, 2U);
+    EXPECT_EQ(s.sellUntilMs, 0U);
+    EXPECT_EQ(s.sellRetryMs, 0U);
+}
 }  // namespace
