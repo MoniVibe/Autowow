@@ -2413,6 +2413,21 @@ AutoWow.Tactics.Warrior.Factors.Single = "sunder armor:0,heroic strike:0.5,rend 
 AutoWow.Tactics.Warrior.Factors.Multi = "sunder armor:0,heroic strike:0,rend on attacker:0,rend:0.5"
 AutoWow.Tactics.Warrior.Factors.Emergency = "sunder armor:0,heroic strike:0,cleave:0,bloodrage:0,rend:0,rend on attacker:0,charge:0,mocking blow:0"
 AutoWow.Tactics.Warrior.Factors.Escape = "sunder armor:0,heroic strike:0,cleave:0,bloodrage:0,rend:0,rend on attacker:0,charge:0,mocking blow:0,overpower:0,mortal strike:0,execute:0,slam:0,whirlwind:0,bloodthirst:0,melee:0,reach melee:0"
+# Rogue (50/52/53/54; RogueNodes): Evasion below HealHpPct; multi Evasion / Blade Flurry / Kidney Shot;
+# emergency Evasion / Kidney Shot; escape Vanish / Gouge / Sprint / flee. Tools: Gouge / Kidney Shot / Blind
+# (control), Evasion (defensive), Vanish / Sprint (escape).
+AutoWow.Tactics.Rogue.SingleMaxPct = 120
+AutoWow.Tactics.Rogue.BasePct = 100
+AutoWow.Tactics.Rogue.HealHpPct = 50
+AutoWow.Tactics.Rogue.LowManaPct = 25
+AutoWow.Tactics.Rogue.EmergencyHpPct = 30
+AutoWow.Tactics.Rogue.EmergencyExitHpPct = 45
+AutoWow.Tactics.Rogue.ControlMinMelee = 2
+AutoWow.Tactics.Rogue.ControlHpPct = 60
+AutoWow.Tactics.Rogue.Factors.Single = "rupture:0,expose armor:0,feint:0"
+AutoWow.Tactics.Rogue.Factors.Multi = "rupture:0,expose armor:0,feint:0,slice and dice:0.5"
+AutoWow.Tactics.Rogue.Factors.Emergency = "rupture:0,expose armor:0,feint:0,slice and dice:0"
+AutoWow.Tactics.Rogue.Factors.Escape = "rupture:0,expose armor:0,feint:0,slice and dice:0,sinister strike:0,eviscerate:0,backstab:0,mutilate:0,kick:0,melee:0,reach melee:0"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within

@@ -18,6 +18,7 @@
 #include "RogueFinishingActions.h"
 #include "RogueOpeningActions.h"
 #include "RogueTriggers.h"
+#include "TacticalClassStrategy.h"
 
 class RogueStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -25,6 +26,9 @@ public:
     RogueStrategyFactoryInternal()
     {
         creators["nc"] = &RogueStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Rogue);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &RogueStrategyFactoryInternal::pull;
         creators["aoe"] = &RogueStrategyFactoryInternal::aoe;
         creators["boost"] = &RogueStrategyFactoryInternal::boost;

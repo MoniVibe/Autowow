@@ -50,7 +50,16 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
     {},  // Warlock
     {},  // Mage
     {},  // Hunter
-    {},  // Rogue
+    {"Rogue",
+     {"rupture:0,expose armor:0,feint:0",
+      "rupture:0,expose armor:0,feint:0,slice and dice:0.5",
+      "rupture:0,expose armor:0,feint:0,slice and dice:0",
+      "rupture:0,expose armor:0,feint:0,slice and dice:0,sinister strike:0,eviscerate:0,"
+         "backstab:0,mutilate:0,kick:0,melee:0,reach melee:0"},
+     {"gouge", "kidney shot", "blind"},
+     {"evasion"},
+     {"vanish", "sprint"},
+     50},  // Rogue
     {"Warrior",
      {"sunder armor:0,heroic strike:0.5,rend on attacker:0",
       "sunder armor:0,heroic strike:0,rend on attacker:0,rend:0.5",

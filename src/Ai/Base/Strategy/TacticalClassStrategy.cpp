@@ -134,12 +134,31 @@ void WarriorNodes(std::vector<TriggerNode*>& t)
     t.push_back(new TriggerNode("tac escape", {NextAction("hamstring", ACTION_EMERGENCY + 3),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
+// Rogue (50-54): stock stealth opener and combo-point logic; long-fight finishers off (Rupture, Expose Armor,
+// Feint); Evasion below HealHpPct; multi: Evasion, Blade Flurry, Kidney Shot on the target; emergency: Evasion,
+// Kidney Shot; escape: Vanish, Gouge, Sprint, flee (all damage x0, so the Gouge is not broken by auto-attack).
+void RogueNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac heal", {NextAction("evasion", ACTION_HIGH + 9)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("evasion", ACTION_HIGH + 9),
+                                              NextAction("blade flurry", ACTION_HIGH + 8),
+                                              NextAction("kidney shot", ACTION_HIGH + 7)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("evasion", ACTION_EMERGENCY + 6),
+                                                  NextAction("kidney shot", ACTION_EMERGENCY + 5)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("vanish", ACTION_EMERGENCY + 6),
+                                               NextAction("gouge", ACTION_EMERGENCY + 5),
+                                               NextAction("sprint", ACTION_EMERGENCY + 4),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
 }  // namespace
 
 void TacticalClassStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     switch (family)
     {
+        case Family::Rogue:
+            RogueNodes(triggers);
+            break;
         case Family::Warrior:
             WarriorNodes(triggers);
             break;
