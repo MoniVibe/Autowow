@@ -183,6 +183,8 @@ struct Params
     std::uint32_t maxWalkYards = 4000;         // AutoWow.Errands.MaxWalkYards
     std::uint32_t levelOver = 3;               // skip towns in zones whose bracket starts above level + this
     std::uint32_t candidateTowns = 8;          // nearest same-map towns costed per decision
+    std::uint32_t auctionDetourMs = 0;         // AutoWow.Errands.AuctionDetourMs: with AutoWow.Trade on, a
+                                               // town with an auctioneer costs this much less
     std::uint32_t travelTimeoutMs = 1200000;   // AutoWow.Errands.TravelTimeoutMs
     std::uint32_t errandsTimeoutMs = 600000;
     std::uint32_t stopTimeoutMs = 90000;       // per npc stop
@@ -560,6 +562,12 @@ struct Candidate
     Leg leg = Leg::None;
     std::uint32_t costMs = 0;
 };
+
+// Travel cost less the auction detour allowance (floor 0).
+[[nodiscard]] inline std::uint32_t DetourCostMs(std::uint32_t costMs, bool auction, std::uint32_t detourMs)
+{
+    return auction ? (costMs > detourMs ? costMs - detourMs : 0) : costMs;
+}
 
 // Cheapest reachable candidate; ties go to the lower town id. nullptr = none.
 [[nodiscard]] inline Candidate const* PickTown(std::vector<Candidate> const& cands)

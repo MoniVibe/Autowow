@@ -2780,6 +2780,9 @@ AutoWow.Errands.TownRadius = 180
 AutoWow.Errands.HearthMinYards = 800
 AutoWow.Errands.MaxWalkYards = 4000
 AutoWow.Errands.TravelTimeoutMs = 1200000
+# AuctionDetourMs: with AutoWow.Trade.Enable, a town with an auctioneer is costed this many ms cheaper, and
+# the nearest one on the map is always a candidate, so town runs reach an auction house. 0 = off.
+AutoWow.Errands.AuctionDetourMs = 0
 
 # Gear upgrades for independent bots (GearUpgradePolicy.h; default 0; the vendor part needs
 # AutoWow.Errands.Enable = 1). Real gold only, no free items. Once per level, with MinBudget gold beyond

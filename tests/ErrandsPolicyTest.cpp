@@ -700,4 +700,13 @@ TEST(Gear, ErrandNeedServedOnlyByAGearTownAndPlannedAfterTraining)
     s.lastGearLevel = 17;
     EXPECT_EQ(AfterRun(p, s, 1000).lastGearLevel, 17U);
 }
+
+TEST(ErrandsPolicy, AuctionDetourDiscountsOnlyAuctionTowns)
+{
+    EXPECT_EQ(DetourCostMs(300000, true, 180000), 120000u);
+    EXPECT_EQ(DetourCostMs(100000, true, 180000), 0u);
+    EXPECT_EQ(DetourCostMs(300000, false, 180000), 300000u);
+    EXPECT_EQ(DetourCostMs(300000, true, 0), 300000u);
+}
+
 }  // namespace

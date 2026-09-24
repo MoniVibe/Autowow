@@ -670,7 +670,22 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg)
     std::size_t const keep = std::min<std::size_t>(nearby.size(), p.candidateTowns);
     std::partial_sort(nearby.begin(), nearby.begin() + keep, nearby.end(), [](auto const& a, auto const& b)
                       { return a.first != b.first ? a.first < b.first : a.second->id < b.second->id; });
+    // AutoWow.Errands.AuctionDetourMs: the nearest auction town joins the candidates even when the
+    // straight-line prefilter dropped it (capitals sit farther than the village inns).
+    bool const detour = p.auctionDetourMs && AutoWowTrade::Enabled();
+    auto const hasAuction = [team](Town const& t)
+    {
+        return std::any_of(t.npcs.begin(), t.npcs.end(),
+                           [team](Npc const& n) { return (n.teams & team) && (n.roles & RoleAuction); });
+    };
+    std::pair<std::int64_t, Town const*> auctionTown{0, nullptr};
+    if (detour)
+        for (std::size_t i = keep; i < nearby.size(); ++i)
+            if ((!auctionTown.second || nearby[i].first < auctionTown.first) && hasAuction(*nearby[i].second))
+                auctionTown = nearby[i];
     nearby.resize(keep);
+    if (auctionTown.second)
+        nearby.push_back(auctionTown);
     if (hearthTown && std::none_of(nearby.begin(), nearby.end(), [&](auto const& e) { return e.second == hearthTown; }))
         nearby.emplace_back(0, hearthTown);
     std::uint32_t const level = bot->GetLevel();
@@ -683,7 +698,8 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg)
         std::uint32_t const low = bracket == sPlayerbotAIConfig.zoneBrackets.end() ? 0 : bracket->second.first;
         if (l != Leg::Hearth && ZoneTooHigh(p, level, low))
             continue;
-        cands.push_back({t->id, l, LegCostMs(p, l, in)});
+        std::uint32_t const cost = LegCostMs(p, l, in);
+        cands.push_back({t->id, l, detour ? DetourCostMs(cost, hasAuction(*t), p.auctionDetourMs) : cost});
     }
     Candidate const* best = PickTown(cands);
     if (!best)
@@ -715,6 +731,7 @@ void LoadConfig()
     p.hearthMinYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.HearthMinYards", 800);
     p.maxWalkYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MaxWalkYards", 4000);
     p.travelTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TravelTimeoutMs", 1200000);
+    p.auctionDetourMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.AuctionDetourMs", 0);
     p.keepConsumables = sConfigMgr->GetOption<bool>("AutoWow.Survival.KeepConsumables", false);
     p.sellDetourYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.KeepConsumables.SellDetourYards", 30);
     // AutoWow.Gear.Upgrades (GearUpgradePolicy.h): read before the catalog (vendors list their gear with it on).
