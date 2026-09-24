@@ -13,11 +13,35 @@
 #include "NewRpgInfo.h"
 #include "Playerbots.h"
 #include "AutoWowAcceptance.h"
+#include "PullLevelCap.h"
 #include "QuestObjectiveContext.h"
 #include "ReputationMgr.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "TacticalRuntime.h"
+
+// AutoWow.Survival.PullLevelCap: an over-cap candidate is pulled only under the quest exception (counted
+// either way). Neighbours: idle hostile creatures of the candidate pool within AloneYards of it (the same
+// pool and filters as the pack-risk scorer).
+static bool PullCapAllows(Player* bot, PlayerbotAI* botAI, Unit* unit, bool questObjective, GuidVector const& pool)
+{
+    AutoWowPullCap::Params const& p = AutoWowPullCap::Get();
+    std::uint32_t neighbours = 0;
+    if (questObjective)
+        for (ObjectGuid const guid : pool)
+        {
+            Unit* other = botAI->GetUnit(guid);
+            if (other && other != unit && other->IsAlive() && !other->IsInCombat() && other->IsCreature() &&
+                other->GetCreatureType() != CREATURE_TYPE_CRITTER && other->GetDistance(unit) <= float(p.aloneYards))
+                ++neighbours;
+        }
+    auto pct = [](std::uint64_t v, std::uint64_t max) { return max ? std::uint32_t(v * 100 / max) : 100U; };
+    bool const allowed = AutoWowPullCap::QuestException(
+        p, questObjective, pct(bot->GetHealth(), bot->GetMaxHealth()),
+        pct(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA)), bot->getPowerType() == POWER_MANA, neighbours);
+    AutoWowPullCap::Note(!allowed);
+    return allowed;
+}
 
 Unit* GrindTargetValue::Calculate()
 {
@@ -75,6 +99,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     // Same arm: pack-risk pull choice (hard reject + risk band sort key / distance penalty).
     bool const packRisk = AutoWowTactics::Enabled() && AutoWowTactics::PullRiskActive(botAI);
     std::uint32_t const packCapacity = packRisk ? AutoWowTactics::PullCapacity(botAI) : 0;
+    // AutoWow.Survival.PullLevelCap (default 0): solo independent bots only.
+    bool const pullCap = AutoWowPullCap::Enabled() && botAI->IsAutoWowIndependentParty() && !bot->InBattleground() &&
+                         (!group || group->GetMembersCount() <= 1);
 
     // A completed/transitioning/blocked Director quest has no objective lock, but it still owns the
     // bot. Do not let legacy grind proactively acquire a fresh mob while the phase machine is walking
@@ -208,6 +235,11 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
 
                     isElite = true;
                 }
+
+            // Every candidate here is an objective creature: the cap's quest exception applies.
+            if (pullCap && AutoWowPullCap::OverCap(AutoWowPullCap::Get(), bot->GetLevel(), unit->GetLevel(), isElite) &&
+                !PullCapAllows(bot, botAI, unit, true, targets))
+                continue;
 
             if (!bot->IsWithinLOSInMap(unit))
                 continue;
@@ -374,6 +406,20 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             if (CreatureTemplate const* CreatureTemplate = creature->GetCreatureTemplate())
                 if (CreatureTemplate->rank > CREATURE_ELITE_NORMAL && !AI_VALUE(bool, "can fight elite"))
                     continue;
+
+        if (pullCap)
+            if (Creature* creature = unit->ToCreature())
+            {
+                CreatureTemplate const* tmpl = creature->GetCreatureTemplate();
+                bool const elite = tmpl && tmpl->rank > CREATURE_ELITE_NORMAL;
+                if (AutoWowPullCap::OverCap(AutoWowPullCap::Get(), bot->GetLevel(), unit->GetLevel(), elite))
+                {
+                    if (needForQuestMap.find(unit->GetEntry()) == needForQuestMap.end())
+                        needForQuestMap[unit->GetEntry()] = needForQuest(unit);
+                    if (!PullCapAllows(bot, botAI, unit, needForQuestMap[unit->GetEntry()], targets))
+                        continue;
+                }
+            }
 
         if (!bot->IsWithinLOSInMap(unit))
         {

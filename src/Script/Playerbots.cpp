@@ -27,6 +27,7 @@
 #include "ZoneProgressionPolicy.h"
 #include "ErrandsPolicy.h"
 #include "TacticalRuntime.h"
+#include "PullLevelCap.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -539,6 +540,7 @@ public:
         AutoWowTransports::LoadConfig();  // after ZoneProgression: appends crossing-only routes
         AutoWowErrands::LoadConfig();     // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowTactics::LoadConfig();
+        AutoWowPullCap::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));

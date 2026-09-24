@@ -2403,6 +2403,26 @@ AutoWow.DeathLoop.RadiusYards = 60
 AutoWow.DeathLoop.KillerLevelGap = 10
 AutoWow.DeathLoop.DangerCooldownMs = 3600000
 AutoWow.DeathLoop.RelocateLevelMargin = 5
+# EscapeViaZoneProgression (default 0; needs Enable and AutoWow.ZoneProgression.Enable): the relocation
+# becomes a zone-progression trip (independent bots; others keep the flight relocation) to the nearest
+# hub of a route for the bot's team whose level band holds its level (hubs on its map first), and an
+# independent bot idle in a zone whose bracket starts more than RelocateLevelMargin above it escapes the
+# same way without dying. With AutoWow.Transports.Enable and Mode auto/portal the trip takes the portal
+# leg at once when the bot died EscapePortalDeaths times within WindowMs (0 = never at once; the usual
+# PortalAfterMs / MaxReissues fallback still applies). Ledger `zone_move` reason death_loop.
+AutoWow.DeathLoop.EscapeViaZoneProgression = 0
+AutoWow.DeathLoop.EscapePortalDeaths = 3
+
+# Pull level cap for solo independent bots (PullLevelCap.h; default 0). Grind and quest-objective target
+# picks skip creatures whose level (+ElitePenalty for elites) is more than MaxLevelAbove above the bot,
+# unless the creature is a quest objective, the bot's hp (and mana) >= HealthyPct and no idle hostile
+# stands within AloneYards of it. Self-defence is never capped. Over-cap skips / quest exceptions are
+# counted and logged ("[PullCap]") at most once a minute. Read once at world init.
+AutoWow.Survival.PullLevelCap = 0
+AutoWow.Survival.PullLevelCap.MaxLevelAbove = 2
+AutoWow.Survival.PullLevelCap.ElitePenalty = 3
+AutoWow.Survival.PullLevelCap.HealthyPct = 80
+AutoWow.Survival.PullLevelCap.AloneYards = 15
 
 # Zone progression for independent AutoWoW bots (Oracle-managed bots and bots with a real master are
 # never moved). Every CheckIntervalMs an idle bot graduates when its level >= its zone's
