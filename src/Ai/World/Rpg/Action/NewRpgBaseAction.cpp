@@ -38,6 +38,7 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "OutdoorPvPMgr.h"
+#include "PackAvoidPolicy.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
@@ -822,7 +823,11 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& requestedDest, boo
                 mobs = ScanTravelMobs(bot);
                 mobsScanned = true;
             }
-            choices.back() = {true, WalkingV2Policy::PathThreat(points, mobs, bot->GetLevel())};
+            // AutoWow.Survival.PackAvoid: packs by the path count at any level, weighted by their size.
+            choices.back() = {true, AutoWowPackAvoid::Enabled()
+                                        ? AutoWowPackAvoid::PackPathThreat(points, mobs, bot->GetLevel(),
+                                                                           AutoWowPackAvoid::Get().linkYards)
+                                        : WalkingV2Policy::PathThreat(points, mobs, bot->GetLevel())};
             if (choices.back().threat == 0)
                 break;  // PickChunk takes the first clear chunk
         }

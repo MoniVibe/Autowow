@@ -6,6 +6,7 @@
 
 #include "AutoWowQuestLedger.h"
 #include "EngagementTracker.h"
+#include "PackAvoidPolicy.h"
 #include "PackRisk.h"
 #include "TacticalClassTables.h"
 #include "TacticalPolicy.h"
@@ -701,4 +702,65 @@ TEST(TacticalClassPolicy, S20OverwhelmedWithoutEscapeToolStaysInEmergency)
         EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotMulti), 100, false), TacticOf(f, kSlotEmergency));
         EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotEmergency), 60000, false), TacticOf(f, kSlotEmergency));
     }
+}
+
+// ---- AutoWow.Survival.PackAvoid (PackAvoidPolicy.h) ---------------------------------------------------
+// soak-s21-full-r1: 66% of deaths multi-mob; a L20 rogue on a ~1 DPS dagger (expected 14).
+TEST(PackAvoid, GearScalesWeaponClassCapacityOnly)
+{
+    AutoWowPackAvoid::Params const p;  // min gear 25 %
+    EXPECT_EQ(AutoWowPackAvoid::GearPct(p, 4, 937, 14000), 25U);    // rogue on a starter dagger: floor
+    EXPECT_EQ(AutoWowPackAvoid::GearPct(p, 4, 7000, 14000), 50U);
+    EXPECT_EQ(AutoWowPackAvoid::GearPct(p, 1, 20000, 14000), 100U);  // above the curve: capped
+    EXPECT_EQ(AutoWowPackAvoid::GearPct(p, 8, 937, 14000), 100U);    // mage: spells, not the weapon
+    EXPECT_EQ(AutoWowPackAvoid::GearPct(p, 4, 0, 0), 100U);
+    EXPECT_EQ(AutoWowPackAvoid::Capacity(p, 250, 25), 62U);
+    EXPECT_EQ(AutoWowPackAvoid::Capacity(p, 250, 100), 250U);
+    AutoWowPackAvoid::Params q;
+    q.capacityPct = 50;
+    EXPECT_EQ(AutoWowPackAvoid::Capacity(q, 250, 100), 125U);
+}
+
+TEST(PackAvoid, LoneMobNeverRejectedPackOverCapacityIs)
+{
+    // A lone mob is never rejected, whatever the capacity.
+    AutoWowPackRisk::Verdict v = AutoWowPackAvoid::Score(300, 0, 10);
+    EXPECT_FALSE(v.reject);
+    EXPECT_EQ(v.band, 3U);
+    // Rogue, tools ready (cap 250): a 2-pack of same-level normals (200) is fine, a 3-pack (300) is not.
+    EXPECT_FALSE(AutoWowPackAvoid::Score(100, 100, 250).reject);
+    EXPECT_TRUE(AutoWowPackAvoid::Score(100, 200, 250).reject);
+    // The same rogue on a starter dagger (cap 62): any pack is skipped, even two -3 mobs (55 + 55).
+    EXPECT_TRUE(AutoWowPackAvoid::Score(55, 55, 62).reject);
+    EXPECT_EQ(AutoWowPackAvoid::Score(55, 55, 62).band, 1U);
+}
+
+TEST(PackAvoid, PackPathThreatCountsLowPacksLoneLowMobsStayFree)
+{
+    using WalkingV2Policy::Mob;
+    std::vector<WalkingV2Policy::Point> path(2);
+    path[0].x = 0;
+    path[0].y = 0;
+    path[1].x = 100;
+    path[1].y = 0;
+    auto mob = [](std::int32_t x, std::int32_t y, std::uint32_t level)
+    {
+        Mob m;
+        m.x = x;
+        m.y = y;
+        m.level = level;
+        m.aggroYards = 10;
+        return m;
+    };
+    // Lone low mob by the path: free (as PathThreat); lone at-level mob: 1.
+    EXPECT_EQ(AutoWowPackAvoid::PackPathThreat(path, {mob(50, 5, 10)}, 15, 12), 0U);
+    EXPECT_EQ(AutoWowPackAvoid::PackPathThreat(path, {mob(50, 5, 15)}, 15, 12), 1U);
+    // Three low mobs 6 yd apart by the path: each counts 1 + 2 neighbours.
+    std::vector<Mob> const pack = {mob(50, 5, 10), mob(56, 5, 10), mob(62, 5, 10)};
+    EXPECT_EQ(AutoWowPackAvoid::PackPathThreat(path, pack, 15, 12), 9U);
+    EXPECT_EQ(WalkingV2Policy::PathThreat(path, pack, 15), 0U);  // the flag-off scorer saw nothing
+    // A pack off the path (60 yd away) costs nothing.
+    std::vector<Mob> const far = {mob(50, 60, 10), mob(56, 60, 10)};
+    EXPECT_EQ(AutoWowPackAvoid::PackPathThreat(path, far, 15, 12), 0U);
+    EXPECT_EQ(AutoWowPackAvoid::PackPathThreat({}, pack, 15, 12), 0U);
 }

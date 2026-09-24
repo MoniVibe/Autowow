@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "PackAvoidPolicy.h"
 #include "PackRisk.h"
 #include "TacticalPolicy.h"
 
@@ -82,6 +83,11 @@ std::uint32_t PullCapacity(PlayerbotAI* botAI);
 AutoWowPackRisk::Verdict ScorePull(PlayerbotAI* botAI, Unit* candidate, std::vector<ObjectGuid> const& pool,
                                    std::uint32_t capacity);
 std::uint32_t RiskYd();
+// AutoWow.Survival.PackAvoid (PackAvoidPolicy.h), any class: capacity (class tools x hp/mana x gear) and the
+// social-link pack score of one candidate. Usable without AutoWow.Tactics.* (the params load regardless).
+std::uint32_t PackAvoidCapacity(PlayerbotAI* botAI);
+AutoWowPackRisk::Verdict ScorePackAvoid(PlayerbotAI* botAI, Unit* candidate, std::vector<ObjectGuid> const& pool,
+                                        std::uint32_t capacity);
 // The proactive pull the selector chose; its band is stamped on the engagement it starts (pull_risk).
 void NotePullChoice(Player* bot, Unit* target, std::uint32_t band);
 }  // namespace AutoWowTactics

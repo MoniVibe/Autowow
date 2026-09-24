@@ -110,6 +110,12 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     // AutoWow.Survival.PullLevelCap (default 0): solo independent bots only.
     bool const pullCap = AutoWowPullCap::Enabled() && botAI->IsAutoWowIndependentParty() && !bot->InBattleground() &&
                          (!group || group->GetMembersCount() <= 1);
+    // AutoWow.Survival.PackAvoid (default 0): the same pack-aware choice for every solo independent bot
+    // outside the tactics arm (social links, capacity scaled by gear; PackAvoidPolicy.h).
+    bool const packAvoid = !packRisk && AutoWowPackAvoid::Enabled() && botAI->IsAutoWowIndependentParty() &&
+                           !bot->InBattleground() && (!group || group->GetMembersCount() <= 1);
+    std::uint32_t const avoidCapacity = packAvoid ? AutoWowTactics::PackAvoidCapacity(botAI) : 0;
+    bool const packSort = packRisk || packAvoid;
     // AutoWow.DeathLoop.V2 (a): no proactive target inside one of the bot's live danger areas.
     // ponytail: one breaker lock per candidate (tens per selection); snapshot the areas if it ever shows.
     bool const dangerSkip = AutoWowDeathLoop::V2Enabled();
@@ -272,6 +278,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                     continue;
                 band = risk.band;
             }
+            else if (packAvoid)
+            {
+                AutoWowPackRisk::Verdict const risk = AutoWowTactics::ScorePackAvoid(botAI, unit, targets, avoidCapacity);
+                if (risk.reject)
+                    continue;
+                band = risk.band;
+            }
 
             // Deterministic score components.
             uint32 targetingCount = GetTargetingPlayerCount(unit);
@@ -307,7 +320,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             {
                 takeCandidate = shared;  // prefer a target a party member is already engaging
             }
-            else if (packRisk && band != bestBand)
+            else if (packSort && band != bestBand)
             {
                 takeCandidate = band < bestBand;  // AutoWow.Tactics: a lone mob before a pack
             }
@@ -345,7 +358,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             }
         }
 
-        if (packRisk && bestTarget)
+        if (packSort && bestTarget)
             AutoWowTactics::NotePullChoice(bot, bestTarget, bestBand);
 
         // Violation guard only: strict selection above admits objective-whitelisted creature entries
@@ -473,6 +486,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                 continue;
             band = risk.band;
         }
+        else if (packAvoid)
+        {
+            AutoWowPackRisk::Verdict const risk = AutoWowTactics::ScorePackAvoid(botAI, unit, targets, avoidCapacity);
+            if (risk.reject)
+                continue;
+            band = risk.band;
+        }
 
         if (group)
         {
@@ -484,7 +504,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                     continue;
 
                 float d = member->GetDistance(unit);
-                if (packRisk)
+                if (packSort)
                     d += float(AutoWowTactics::RiskYd() * band);
                 if (!result || d < distance)
                 {
@@ -497,7 +517,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         else
         {
             float newdistance = bot->GetDistance(unit);
-            if (packRisk)
+            if (packSort)
                 newdistance += float(AutoWowTactics::RiskYd() * band);
             if (!result || (newdistance < distance))
             {
@@ -508,7 +528,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         }
     }
 
-    if (packRisk && result)
+    if (packSort && result)
         AutoWowTactics::NotePullChoice(bot, result, resultBand);
 
     return result;

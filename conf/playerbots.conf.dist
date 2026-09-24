@@ -2599,6 +2599,20 @@ AutoWow.Survival.RestGate = 0
 AutoWow.Survival.RestGate.MinHpPct = 70
 AutoWow.Survival.RestGate.MinManaPct = 60
 
+# Pack-aware pulls for every solo independent bot (PackAvoidPolicy.h; default 0). Each proactive grind /
+# quest-kill candidate scores risk = its weight + the weights of the idle creatures friendly to it within
+# LinkYards (TacticalPolicy MobWeight: rank x level delta x caster, centi mob-equivalents); a candidate with
+# such neighbours and risk above capacity is skipped, the rest sort lone-first. Capacity = the class's
+# tactics capacity (tools ready, hp, mana; AutoWow.Tactics.<Class>.* params, loaded with tactics off too) x
+# CapacityPct x GearPct, GearPct = main-hand (hunter: ranged) DPS / 0.7 x level, clamped to
+# [MinGearPct, 100], for warriors, paladins, hunters, rogues and death knights (100 for the others). With
+# AutoWow.Travel.Safe the chunk choice also counts packs by the path at any level (1 + neighbours per mob).
+# The AutoWow.Tactics treatment arm keeps its own pack-risk scorer. 0 = legacy.
+AutoWow.Survival.PackAvoid = 0
+AutoWow.Survival.PackAvoid.LinkYards = 12
+AutoWow.Survival.PackAvoid.CapacityPct = 100
+AutoWow.Survival.PackAvoid.MinGearPct = 25
+
 # Safe corpse revive for solo autonomous bots (SurvivalRecovery.h; default 0). A ghost resurrects where it
 # stands within 39 yd of its corpse: within 60 yd it picks, among the corpse and two rings of 8 points
 # (17 / 34 yd), the mmap-reachable spot with the least aggro weight of idle hostiles (elite 6, at or above

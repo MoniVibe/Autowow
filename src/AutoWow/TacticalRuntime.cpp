@@ -19,6 +19,7 @@
 #include "Creature.h"
 #include "EngagementTracker.h"
 #include "GameTime.h"
+#include "GearUpgradePolicy.h"
 #include "Item.h"
 #include "Map.h"
 #include "Player.h"
@@ -320,6 +321,12 @@ void LoadConfig()
     s.pullMinManaPct = u("AutoWow.Tactics.PullMinManaPct", s.pullMinManaPct);
     s.pullMinHpPct = u("AutoWow.Tactics.PullMinHpPct", s.pullMinHpPct);
     s.riskYd = u("AutoWow.Tactics.RiskYd", s.riskYd);
+    // AutoWow.Survival.PackAvoid (PackAvoidPolicy.h): every solo independent bot, outside the tactics arm.
+    AutoWowPackAvoid::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Survival.PackAvoid", false);
+    AutoWowPackAvoid::Params& pa = AutoWowPackAvoid::detail::gParams;
+    pa.linkYards = u("AutoWow.Survival.PackAvoid.LinkYards", pa.linkYards);
+    pa.capacityPct = u("AutoWow.Survival.PackAvoid.CapacityPct", pa.capacityPct);
+    pa.minGearPct = std::min<std::uint32_t>(100, u("AutoWow.Survival.PackAvoid.MinGearPct", pa.minGearPct));
     auto f = [](char const* key, char const* def) { return ParseFactors(sConfigMgr->GetOption<std::string>(key, def)); };
     s.factors[0] = f("AutoWow.Tactics.Priest.Factors.Wand", kDefaultWandFactors);
     s.factors[1] = f("AutoWow.Tactics.Priest.Factors.Burst", "");
@@ -610,6 +617,49 @@ AutoWowPackRisk::Verdict ScorePull(PlayerbotAI* botAI, Unit* candidate, std::vec
 }
 
 std::uint32_t RiskYd() { return gSettings.riskYd; }
+
+// AutoWow.Survival.PackAvoid: the class capacity above scaled by the weapon's DPS against the level curve.
+std::uint32_t PackAvoidCapacity(PlayerbotAI* botAI)
+{
+    Player* bot = botAI->GetBot();
+    std::uint8_t const slot = bot->getClass() == CLASS_HUNTER ? EQUIPMENT_SLOT_RANGED : EQUIPMENT_SLOT_MAINHAND;
+    std::uint32_t dpsMilli = 0;
+    if (Item* weapon = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+        if (ItemTemplate const* proto = weapon->GetTemplate(); proto && proto->Class == ITEM_CLASS_WEAPON)
+            dpsMilli = AutoWowGear::DpsMilli(static_cast<std::uint32_t>(std::max(0.0f, proto->Damage[0].DamageMin)),
+                                             static_cast<std::uint32_t>(std::max(0.0f, proto->Damage[0].DamageMax)),
+                                             proto->Delay);
+    AutoWowPackAvoid::Params const& p = AutoWowPackAvoid::Get();
+    return AutoWowPackAvoid::Capacity(
+        p, PullCapacity(botAI),
+        AutoWowPackAvoid::GearPct(p, bot->getClass(), dpsMilli, AutoWowGear::ExpectedDpsMilli(bot->GetLevel())));
+}
+
+// As ScorePull, but neighbours are social links of the candidate (friendly to it, idle, alive, not
+// critters) within PackAvoid LinkYards, and the verdict is AutoWowPackAvoid::Score (no escape ratio).
+AutoWowPackRisk::Verdict ScorePackAvoid(PlayerbotAI* botAI, Unit* candidate, std::vector<ObjectGuid> const& pool,
+                                        std::uint32_t capacity)
+{
+    Player* bot = botAI->GetBot();
+    std::int32_t const botLevel = static_cast<std::int32_t>(bot->GetLevel());
+    LoadParams const& load = LoadOf(FamilyOfClass(bot->getClass()));
+    float const link = float(AutoWowPackAvoid::Get().linkYards);
+    MobFacts const cf = FactsOf(candidate);
+    std::uint32_t const candidateWeight = MobWeight(cf.rank, static_cast<std::int32_t>(candidate->GetLevel()) - botLevel,
+                                                    cf.caster, load);
+    std::uint32_t neighbours = 0;
+    for (ObjectGuid const guid : pool)
+    {
+        Unit* unit = botAI->GetUnit(guid);
+        if (!unit || unit == candidate || !unit->IsAlive() || unit->IsInCombat() || !unit->IsCreature() ||
+            unit->GetCreatureType() == CREATURE_TYPE_CRITTER || unit->GetDistance(candidate) > link ||
+            !candidate->IsFriendlyTo(unit))
+            continue;
+        MobFacts const f = FactsOf(unit);
+        neighbours += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster, load);
+    }
+    return AutoWowPackAvoid::Score(candidateWeight, neighbours, capacity);
+}
 
 void NotePullChoice(Player* bot, Unit* target, std::uint32_t band)
 {
