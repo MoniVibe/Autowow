@@ -541,4 +541,17 @@ class ShadowCleaveAction : public CastMeleeSpellAction
 public:
     ShadowCleaveAction(PlayerbotAI* ai) : CastMeleeSpellAction(ai, "shadow cleave") {}
 };
+
+// AutoWow tactical layer (TacticalClassStrategy.cpp WarlockNodes). Death Coil is named apart from the death
+// knight's CastDeathCoilAction (one definition per class name).
+SPELL_ACTION(CastWarlockDeathCoilAction, "death coil");
+SPELL_ACTION(CastHowlOfTerrorAction, "howl of terror");
+
+class CastHealthFunnelAction : public CastSpellAction
+{
+public:
+    CastHealthFunnelAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "health funnel") {}
+    std::string const GetTargetName() override { return "pet target"; }
+};
+
 #endif

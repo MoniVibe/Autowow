@@ -16,6 +16,7 @@
 #include "NamedObjectContext.h"
 #include "Playerbots.h"
 #include "SurvivalHunterStrategy.h"
+#include "TacticalClassStrategy.h"
 
 class HunterStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -23,6 +24,9 @@ public:
     HunterStrategyFactoryInternal()
     {
         creators["nc"] = &HunterStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Hunter);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pet"] = &HunterStrategyFactoryInternal::pet;
         creators["cc"] = &HunterStrategyFactoryInternal::cc;
         creators["trap weave"] = &HunterStrategyFactoryInternal::trap_weave;

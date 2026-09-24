@@ -19,6 +19,7 @@
 #include "UseItemAction.h"
 #include "WarlockActions.h"
 #include "WarlockTriggers.h"
+#include "TacticalClassStrategy.h"
 
 class WarlockStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -26,6 +27,9 @@ public:
     WarlockStrategyFactoryInternal()
     {
         creators["nc"] = &WarlockStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Warlock);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &WarlockStrategyFactoryInternal::pull;
         creators["boost"] = &WarlockStrategyFactoryInternal::boost;
         creators["cc"] = &WarlockStrategyFactoryInternal::cc;
@@ -241,6 +245,9 @@ class WarlockAiObjectContextInternal : public NamedObjectContext<Action>
 public:
     WarlockAiObjectContextInternal()
     {
+        creators["health funnel"] = &WarlockAiObjectContextInternal::health_funnel;
+        creators["howl of terror"] = &WarlockAiObjectContextInternal::howl_of_terror;
+        creators["death coil"] = &WarlockAiObjectContextInternal::death_coil;
         creators["fel armor"] = &WarlockAiObjectContextInternal::fel_armor;
         creators["demon armor"] = &WarlockAiObjectContextInternal::demon_armor;
         creators["demon skin"] = &WarlockAiObjectContextInternal::demon_skin;
@@ -312,6 +319,9 @@ public:
     }
 
 private:
+    static Action* health_funnel(PlayerbotAI* botAI) { return new CastHealthFunnelAction(botAI); }
+    static Action* howl_of_terror(PlayerbotAI* botAI) { return new CastHowlOfTerrorAction(botAI); }
+    static Action* death_coil(PlayerbotAI* botAI) { return new CastWarlockDeathCoilAction(botAI); }
     static Action* conflagrate(PlayerbotAI* botAI) { return new CastConflagrateAction(botAI); }
     static Action* incinerate(PlayerbotAI* botAI) { return new CastIncinerateAction(botAI); }
     static Action* immolate(PlayerbotAI* botAI) { return new CastImmolateAction(botAI); }

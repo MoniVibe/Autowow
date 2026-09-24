@@ -47,7 +47,18 @@ inline constexpr std::uint32_t FactorIndexOfSlot(std::uint32_t slot)
 inline constexpr ClassTable kClassTables[kFamilies] = {
     {},  // None
     {},  // Priest
-    {},  // Warlock
+    {"Warlock",
+     {"",
+      "shadow bolt:0.5",
+      "life tap:0,shadow bolt:0,incinerate:0,soul fire:0,immolate:0,immolate on attacker:0,"
+         "corruption on attacker:0,curse of agony on attacker:0,drain soul:0,health funnel:0",
+      "life tap:0,shadow bolt:0,incinerate:0,soul fire:0,immolate:0,immolate on attacker:0,"
+         "corruption:0,corruption on attacker:0,curse of agony:0,curse of agony on attacker:0,"
+         "drain soul:0,drain life:0,health funnel:0,shoot:0"},
+     {"fear", "howl of terror"},
+     {"death coil"},
+     {"howl of terror"},
+     70},  // Warlock
     {"Mage",
      {"",
       "pyroblast:0,evocation:0",
@@ -59,7 +70,17 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"ice block", "ice barrier", "mana shield"},
      {"blink"},
      50},  // Mage
-    {},  // Hunter
+    {"Hunter",
+     {"",
+      "",
+      "aimed shot:0,volley:0",
+      "auto shot:0,arcane shot:0,serpent sting:0,serpent sting on attacker:0,multi-shot:0,"
+         "aimed shot:0,steady shot:0,raptor strike:0,mongoose bite:0,volley:0,hunter's mark:0,"
+         "melee:0,reach melee:0"},
+     {"freezing trap", "scare beast", "intimidation"},
+     {"deterrence"},
+     {"feign death", "disengage"},
+     50},  // Hunter
     {"Rogue",
      {"rupture:0,expose armor:0,feint:0",
       "rupture:0,expose armor:0,feint:0,slice and dice:0.5",

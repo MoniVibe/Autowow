@@ -2460,6 +2460,38 @@ AutoWow.Tactics.Shaman.Factors.Single = "magma totem:0,chain lightning:0.5,fire 
 AutoWow.Tactics.Shaman.Factors.Multi = ""
 AutoWow.Tactics.Shaman.Factors.Emergency = "lightning bolt:0,chain lightning:0,lava burst:0,searing totem:0,magma totem:0,fire nova:0"
 AutoWow.Tactics.Shaman.Factors.Escape = "lightning bolt:0,chain lightning:0,lava burst:0,searing totem:0,magma totem:0,fire nova:0,stormstrike:0,lava lash:0,earth shock:0,flame shock:0,melee:0,reach melee:0"
+# Hunter (40/42/43/44; HunterNodes): Mend Pet below 40 %, Wing Clip / Disengage off melee; multi Freezing Trap
+# / Multi-Shot; emergency Deterrence / Feign Death / Mend Pet; escape Feign Death / Disengage / flee. Tools:
+# Freezing Trap / Scare Beast / Intimidation (control), Deterrence (defensive), Feign Death / Disengage;
+# capacity +100 while the pet is alive.
+AutoWow.Tactics.Hunter.SingleMaxPct = 120
+AutoWow.Tactics.Hunter.BasePct = 100
+AutoWow.Tactics.Hunter.HealHpPct = 50
+AutoWow.Tactics.Hunter.LowManaPct = 25
+AutoWow.Tactics.Hunter.EmergencyHpPct = 30
+AutoWow.Tactics.Hunter.EmergencyExitHpPct = 45
+AutoWow.Tactics.Hunter.ControlMinMelee = 2
+AutoWow.Tactics.Hunter.ControlHpPct = 60
+AutoWow.Tactics.Hunter.Factors.Single = ""
+AutoWow.Tactics.Hunter.Factors.Multi = ""
+AutoWow.Tactics.Hunter.Factors.Emergency = "aimed shot:0,volley:0"
+AutoWow.Tactics.Hunter.Factors.Escape = "auto shot:0,arcane shot:0,serpent sting:0,serpent sting on attacker:0,multi-shot:0,aimed shot:0,steady shot:0,raptor strike:0,mongoose bite:0,volley:0,hunter's mark:0,melee:0,reach melee:0"
+# Warlock (20/22/23/24; WarlockNodes): Drain Life below HealHpPct, Life Tap only at hp >= EmergencyExitHpPct +
+# 15, Health Funnel for a low pet; multi Fear on the add / Corruption spread; emergency Howl / Death Coil /
+# healthstone / Drain Life; escape Howl / Death Coil / flee. Tools: Fear / Howl of Terror (control), Death Coil
+# (defensive), Howl (escape); capacity +100 while the pet is alive.
+AutoWow.Tactics.Warlock.SingleMaxPct = 120
+AutoWow.Tactics.Warlock.BasePct = 100
+AutoWow.Tactics.Warlock.HealHpPct = 70
+AutoWow.Tactics.Warlock.LowManaPct = 25
+AutoWow.Tactics.Warlock.EmergencyHpPct = 30
+AutoWow.Tactics.Warlock.EmergencyExitHpPct = 45
+AutoWow.Tactics.Warlock.ControlMinMelee = 2
+AutoWow.Tactics.Warlock.ControlHpPct = 60
+AutoWow.Tactics.Warlock.Factors.Single = ""
+AutoWow.Tactics.Warlock.Factors.Multi = "shadow bolt:0.5"
+AutoWow.Tactics.Warlock.Factors.Emergency = "life tap:0,shadow bolt:0,incinerate:0,soul fire:0,immolate:0,immolate on attacker:0,corruption on attacker:0,curse of agony on attacker:0,drain soul:0,health funnel:0"
+AutoWow.Tactics.Warlock.Factors.Escape = "life tap:0,shadow bolt:0,incinerate:0,soul fire:0,immolate:0,immolate on attacker:0,corruption:0,corruption on attacker:0,curse of agony:0,curse of agony on attacker:0,drain soul:0,drain life:0,health funnel:0,shoot:0"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within

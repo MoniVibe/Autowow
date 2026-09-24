@@ -190,12 +190,54 @@ void ShamanNodes(std::vector<TriggerNode*>& t)
                                                NextAction("ghost wolf", ACTION_EMERGENCY + 3),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
+// Hunter (40-44): the pet tanks - Mend Pet below 40 %, Wing Clip + Disengage when a mob reaches the hunter;
+// multi: Freezing Trap for the add, Multi-Shot; emergency: Deterrence, Feign Death (the pet keeps the mobs),
+// Mend Pet; escape: Feign Death, Disengage, flee.
+void HunterNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac pet low", {NextAction("mend pet", ACTION_HIGH + 7)}));
+    t.push_back(new TriggerNode("tac melee on me", {NextAction("wing clip", ACTION_HIGH + 6),
+                                                    NextAction("disengage", ACTION_HIGH + 5)}));
+    t.push_back(new TriggerNode("tac control add", {NextAction("freezing trap", ACTION_INTERRUPT + 4)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("multi-shot", ACTION_HIGH + 2)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("deterrence", ACTION_EMERGENCY + 6),
+                                                  NextAction("feign death", ACTION_EMERGENCY + 5),
+                                                  NextAction("mend pet", ACTION_EMERGENCY + 2)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("feign death", ACTION_EMERGENCY + 5),
+                                               NextAction("disengage", ACTION_EMERGENCY + 4),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
+// Warlock (20-24): drain-tank behind the pet - Drain Life below HealHpPct (70), Life Tap only while hp is high
+// (x0 in emergency / escape), Health Funnel when the pet is low; multi: Fear the add, Corruption spread;
+// emergency: Howl of Terror on melee, Death Coil, healthstone, Drain Life; escape: Howl of Terror, Death Coil,
+// flee.
+void WarlockNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac heal", {NextAction("drain life", ACTION_HIGH + 6)}));
+    t.push_back(new TriggerNode("tac life tap", {NextAction("life tap", ACTION_HIGH + 1)}));
+    t.push_back(new TriggerNode("tac pet low", {NextAction("health funnel", ACTION_HIGH + 5)}));
+    t.push_back(new TriggerNode("tac control add", {NextAction("fear on cc", ACTION_INTERRUPT + 3)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("corruption on attacker", ACTION_HIGH + 4)}));
+    t.push_back(new TriggerNode("tac emergency control", {NextAction("howl of terror", ACTION_EMERGENCY + 7)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("death coil", ACTION_EMERGENCY + 6),
+                                                  NextAction("healthstone", ACTION_EMERGENCY + 5),
+                                                  NextAction("drain life", ACTION_EMERGENCY + 4)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("howl of terror", ACTION_EMERGENCY + 5),
+                                               NextAction("death coil", ACTION_EMERGENCY + 4),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
 }  // namespace
 
 void TacticalClassStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     switch (family)
     {
+        case Family::Warlock:
+            WarlockNodes(triggers);
+            break;
+        case Family::Hunter:
+            HunterNodes(triggers);
+            break;
         case Family::Shaman:
             ShamanNodes(triggers);
             break;
