@@ -715,6 +715,8 @@ bool PlayerbotAIConfig::Initialize()
     autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
     autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
     autoWowQuestScheduler = sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.Enable", false);
+    QuestSchedulerPolicy::detail::gPreferGearRewards =
+        sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.PreferGearRewards", false);
     {
         std::string avoidText = sConfigMgr->GetOption<std::string>("AutoWow.QuestAvoidIds", "");
         std::string const avoidFile = sConfigMgr->GetOption<std::string>("AutoWow.QuestAvoidFile", "");

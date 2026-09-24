@@ -11,7 +11,9 @@
  *   Order (lexicographic, lower wins):
  *     tier   0 turn-in (complete, finisher POI resolved), 1 level-appropriate, 2 grey but cheap
  *     cost   distance to the nearest objective/finisher POI in yards, minus kMomentumBonusYards when
- *            the quest's counters moved within kMomentumWindowMs (saturating at 0)
+ *            the quest's counters moved within kMomentumWindowMs (saturating at 0), minus the gear
+ *            bonus (AutoWow.QuestScheduler.PreferGearRewards: kGearWeaponBonusYards when a reward is a
+ *            weapon upgrade for the bot, else kGearArmorBonusYards for any other equippable upgrade)
  *     id     quest id ascending (stable tie-break)
  *   Grey incomplete quests farther than kCheapGreyYards are not candidates; the runtime drops them
  *   (owner: progression over completion).
@@ -42,6 +44,8 @@ inline constexpr std::uint32_t kRotateCooldownMs = 10 * 60 * 1000;
 inline constexpr std::uint32_t kMomentumWindowMs = 5 * 60 * 1000;
 inline constexpr std::uint32_t kMomentumBonusYards = 150;
 inline constexpr std::uint32_t kCheapGreyYards = 100;
+inline constexpr std::uint32_t kGearWeaponBonusYards = 300;  // PreferGearRewards: weapon upgrade reward
+inline constexpr std::uint32_t kGearArmorBonusYards = 150;   // PreferGearRewards: other equippable upgrade
 inline constexpr std::size_t npos = static_cast<std::size_t>(-1);
 
 // Per-quest counter memory (the ledger `progress` idea, in process). A quest's first observation is a
@@ -99,7 +103,16 @@ struct Candidate
     bool grey = false;                // quest level <= the bot's grey level
     std::uint32_t distanceYards = 0;  // nearest POI, 2D
     std::uint32_t lastProgressMs = 0; // MomentumBook; 0 = none observed
+    std::uint32_t gearBonusYards = 0; // GearBonusYards (PreferGearRewards only; 0 = no reward upgrade)
 };
+
+// AutoWow.QuestScheduler.PreferGearRewards (soak-s14-full-r1: 0 greens across the cohort, starter
+// weapons at L9-15): a quest whose reward (choice or fixed) upgrades the bot is worth a detour; a
+// weapon most (it is the damage race).
+[[nodiscard]] inline std::uint32_t GearBonusYards(bool weaponUpgrade, bool otherUpgrade)
+{
+    return weaponUpgrade ? kGearWeaponBonusYards : (otherUpgrade ? kGearArmorBonusYards : 0);
+}
 
 [[nodiscard]] inline bool HasMomentum(Candidate const& c, std::uint32_t nowMs)
 {
@@ -119,6 +132,7 @@ struct Candidate
     std::uint32_t cost = c.distanceYards;
     if (HasMomentum(c, nowMs))
         cost = cost > kMomentumBonusYards ? cost - kMomentumBonusYards : 0;
+    cost = cost > c.gearBonusYards ? cost - c.gearBonusYards : 0;
     return {tier, cost, c.questId};
 }
 
@@ -215,6 +229,13 @@ struct BotState
     out.swap(ids);
     return true;
 }
+
+// Runtime flag (PlayerbotAIConfig.cpp reads AutoWow.QuestScheduler.PreferGearRewards; default 0).
+namespace detail
+{
+inline bool gPreferGearRewards = false;
+}
+inline bool PreferGearRewards() { return detail::gPreferGearRewards; }
 
 [[nodiscard]] inline bool ContainsQuestId(std::vector<std::uint32_t> const& sortedIds, std::uint32_t questId)
 {

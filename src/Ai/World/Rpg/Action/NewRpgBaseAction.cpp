@@ -26,6 +26,7 @@
 #include "GridTerrainData.h"
 #include "IVMapMgr.h"
 #include "ItemTemplate.h"
+#include "ItemUsageValue.h"
 #include "MotionMaster.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
@@ -262,6 +263,30 @@ bool DeathLoopDefersQuest(Player* bot, uint32 questId, std::vector<POIInfo> cons
 }
 }
 
+// AutoWow.QuestScheduler.PreferGearRewards: a reward (choice or fixed) the stock "item upgrade" value
+// rates EQUIP (empty slot) or REPLACE (beats the equipped item for this bot's class/spec weights).
+static uint32 GearRewardBonusYards(PlayerbotAI* botAI, Quest const* quest)
+{
+    bool weapon = false;
+    bool other = false;
+    auto consider = [&](uint32 itemId)
+    {
+        ItemTemplate const* proto = itemId ? sObjectMgr->GetItemTemplate(itemId) : nullptr;
+        if (!proto)
+            return;
+        ItemUsage const usage =
+            botAI->GetAiObjectContext()->GetValue<ItemUsage>("item upgrade", std::to_string(itemId))->Get();
+        if (usage != ITEM_USAGE_EQUIP && usage != ITEM_USAGE_REPLACE)
+            return;
+        (proto->Class == ITEM_CLASS_WEAPON ? weapon : other) = true;
+    };
+    for (uint8 k = 0; k < QUEST_REWARD_CHOICES_COUNT; ++k)
+        consider(quest->RewardChoiceItemId[k]);
+    for (uint8 k = 0; k < QUEST_REWARDS_COUNT; ++k)
+        consider(quest->RewardItemId[k]);
+    return QuestSchedulerPolicy::GearBonusYards(weapon, other);
+}
+
 bool NewRpgBaseAction::IsAutoWowTravelBot() const
 {
     return botAI->IsAutoWowIndependentParty() ||
@@ -339,6 +364,8 @@ bool NewRpgBaseAction::ScheduleDoQuest(bool commit)
         candidate.grey = bot->GetQuestLevel(quest) <= static_cast<int32>(greyLevel);
         candidate.distanceYards = distance;
         candidate.lastProgressMs = lastProgressMs;
+        if (QuestSchedulerPolicy::PreferGearRewards())
+            candidate.gearBonusYards = GearRewardBonusYards(botAI, quest);
         candidates.push_back(candidate);
     }
 

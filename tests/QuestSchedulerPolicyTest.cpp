@@ -55,6 +55,31 @@ TEST(QuestSchedulerPolicyTest, MomentumBonusBeatsSlightlyNearerQuest)
     EXPECT_EQ(cs[PickBest(cs, kNow)].questId, 170u);
 }
 
+// AutoWow.QuestScheduler.PreferGearRewards (soak-s14-full-r1: 0 greens, starter weapons at L9-15).
+TEST(QuestSchedulerPolicyTest, GearRewardBonusWeaponFirst)
+{
+    EXPECT_EQ(GearBonusYards(false, false), 0u);
+    EXPECT_EQ(GearBonusYards(false, true), kGearArmorBonusYards);
+    EXPECT_EQ(GearBonusYards(true, false), kGearWeaponBonusYards);
+    EXPECT_EQ(GearBonusYards(true, true), kGearWeaponBonusYards);
+    EXPECT_GT(kGearWeaponBonusYards, kGearArmorBonusYards);
+    EXPECT_FALSE(PreferGearRewards());  // default off
+
+    // A weapon-reward quest 350 yd away beats a plain one at 100 yd (350 - 300 = 50).
+    std::vector<Candidate> cs = {Make(170, 100), Make(3361, 350)};
+    EXPECT_EQ(cs[PickBest(cs, kNow)].questId, 170u);  // no bonus: identical to the stock order
+    cs[1].gearBonusYards = GearBonusYards(true, false);
+    EXPECT_EQ(cs[PickBest(cs, kNow)].questId, 3361u);
+    // An armor reward alone does not outweigh 250 yd.
+    cs[1].gearBonusYards = GearBonusYards(false, true);
+    EXPECT_EQ(cs[PickBest(cs, kNow)].questId, 170u);
+    // Saturates at 0 and stacks after momentum; tiers still rule (a turn-in stays first).
+    cs = {Make(170, 900, true), Make(3361, 100, false, false, kNow - 1)};
+    cs[1].gearBonusYards = kGearWeaponBonusYards;
+    EXPECT_EQ(std::get<1>(SortKey(cs[1], kNow)), 0u);
+    EXPECT_EQ(cs[PickBest(cs, kNow)].questId, 170u);
+}
+
 TEST(QuestSchedulerPolicyTest, GreyCheapAfterLevelAppropriateAndFarGreyExcluded)
 {
     std::vector<Candidate> cs = {Make(10, 50, false, true), Make(20, 900)};

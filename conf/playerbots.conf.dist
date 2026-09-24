@@ -2579,6 +2579,11 @@ AutoWow.QuestItemTargetConditions.Enable = 0
 # dropped (ledger `deferred` reason sched_drop_grey). A non-Oracle directive with no counter progress for
 # 5 min (10 min for a turn-in) rotates: 10-minute cooldown, ledger `deferred` reason sched_rotate, Idle.
 AutoWow.QuestScheduler.Enable = 0
+# PreferGearRewards (default 0; needs QuestScheduler.Enable): a quest whose reward (choice or fixed) the
+# stock "item upgrade" value rates as an upgrade for the bot (empty slot, or better than the equipped item
+# for its class/spec weights) counts as 300 yd nearer for a weapon, 150 yd for any other equippable item.
+# Gear comes only from quest rewards, loot and vendors; nothing is granted.
+AutoWow.QuestScheduler.PreferGearRewards = 0
 # Quest avoid list (default empty = off). Avoided quests fail IsQuestCapableDoing: never accepted, never
 # chosen for DO_QUEST, pruned when the log fills. Ids separated by commas or whitespace, '#' comments.
 # AutoWow.QuestAvoidFile names a file in the same format (read once at load; the union of both is used).
