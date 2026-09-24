@@ -29,6 +29,7 @@
 #include "TacticalRuntime.h"
 #include "PullLevelCap.h"
 #include "RestGate.h"
+#include "SurvivalRecovery.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -543,6 +544,7 @@ public:
         AutoWowTactics::LoadConfig();
         AutoWowPullCap::LoadConfig();
         AutoWowRestGate::LoadConfig();
+        AutoWowSurvivalRecovery::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
@@ -739,6 +741,7 @@ void AddPlayerbotsScripts()
     AddPlayerbotsCommandscripts();
     AutoWowCombatPerformanceTelemetry::AddAutoWowCombatPerformanceTelemetryScript();
     AutoWowDeathLoop::AddScripts();
+    AutoWowSurvivalRecovery::AddScripts();
     PlayerBotsGuildValidationScript();
     AddSC_MagtheridonBotScripts();
     AddSC_TempestKeepBotScripts();

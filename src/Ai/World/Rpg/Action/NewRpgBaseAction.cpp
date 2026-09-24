@@ -57,6 +57,7 @@
 #include "SellAction.h"
 #include "SharedDefines.h"
 #include "StatsWeightCalculator.h"
+#include "SurvivalRecovery.h"
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "TravelNode.h"
@@ -512,6 +513,8 @@ bool NewRpgBaseAction::MoveFarToIntent(WorldPosition const& dest, bool questNoTe
                  dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
                  bot->GetPositionX(), bot->GetPositionY(), intent.bestGoalYards, intent.segmentsCommitted,
                  intent.failures);
+        if (AutoWowUnstick::Enabled() && reason == GiveUp::ReplanExhausted)
+            AutoWowUnstick::NoteReplanExhausted(botGuid);
         Abandon(intent, reason);
         if (outStuck)
             *outStuck = true;
@@ -702,6 +705,8 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNo
                  dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
                  bot->GetPositionX(), bot->GetPositionY(), intent.bestGoalYards, intent.segmentsCommitted,
                  intent.failures);
+        if (AutoWowUnstick::Enabled() && reason == GiveUp::ReplanExhausted)
+            AutoWowUnstick::NoteReplanExhausted(botGuid);
         Abandon(intent, reason);
         if (outStuck)
             *outStuck = true;
@@ -910,6 +915,12 @@ bool NewRpgBaseAction::MoveFarTo(WorldPosition dest, bool questNoTeleport, bool*
         // clear stuck information if it's a new dest
         botAI->rpgInfo.SetMoveFarTo(dest);
     }
+
+    // AutoWow.Survival.Unstick (default 0): a bot frozen on its travel goal hearths home, or portals out of a
+    // navmesh hole (SurvivalRecovery.h). OFF = nothing observed.
+    if (AutoWowUnstick::Enabled() &&
+        AutoWowUnstick::Step(botAI, dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ()))
+        return true;
 
     LastMovement& lastMovement = AI_VALUE(LastMovement&, "last movement");
     if (deterministicPath)

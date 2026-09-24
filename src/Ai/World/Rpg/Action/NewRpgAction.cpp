@@ -68,6 +68,7 @@
 #include "RaidTargetClaimValue.h"
 #include "Random.h"
 #include "SharedDefines.h"
+#include "SurvivalRecovery.h"
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "UseItemAction.h"
@@ -364,6 +365,31 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgStatus status = info.GetStatus();
+
+    // AutoWow.Survival.SafeRevive: after a corpse revive the bot first walks off the kill spot, then the RPG
+    // holds in REST below the rest-gate hp/mana thresholds while the food strategy eats (SurvivalRecovery.h).
+    if (AutoWowSafeRevive::Enabled() && !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()))
+    {
+        float x = 0.0f, y = 0.0f, z = 0.0f;
+        switch (AutoWowSafeRevive::RecoveryStep(botAI, x, y, z))
+        {
+            case AutoWowSafeRevive::Step::Walk:
+                if (bot->isMoving() || IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL) ||
+                    MoveTo(bot->GetMapId(), x, y, z, false, false, false, true))
+                    return true;
+                AutoWowSafeRevive::EndRetreat(bot->GetGUID().GetCounter());
+                break;
+            case AutoWowSafeRevive::Step::Rest:
+                if (status != RPG_REST)
+                {
+                    info.ChangeToRest();
+                    return true;
+                }
+                return false;  // stay in REST (no RPG movement); lower actions (food) run
+            case AutoWowSafeRevive::Step::None:
+                break;
+        }
+    }
 
     // AutoWow.DeathLoop: an escalated death in a zone whose level bracket starts well above the bot
     // leaves one relocation attempt, taken through the ordinary flight-travel status (walk to the

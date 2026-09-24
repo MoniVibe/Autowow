@@ -7,6 +7,8 @@
 #ifndef PLAYERBOTS_REVIVEFROMCORPSEACTION_H
 #define PLAYERBOTS_REVIVEFROMCORPSEACTION_H
 
+#include <optional>
+
 #include "CorpseRouteRetryPolicy.h"
 #include "MovementActions.h"
 
@@ -30,6 +32,10 @@ public:
 
     bool Execute(Event event) override;
     bool isUseful() override;
+
+private:
+    // AutoWow.Survival.SafeRevive: nullopt = legacy corpse run; else the Execute result.
+    std::optional<bool> SafeReviveApproach(Corpse* corpse);
 };
 
 class SpiritHealerAction : public MovementAction

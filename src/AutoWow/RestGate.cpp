@@ -13,6 +13,7 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "SharedDefines.h"
+#include "SurvivalRecovery.h"
 
 namespace AutoWowRestGate
 {
@@ -20,12 +21,15 @@ namespace
 {
 std::uint32_t Pct(std::uint64_t cur, std::uint64_t max) { return max ? static_cast<std::uint32_t>(cur * 100 / max) : 100; }
 
-// AutoWow.DeathLoop.V2 (c): forced rest pending for this bot (false with V2 off).
+// AutoWow.DeathLoop.V2 (c) / AutoWow.Survival.SafeRevive: forced rest pending for this bot (false with both off).
 bool Forced(PlayerbotAI* botAI)
 {
     Player* bot = botAI ? botAI->GetBot() : nullptr;
-    return bot && AutoWowDeathLoop::V2Enabled() &&
-           AutoWowDeathLoop::RestPending(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
+    if (!bot)
+        return false;
+    std::uint32_t const guid = static_cast<std::uint32_t>(bot->GetGUID().GetCounter());
+    return (AutoWowDeathLoop::V2Enabled() && AutoWowDeathLoop::RestPending(guid)) ||
+           (AutoWowSafeRevive::Enabled() && AutoWowSafeRevive::RestPending(guid));
 }
 
 // forced: any bot (the death-loop breaker only escalates autonomous ones), else independent party only.
@@ -63,7 +67,10 @@ bool HoldProactivePull(PlayerbotAI* botAI)
     bool const hold =
         Hold(detail::gParams, HpPct(bot), ManaPct(bot), UsesMana(bot), bot->HasAura(kResurrectionSicknessAura));
     if (forced && !hold)
+    {
         AutoWowDeathLoop::ClearRestPending(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
+        AutoWowSafeRevive::ClearRestPending(static_cast<std::uint32_t>(bot->GetGUID().GetCounter()));
+    }
     return hold;
 }
 

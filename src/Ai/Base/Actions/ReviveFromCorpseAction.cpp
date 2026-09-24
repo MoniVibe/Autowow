@@ -19,6 +19,7 @@
 #include "PersistentCorpseApproachPolicy.h"
 #include "RandomPlayerbotMgr.h"
 #include "ServerFacade.h"
+#include "SurvivalRecovery.h"
 #include "Corpse.h"
 #include "../../World/Gathering/GatheringWorkerState.h"
 
@@ -98,6 +99,26 @@ bool ReviveFromCorpseAction::Execute(Event event)
             ServerFacade::instance().IsDistanceLessThan(AI_VALUE2(float, "distance", "group leader"),
                                               sPlayerbotAIConfig.farDistance))
             return false;
+    }
+
+    // AutoWow.Survival.SafeRevive: a planned death reclaims only on its chosen spot (FindCorpseAction walks
+    // the ghost there) and a spirit-healer plan never reclaims. No plan = the legacy rules below.
+    if (AutoWowSafeRevive::Enabled())
+    {
+        AutoWowSafeRevive::Gate const gate = AutoWowSafeRevive::ReclaimGate(bot, corpse);
+        if (gate == AutoWowSafeRevive::Gate::Hold)
+            return false;
+        if (gate == AutoWowSafeRevive::Gate::Spirit)
+            return botAI->DoSpecificAction("spirit healer", Event("safe revive"), true);
+        if (gate == AutoWowSafeRevive::Gate::Reclaim)
+        {
+            bot->GetMotionMaster()->Clear();
+            bot->StopMoving();
+            WorldPacket packet(CMSG_RECLAIM_CORPSE);
+            packet << bot->GetGUID();
+            bot->GetSession()->HandleReclaimCorpseOpcode(packet);
+            return true;
+        }
     }
 
     if (!botAI->HasRealPlayerMaster())
@@ -223,6 +244,12 @@ bool FindCorpseAction::Execute(Event /*event*/)
             bot->GetName(), bot->GetMapId(), corpse->GetMapId());
         return botAI->DoSpecificAction("spirit healer", Event("persistent cross-map corpse recovery"), true);
     }
+
+    // AutoWow.Survival.SafeRevive (default 0): the ghost walks to the least-threatened reachable spot within
+    // reclaim reach, or takes the spirit healer after a repeat death with no safe spot. No plan = legacy.
+    if (AutoWowSafeRevive::Enabled())
+        if (std::optional<bool> const safe = SafeReviveApproach(corpse))
+            return *safe;
 
     // if (groupLeader)
     // {
@@ -394,6 +421,35 @@ bool FindCorpseAction::Execute(Event /*event*/)
     }
 
     return moved;
+}
+
+std::optional<bool> FindCorpseAction::SafeReviveApproach(Corpse* corpse)
+{
+    std::optional<AutoWowSafeRevive::Target> const t = AutoWowSafeRevive::PlanFor(bot, corpse);
+    if (!t)
+        return std::nullopt;
+    if (t->plan == AutoWowSafeRevive::Plan::SpiritHealer)
+    {
+        if (botAI->DoSpecificAction("spirit healer", Event("safe revive"), true))
+            return true;
+        AutoWowSafeRevive::Abandon(bot->GetGUID().GetCounter());
+        return std::nullopt;
+    }
+    if (bot->GetExactDist2d(t->x, t->y) <= float(AutoWowSafeRevive::kAtSpotYards))
+    {
+        if (bot->isMoving())
+            bot->StopMoving();
+        return false;  // on the spot: "corpse near" -> revive from corpse reclaims here
+    }
+    LastMovement& last = AI_VALUE(LastMovement&, "last movement");
+    bool const ours = last.lastMoveToMapId == bot->GetMapId() &&
+                      std::fabs(last.lastMoveToX - t->x) < 1.0f && std::fabs(last.lastMoveToY - t->y) < 1.0f;
+    if (ours && (bot->isMoving() || IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL)))
+        return true;
+    // A refusal (a previous move still pending) is retried next tick; PlanFor's approach timeout hands a
+    // hopeless approach back to the legacy corpse run.
+    MoveTo(bot->GetMapId(), t->x, t->y, t->z, false, false, false, true);
+    return true;
 }
 
 bool FindCorpseAction::isUseful()

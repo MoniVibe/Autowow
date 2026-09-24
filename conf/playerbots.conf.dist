@@ -2440,6 +2440,32 @@ AutoWow.Survival.RestGate = 0
 AutoWow.Survival.RestGate.MinHpPct = 70
 AutoWow.Survival.RestGate.MinManaPct = 60
 
+# Safe corpse revive for solo autonomous bots (SurvivalRecovery.h; default 0). A ghost resurrects where it
+# stands within 39 yd of its corpse: within 60 yd it picks, among the corpse and two rings of 8 points
+# (17 / 34 yd), the mmap-reachable spot with the least aggro weight of idle hostiles (elite 6, at or above
+# the bot's level 3, lower 1; aggro radius + 5 yd), ties toward the graveyard and away from the killer,
+# and reclaims there. No threat-free spot and SpiritDeaths deaths within WindowMs (this one included):
+# the spirit healer instead (0 = never). After a corpse revive the bot walks 45 yd off the spot (same
+# scoring), then holds the RPG in REST below the AutoWow.Survival.RestGate hp/mana thresholds; after any
+# revive no proactive pull until rested (the rest gate's forced rest, flag on or off). 0 = legacy.
+AutoWow.Survival.SafeRevive = 0
+AutoWow.Survival.SafeRevive.SpiritDeaths = 2
+AutoWow.Survival.SafeRevive.WindowMs = 600000
+
+# Unstick for autonomous bots (SurvivalRecovery.h; default 0). A bot with a travel / quest goal that stays
+# within RadiusYards for FrozenMs (0 = rule off), or gives up ReplanExhausted walks with
+# intent_replan_exhausted within WindowMs (0 = rule off), casts its hearthstone (in the bags, off cooldown,
+# bound over 100 yd away); else, when no mmap probe (8 bearings x 30 yd) gets MinEscapeYards away - a
+# navmesh hole - it is portalled to the nearest graveyard (ledger `contaminated` reason unstick_portal);
+# else nothing. Every decision logs "[Unstick]" with map/x/y/z/zone/area and starts CooldownMs. 0 = legacy.
+AutoWow.Survival.Unstick = 0
+AutoWow.Survival.Unstick.RadiusYards = 10
+AutoWow.Survival.Unstick.FrozenMs = 300000
+AutoWow.Survival.Unstick.ReplanExhausted = 5
+AutoWow.Survival.Unstick.WindowMs = 900000
+AutoWow.Survival.Unstick.CooldownMs = 600000
+AutoWow.Survival.Unstick.MinEscapeYards = 8
+
 # Zone progression for independent AutoWoW bots (Oracle-managed bots and bots with a real master are
 # never moved). Every CheckIntervalMs an idle bot graduates when its level >= its zone's
 # AiPlayerbot.ZoneBracket max - LevelMargin, or when its quest log had nothing actionable for
