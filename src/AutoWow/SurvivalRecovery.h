@@ -7,6 +7,7 @@
 #ifndef AUTOWOW_SURVIVAL_RECOVERY_H
 #define AUTOWOW_SURVIVAL_RECOVERY_H
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -95,15 +96,17 @@ inline constexpr std::size_t kRetreatCandidates = 1 + kBearings.size();
     return m.elite ? 6 : m.level >= botLevel ? 3 : 1;
 }
 
-// Sum of the weights of the mobs whose aggro radius (+kAggroMarginYards) covers p.
-[[nodiscard]] inline std::uint32_t SpotThreat(Point const& p, std::vector<Mob> const& mobs, std::uint32_t botLevel)
+// Sum of the weights of the mobs whose aggro radius (+kAggroMarginYards) covers p, or that stand within
+// minRadius of it (SafeRevive.V2: kThreatYardsV2; 0 = aggro radius only).
+[[nodiscard]] inline std::uint32_t SpotThreat(Point const& p, std::vector<Mob> const& mobs, std::uint32_t botLevel,
+                                              std::uint32_t minRadius = 0)
 {
     std::uint32_t threat = 0;
     for (Mob const& m : mobs)
     {
         std::int64_t const dx = std::int64_t(m.x) - p.x;
         std::int64_t const dy = std::int64_t(m.y) - p.y;
-        std::int64_t const r = std::int64_t(m.aggroYards) + kAggroMarginYards;
+        std::int64_t const r = std::max<std::int64_t>(std::int64_t(m.aggroYards) + kAggroMarginYards, minRadius);
         if (dx * dx + dy * dy <= r * r)
             threat += MobWeight(m, botLevel);
     }
@@ -146,7 +149,7 @@ struct Pick
 
 // Lowest (threat, preference, index) among the reachable spots.
 [[nodiscard]] inline Pick PickSpot(std::vector<Spot> const& spots, std::vector<Mob> const& mobs,
-                                   std::uint32_t botLevel, Anchors const& a)
+                                   std::uint32_t botLevel, Anchors const& a, std::uint32_t minRadius = 0)
 {
     Pick best;
     std::int64_t bestPref = 0;
@@ -154,7 +157,7 @@ struct Pick
     {
         if (!spots[i].reachable)
             continue;
-        std::uint32_t const threat = SpotThreat(spots[i].p, mobs, botLevel);
+        std::uint32_t const threat = SpotThreat(spots[i].p, mobs, botLevel, minRadius);
         std::int64_t const pref = Preference(spots[i].p, a);
         if (best.index == kNoSpot || threat < best.threat || (threat == best.threat && pref < bestPref))
         {
@@ -195,13 +198,42 @@ inline constexpr char const* PlanName(Plan p)
     return found ? Plan::ReviveAt : Plan::None;
 }
 
+// ---- AutoWow.Survival.SafeRevive.V2 (default 0; needs SafeRevive) ------------------------------------
+// soak-s21-full-r1 (LOWMOB_DEATHS_S21 cause 3): 76 plans for 177 deaths; all 44 revive_at plans at threat
+// 0, 13 of them at deaths 3-4 in the window (past SpiritDeaths 2) - a zero-threat spot overrode the spirit
+// healer - and 57% of repeat deaths came within 4 min: the threat saw only idle hostiles in aggro range.
+// V2: SpiritDeaths deaths in the window take the spirit healer whatever the spot threat, and after that
+// res one relocation (the death-loop one: zone-progression escape hub with EscapeViaZoneProgression, else
+// a flight); spot threat counts every hostile within kThreatYardsV2 - idle, in combat, or dead with its
+// respawn due within kRespawnSoonMs (at its home position).
+inline constexpr std::uint32_t kThreatYardsV2 = 60;
+inline constexpr std::uint64_t kRespawnSoonMs = 120000;
+
+[[nodiscard]] inline Plan DecideV2(Pick const& best, std::uint32_t recentDeaths, Params const& p)
+{
+    if (p.spiritDeaths && recentDeaths >= p.spiritDeaths)
+        return Plan::SpiritHealer;
+    return best.index != kNoSpot ? Plan::ReviveAt : Plan::None;
+}
+
+// A dead creature's spawn counts as a threat when it respawns within kRespawnSoonMs (times in seconds, as
+// the core keeps them; respawnAt 0 = no respawn scheduled).
+[[nodiscard]] inline bool RespawnSoon(std::int64_t respawnAtSec, std::int64_t nowSec)
+{
+    return respawnAtSec > 0 && respawnAtSec - nowSec <= static_cast<std::int64_t>(kRespawnSoonMs / 1000);
+}
+
 // ---- runtime (SurvivalRecovery.cpp) ------------------------------------------------------------------
 namespace detail
 {
 inline bool gEnabled = false;
+inline bool gV2 = false;
 inline Params gParams;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
+inline bool V2Enabled() { return detail::gEnabled && detail::gV2; }
+// V2: the relocation owed after a forced spirit-healer res (consumed once; false with V2 off).
+bool TakeRelocation(std::uint32_t botGuid);
 
 // World-space target of this death's plan (plan != None).
 struct Target

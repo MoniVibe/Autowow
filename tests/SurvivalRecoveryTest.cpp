@@ -246,4 +246,55 @@ TEST(Unstick, NavmeshHoleAndDecision)
     EXPECT_EQ(Decide(false, true, false), Action::None);   // walkable: nothing
     EXPECT_STREQ(ActionName(Action::Portal), "portal");
 }
+
+// ---- SafeRevive.V2 --------------------------------------------------------------------------------------
+// soak-s21-full-r1: 13 revive_at plans at deaths 3-4 (past SpiritDeaths 2), all at threat 0.
+TEST(SafeReviveV2, SpiritDeathsForceTheSpiritHealerWhateverTheSpot)
+{
+    AutoWowSafeRevive::Params const p;  // spiritDeaths 2
+    AutoWowSafeRevive::Pick clear;
+    clear.index = 3;
+    clear.threat = 0;
+    EXPECT_EQ(AutoWowSafeRevive::Decide(clear, 3, p), AutoWowSafeRevive::Plan::ReviveAt);  // V1: the bug
+    EXPECT_EQ(AutoWowSafeRevive::DecideV2(clear, 3, p), AutoWowSafeRevive::Plan::SpiritHealer);
+    EXPECT_EQ(AutoWowSafeRevive::DecideV2(clear, 2, p), AutoWowSafeRevive::Plan::SpiritHealer);
+    EXPECT_EQ(AutoWowSafeRevive::DecideV2(clear, 1, p), AutoWowSafeRevive::Plan::ReviveAt);
+    AutoWowSafeRevive::Pick hot;
+    hot.index = 5;
+    hot.threat = 4;
+    EXPECT_EQ(AutoWowSafeRevive::DecideV2(hot, 1, p), AutoWowSafeRevive::Plan::ReviveAt);  // least threat
+    EXPECT_EQ(AutoWowSafeRevive::DecideV2(AutoWowSafeRevive::Pick{}, 1, p), AutoWowSafeRevive::Plan::None);
+    AutoWowSafeRevive::Params never;
+    never.spiritDeaths = 0;
+    EXPECT_EQ(AutoWowSafeRevive::DecideV2(clear, 8, never), AutoWowSafeRevive::Plan::ReviveAt);
+}
+
+TEST(SafeReviveV2, ThreatCountsEveryHostileWithinSixtyYards)
+{
+    // A mob 40 yd off with a 10 yd aggro radius: invisible to V1, counted by V2.
+    std::vector<Mob> const mobs = {M(40, 0, 20), M(0, 70, 20)};
+    EXPECT_EQ(AutoWowSafeRevive::SpotThreat(P(0, 0), mobs, 20), 0U);
+    EXPECT_EQ(AutoWowSafeRevive::SpotThreat(P(0, 0), mobs, 20, AutoWowSafeRevive::kThreatYardsV2), 3U);
+    // The wider radius never lowers a threat the aggro radius already sees.
+    std::vector<Mob> const big = {M(0, 70, 20, false, 80)};
+    EXPECT_EQ(AutoWowSafeRevive::SpotThreat(P(0, 0), big, 20, AutoWowSafeRevive::kThreatYardsV2), 3U);
+    // PickSpot with the V2 radius prefers the spot farther from the 40 yd mob.
+    std::vector<AutoWowSafeRevive::Spot> const spots = {{P(0, 0), true}, {P(-34, 0), true}};
+    AutoWowSafeRevive::Pick const v1 = AutoWowSafeRevive::PickSpot(spots, {M(40, 0, 20)}, 20, {});
+    AutoWowSafeRevive::Pick const v2 =
+        AutoWowSafeRevive::PickSpot(spots, {M(40, 0, 20)}, 20, {}, AutoWowSafeRevive::kThreatYardsV2);
+    EXPECT_EQ(v1.index, 0U);
+    EXPECT_EQ(v1.threat, 0U);
+    EXPECT_EQ(v2.index, 1U);
+    EXPECT_EQ(v2.threat, 0U);
+}
+
+TEST(SafeReviveV2, RespawnSoonWindow)
+{
+    EXPECT_TRUE(AutoWowSafeRevive::RespawnSoon(1000, 1000));
+    EXPECT_TRUE(AutoWowSafeRevive::RespawnSoon(1120, 1000));   // 120 s
+    EXPECT_FALSE(AutoWowSafeRevive::RespawnSoon(1121, 1000));
+    EXPECT_TRUE(AutoWowSafeRevive::RespawnSoon(900, 1000));    // overdue: counts
+    EXPECT_FALSE(AutoWowSafeRevive::RespawnSoon(0, 1000));     // none scheduled
+}
 }  // namespace

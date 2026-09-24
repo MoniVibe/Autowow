@@ -62,6 +62,8 @@ struct ReviveState
     float rz = 0.0f;
     std::uint64_t retreatMs = 0;
     bool restPending = false;
+    bool relocateOnRes = false;  // V2: this death's plan is a forced spirit healer
+    bool relocate = false;       // V2: revived after it, one relocation owed
 };
 
 // Deaths, revives and bot AI updates run on map threads. Touched only with a flag on.
@@ -148,6 +150,35 @@ std::vector<WalkingV2Policy::Mob> ScanIdleHostiles(Player* bot, float radius)
     return mobs;
 }
 
+// SafeRevive.V2: every hostile around the ghost - idle or in combat where it stands, dead ones whose
+// respawn is due within kRespawnSoonMs at their home position.
+std::vector<WalkingV2Policy::Mob> ScanHostilesV2(Player* bot, float radius)
+{
+    std::list<Creature*> found;
+    Acore::AllWorldObjectsInRange check(bot, radius);
+    Acore::CreatureListSearcher<Acore::AllWorldObjectsInRange> searcher(bot, found, check);
+    Cell::VisitObjects(bot, searcher, radius);
+    std::int64_t const nowSec = static_cast<std::int64_t>(GameTime::GetGameTime().count());
+    std::vector<WalkingV2Policy::Mob> mobs;
+    for (Creature* c : found)
+    {
+        if (!c || !c->IsInWorld() || c->IsCivilian() || c->HasReactState(REACT_PASSIVE) || !c->IsHostileTo(bot))
+            continue;
+        bool const alive = c->IsAlive();
+        if (!alive && !AutoWowSafeRevive::RespawnSoon(static_cast<std::int64_t>(c->GetRespawnTime()), nowSec))
+            continue;
+        Position const& at = alive ? static_cast<Position const&>(*c) : c->GetHomePosition();
+        WalkingV2Policy::Mob m;
+        m.x = static_cast<std::int32_t>(std::floor(at.GetPositionX()));
+        m.y = static_cast<std::int32_t>(std::floor(at.GetPositionY()));
+        m.level = c->GetLevel();
+        m.elite = c->isElite();
+        m.aggroYards = static_cast<std::uint32_t>(std::max(0.0f, c->GetAggroRange(bot)));
+        mobs.push_back(m);
+    }
+    return mobs;
+}
+
 // Ground-snapped (height search from zHint + 10 down 50 yd) and mmap-reachable from where the bot stands
 // on a complete path whose end lies within kAtSpotYards of the point.
 bool ReachableSpot(Player* bot, Point const& p, float zHint, G3D::Vector3& out)
@@ -220,7 +251,8 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
 
     Point const corpseAt = MakePoint(corpse->GetMapId(), corpse->GetPositionX(), corpse->GetPositionY(),
                                      corpse->GetPositionZ());
-    std::vector<Mob> const mobs = ScanIdleHostiles(bot, 150.0f);
+    bool const v2 = V2Enabled();
+    std::vector<Mob> const mobs = v2 ? ScanHostilesV2(bot, 150.0f) : ScanIdleHostiles(bot, 150.0f);
     std::vector<Spot> spots(kReviveCandidates);
     std::vector<G3D::Vector3> ends(kReviveCandidates);
     std::uint32_t reachable = 0;
@@ -233,9 +265,9 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
         reachable += spots[k].reachable ? 1 : 0;
     }
     Anchors const anchors{GraveAnchor(bot), killer, std::nullopt};
-    Pick const best = PickSpot(spots, mobs, bot->GetLevel(), anchors);
+    Pick const best = PickSpot(spots, mobs, bot->GetLevel(), anchors, v2 ? kThreatYardsV2 : 0);
     Target t;
-    t.plan = Decide(best, recentDeaths, detail::gParams);
+    t.plan = v2 ? DecideV2(best, recentDeaths, detail::gParams) : Decide(best, recentDeaths, detail::gParams);
     if (t.plan == Plan::ReviveAt)
     {
         t.x = ends[best.index].x;
@@ -249,6 +281,8 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
             s->planned = true;
             s->plan = t;
             s->planMs = nowMs;
+            if (v2)
+                s->relocateOnRes = t.plan == Plan::SpiritHealer;
         }
     }
     LOG_INFO("playerbots",
@@ -386,6 +420,18 @@ void ClearRestPending(std::uint32_t botGuid)
     if (ReviveState* s = Find(gRevive, botGuid))
         s->restPending = false;
 }
+
+bool TakeRelocation(std::uint32_t botGuid)
+{
+    if (!V2Enabled())
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    ReviveState* s = Find(gRevive, botGuid);
+    if (!s || !s->relocate)
+        return false;
+    s->relocate = false;
+    return true;
+}
 }  // namespace AutoWowSafeRevive
 
 namespace AutoWowUnstick
@@ -514,6 +560,7 @@ void LoadConfig()
     AutoWowSafeRevive::Params& r = AutoWowSafeRevive::detail::gParams;
     r.spiritDeaths = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.SafeRevive.SpiritDeaths", 2);
     r.windowMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.SafeRevive.WindowMs", 600000);
+    AutoWowSafeRevive::detail::gV2 = sConfigMgr->GetOption<bool>("AutoWow.Survival.SafeRevive.V2", false);
 
     AutoWowUnstick::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Survival.Unstick", false);
     AutoWowUnstick::Params& u = AutoWowUnstick::detail::gParams;
@@ -576,6 +623,8 @@ public:
         s->retreatPending = false;
         s->retreating = false;
         s->restPending = false;
+        s->relocateOnRes = false;
+        s->relocate = false;
     }
 
     void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
@@ -592,6 +641,12 @@ public:
         s->restPending = true;
         s->planned = false;
         s->plan = {};
+        // V2: a forced spirit-healer res moves the bot away (NewRpgAction takes the relocation).
+        if (AutoWowSafeRevive::V2Enabled())
+        {
+            s->relocate = s->relocateOnRes;
+            s->relocateOnRes = false;
+        }
     }
 
     void OnPlayerLogout(Player* player) override

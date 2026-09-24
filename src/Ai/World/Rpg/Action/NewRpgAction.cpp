@@ -422,6 +422,33 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         }
     }
 
+    // AutoWow.Survival.SafeRevive.V2: after a forced spirit-healer res (SpiritDeaths deaths in the window)
+    // the bot leaves the kill area: the death-loop relocation (zone-progression escape hub when enabled,
+    // else a flight). One relocation per death: a pending death-loop one is consumed with it.
+    if (AutoWowSafeRevive::V2Enabled() && status != RPG_TRAVEL_FLIGHT && bot->IsAlive() &&
+        AutoWowSafeRevive::TakeRelocation(bot->GetGUID().GetCounter()))
+    {
+        if (AutoWowDeathLoop::Enabled())
+            AutoWowDeathLoop::TakeRelocation(bot->GetGUID().GetCounter());
+        if (AutoWowDeathLoop::EscapeEnabled() && AutoWowZoneProgression::Enabled() && DeathLoopEscape())
+        {
+            LOG_INFO("playerbots", "[SafeRevive] bot={} relocate via=escape lvl={} zone={}", bot->GetName(),
+                     bot->GetLevel(), bot->GetZoneId());
+            return true;
+        }
+        uint32 flightMasterEntry = 0;
+        WorldPosition flightMasterPos;
+        std::vector<uint32> path;
+        bool const found = SelectRandomFlightTaxiNode(flightMasterEntry, flightMasterPos, path);
+        LOG_INFO("playerbots", "[SafeRevive] bot={} relocate via=flight lvl={} zone={} found={} to_node={}",
+                 bot->GetName(), bot->GetLevel(), bot->GetZoneId(), found, found ? path.back() : 0);
+        if (found)
+        {
+            info.ChangeToTravelFlight(flightMasterEntry, flightMasterPos, path);
+            return true;
+        }
+    }
+
     // AutoWow.DeathLoop: an escalated death in a zone whose level bracket starts well above the bot
     // leaves one relocation attempt, taken through the ordinary flight-travel status (walk to the
     // nearest flight master, fly to a zone bracketing the bot's level). No teleport.

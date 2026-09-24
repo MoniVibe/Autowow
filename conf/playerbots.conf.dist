@@ -2624,6 +2624,13 @@ AutoWow.Survival.PackAvoid.MinGearPct = 25
 AutoWow.Survival.SafeRevive = 0
 AutoWow.Survival.SafeRevive.SpiritDeaths = 2
 AutoWow.Survival.SafeRevive.WindowMs = 600000
+# SafeRevive V2 (default 0; needs AutoWow.Survival.SafeRevive = 1). SpiritDeaths deaths within WindowMs
+# take the spirit healer whatever the spot threat (V1 let a zero-threat spot win), and after that res
+# the bot relocates once (the death-loop relocation: zone-progression escape hub with
+# AutoWow.DeathLoop.EscapeViaZoneProgression, else a flight; logs "[SafeRevive] ... relocate"). Spot
+# threat counts every hostile within 60 yd of a spot - idle, in combat, or dead with its respawn due
+# within 120 s (at its home position) - not only idle ones in aggro range.
+AutoWow.Survival.SafeRevive.V2 = 0
 
 # Unstick for autonomous bots (SurvivalRecovery.h; default 0). A bot with a travel / quest goal that stays
 # within RadiusYards for FrozenMs (0 = rule off), or gives up ReplanExhausted walks with
