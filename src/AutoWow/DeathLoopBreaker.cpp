@@ -244,7 +244,11 @@ void HardEscapeTick(Player* bot)
     Place const home{bot->m_homebindMapId, Yards(bot->m_homebindX), Yards(bot->m_homebindY),
                      Yards(bot->m_homebindZ), homeZone};
     Place const to = HardPortalTarget(team, bot->GetMapId(), home, homeLow, level, h.walkZoneMargin);
-    bool const noTeleport = AutoWowPolicy::IsNoTeleport(guid);
+    // Hard escape is an explicit, logged portal (owner ruling: portals are an acceptable fallback). It must
+    // override the per-bot no-teleport policy of independent bots, like the zone-progression portal leg does;
+    // honouring it left a L18 cohort bot looping 400+ deaths in Burning Steppes (soak-s23-full-r1).
+    bool const noTeleport = false;
+    (void)AutoWowPolicy::IsNoTeleport(guid);
     if (!noTeleport)
     {
         {
