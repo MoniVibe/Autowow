@@ -99,6 +99,7 @@ struct Party
     std::uint32_t stuckTicks = 0;
     bool approachGaveUp = false;
     bool leaderRpgOff = false;
+    bool stagePortalDone = false;  // this Stage phase already used its portal fallback
     std::vector<std::uint32_t> hearthTried;
 };
 
@@ -458,6 +459,7 @@ void EndRun(Party& p, std::uint64_t now)
 {
     p.phase = Phase::None;
     p.phaseMs = now;
+    p.stagePortalDone = false;
     p.nextRunMs = now + gParams.runCooldownMs;
     p.hearthTried.clear();
     for (Slot const& s : p.slots)
@@ -475,6 +477,7 @@ void SetPhase(Party& p, Phase ph, std::uint64_t now)
     LOG_INFO("playerbots", "[Party] pid={} phase {} -> {}", p.id, std::uint32_t(p.phase), std::uint32_t(ph));
     p.phase = ph;
     p.phaseMs = now;
+    p.stagePortalDone = false;
 }
 
 // Step through an entrance trigger like a client does (the stock DungeonTransition waits for the whole
@@ -577,6 +580,18 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                          trigger && leader->IsInAreaTriggerRadius(trigger), leader->IsAlive(), leader->IsInCombat());
                 EmitRun(p, RunEvent::StageFailed, -1, now);
                 EndRun(p, now);
+                return Disband::None;
+            }
+            // Owner ruling: a logged portal fallback. A leader that cannot path into the trigger (Wailing
+            // Caverns cave, soak-s27-full-r1: stuck 39 yd off) is placed on it at half the stage timeout.
+            if (gParams.portalFallback && !p.stagePortalDone && now >= p.phaseMs + gParams.stageTimeoutMs / 2 &&
+                leader->IsAlive() && !leader->IsInCombat() && leader->GetMapId() == e.map &&
+                !leader->IsInAreaTriggerRadius(trigger))
+            {
+                p.stagePortalDone = true;
+                EmitRun(p, RunEvent::PortalFallback, -1, now);
+                LOG_INFO("playerbots", "[Party] pid={} stage portal leader_yd={}", p.id, int(leader->GetExactDist2d(e.x, e.y)));
+                leader->TeleportTo(e.map, e.x, e.y, e.z, leader->GetOrientation());
                 return Disband::None;
             }
             // Every member steps into the trigger volume; followers hold there (paused) until the stock
