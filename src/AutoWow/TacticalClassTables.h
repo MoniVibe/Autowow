@@ -84,7 +84,16 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      50},  // Warrior
     {},  // Paladin
     {},  // Druid
-    {},  // Shaman
+    {"Shaman",
+     {"magma totem:0,chain lightning:0.5,fire nova:0",
+      "",
+      "lightning bolt:0,chain lightning:0,lava burst:0,searing totem:0,magma totem:0,fire nova:0",
+      "lightning bolt:0,chain lightning:0,lava burst:0,searing totem:0,magma totem:0,fire nova:0,"
+         "stormstrike:0,lava lash:0,earth shock:0,flame shock:0,melee:0,reach melee:0"},
+     {"stoneclaw totem", "earthbind totem"},
+     {"shamanistic rage"},
+     {"ghost wolf"},
+     50},  // Shaman
     {},  // DeathKnight
 };
 }  // namespace AutoWowTactics

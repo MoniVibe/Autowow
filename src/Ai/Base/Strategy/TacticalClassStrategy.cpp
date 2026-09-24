@@ -169,12 +169,36 @@ void MageNodes(std::vector<TriggerNode*>& t)
     t.push_back(new TriggerNode("tac escape", {NextAction("blink back", ACTION_EMERGENCY + 4),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
+// Shaman (90-94): Searing Totem and Flame Shock on a single target (Magma Totem / Fire Nova off), Lesser
+// Healing Wave / Healing Wave below HealHpPct for every spec (enhancement / elemental have no stock self-heal);
+// multi: Stoneclaw Totem soaks, Flame Shock; emergency: Shamanistic Rage, LHW, HW, Stoneclaw (nukes off);
+// escape: Earthbind Totem, Frost Shock, Ghost Wolf, flee.
+void ShamanNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac single", {NextAction("searing totem", ACTION_NORMAL + 5),
+                                               NextAction("flame shock", ACTION_HIGH + 1)}));
+    t.push_back(new TriggerNode("tac heal", {NextAction("lesser healing wave", ACTION_CRITICAL_HEAL + 2),
+                                             NextAction("healing wave", ACTION_CRITICAL_HEAL + 1)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("stoneclaw totem", ACTION_HIGH + 8),
+                                              NextAction("flame shock", ACTION_HIGH + 2)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("shamanistic rage", ACTION_EMERGENCY + 6),
+                                                  NextAction("lesser healing wave", ACTION_EMERGENCY + 5),
+                                                  NextAction("healing wave", ACTION_EMERGENCY + 4),
+                                                  NextAction("stoneclaw totem", ACTION_EMERGENCY + 3)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("earthbind totem", ACTION_EMERGENCY + 5),
+                                               NextAction("frost shock", ACTION_EMERGENCY + 4),
+                                               NextAction("ghost wolf", ACTION_EMERGENCY + 3),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
 }  // namespace
 
 void TacticalClassStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     switch (family)
     {
+        case Family::Shaman:
+            ShamanNodes(triggers);
+            break;
         case Family::Mage:
             MageNodes(triggers);
             break;

@@ -709,4 +709,11 @@ public:
         SetTotemAction(botAI, "grounding totem", GROUNDING_TOTEM, TOTEM_BAR_SLOT_AIR) {}
 };
 
+// AutoWow tactical layer (TacticalClassStrategy.cpp ShamanNodes): escape form.
+class CastGhostWolfAction : public CastBuffSpellAction
+{
+public:
+    CastGhostWolfAction(PlayerbotAI* botAI) : CastBuffSpellAction(botAI, "ghost wolf") {}
+};
+
 #endif

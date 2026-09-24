@@ -16,6 +16,7 @@
 #include "ShamanNonCombatStrategy.h"
 #include "ShamanTriggers.h"
 #include "TotemsShamanStrategy.h"
+#include "TacticalClassStrategy.h"
 
 class ShamanStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -23,6 +24,9 @@ public:
     ShamanStrategyFactoryInternal()
     {
         creators["nc"] = &ShamanStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Shaman);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["aoe"] = &ShamanStrategyFactoryInternal::aoe;
         creators["cure"] = &ShamanStrategyFactoryInternal::cure;
         creators["healer dps"] = &ShamanStrategyFactoryInternal::healer_dps;
@@ -261,6 +265,7 @@ class ShamanAiObjectContextInternal : public NamedObjectContext<Action>
 public:
     ShamanAiObjectContextInternal()
     {
+        creators["ghost wolf"] = &ShamanAiObjectContextInternal::ghost_wolf;
         creators["water shield"] = &ShamanAiObjectContextInternal::water_shield;
         creators["lightning shield"] = &ShamanAiObjectContextInternal::lightning_shield;
         creators["wind shear"] = &ShamanAiObjectContextInternal::wind_shear;
@@ -352,6 +357,7 @@ public:
     }
 
 private:
+    static Action* ghost_wolf(PlayerbotAI* botAI) { return new CastGhostWolfAction(botAI); }
     static Action* heroism(PlayerbotAI* botAI) { return new CastHeroismAction(botAI); }
     static Action* bloodlust(PlayerbotAI* botAI) { return new CastBloodlustAction(botAI); }
     static Action* elemental_mastery(PlayerbotAI* botAI) { return new CastElementalMasteryAction(botAI); }

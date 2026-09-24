@@ -2444,6 +2444,22 @@ AutoWow.Tactics.Mage.Factors.Single = ""
 AutoWow.Tactics.Mage.Factors.Multi = "pyroblast:0,evocation:0"
 AutoWow.Tactics.Mage.Factors.Emergency = "pyroblast:0,fireball:0.5,arcane missiles:0,evocation:0,flamestrike:0,blizzard:0"
 AutoWow.Tactics.Mage.Factors.Escape = "frostbolt:0,fireball:0,pyroblast:0,arcane missiles:0,fire blast:0,scorch:0,frostfire bolt:0,ice lance:0,arcane blast:0,arcane barrage:0,evocation:0,flamestrike:0,blizzard:0,cone of cold:0,shoot:0"
+# Shaman (90/92/93/94; ShamanNodes): Searing Totem + Flame Shock single, LHW / HW below HealHpPct (any spec);
+# multi Stoneclaw Totem / Flame Shock; emergency Shamanistic Rage / LHW / HW / Stoneclaw; escape Earthbind /
+# Frost Shock / Ghost Wolf / flee. Tools: Stoneclaw / Earthbind (control), Shamanistic Rage (defensive),
+# Ghost Wolf (escape).
+AutoWow.Tactics.Shaman.SingleMaxPct = 120
+AutoWow.Tactics.Shaman.BasePct = 100
+AutoWow.Tactics.Shaman.HealHpPct = 50
+AutoWow.Tactics.Shaman.LowManaPct = 25
+AutoWow.Tactics.Shaman.EmergencyHpPct = 30
+AutoWow.Tactics.Shaman.EmergencyExitHpPct = 45
+AutoWow.Tactics.Shaman.ControlMinMelee = 2
+AutoWow.Tactics.Shaman.ControlHpPct = 60
+AutoWow.Tactics.Shaman.Factors.Single = "magma totem:0,chain lightning:0.5,fire nova:0"
+AutoWow.Tactics.Shaman.Factors.Multi = ""
+AutoWow.Tactics.Shaman.Factors.Emergency = "lightning bolt:0,chain lightning:0,lava burst:0,searing totem:0,magma totem:0,fire nova:0"
+AutoWow.Tactics.Shaman.Factors.Escape = "lightning bolt:0,chain lightning:0,lava burst:0,searing totem:0,magma totem:0,fire nova:0,stormstrike:0,lava lash:0,earth shock:0,flame shock:0,melee:0,reach melee:0"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within
