@@ -51,7 +51,18 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
     {},  // Mage
     {},  // Hunter
     {},  // Rogue
-    {},  // Warrior
+    {"Warrior",
+     {"sunder armor:0,heroic strike:0.5,rend on attacker:0",
+      "sunder armor:0,heroic strike:0,rend on attacker:0,rend:0.5",
+      "sunder armor:0,heroic strike:0,cleave:0,bloodrage:0,rend:0,rend on attacker:0,charge:0,"
+         "mocking blow:0",
+      "sunder armor:0,heroic strike:0,cleave:0,bloodrage:0,rend:0,rend on attacker:0,charge:0,"
+         "mocking blow:0,overpower:0,mortal strike:0,execute:0,slam:0,whirlwind:0,bloodthirst:0,"
+         "melee:0,reach melee:0"},
+     {"intimidating shout"},
+     {"shield wall", "retaliation", "last stand"},
+     {},
+     50},  // Warrior
     {},  // Paladin
     {},  // Druid
     {},  // Shaman

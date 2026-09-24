@@ -15,6 +15,7 @@
 #include "WarriorPullStrategy.h"
 #include "WarriorActions.h"
 #include "WarriorTriggers.h"
+#include "TacticalClassStrategy.h"
 
 class WarriorStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -22,6 +23,9 @@ public:
     WarriorStrategyFactoryInternal()
     {
         creators["nc"] = &WarriorStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Warrior);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &WarriorStrategyFactoryInternal::pull;
         creators["aoe"] = &WarriorStrategyFactoryInternal::warrior_aoe;
     }
