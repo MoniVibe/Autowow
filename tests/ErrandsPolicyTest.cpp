@@ -560,7 +560,7 @@ TEST(Gear, DueOncePerLevelWithBudgetUrgentWhenFarBelow)
     AutoWowGear::Params const p;
     std::uint64_t const reserve = AutoWowGear::ReserveCopper(20);  // 2000 + 2000
     EXPECT_EQ(reserve, 4000U);
-    std::uint64_t const budget = AutoWowGear::MinBudgetCopper(20);  // 8000
+    std::uint64_t const budget = AutoWowGear::MinBudgetCopper(20);  // 2000
     AutoWowGear::Due d = AutoWowGear::GearDue(p, 20, 19, reserve + budget, 937);
     EXPECT_TRUE(d.soft);
     EXPECT_TRUE(d.urgent);

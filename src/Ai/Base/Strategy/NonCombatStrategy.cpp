@@ -9,6 +9,10 @@
 void NonCombatStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     triggers.push_back(new TriggerNode("random", { NextAction("clean quest log", 1.0f) }));
+    // AutoWoW: re-scan the bags now and then. Stock equips only on item arrival, so pieces refused at pickup
+    // (too high then) stayed in the bags: 24 better items, mostly for empty slots, on 50 cohort bots
+    // (soak-s26-full-r1). Only items the bot owns.
+    triggers.push_back(new TriggerNode("random", { NextAction("equip upgrades packet action", 1.0f) }));
     triggers.push_back(new TriggerNode("timer", { NextAction("check mount state", 1.0f) }));
 }
 

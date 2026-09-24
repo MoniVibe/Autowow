@@ -71,8 +71,9 @@ inline constexpr std::uint8_t kSlotOffHand = 16;   // EQUIPMENT_SLOT_OFFHAND
 }
 
 // Gold that makes a gear trip worth it (vendor weapons, world DB: L10 20-44s, L20 58s-1g01s).
-// ponytail: level^2 x 20 on top of the reserve; a real ask comes from the vendor list at the town.
-[[nodiscard]] inline std::uint64_t MinBudgetCopper(std::uint32_t level) { return std::uint64_t(level) * level * 20; }
+// ponytail: level^2 x 5 on top of the reserve (x 20 gated 48/50 cohort bots out in soak-s26-full-r1, mean
+// purse 18.8s at L18); the vendor list at the town still bounds what is bought.
+[[nodiscard]] inline std::uint64_t MinBudgetCopper(std::uint32_t level) { return std::uint64_t(level) * level * 5; }
 
 [[nodiscard]] inline std::uint64_t Spendable(std::uint64_t money, std::uint32_t level)
 {
