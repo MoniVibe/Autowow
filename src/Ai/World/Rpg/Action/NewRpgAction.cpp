@@ -27,6 +27,7 @@
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DeathLoopBreaker.h"
+#include "GatherDetourPolicy.h"
 #include "ZoneProgressionPolicy.h"
 #include "DungeonPathWalkAction.h"
 #include "DungeonPullReadinessGuard.h"
@@ -448,6 +449,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 
     // AutoWow.Errands: independent bots keep themselves supplied by town runs (no cheats, real gold).
     if (AutoWowErrands::Enabled() && ErrandsStep())
+        return true;
+
+    // AutoWow.Gathering.Detours: herbalists/miners walk to a nearby gatherable node between RPG moves.
+    if (AutoWowGatherDetour::Enabled() && GatherDetourStep())
         return true;
 
     switch (status)

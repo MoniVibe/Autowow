@@ -125,6 +125,9 @@ protected:
     bool ErrandsStep();
     void ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& stop, AutoWowErrands::BotState& s);
     bool WalkLeg(WorldPosition const& dest);
+    // AutoWow.Gathering.Detours (GatherDetourPolicy.h): walk to a nearby herb/ore node the bot can gather,
+    // then yield to the stock loot strategy. True when it consumed the tick. Caller checks the flag.
+    bool GatherDetourStep();
 
 protected:
     /* FOR MOVE FAR */

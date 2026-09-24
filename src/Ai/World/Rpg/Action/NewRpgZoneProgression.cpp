@@ -4,7 +4,8 @@
  * or (at your option) any later version.
  */
 
-// AutoWow.ZoneProgression runtime (policy: AutoWow/ZoneProgressionPolicy.h).
+// AutoWow.ZoneProgression runtime (policy: AutoWow/ZoneProgressionPolicy.h), with the AutoWow.Transports
+// crossing chains and the AutoWow.Gathering.Detours step (GatherDetourPolicy.h).
 
 #include <algorithm>
 #include <cmath>
@@ -19,11 +20,14 @@
 #include "DeathLoopBreaker.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
+#include "GatherDetourPolicy.h"
 #include "Log.h"
+#include "LootObjectStack.h"
 #include "NewRpgBaseAction.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
+#include "Playerbots.h"
 #include "RestGate.h"
 #include "GameObject.h"
 #include "Transport.h"
@@ -692,4 +696,140 @@ bool NewRpgBaseAction::WalkLeg(WorldPosition const& dest)
     bool stuck = false;
     MoveFarTo(dest, /*questNoTeleport*/ true, &stuck);
     return stuck;
+}
+
+// ---- AutoWow.Gathering.Detours runtime (policy: AutoWow/GatherDetourPolicy.h) ----------------------
+namespace AutoWowGatherDetour
+{
+namespace
+{
+std::mutex gDetourLock;
+std::unordered_map<std::uint32_t, BotState> gDetours;  // touched only with the flag on
+
+BotState LoadDetour(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gDetourLock);
+    auto const it = gDetours.find(guid);
+    return it == gDetours.end() ? BotState{} : it->second;
+}
+
+void StoreDetour(std::uint32_t guid, BotState const& s)
+{
+    std::lock_guard<std::mutex> guard(gDetourLock);
+    gDetours[guid] = s;
+}
+
+// Same pick list as LootObject::IsLootPossible.
+bool HasMiningPick(Player* bot)
+{
+    for (uint32 item : {756u, 778u, 1819u, 1893u, 1959u, 2901u, 9465u, 20723u, 40772u, 40892u, 40893u})
+        if (bot->HasItemCount(item, 1))
+            return true;
+    return false;
+}
+}  // namespace
+
+void LoadConfig()
+{
+    detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gathering.Detours", false);
+    Params& p = detail::gParams;
+    p.yards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gathering.DetourYards", 60);
+    p.maxDz = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gathering.DetourMaxDz", 20);
+    p.timeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gathering.DetourTimeoutMs", 45000);
+}
+}  // namespace AutoWowGatherDetour
+
+bool NewRpgBaseAction::GatherDetourStep()
+{
+    using namespace AutoWowGatherDetour;
+    using AutoWowGatherDetour::BotState;
+    using AutoWowGatherDetour::Params;
+    uint32 const guid = bot->GetGUID().GetCounter();
+    if (!bot->IsAlive() || bot->IsInFlight() || !botAI->IsAutoWowIndependentParty() ||
+        AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return false;
+
+    Params const& p = detail::gParams;
+    Skills skills;
+    if (bot->HasSkill(SKILL_HERBALISM))
+        skills.herbalism = bot->GetSkillValue(SKILL_HERBALISM);
+    if (bot->HasSkill(SKILL_MINING))
+    {
+        skills.mining = bot->GetSkillValue(SKILL_MINING);
+        skills.miningPick = HasMiningPick(bot);
+    }
+    // Critical legs: a zone-progression trip, a town run, a flight, a rest (eating/drinking).
+    NewRpgStatus const status = botAI->rpgInfo.GetStatus();
+    bool const critical = (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(guid)) ||
+                          (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid)) ||
+                          status == RPG_TRAVEL_FLIGHT || status == RPG_REST;
+    if (!HasGatherSkill(skills))
+        return false;
+    BotState s = LoadDetour(guid);
+    if (!MayDetour(skills, bot->IsInCombat(), critical))
+    {
+        if (s.target)
+        {
+            End(s, false);
+            StoreDetour(guid, s);
+        }
+        return false;
+    }
+
+    std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+    if (TimedOut(p, s, now))
+    {
+        LOG_DEBUG("playerbots", "[GatherDetour] bot={} gave up node={}", bot->GetName(), s.target);
+        End(s, true);
+        StoreDetour(guid, s);
+        return false;
+    }
+
+    bool fresh = false;
+    if (!s.target)
+    {
+        std::int32_t const bx = static_cast<std::int32_t>(std::floor(bot->GetPositionX()));
+        std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
+        std::int32_t const bz = static_cast<std::int32_t>(std::floor(bot->GetPositionZ()));
+        std::vector<Node> nodes;
+        for (ObjectGuid const& g : AI_VALUE(GuidVector, "nearest game objects"))
+        {
+            GameObject* go = botAI->GetGameObject(g);
+            if (!go || !go->isSpawned() || go->GetGoState() != GO_STATE_READY)
+                continue;
+            LootObject lo(bot, g);
+            if (lo.IsEmpty() || (lo.skillId != SKILL_HERBALISM && lo.skillId != SKILL_MINING))
+                continue;
+            nodes.push_back(Node{g.GetRawValue(), lo.skillId, lo.reqSkillValue,
+                                 static_cast<std::int32_t>(std::floor(go->GetPositionX())) - bx,
+                                 static_cast<std::int32_t>(std::floor(go->GetPositionY())) - by,
+                                 static_cast<std::int32_t>(std::floor(go->GetPositionZ())) - bz});
+        }
+        int const pick = PickNode(p, skills, nodes, SkipList(s));
+        if (pick < 0)
+            return false;
+        Begin(s, nodes[pick].guid, now);
+        StoreDetour(guid, s);
+        fresh = true;
+        LOG_DEBUG("playerbots", "[GatherDetour] bot={} node={} skill={} req={}", bot->GetName(), s.target,
+                  nodes[pick].skill, nodes[pick].reqSkill);
+    }
+
+    ObjectGuid const target(s.target);
+    GameObject* go = botAI->GetGameObject(target);
+    if (!go || !go->isSpawned() || go->GetGoState() != GO_STATE_READY || LootObject(bot, target).IsEmpty())
+    {
+        End(s, false);  // gathered, or gone
+        StoreDetour(guid, s);
+        return false;
+    }
+    if (bot->GetExactDist(go) <= INTERACTION_DISTANCE - 2.0f)
+    {
+        // At the node: the stock loot strategy opens it (gather spell, skill-up); the RPG status resumes.
+        AI_VALUE(LootObjectStack*, "available loot")->Add(target);
+        return false;
+    }
+    if (fresh || !bot->isMoving())
+        MoveTo(go->GetMapId(), go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), false, false, false, true);
+    return true;
 }

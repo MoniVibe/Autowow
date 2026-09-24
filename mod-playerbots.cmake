@@ -29,6 +29,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/PullLevelCapTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/RestGateTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/TransportCrossingPolicyTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/GatherDetourPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ErrandsPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ExactBossTargetingTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/FixtureFactoryContractTest.cpp"

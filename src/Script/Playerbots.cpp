@@ -23,6 +23,7 @@
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
 #include "DeathLoopBreaker.h"
+#include "GatherDetourPolicy.h"
 #include "TransportCrossingPolicy.h"
 #include "ZoneProgressionPolicy.h"
 #include "ErrandsPolicy.h"
@@ -540,6 +541,7 @@ public:
         AutoWowDeathLoop::LoadConfig();
         AutoWowZoneProgression::LoadConfig();
         AutoWowTransports::LoadConfig();  // after ZoneProgression: appends crossing-only routes
+        AutoWowGatherDetour::LoadConfig();
         AutoWowErrands::LoadConfig();     // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowTactics::LoadConfig();
         AutoWowPullCap::LoadConfig();
