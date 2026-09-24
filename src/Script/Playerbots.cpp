@@ -27,6 +27,7 @@
 #include "TransportCrossingPolicy.h"
 #include "ZoneProgressionPolicy.h"
 #include "ErrandsPolicy.h"
+#include "TradePolicy.h"
 #include "TacticalRuntime.h"
 #include "PullLevelCap.h"
 #include "RestGate.h"
@@ -542,6 +543,7 @@ public:
         AutoWowZoneProgression::LoadConfig();
         AutoWowTransports::LoadConfig();  // after ZoneProgression: appends crossing-only routes
         AutoWowGatherDetour::LoadConfig();
+        AutoWowTrade::LoadConfig();       // before Errands: its town catalog adds auctioneers / mailboxes
         AutoWowErrands::LoadConfig();     // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowTactics::LoadConfig();
         AutoWowPullCap::LoadConfig();

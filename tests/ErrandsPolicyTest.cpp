@@ -372,6 +372,42 @@ TEST(Errands, PlanStopsMinimalRunAndTeamFilter)
     EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpRepair));
 }
 
+// AutoWow.Trade: auctioneer then mailbox after every other stop; a mailbox spawn sharing a creature's
+// number (kGoSpawnBit) never merges into that creature's stop.
+TEST(Errands, PlanStopsTradeStopsLastAndMailboxIdSpaceDisjoint)
+{
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn, 0);
+    Npc smith = MakeNpc(7, RoleRepair | RoleVendor, 20);
+    Npc hordeAuctioneer = MakeNpc(8, RoleAuction, 25, kHorde);
+    Npc auctioneer = MakeNpc(9, RoleAuction, 30);
+    Npc box = MakeNpc(7 | kGoSpawnBit, RoleMailbox, 40);
+    t.npcs = {inn, smith, hordeAuctioneer, auctioneer, box};
+    PlanInput in;
+    in.team = kAlliance;
+    in.bind = true;
+    // Flag off (defaults): the plan is the pre-trade plan.
+    Plan plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 2U);
+    in.auction = true;
+    in.mail = true;
+    plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 4U);
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell | OpRepair));
+    EXPECT_EQ(plan.stops[1].spawn, 5U);
+    EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpBind));
+    EXPECT_EQ(plan.stops[2].spawn, 9U);
+    EXPECT_EQ(plan.stops[2].ops, std::uint32_t(OpAuction));
+    EXPECT_EQ(plan.stops[3].spawn, 7U | kGoSpawnBit);
+    EXPECT_EQ(plan.stops[3].ops, std::uint32_t(OpMail));
+    // No auctioneer in town: mail only.
+    t.npcs = {inn, smith, box};
+    plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 3U);
+    EXPECT_EQ(plan.stops[2].ops, std::uint32_t(OpMail));
+}
+
 // ---- state + ledger ----------------------------------------------------------------------------------------
 TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
 {

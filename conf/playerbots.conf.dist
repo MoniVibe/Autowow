@@ -2738,6 +2738,29 @@ AutoWow.Errands.TravelTimeoutMs = 1200000
 AutoWow.Survival.KeepConsumables = 0
 AutoWow.Survival.KeepConsumables.SellDetourYards = 30
 
+# Auction-house trade for independent bots (TradePolicy.h; default 0; needs AutoWow.Errands.Enable = 1,
+# inert otherwise). A town run whose town has an auctioneer adds an auction stop, and one with a mailbox
+# a mail stop (after every other stop). At the auctioneer: list up to MaxPosts stacks the bot does not
+# need (stock item usage `ah`; greens and better, or trade goods / reagents / gems) one below the lowest
+# competing buyout per unit, else at PriceMultPct of the vendor price, never below FloorPct of it
+# (deposits <= half the bot's money); then buy with buyout at most one equippable upgrade (stock item
+# usage equip/replace) and profession mats the bot lacks (stock usage `skill`, <= MatUnitMaxPct of the
+# vendor price per unit), spending <= BuyBudgetPct of the money above the class-trainer budget. At the
+# mailbox: take the money and items of delivered, non-COD mail (sales, expiries, won auctions). Real gold:
+# the core auction / mail handlers run in the world thread. Ledger `trade` (event 17) per result.
+AutoWow.Trade.Enable = 0
+AutoWow.Trade.PriceMultPct = 300
+AutoWow.Trade.FloorPct = 150
+AutoWow.Trade.MaxPosts = 6
+AutoWow.Trade.BuyBudgetPct = 50
+AutoWow.Trade.MatUnitMaxPct = 400
+
+# Faction treasury counter, stage 1 (default 0; needs AutoWow.Ledger.Enable = 1): ledger `trade` action
+# `fee` lines (kind flight|repair|train) for copper independent bots pay to the world: the New RPG flight
+# fare (first hop as charged at take-off) and errand repairs / training. scripts/ledger-reduce.py sums them
+# with auction fees (deposits + cuts) per faction. Telemetry only, no gameplay effect.
+AutoWow.Ledger.Treasury = 0
+
 # Full-bag stall relief for an incomplete collect-item quest blocked by 100% bag occupancy.
 # 1 = bounded escalation: existing vendor relief (safe-gray sale / bounded bag purchase) for at most
 # 2 minutes of the episode, then destroy the single lowest-value safe gray item (never quest items,

@@ -299,6 +299,21 @@ TEST(AutoWowQuestLedgerTest, ErrandEventIsAppendOnlyAndCarriesTrailingFields)
               "\"reason\":\"done\",\"phase\":\"\",\"town\":3002,\"hearth\":false}");
 }
 
+TEST(AutoWowQuestLedgerTest, TradeEventIsId17AndCarriesTrailingFields)
+{
+    EXPECT_EQ(static_cast<int>(Event::Trade), 17);
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Trade), "trade");
+    Row row;
+    row.ev = Event::Trade;
+    row.bot = 62955;
+    row.reason = "post";
+    row.extra = ",\"action\":\"post\",\"gold\":-100";
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row),
+              "{\"v\":1,\"run\":\"r\",\"ms\":0,\"ev\":\"trade\",\"bot\":62955,\"team\":0,\"lvl\":0,"
+              "\"quest\":0,\"map\":0,\"zone\":0,\"x\":0,\"y\":0,\"c\":[0,0,0,0],\"i\":[0,0,0,0,0,0],"
+              "\"reason\":\"post\",\"phase\":\"\",\"action\":\"post\",\"gold\":-100}");
+}
+
 TEST(AutoWowQuestLedgerTest, DiffProgressEmitsOnlyChangedKnownQuests)
 {
     using AutoWowQuestLedger::DiffProgress;

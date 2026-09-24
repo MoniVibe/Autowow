@@ -393,8 +393,14 @@ enum Role : std::uint32_t
     RoleVendor = 1u << 2,
     RoleFlight = 1u << 3,
     RoleClassTrainer = 1u << 4,
-    RoleTradeTrainer = 1u << 5
+    RoleTradeTrainer = 1u << 5,
+    RoleAuction = 1u << 6,  // AutoWow.Trade: auctioneer (catalogued only with the flag on)
+    RoleMailbox = 1u << 7   // AutoWow.Trade: mailbox gameobject (spawn = GO guid | kGoSpawnBit)
 };
+
+// Mailbox spawns are gameobject DB guids with this bit set: a disjoint id space from creature spawns
+// (creature guids stay below 2^31), so spawn stays a unique, never-reused stop key.
+inline constexpr std::uint32_t kGoSpawnBit = 0x80000000u;
 
 // Team bits: 1 alliance, 2 horde (core TeamId + 1 as a bit).
 inline constexpr std::uint8_t kAlliance = 1, kHorde = 2;
@@ -675,7 +681,9 @@ enum Op : std::uint32_t
     OpBuy = 1u << 2,
     OpTrain = 1u << 3,
     OpBind = 1u << 4,
-    OpLearnFp = 1u << 5
+    OpLearnFp = 1u << 5,
+    OpAuction = 1u << 6,  // AutoWow.Trade (TradePolicy.h): post / buy at the auctioneer
+    OpMail = 1u << 7      // AutoWow.Trade: collect mail at a mailbox (entry = gameobject entry)
 };
 
 struct Stop
@@ -704,6 +712,8 @@ struct PlanInput
     std::vector<std::uint32_t> trainers;               // trainer spawns with work for the bot, ascending
     bool bind = false;                                 // hearthstone not bound here
     bool learnFp = false;                              // town flight master node unknown
+    bool auction = false;                              // AutoWow.Trade: visit the town's auctioneer
+    bool mail = false;                                 // AutoWow.Trade: visit the town's mailbox
 };
 
 // Errand batch in order: sell junk, repair, restock, train, bind, flight path. Operations on the same
@@ -767,6 +777,21 @@ struct PlanInput
             if (usable(n) && (n.roles & RoleFlight))
             {
                 add(n, OpLearnFp, 0);
+                break;
+            }
+    // AutoWow.Trade: after every other stop, the first usable auctioneer, then the first mailbox.
+    if (in.auction)
+        for (Npc const& n : town.npcs)
+            if (usable(n) && (n.roles & RoleAuction))
+            {
+                add(n, OpAuction, 0);
+                break;
+            }
+    if (in.mail)
+        for (Npc const& n : town.npcs)
+            if (usable(n) && (n.roles & RoleMailbox))
+            {
+                add(n, OpMail, 0);
                 break;
             }
     return plan;

@@ -55,6 +55,11 @@
 //     dur0, dur1 (average equipped durability % at arrival / after the errands), bag0, bag1 (free bag
 //     slots, same points), travel_ms (decision to arrival), return_ms, leg (walk|flight|hearth|none: the
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast).
+//   - `trade` (event 17; AutoWow.Trade.Enable, AutoWow.Ledger.Treasury): one line per auction-house or
+//     mail result, or per fee paid (AutoWowTrade, TradePolicy.h). reason = action; quest is 0. Trailing:
+//     action (post|buy|sold|expired|mail|fee), item (entry, 0 = none), count, price (copper: listing
+//     buyout, purchase price, sale's winning bid, fee), gold (signed copper change of the bot's money),
+//     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -89,7 +94,9 @@ enum class Event : std::uint8_t
     SkillUp = 11,
     Engage = 12,
     ZoneMove = 13,
-    Errand = 14
+    Errand = 14,
+    // 15 (party), 16 (dungeon) reserved for the parties lane; never reuse.
+    Trade = 17
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -111,6 +118,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Engage: return "engage";
         case Event::ZoneMove: return "zone_move";
         case Event::Errand: return "errand";
+        case Event::Trade: return "trade";
     }
     return "unknown";
 }
@@ -380,7 +388,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += row.honorable ? "true" : "false";
     }
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
-             row.ev == Event::ZoneMove || row.ev == Event::Errand)
+             row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -435,6 +443,9 @@ void EmitZoneMove(Player* player, char const* reason, std::string_view fields);
 // `errand` (no-op unless the player is a recorded bot); reason is a static literal (outcome name),
 // fields from AutoWowErrands::LedgerFields.
 void EmitErrand(Player* player, char const* reason, std::string_view fields);
+// `trade` (no-op unless the player is a recorded bot); reason is a static literal (action name), fields
+// from AutoWowTrade::LedgerFields.
+void EmitTrade(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

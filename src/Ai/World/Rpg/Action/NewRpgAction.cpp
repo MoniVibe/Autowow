@@ -59,6 +59,7 @@
 #include "Playerbots.h"
 #include "QuestDef.h"
 #include "QuestFinisherTransitionPolicy.h"
+#include "TradePolicy.h"
 #include "QuestInventoryReliefPolicy.h"
 #include "ErrandsPolicy.h"
 #include "QuestObjectiveContext.h"
@@ -3655,6 +3656,7 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
 
     bot->GetSession()->SendLearnNewTaxiNode(flightMaster);
 
+    uint64 const moneyBeforeTaxi = bot->GetMoney();
     if (!bot->ActivateTaxiPathTo(nodes, flightMaster, 0))
     {
         LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
@@ -3662,5 +3664,8 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
         info.ChangeToIdle();
         return true;
     }
+    // AutoWow.Ledger.Treasury: the fare (no-op when off).
+    if (moneyBeforeTaxi > bot->GetMoney())
+        AutoWowTrade::NoteFee(bot, AutoWowTrade::FeeKind::Flight, moneyBeforeTaxi - bot->GetMoney());
     return true;
 }

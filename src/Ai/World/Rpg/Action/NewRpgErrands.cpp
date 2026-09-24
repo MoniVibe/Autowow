@@ -16,6 +16,7 @@
 #include "Config.h"
 #include "Creature.h"
 #include "ErrandsPolicy.h"
+#include "GameObject.h"
 #include "GameTime.h"
 #include "Item.h"
 #include "Log.h"
@@ -28,6 +29,7 @@
 #include "Playerbots.h"
 #include "Trainer.h"
 #include "TravelMgr.h"
+#include "TradePolicy.h"
 #include "TravelNode.h"
 #include "ZoneProgressionPolicy.h"
 
@@ -92,7 +94,8 @@ void BuildCatalog()
     uint32 const start = getMSTime();
     uint32 const roleFlags = UNIT_NPC_FLAG_INNKEEPER | UNIT_NPC_FLAG_REPAIR | UNIT_NPC_FLAG_VENDOR_MASK |
                              UNIT_NPC_FLAG_FLIGHTMASTER | UNIT_NPC_FLAG_TRAINER_CLASS |
-                             UNIT_NPC_FLAG_TRAINER_PROFESSION;
+                             UNIT_NPC_FLAG_TRAINER_PROFESSION |
+                             (AutoWowTrade::Enabled() ? uint32(UNIT_NPC_FLAG_AUCTIONEER) : 0u);
     std::vector<Npc> npcs;
     for (auto const& [guid, data] : sObjectMgr->GetAllCreatureData())
     {
@@ -128,6 +131,8 @@ void BuildCatalog()
             n.roles |= RoleClassTrainer;
         if (npcflag & UNIT_NPC_FLAG_TRAINER_PROFESSION)
             n.roles |= RoleTradeTrainer;
+        if (AutoWowTrade::Enabled() && (npcflag & UNIT_NPC_FLAG_AUCTIONEER))
+            n.roles |= RoleAuction;
         if (npcflag & UNIT_NPC_FLAG_FLIGHTMASTER)
         {
             n.roles |= RoleFlight;
@@ -150,6 +155,26 @@ void BuildCatalog()
         }
         npcs.push_back(std::move(n));
     }
+    // AutoWow.Trade: mailboxes join the towns too (usable by both teams; a hostile town is never chosen).
+    if (AutoWowTrade::Enabled())
+        for (auto const& [guid, data] : sObjectMgr->GetAllGOData())
+        {
+            GameObjectTemplate const* gt = sObjectMgr->GetGameObjectTemplate(data.id);
+            if (!gt || gt->type != GAMEOBJECT_TYPE_MAILBOX || (guid & kGoSpawnBit) ||
+                std::find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(),
+                          data.mapid) == sPlayerbotAIConfig.randomBotMaps.end())
+                continue;
+            Npc n;
+            n.spawn = guid | kGoSpawnBit;
+            n.entry = data.id;
+            n.map = data.mapid;
+            n.x = Yd(data.posX);
+            n.y = Yd(data.posY);
+            n.z = Yd(data.posZ);
+            n.teams = kAlliance | kHorde;
+            n.roles = RoleMailbox;
+            npcs.push_back(std::move(n));
+        }
     std::size_t const scanned = npcs.size();
     detail::gTowns = BuildTowns(std::move(npcs), detail::gParams.townRadius);
     LOG_INFO("server.loading", ">> [Errands] {} towns from {} service npcs in {} ms", detail::gTowns.size(), scanned,
@@ -757,6 +782,13 @@ bool NewRpgBaseAction::ErrandsStep()
             in.bind = !HearthBoundAt(bot, *town);
             if (Npc const* fm = TownFlightMaster(*town, team))
                 in.learnFp = !bot->m_taxi.IsTaximaskNodeKnown(NodeFor(*fm, team));
+            if (AutoWowTrade::Enabled())
+            {
+                // Mail when there is some to take, or after an auction visit (won items arrive at once).
+                in.auction = std::any_of(town->npcs.begin(), town->npcs.end(), [team](Npc const& n)
+                                         { return (n.teams & team) && (n.roles & RoleAuction); });
+                in.mail = in.auction || AutoWowTrade::HasCollectableMail(bot);
+            }
             s.plan = PlanStops(*town, in);
             s.buyItems = in.buyItems;
             s.stop = 0;
@@ -891,6 +923,32 @@ bool NewRpgBaseAction::ErrandsStep()
             StoreState(guid, s);
             return true;
         }
+        if (st.ops & OpMail)
+        {
+            // AutoWow.Trade mail stop (only planned with the flag on): a gameobject, not an npc.
+            GameObject* mailbox = bot->FindNearestGameObject(st.entry, 60.0f);
+            if (mailbox && bot->IsWithinDistInMap(mailbox, INTERACTION_DISTANCE - 0.5f))
+            {
+                AutoWowTrade::VisitMailbox(bot, mailbox);
+                ++s.stop;
+                s.legMs = now;
+            }
+            else
+            {
+                if (info.GetStatus() != RPG_IDLE)
+                    info.ChangeToIdle();
+                if (mailbox && bot->GetExactDist2d(mailbox) < 40.0f)
+                {
+                    if (!bot->isMoving())
+                        bot->GetMotionMaster()->MovePoint(0, mailbox->GetPositionX(), mailbox->GetPositionY(),
+                                                          mailbox->GetPositionZ());
+                }
+                else
+                    WalkLeg(WorldPosition(town->map, float(st.x), float(st.y), float(st.z)));
+            }
+            StoreState(guid, s);
+            return true;
+        }
         Creature* npc = bot->FindNearestCreature(st.entry, 60.0f);
         if (npc && npc->IsAlive() && bot->IsWithinDistInMap(npc, INTERACTION_DISTANCE - 0.5f))
         {
@@ -983,6 +1041,7 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
         {
             s.spent += m0 - money();
             s.done |= DoneRepaired;
+            AutoWowTrade::NoteFee(bot, AutoWowTrade::FeeKind::Repair, m0 - money());
         }
     }
     // AutoWow.Survival.KeepConsumables: greys go at every vendor stop (the sell stop may be unreachable or
@@ -1050,6 +1109,7 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
         {
             s.spent += m0 - money();
             s.done |= DoneTrained;
+            AutoWowTrade::NoteFee(bot, AutoWowTrade::FeeKind::Train, m0 - money());
         }
         Trainer::Trainer* trainer = sObjectMgr->GetTrainer(npc->GetEntry());
         if (trainer && trainer->GetTrainerType() == Trainer::Type::Class)
@@ -1079,4 +1139,7 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
         if (node && bot->m_taxi.IsTaximaskNodeKnown(node))
             s.done |= DoneLearnedFp;
     }
+    // AutoWow.Trade (only planned with the flag on): the class-trainer budget is kept out of purchases.
+    if (st.ops & OpAuction)
+        AutoWowTrade::VisitAuctioneer(botAI, bot, npc, ClassTrainBudgetCopper(bot->GetLevel()));
 }
