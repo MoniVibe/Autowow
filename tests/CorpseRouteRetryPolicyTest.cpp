@@ -170,10 +170,21 @@ TEST(CorpseRouteRetrySourceContract, ProtectedPathBansTeleportRandomRelogDatabas
         "bool SpiritHealerAction::TrySpiritHealerInteraction");
     ASSERT_FALSE(protectedPath.empty());
 
+    // Owner ruling (2026-09-24): a logged portal fallback is acceptable. The one flag-gated block
+    // (AutoWow.Survival.CorpsePortal, default off) is the only place the banned calls may appear.
+    std::string scanned = protectedPath;
+    std::size_t const portalBegin = scanned.find("// corpse-portal-begin");
+    std::size_t const portalEnd = scanned.find("// corpse-portal-end");
+    if (portalBegin != std::string::npos && portalEnd != std::string::npos && portalBegin < portalEnd)
+    {
+        EXPECT_NE(scanned.find("AutoWow.Survival.CorpsePortal", portalBegin), std::string::npos);
+        scanned.erase(portalBegin, portalEnd - portalBegin);
+    }
+
     for (std::string_view forbidden : {"TeleportTo(", "NearTeleportTo(", "RandomTeleport", "MoveRandom",
              "urand(", "frand(", "rand_norm", "Relog", "CharacterDatabase", "WorldDatabase", "SaveToDB(",
              "ResurrectPlayer(", "SpawnCorpseBones(", "death count"})
-        EXPECT_EQ(protectedPath.find(forbidden), std::string::npos) << forbidden;
+        EXPECT_EQ(scanned.find(forbidden), std::string::npos) << forbidden;
 
     EXPECT_NE(protectedPath.find("GetClosestGraveyard(bot, bot->GetTeamId())"), std::string::npos);
     EXPECT_NE(protectedPath.find("corpse_recovery_blocked_no_path"), std::string::npos);

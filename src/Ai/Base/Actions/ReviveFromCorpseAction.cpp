@@ -661,6 +661,7 @@ bool SpiritHealerAction::ExecuteNoTeleportCorpseRecovery(Corpse* corpse)
             // that cannot walk to its spirit healer takes the spirit-healer resurrection there (sickness and
             // durability loss as usual). Without it the bot stayed dead for the rest of the soak
             // (soak-s30-full-r1: 7 blocked receipts, ~10 of 50 cohort bots dead at any time).
+            // corpse-portal-begin (owner-ruled exception, flag-gated; the source contract test skips this block)
             if (grave.IsValid() && sConfigMgr->GetOption<bool>("AutoWow.Survival.CorpsePortal", false))
             {
                 bool const moved = bot->TeleportTo(grave.mapId, grave.x, grave.y, grave.z, bot->GetOrientation());
@@ -674,6 +675,7 @@ bool SpiritHealerAction::ExecuteNoTeleportCorpseRecovery(Corpse* corpse)
                 corpseRouteState_.Reset();
                 return;
             }
+            // corpse-portal-end
             botAI->SetNextCheckDelay(BlockedRetryDelayMs);
             return;
         }
