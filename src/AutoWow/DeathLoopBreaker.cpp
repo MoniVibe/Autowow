@@ -470,6 +470,33 @@ public:
     {
         if (HardEscapeEnabled() && player)
             HardEscapeTick(player);
+        if (player && player->isDead() && !player->HasPlayerFlag(PLAYER_FLAGS_GHOST))
+            ReleaseStaleCorpse(player);
+    }
+
+private:
+    // AutoWow.Survival.CorpsePortal: an autonomous bot lying unreleased for kStaleCorpseMs is released to its
+    // graveyard like a player (soak-s32-full-r1: bots that logged in dead idled the whole run; the
+    // random-bot manager pass that used to release them does not reach the cohort reliably).
+    static constexpr std::uint64_t kStaleCorpseMs = 60000;
+    static void ReleaseStaleCorpse(Player* player)
+    {
+        static std::mutex lock;
+        static std::unordered_map<std::uint32_t, std::uint64_t> since;
+        if (!sConfigMgr->GetOption<bool>("AutoWow.Survival.CorpsePortal", false) || !AutonomousBotAI(player))
+            return;
+        std::uint64_t const now = NowMs();
+        std::uint32_t const guid = GuidOf(player);
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto const it = since.try_emplace(guid, now).first;
+            if (now < it->second + kStaleCorpseMs)
+                return;
+            since.erase(it);  // ponytail: a stale entry after a normal release only delays the next release
+        }
+        LOG_INFO("playerbots", "[SafeRevive] bot={} release stale corpse", player->GetName());
+        player->BuildPlayerRepop();
+        player->RepopAtGraveyard();
     }
 };
 
