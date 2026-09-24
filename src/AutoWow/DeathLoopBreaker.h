@@ -276,6 +276,8 @@ struct HardParams
     std::uint32_t zoneGap = 10;         // AutoWow.Survival.HardEscape.ZoneGap: stuck in a zone this far above
     std::uint32_t deaths = 4;           // AutoWow.Survival.HardEscape.Deaths (0 = death rule off)
     std::uint32_t killerGap = 10;       // AutoWow.Survival.HardEscape.KillerGap
+    std::uint32_t clusterDeaths = 8;    // AutoWow.Survival.HardEscape.ClusterDeaths: this many recent deaths
+                                        // escape whatever the killer level (0 = off)
     std::uint64_t stuckMs = 120000;     // AutoWow.Survival.HardEscape.StuckMs: no movement for this long
     std::uint32_t moveYards = 100;      // AutoWow.Survival.HardEscape.MoveYards: farther = it is moving
     std::uint64_t cooldownMs = 900000;  // AutoWow.Survival.HardEscape.CooldownMs after a portal
@@ -284,12 +286,14 @@ inline constexpr std::uint64_t kHardCheckMs = 5000;         // runtime sampling 
 inline constexpr std::uint64_t kHardHearthRetryMs = 30000;  // a hearth that did not move the bot -> portal
 
 // The hard condition: the zone's bracket starts more than zoneGap above the bot, or deaths recent deaths
-// with the latest killer killerGap or more above it.
+// with the latest killer killerGap or more above it, or clusterDeaths recent deaths at any killer level
+// (a graveyard camped by near-level mobs: soak-s25-full-r1, L19 bot, 124 deaths to L25 killers).
 inline bool HardCondition(HardParams const& h, std::uint32_t level, std::uint32_t zoneLow, std::uint32_t recentDeaths,
                           std::uint32_t killerLevel)
 {
     return Overshoot(zoneLow, level, h.zoneGap) ||
-           (h.deaths && recentDeaths >= h.deaths && h.killerGap && killerLevel >= level + h.killerGap);
+           (h.deaths && recentDeaths >= h.deaths && h.killerGap && killerLevel >= level + h.killerGap) ||
+           (h.clusterDeaths && recentDeaths >= h.clusterDeaths);
 }
 
 enum class HardAction : std::uint8_t

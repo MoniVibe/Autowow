@@ -298,6 +298,7 @@ void LoadConfig()
     h.zoneGap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.ZoneGap", 10);
     h.deaths = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.Deaths", 4);
     h.killerGap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.KillerGap", 10);
+    h.clusterDeaths = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.ClusterDeaths", 8);
     h.stuckMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.StuckMs", 120000);
     h.moveYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.MoveYards", 100);
     h.cooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.HardEscape.CooldownMs", 900000);

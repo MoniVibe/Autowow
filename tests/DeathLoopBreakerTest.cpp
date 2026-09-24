@@ -224,9 +224,12 @@ TEST(DeathLoopBreaker, HardConditionIsAFarOverZoneOrADeathLoopFarAbove)
     EXPECT_FALSE(HardCondition(h, 18, 0, 0, 0));       // unknown zone
     EXPECT_TRUE(HardCondition(h, 18, 10, 4, 28));      // 4 deaths, killer 10 above, in a fitting zone
     EXPECT_FALSE(HardCondition(h, 18, 10, 3, 57));     // 3 deaths
-    EXPECT_FALSE(HardCondition(h, 18, 10, 8, 27));     // killer only 9 above (Westfall loops: klvl 16-17)
+    EXPECT_FALSE(HardCondition(h, 18, 10, 7, 27));     // killer only 9 above (Westfall loops: klvl 16-17)
+    // soak-s25-full-r1: L19 bot, 124 deaths at its own Hillsbrad graveyard to L25-26 killers.
+    EXPECT_TRUE(HardCondition(h, 19, 20, 8, 26));      // the ring is full: escape at any killer level
     HardParams off = h;
     off.deaths = 0;
+    off.clusterDeaths = 0;
     EXPECT_FALSE(HardCondition(off, 18, 10, 8, 57));
 }
 
