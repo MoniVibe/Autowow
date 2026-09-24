@@ -261,4 +261,121 @@ TEST(ZoneProgression, LedgerFieldsAreStable)
               ",\"from\":12,\"to\":40,\"travel_ms\":123456,\"arrived\":true,\"mode\":\"walk\"");
     EXPECT_STREQ(TriggerName(Trigger::NoQuests), "no_quests");
 }
+
+// AutoWow.ZoneProgression.HighRoutes: the L20-60 hub table.
+std::vector<Route> HighTable()
+{
+    std::vector<Route> routes = DefaultRoutes();
+    for (Route const& r : HubRoutes(DefaultHubs(), DefaultHubSources()))
+        routes.push_back(r);
+    return routes;
+}
+
+TEST(ZoneProgression, HubRoutesAreWalkableSameContinentAndStable)
+{
+    std::vector<Route> const high = HubRoutes(DefaultHubs(), DefaultHubSources());
+    ASSERT_FALSE(high.empty());
+    for (Route const& r : high)
+    {
+        EXPECT_TRUE(r.team == 1 || r.team == 2);
+        EXPECT_TRUE(r.map == 0 || r.map == 1);
+        EXPECT_NE(r.from, r.to);
+        EXPECT_FALSE(r.crossing);
+        EXPECT_GE(r.minLevel, 20U);
+        EXPECT_LE(r.maxLevel, 60U);
+        EXPECT_LE(r.minLevel, r.maxLevel);
+    }
+    // Same input, same table (deterministic order), and the base table is untouched.
+    std::vector<Route> const again = HubRoutes(DefaultHubs(), DefaultHubSources());
+    ASSERT_EQ(again.size(), high.size());
+    for (std::size_t k = 0; k < high.size(); ++k)
+        EXPECT_TRUE(again[k].from == high[k].from && again[k].to == high[k].to && again[k].x == high[k].x);
+    EXPECT_EQ(DefaultRoutes().size(), 15U);
+}
+
+// Every level 20-60 has a hub on the bot's own continent, from a starter zone of each faction.
+TEST(ZoneProgression, HubRoutesCoverLevels20To60PerFactionAndContinent)
+{
+    std::vector<Route> const routes = HighTable();
+    struct Case { std::uint32_t team, map, zone; };
+    for (Case c : {Case{1, 0, 12}, Case{1, 0, 1}, Case{1, 1, 148}, Case{2, 0, 130}, Case{2, 1, 17}, Case{2, 1, 215}})
+        for (std::uint32_t level = 20; level <= 60; ++level)
+            for (std::uint32_t guid : {1U, 2U, 3U, 7U, 62955U})
+            {
+                Route const* r = PickRoute(routes, c.team, c.zone, level, guid);
+                ASSERT_NE(r, nullptr) << c.team << " " << c.zone << " L" << level;
+                EXPECT_EQ(r->map, c.map) << c.zone << " L" << level;
+                EXPECT_TRUE(r->team == 0 || r->team == c.team);
+                EXPECT_TRUE(level >= r->minLevel && level <= r->maxLevel);
+            }
+}
+
+// A bot that outgrows any hub zone (its band max up to 57) always has a way on, same continent.
+TEST(ZoneProgression, EveryHubZoneHasAWayOnUntilLevel57)
+{
+    std::vector<Route> const routes = HighTable();
+    for (Hub const& h : DefaultHubs())
+        for (std::uint32_t level = h.maxLevel; level <= 57; ++level)
+        {
+            Route const* r = PickRoute(routes, h.team, h.zone, level, h.npc);
+            ASSERT_NE(r, nullptr) << h.team << " " << h.zone << " L" << level;
+            EXPECT_NE(r->to, h.zone);
+            EXPECT_EQ(r->map, h.map);
+        }
+}
+
+// Horde never lands on an Alliance hub and vice versa. Faction template of each hub npc (world DB
+// creature_template.faction) and its FactionTemplate.dbc enemy group (2 alliance, 4 horde, 0 neutral).
+TEST(ZoneProgression, NoHostileFactionHubs)
+{
+    struct Npc { std::uint32_t entry, factionTemplate, enemyGroup; };
+    std::vector<Npc> const npcs = {
+        {6790, 12, 4},   {1464, 55, 4},     {2352, 12, 4},    {24366, 1732, 4}, {2835, 12, 4},
+        {6807, 120, 0},  {7744, 694, 4},    {2941, 55, 4},    {8609, 12, 4},    {2299, 12, 4},
+        {12596, 12, 4},  {16256, 794, 0},   {6738, 80, 4},    {16458, 80, 4},   {11103, 80, 4},
+        {6272, 894, 4},  {7733, 474, 0},    {4319, 80, 4},    {12577, 80, 4},   {10583, 474, 0},
+        {12578, 80, 4},  {11118, 855, 0},   {15174, 994, 0},  {2388, 68, 2},    {9501, 29, 2},
+        {5814, 29, 2},   {6930, 29, 2},     {9356, 29, 2},    {14731, 1494, 2}, {3305, 29, 2},
+        {13177, 29, 2},  {7731, 29, 2},     {12196, 29, 2},   {11116, 104, 2},  {11106, 104, 2},
+        {24208, 29, 2},  {7737, 29, 2},     {8610, 29, 2},    {11900, 29, 2},
+    };
+    for (Hub const& h : DefaultHubs())
+    {
+        auto const it = std::find_if(npcs.begin(), npcs.end(), [&](Npc const& n) { return n.entry == h.npc; });
+        ASSERT_NE(it, npcs.end()) << h.npc;
+        std::uint32_t const teamGroup = h.team == 1 ? 2 : 4;
+        EXPECT_EQ(it->enemyGroup & teamGroup, 0U) << "hub npc " << h.npc << " hostile to team " << h.team;
+        EXPECT_TRUE(h.inn == 0 || h.inn == h.npc);
+    }
+    for (Route const& r : HubRoutes(DefaultHubs(), DefaultHubSources()))
+        if (r.inn)
+            EXPECT_NE(std::find_if(npcs.begin(), npcs.end(), [&](Npc const& n) { return n.entry == r.inn; }), npcs.end());
+}
+
+TEST(ZoneProgression, HubPickSpreadsByGuidDeterministically)
+{
+    std::vector<Route> const routes = HighTable();
+    // Alliance L32 in Duskwood: Stranglethorn (Rebel Camp) or Arathi (Refuge Pointe), by guid.
+    Route const* a = PickRoute(routes, 1, 10, 32, 0);
+    Route const* b = PickRoute(routes, 1, 10, 32, 1);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    EXPECT_NE(a->to, b->to);
+    EXPECT_EQ(PickRoute(routes, 1, 10, 32, 0), a);
+    for (std::uint32_t guid = 0; guid < 8; ++guid)
+    {
+        Route const* r = PickRoute(routes, 1, 10, 32, guid);
+        EXPECT_TRUE(r->to == 33 || r->to == 45) << r->to;
+    }
+    // Horde L46 in the Hinterlands: never back to the Hinterlands, never Kalimdor.
+    for (std::uint32_t guid = 0; guid < 8; ++guid)
+    {
+        Route const* r = PickRoute(routes, 2, 47, 46, guid);
+        ASSERT_NE(r, nullptr);
+        EXPECT_NE(r->to, 47U);
+        EXPECT_EQ(r->map, 0U);
+    }
+    // Wrong team: an Alliance-only source zone has nothing for the Horde.
+    EXPECT_EQ(PickRoute(routes, 2, 12, 30, 1), nullptr);
+}
 }  // namespace

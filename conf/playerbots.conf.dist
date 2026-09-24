@@ -2647,7 +2647,28 @@ AutoWow.ZoneProgression.GiveUpCooldownMs = 1800000
 # (MaxReissues) or ran PortalAfterMs without reaching the destination zone portals to the hub (zone_move
 # mode/leg "portal"). 0 = time rule off. Walk legs follow built-in road points (ZoneProgressionPolicy.h).
 AutoWow.ZoneProgression.PortalAfterMs = 1200000
+# HighRoutes (default 0): add the L20-60 quest hubs per faction and continent (ZoneProgressionPolicy.h
+# DefaultHubs: Alliance EK Duskwood/Wetlands/Southshore -> Rebel Camp/Refuge Pointe -> Booty Bay/Aerie Peak/
+# Thorium Point/Nethergarde -> Morgan's Vigil/Chillwind/Light's Hope; Alliance Kalimdor Astranaar/Stonetalon
+# Peak -> Nijel's Point/Theramore -> Gadgetzan/Thalanaar/Talrendis -> Marshal's Refuge/Talonbranch/
+# Everlook/Cenarion Hold; Horde EK Tarren Mill -> Hammerfall/Grom'gol/Stonard/Kargath -> Booty Bay/
+# Revantusk/Thorium Point -> Flame Crest/Light's Hope; Horde Kalimdor Sun Rock/Splintertree/Freewind ->
+# Shadowprey/Brackenwall -> Gadgetzan/Camp Mojache/Valormok -> Marshal's Refuge/Bloodvenom/Everlook/
+# Cenarion Hold). Each hub is reached from the starter zones and every lower-or-same tier hub zone of
+# its faction on the same continent, for bots in its level band; walk/flight as above (same continent).
+AutoWow.ZoneProgression.HighRoutes = 0
 AutoWow.ZoneProgression.Routes = ""
+
+# Gathering detours for independent questing bots (GatherDetourPolicy.h). A bot that knows Herbalism or
+# Mining (e.g. from AutoWow.Professions.Assignments) walks to the nearest visible herb/ore node within
+# DetourYards (and DetourMaxDz up/down) whose lock skill it meets (ore needs a mining pick) while out of
+# combat and not on a zone-progression trip, errand run, flight or rest, then the stock loot strategy gathers
+# it and the RPG status resumes. A node not gathered within DetourTimeoutMs is skipped. Skinning stays
+# stock (the "gather" strategy queues skinnable kills). Nothing new is logged (ledger skill_up counts).
+AutoWow.Gathering.Detours = 0
+AutoWow.Gathering.DetourYards = 60
+AutoWow.Gathering.DetourMaxDz = 20
+AutoWow.Gathering.DetourTimeoutMs = 45000
 
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk

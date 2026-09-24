@@ -7,6 +7,7 @@
 #ifndef AUTOWOW_ZONE_PROGRESSION_POLICY_H
 #define AUTOWOW_ZONE_PROGRESSION_POLICY_H
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -69,6 +70,128 @@ inline std::vector<Route> DefaultRoutes()
         {2, 17, 406, 18, 28, 1, 893, 927, 106, 7731, false},     // Barrens -> Stonetalon (Sun Rock)
         {2, 130, 267, 18, 30, 0, -6, -943, 57, 2388, false},     // Silverpine -> Hillsbrad (Tarren Mill)
     };
+}
+
+// AutoWow.ZoneProgression.HighRoutes (default 0): L20-60 quest hubs per faction and continent. A hub
+// serves bots whose level lies in its band; `stage` orders the leveling tiers (1: 20-30 ... 4: 50-60).
+// Coordinates = the world DB spawn of `npc` (the hub's innkeeper, else its flight master when the hub
+// has no inn; inn 0 = no hearth bind). Every npc's faction template is friendly or neutral to `team`
+// (FactionTemplate.dbc enemy mask; tests/ZoneProgressionPolicyTest.cpp keeps the checked table).
+struct Hub
+{
+    std::uint32_t team = 0;  // 1 alliance, 2 horde
+    std::uint32_t stage = 0;
+    std::uint32_t zone = 0;
+    std::uint32_t minLevel = 0;
+    std::uint32_t maxLevel = 0;
+    std::uint32_t map = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint32_t inn = 0;
+    std::uint32_t npc = 0;
+};
+
+inline std::vector<Hub> DefaultHubs()
+{
+    return {
+        // Alliance, Eastern Kingdoms.
+        {1, 1, 10, 20, 28, 0, -10516, -1161, 28, 6790, 6790},     // Duskwood: Darkshire
+        {1, 1, 11, 21, 28, 0, -3828, -832, 10, 1464, 1464},       // Wetlands: Menethil Harbor
+        {1, 1, 267, 23, 30, 0, -857, -571, 11, 2352, 2352},       // Hillsbrad: Southshore
+        {1, 2, 33, 30, 38, 0, -11340, -219, 75, 0, 24366},        // Stranglethorn: Rebel Camp (FM)
+        {1, 2, 45, 30, 40, 0, -1240, -2514, 22, 0, 2835},       // Arathi: Refuge Pointe (FM)
+        {1, 3, 33, 38, 45, 0, -14458, 495, 15, 6807, 6807},       // Stranglethorn: Booty Bay
+        {1, 3, 47, 40, 48, 0, 400, -2120, 132, 7744, 7744},       // Hinterlands: Aerie Peak
+        {1, 3, 51, 45, 50, 0, -6559, -1169, 310, 0, 2941},        // Searing Gorge: Thorium Point (FM)
+        {1, 3, 4, 47, 54, 0, -11110, -3437, 79, 0, 8609},         // Blasted Lands: Nethergarde Keep (FM)
+        {1, 4, 46, 50, 58, 0, -8365, -2737, 186, 0, 2299},        // Burning Steppes: Morgan's Vigil (FM)
+        {1, 4, 28, 51, 58, 0, 928, -1429, 65, 0, 12596},          // Western Plaguelands: Chillwind Camp (FM)
+        {1, 4, 139, 54, 60, 0, 2301, -5345, 91, 16256, 16256},    // Eastern Plaguelands: Light's Hope
+        // Alliance, Kalimdor.
+        {1, 1, 331, 20, 28, 1, 2781, -433, 117, 6738, 6738},      // Ashenvale: Astranaar
+        {1, 1, 406, 20, 27, 1, 2730, 1498, 238, 16458, 16458},    // Stonetalon: Stonetalon Peak
+        {1, 2, 405, 28, 38, 1, 256, 1254, 192, 11103, 11103},     // Desolace: Nijel's Point
+        {1, 2, 15, 35, 43, 1, -3616, -4471, 14, 6272, 6272},      // Dustwallow: Theramore
+        {1, 3, 440, 40, 48, 1, -7159, -3842, 9, 7733, 7733},      // Tanaris: Gadgetzan
+        {1, 3, 357, 41, 48, 1, -4491, -778, -40, 0, 4319},        // Feralas: Thalanaar (FM)
+        {1, 3, 16, 45, 52, 1, 2718, -3881, 102, 0, 12577},        // Azshara: Talrendis Point (FM)
+        {1, 4, 490, 48, 55, 1, -6111, -1140, -187, 0, 10583},     // Un'Goro: Marshal's Refuge (FM)
+        {1, 4, 361, 48, 55, 1, 6204, -1951, 572, 0, 12578},       // Felwood: Talonbranch Glade (FM)
+        {1, 4, 618, 53, 60, 1, 6695, -4673, 722, 11118, 11118},   // Winterspring: Everlook
+        {1, 4, 1377, 55, 60, 1, -6868, 730, 46, 15174, 15174},    // Silithus: Cenarion Hold
+        // Horde, Eastern Kingdoms.
+        {2, 1, 267, 20, 30, 0, -6, -942, 57, 2388, 2388},         // Hillsbrad: Tarren Mill
+        {2, 2, 45, 30, 38, 0, -912, -3525, 73, 9501, 9501},       // Arathi: Hammerfall
+        {2, 2, 33, 30, 38, 0, -12434, 212, 2, 5814, 5814},        // Stranglethorn: Grom'gol
+        {2, 2, 8, 35, 43, 0, -10487, -3259, 21, 6930, 6930},      // Swamp of Sorrows: Stonard
+        {2, 2, 3, 36, 44, 0, -6650, -2149, 245, 9356, 9356},      // Badlands: Kargath
+        {2, 3, 33, 38, 45, 0, -14458, 495, 15, 6807, 6807},       // Stranglethorn: Booty Bay
+        {2, 3, 47, 42, 48, 0, -622, -4583, 12, 14731, 14731},     // Hinterlands: Revantusk Village
+        {2, 3, 51, 45, 50, 0, -6559, -1100, 310, 0, 3305},        // Searing Gorge: Thorium Point (FM)
+        {2, 4, 46, 50, 58, 0, -7504, -2191, 165, 0, 13177},       // Burning Steppes: Flame Crest (FM)
+        {2, 4, 139, 53, 60, 0, 2301, -5345, 91, 16256, 16256},    // Eastern Plaguelands: Light's Hope
+        // Horde, Kalimdor.
+        {2, 1, 406, 20, 27, 1, 894, 928, 106, 7731, 7731},        // Stonetalon: Sun Rock Retreat
+        {2, 1, 331, 20, 30, 1, 2342, -2567, 103, 12196, 12196},   // Ashenvale: Splintertree Post
+        {2, 1, 400, 25, 33, 1, -5478, -2460, 89, 11116, 11116},   // Thousand Needles: Freewind Post
+        {2, 2, 405, 30, 38, 1, -1593, 3150, 47, 11106, 11106},    // Desolace: Shadowprey Village
+        {2, 2, 15, 35, 43, 1, -3166, -2912, 35, 24208, 24208},    // Dustwallow: Brackenwall Village
+        {2, 3, 440, 40, 48, 1, -7159, -3842, 9, 7733, 7733},      // Tanaris: Gadgetzan
+        {2, 3, 357, 41, 48, 1, -4460, 243, 39, 7737, 7737},       // Feralas: Camp Mojache
+        {2, 3, 16, 45, 52, 1, 3664, -4390, 113, 0, 8610},         // Azshara: Valormok (FM)
+        {2, 4, 490, 48, 55, 1, -6111, -1140, -187, 0, 10583},     // Un'Goro: Marshal's Refuge (FM)
+        {2, 4, 361, 48, 55, 1, 5065, -339, 367, 0, 11900},        // Felwood: Bloodvenom Post (FM)
+        {2, 4, 618, 53, 60, 1, 6695, -4673, 722, 11118, 11118},   // Winterspring: Everlook
+        {2, 4, 1377, 55, 60, 1, -6868, 730, 46, 15174, 15174},    // Silithus: Cenarion Hold
+    };
+}
+
+// Zones below the first hub tier a bot may still stand in at L20+ (starter/10-20 zones and capitals),
+// per team and continent. They and every lower-or-same-stage hub zone lead to each hub.
+struct HubSource
+{
+    std::uint32_t team = 0;
+    std::uint32_t map = 0;
+    std::uint32_t zone = 0;
+};
+
+inline std::vector<HubSource> DefaultHubSources()
+{
+    return {
+        // Alliance EK: Dun Morogh, Elwynn, Loch Modan, Westfall, Redridge, Stormwind, Ironforge.
+        {1, 0, 1}, {1, 0, 12}, {1, 0, 38}, {1, 0, 40}, {1, 0, 44}, {1, 0, 1519}, {1, 0, 1537},
+        // Alliance Kalimdor: Teldrassil, Darkshore, Barrens, Darnassus.
+        {1, 1, 141}, {1, 1, 148}, {1, 1, 17}, {1, 1, 1657},
+        // Horde EK: Tirisfal, Silverpine, Undercity.
+        {2, 0, 85}, {2, 0, 130}, {2, 0, 1497},
+        // Horde Kalimdor: Durotar, Mulgore, Barrens, Orgrimmar, Thunder Bluff.
+        {2, 1, 14}, {2, 1, 215}, {2, 1, 17}, {2, 1, 1637}, {2, 1, 1638},
+    };
+}
+
+// Expands hubs into routes: every source zone and every hub zone of a lower-or-same stage (same team
+// and continent, not the hub's own zone) leads to the hub, band = the hub's band. Order: hub table
+// order, then source zones ascending (deterministic). Walkable only (same continent, crossing 0).
+[[nodiscard]] inline std::vector<Route> HubRoutes(std::vector<Hub> const& hubs, std::vector<HubSource> const& sources)
+{
+    std::vector<Route> out;
+    for (Hub const& h : hubs)
+    {
+        std::vector<std::uint32_t> from;
+        for (HubSource const& s : sources)
+            if (s.team == h.team && s.map == h.map)
+                from.push_back(s.zone);
+        for (Hub const& o : hubs)
+            if (o.team == h.team && o.map == h.map && o.stage <= h.stage)
+                from.push_back(o.zone);
+        std::sort(from.begin(), from.end());
+        from.erase(std::unique(from.begin(), from.end()), from.end());
+        for (std::uint32_t zone : from)
+            if (zone != h.zone)
+                out.push_back(Route{h.team, zone, h.zone, h.minLevel, h.maxLevel, h.map, h.x, h.y, h.z, h.inn, false});
+    }
+    return out;
 }
 
 // Config override AutoWow.ZoneProgression.Routes: ';'-separated routes, each

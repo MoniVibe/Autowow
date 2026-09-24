@@ -55,6 +55,10 @@ void LoadConfig()
     p.cooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.GiveUpCooldownMs", 1800000);
     p.portalAfterMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.PortalAfterMs", 1200000);
     detail::gRoutes = DefaultRoutes();
+    // AutoWow.ZoneProgression.HighRoutes (default 0): append the L20-60 hub routes (Routes still replaces all).
+    if (sConfigMgr->GetOption<bool>("AutoWow.ZoneProgression.HighRoutes", false))
+        for (Route const& r : HubRoutes(DefaultHubs(), DefaultHubSources()))
+            detail::gRoutes.push_back(r);
     std::string const routes = sConfigMgr->GetOption<std::string>("AutoWow.ZoneProgression.Routes", "");
     if (!routes.empty() && !ParseRoutes(routes, detail::gRoutes))
         LOG_ERROR("server.loading", "[ZoneProgression] AutoWow.ZoneProgression.Routes malformed; built-in table kept");
