@@ -164,8 +164,10 @@ protected:
     // AutoWow.QuestTravelProgressWatch.Enable: observe net approach to keyPos; true when the budget
     // expired without a best-distance improvement.
     bool TravelProgressExpired(QuestObjectiveRuntime& rt, WorldPosition const& keyPos, float distance);
-    // Objective-side expiry: rotate away from the unreachable source spawn (bounded), else block.
-    bool ExpireUnreachableSource(NewRpgInfo::DoQuest& data, QuestObjectiveSpec const& spec);
+    // Objective-side expiry: rotate away from the unreachable source spawn (bounded), else block with
+    // `blockReason` (AutoWow.Travel.VerticalSnap passes the travel intent's give-up reason).
+    bool ExpireUnreachableSource(NewRpgInfo::DoQuest& data, QuestObjectiveSpec const& spec,
+                                 QuestFailureReason blockReason = QuestFailureReason::TravelNoProgress);
     // Keep a quest participant with its leader during ordinary non-combat travel. Combat, loot,
     // scripted interactions, and corpse recovery remain independent so the cohesion rule cannot
     // suppress legitimate work or rescue behavior.

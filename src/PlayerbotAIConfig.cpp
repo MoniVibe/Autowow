@@ -12,6 +12,7 @@
 #include "BisListMgr.h"
 #include "Config.h"
 #include "FlightTrapPolicy.h"
+#include "NavmeshSnap.h"
 #include "NewRpgInfo.h"
 #include "PlayerbotDungeonRepository.h"
 #include "PlayerbotFactory.h"
@@ -720,6 +721,7 @@ bool PlayerbotAIConfig::Initialize()
         sConfigMgr->GetOption<uint32>("AutoWow.Travel.FlightTrapFix.TimeoutMs", 600000);
     AutoWowFlightTrap::detail::gCooldownMs =
         sConfigMgr->GetOption<uint32>("AutoWow.Travel.FlightTrapFix.CooldownMs", 1800000);
+    AutoWowVerticalSnap::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Travel.VerticalSnap", false);
     autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
     autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
     autoWowQuestScheduler = sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.Enable", false);

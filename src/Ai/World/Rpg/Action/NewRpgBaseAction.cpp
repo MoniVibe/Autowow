@@ -31,6 +31,7 @@
 #include "ItemTemplate.h"
 #include "ItemUsageValue.h"
 #include "MotionMaster.h"
+#include "NavmeshSnap.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -265,6 +266,18 @@ bool DeathLoopDefersQuest(Player* bot, uint32 questId, std::vector<POIInfo> cons
         }
     }
     return false;
+}
+
+// AutoWow.Travel.VerticalSnap: `dest` on its floor's navmesh (NavmeshSnap.h); unchanged when the bot's map
+// has no navmesh query or the snap box holds no walkable poly.
+WorldPosition SnapTravelGoal(Player* bot, WorldPosition const& dest)
+{
+    dtNavMeshQuery const* query = bot->GetMap()->GetMapCollisionData().GetMMapData().GetNavMeshQuery();
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+    if (dest.GetMapId() != bot->GetMapId() || !query ||
+        !AutoWowVerticalSnap::Snap(*query, dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), x, y, z))
+        return dest;
+    return WorldPosition(dest.GetMapId(), x, y, z, dest.GetOrientation());
 }
 }
 
@@ -666,10 +679,14 @@ static std::vector<WalkingV2Policy::Mob> ScanTravelMobs(Player* bot)
 // two changes: a goal beyond the chunk ring is first walked by per-chunk mmap paths (goal-monotone
 // admission), and an interrupted segment is dropped and replanned from where the bot stands - only a
 // replan that finds nothing is charged to the replan budget, so combat/rest stops no longer spend it.
-bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNoTeleport, bool* outStuck,
+bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& requestedDest, bool questNoTeleport, bool* outStuck,
                                          bool deterministicPath,
                                          StrictFinisherMovementPolicy::RouteIdentity strictRoute)
 {
+    // AutoWow.Travel.VerticalSnap (NavmeshSnap.h): the goal snapped onto its floor's navmesh, and every path
+    // below computed without the slope check. OFF: dest == requestedDest and the slope check stays on.
+    bool const verticalSnap = AutoWowVerticalSnap::Enabled();
+    WorldPosition const dest = verticalSnap ? SnapTravelGoal(bot, requestedDest) : requestedDest;
     using namespace TravelIntentPolicy;
     Intent& intent = botAI->rpgInfo.travelIntent;
     Params const params{sPlayerbotAIConfig.autoWowTravelIntentReplanFailCount,
@@ -782,7 +799,7 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNo
             if (!std::isfinite(pz) || pz <= INVALID_HEIGHT)
                 pz = bot->GetPositionZ();
             PathGenerator path(bot);
-            path.SetSlopeCheck(true);
+            path.SetSlopeCheck(!verticalSnap);
             path.CalculatePath(px, py, pz);
             choices.emplace_back();
             ends.push_back(path.GetActualEndPosition());
@@ -827,7 +844,7 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNo
             if (!std::isfinite(pz) || pz <= INVALID_HEIGHT)
                 pz = bot->GetPositionZ();
             PathGenerator path(bot);
-            path.SetSlopeCheck(true);
+            path.SetSlopeCheck(!verticalSnap);
             path.CalculatePath(px, py, pz);
             if (path.GetPathType() & ~typeOk)
                 continue;
@@ -876,7 +893,7 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNo
     // 2. mmap route to the true destination (as MoveFarToIntent).
     {
         PathGenerator path(bot);
-        path.SetSlopeCheck(true);
+        path.SetSlopeCheck(!verticalSnap);
         path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
         if (!(path.GetPathType() & ~typeOk))
         {

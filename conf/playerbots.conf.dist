@@ -2611,6 +2611,13 @@ AutoWow.Travel.Safe = 0
 AutoWow.Travel.FlightTrapFix = 0
 AutoWow.Travel.FlightTrapFix.TimeoutMs = 600000
 AutoWow.Travel.FlightTrapFix.CooldownMs = 1800000
+# Multi-floor travel for the Walking V2 mover (NavmeshSnap.h; needs AutoWow.TravelIntent.Enable and
+# AutoWow.Walking.V2). 1 = mover paths are computed without PathGenerator's slope check (it failed every
+# path whose first step climbs a hill, ramp or stair: the segments=0 give-ups below Thelsamar, Thunder
+# Bluff, the Sepulcher, Tranquillien, Booty Bay), the goal is snapped to the nearest navmesh point within
+# 4 yd / +-30 yd z (its own floor), and a quest source walk that gives up tries the next resolved spawn
+# before blocking. 0 = legacy.
+AutoWow.Travel.VerticalSnap = 0
 # Blocked-quest defer-and-return (non-Oracle directives only). 1 = a quest held in Blocked for 30 s is
 # deferred for 10 minutes (ledger `deferred` reason blocked_deferred) and the bot returns to Idle to pick
 # other work; the quest is eligible again after the deferral. 0 = hold Blocked until the 30-minute

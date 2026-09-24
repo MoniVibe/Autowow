@@ -42,6 +42,7 @@
 #include "MapMgr.h"
 #include "MotionMaster.h"
 #include "MoveSpline.h"
+#include "NavmeshSnap.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
 #include "Object.h"
@@ -914,7 +915,8 @@ bool NewRpgDoQuestAction::TravelProgressExpired(QuestObjectiveRuntime& rt, World
                                 Stall::QuantizeYards(distance), getMSTime()) == Stall::TravelVerdict::Expired;
 }
 
-bool NewRpgDoQuestAction::ExpireUnreachableSource(NewRpgInfo::DoQuest& data, QuestObjectiveSpec const& spec)
+bool NewRpgDoQuestAction::ExpireUnreachableSource(NewRpgInfo::DoQuest& data, QuestObjectiveSpec const& spec,
+                                                  QuestFailureReason blockReason)
 {
     QuestObjectiveRuntime& rt = data.objectiveRuntime;
     QuestStallRecoveryPolicy::ResetTravel(rt.travelWatch);
@@ -923,7 +925,7 @@ bool NewRpgDoQuestAction::ExpireUnreachableSource(NewRpgInfo::DoQuest& data, Que
              bot->GetName(), data.questId, data.pos.GetPositionX(), data.pos.GetPositionY(),
              data.pos.GetPositionZ(), failedSpawn, rt.travelRotationCount);
     if (failedSpawn == 0 || rt.travelRotationCount >= QuestStallRecoveryPolicy::kMaxTravelRotations)
-        return BlockQuest(data, QuestFailureReason::TravelNoProgress, /*unsupported*/ false);
+        return BlockQuest(data, blockReason, /*unsupported*/ false);
 
     // Same shape as the exhausted-GO rotation in VerifyProgress: remember the unreachable spawn and
     // continue only when the rotation policy names another resolved same-map spawn.
@@ -951,7 +953,7 @@ bool NewRpgDoQuestAction::ExpireUnreachableSource(NewRpgInfo::DoQuest& data, Que
         rt.sourceRotationCount, maxSourceRotations, objectiveEntries, exhausted, candidates};
     if (QuestSourceRotationPolicy::Decide(request).decision !=
         QuestSourceRotationPolicy::Decision::RotateToNextSource)
-        return BlockQuest(data, QuestFailureReason::TravelNoProgress, /*unsupported*/ false);
+        return BlockQuest(data, blockReason, /*unsupported*/ false);
     EnterQuestPhase(data, QuestActionPhase::ResolveObjective);
     return true;
 }
@@ -2464,6 +2466,9 @@ bool NewRpgDoQuestAction::DoIncompleteQuest(NewRpgInfo::DoQuest& data)
             bool stuck = false;
             if (MoveFarTo(data.pos, /*questNoTeleport*/ true, &stuck))
             {
+                if (stuck && AutoWowVerticalSnap::Enabled() && !rt.oracleManaged)
+                    // AutoWow.Travel.VerticalSnap: the next resolved spawn before the block.
+                    return ExpireUnreachableSource(data, spec, TravelStuckReason());
                 if (stuck)
                     return BlockQuest(data, TravelStuckReason(), /*unsupported*/ false);
                 return true;
