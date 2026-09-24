@@ -152,7 +152,7 @@ struct EngagementSnapshot
 {
     std::uint32_t attackers = 0;       // units attacking the bot
     std::uint32_t melee = 0;           // attackers in melee range of the bot
-    std::uint32_t fearableMelee = 0;   // ... of which not immune to Psychic Scream
+    std::uint32_t fearableMelee = 0;   // ... of which not immune to the control tool (priest: Psychic Scream)
     std::uint32_t casters = 0;         // mana-class creature attackers
     std::uint32_t addsNear = 0;        // idle hostiles within LinkRadius of any attacker
     std::uint32_t eliteN = 0;
@@ -340,6 +340,74 @@ inline TacticId ChooseClass(Family f, EngagementSnapshot const& s, ClassParams c
         return current;
     TacticId const want = DesiredClass(f, s, p, current, escapeUsed || escaping);
     return Hysteresis(want, current, msInCurrent, p.minDwellMs);
+}
+
+// Wire-stable condition ids of the non-priest "tac ..." triggers (TacticalClassStrategy.h registers them).
+enum class ClassTacticCondition : std::uint8_t
+{
+    Single = 0,
+    Multi = 1,
+    Emergency = 2,
+    Escape = 3,
+    Heal = 4,              // single/multi, hp < HealHpPct (+10 in multi)
+    Control = 5,           // multi, control ready, >= ControlMinMelee controllable melee on the bot,
+                           // (hp < ControlHpPct or >= 3 attackers), no idle adds near (area fear/stun/nova)
+    ControlAdd = 6,        // multi, control ready, >= 2 attackers, no idle adds near (single-target cc on the add)
+    EmergencyControl = 7,  // emergency/escape, control ready, >= 1 controllable melee on the bot
+    MeleeOnMe = 8,         // single/multi, a melee attacker on the bot
+    Runner = 9,            // single/multi, the current target flees (not feared) and is not snared
+    LowMana = 10,          // single/multi, mana user below LowManaPct
+    LifeTap = 11,          // single/multi, mana below LowManaPct and hp >= EmergencyExitHpPct + 15
+    PetLow = 12,           // single/multi, combat pet alive below 40 % hp
+    Kite = 13              // single/multi, the current target is rooted/frozen in melee range (step out)
+};
+
+// Live facts a trigger reads besides the snapshot (filled by the adapter from the bot / pet / target).
+struct TriggerFacts
+{
+    std::uint32_t hpPct = 100;
+    std::uint32_t manaPct = 100;
+    bool usesMana = false;
+    bool petLow = false;               // combat pet alive below 40 % hp
+    bool targetFleeing = false;        // current target flees, not feared, not snared
+    bool targetRootedInMelee = false;  // current target rooted/frozen within melee range
+};
+
+// Does a "tac ..." condition hold while the non-priest tactic `id` runs?
+inline bool ConditionHolds(ClassTacticCondition c, TacticId id, EngagementSnapshot const& s, ClassParams const& p,
+                           TriggerFacts const& f)
+{
+    if (id == TacticId::None || FamilyOf(id) == Family::Priest)
+        return false;
+    std::uint32_t const slot = SlotOf(id);
+    bool const single = slot == kSlotSingle;
+    bool const multi = slot == kSlotMulti;
+    bool const emergency = slot == kSlotEmergency;
+    bool const escape = slot == kSlotEscape;
+    bool const fighting = single || multi;
+    bool const controlReady = (s.cds & kCdControl) != 0;
+    switch (c)
+    {
+        case ClassTacticCondition::Single: return single;
+        case ClassTacticCondition::Multi: return multi;
+        case ClassTacticCondition::Emergency: return emergency;
+        case ClassTacticCondition::Escape: return escape;
+        case ClassTacticCondition::Heal: return fighting && f.hpPct < p.healHpPct + (multi ? 10 : 0);
+        case ClassTacticCondition::Control:
+            return multi && controlReady && s.fearableMelee >= p.controlMinMelee &&
+                   (f.hpPct < p.controlHpPct || s.attackers >= 3) && !s.addsNear;
+        case ClassTacticCondition::ControlAdd: return multi && controlReady && s.attackers >= 2 && !s.addsNear;
+        case ClassTacticCondition::EmergencyControl:
+            return (emergency || escape) && controlReady && s.fearableMelee >= 1;
+        case ClassTacticCondition::MeleeOnMe: return fighting && s.melee >= 1;
+        case ClassTacticCondition::Runner: return fighting && f.targetFleeing;
+        case ClassTacticCondition::LowMana: return fighting && f.usesMana && f.manaPct < p.lowManaPct;
+        case ClassTacticCondition::LifeTap:
+            return fighting && f.usesMana && f.manaPct < p.lowManaPct && f.hpPct >= p.emergencyExitHpPct + 15;
+        case ClassTacticCondition::PetLow: return fighting && f.petLow;
+        case ClassTacticCondition::Kite: return fighting && f.targetRootedInMelee;
+        default: return false;
+    }
 }
 
 // Core class id (CLASS_WARRIOR 1 ... CLASS_DRUID 11; static_assert'ed in the adapter) -> family.

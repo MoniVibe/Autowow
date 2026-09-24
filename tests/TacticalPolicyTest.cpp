@@ -7,9 +7,13 @@
 #include "AutoWowQuestLedger.h"
 #include "EngagementTracker.h"
 #include "PackRisk.h"
+#include "TacticalClassTables.h"
 #include "TacticalPolicy.h"
 
 #include "gtest/gtest.h"
+
+#include <algorithm>
+#include <string>
 
 namespace
 {
@@ -477,4 +481,160 @@ TEST(EngagementTracker, LedgerEngageEventIsAppendOnly)
     std::string const line = AutoWowQuestLedger::FormatLine("r", row);
     EXPECT_NE(line.find("\"ev\":\"engage\""), std::string::npos);
     EXPECT_EQ(line.substr(line.size() - 9), ",\"ecv\":1}");
+}
+
+// ---- per-class tactic selection, thresholds and escape conditions (non-priest families) ------------
+namespace
+{
+constexpr Family kClassFamilies[] = {Family::Warlock, Family::Mage,    Family::Hunter, Family::Rogue,      Family::Warrior,
+                                     Family::Paladin, Family::Druid, Family::Shaman, Family::DeathKnight};
+
+ClassParams ParamsOf(Family f)
+{
+    ClassParams p;
+    p.healHpPct = kClassTables[static_cast<std::uint32_t>(f)].healHpPct;
+    return p;
+}
+
+TriggerFacts Facts(std::uint32_t hp, std::uint32_t mana = 100, bool usesMana = true)
+{
+    TriggerFacts f;
+    f.hpPct = hp;
+    f.manaPct = mana;
+    f.usesMana = usesMana;
+    return f;
+}
+}  // namespace
+
+TEST(TacticalClassPolicy, EveryFamilySelectsItsOwnLadder)
+{
+    for (Family const f : kClassFamilies)
+    {
+        SCOPED_TRACE(static_cast<int>(f));
+        ClassParams const p = ParamsOf(f);
+        EngagementSnapshot s = Single(100, 0);
+        EXPECT_EQ(ChooseClass(f, s, p, TacticId::None, 0, false), TacticOf(f, kSlotSingle));
+        s.attackers = 2;
+        s.load = 200;
+        EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotSingle), 100, false), TacticOf(f, kSlotMulti));
+        s.hpPct = 25;
+        EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotMulti), 100, false), TacticOf(f, kSlotEmergency));
+        s.attackers = 3;
+        s.load = 400;
+        s.hpPct = 25;
+        s.cds = kCdControlKnown | kCdDefensiveKnown | kCdEscapeKnown | kCdEscape;  // tools spent, escape ready
+        EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotEmergency), 100, false), TacticOf(f, kSlotEscape));
+        EXPECT_EQ(ChooseClass(f, s, p, TacticOf(f, kSlotEscape), 8000, true), TacticOf(f, kSlotEmergency));
+        EXPECT_EQ(FamilyOf(TacticOf(f, kSlotEscape)), f);
+        EXPECT_LT(FactorIndexOfSlot(SlotOf(TacticOf(f, kSlotEscape))), 4u);
+    }
+}
+
+TEST(TacticalClassPolicy, HealThresholdPerClass)
+{
+    EngagementSnapshot const s = Single(100, 0);
+    for (Family const f : kClassFamilies)
+    {
+        SCOPED_TRACE(static_cast<int>(f));
+        ClassParams const p = ParamsOf(f);
+        std::uint32_t const h = p.healHpPct;
+        EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Heal, TacticOf(f, kSlotSingle), s, p, Facts(h - 1)));
+        EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Heal, TacticOf(f, kSlotSingle), s, p, Facts(h)));
+        EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Heal, TacticOf(f, kSlotMulti), s, p, Facts(h + 9)));  // +10
+        EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Heal, TacticOf(f, kSlotEmergency), s, p, Facts(1)));
+    }
+    // Drain-tank: a warlock drains at 60 % where a warrior does not heal yet.
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Heal, TacticId::WarlockSingle, s, ParamsOf(Family::Warlock), Facts(60)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Heal, TacticId::WarriorSingle, s, ParamsOf(Family::Warrior), Facts(60)));
+    // Priest ids never fire the class triggers (priests run their own strategy).
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Heal, TacticId::PriestWand, s, ClassParams{}, Facts(1)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Single, TacticId::None, s, ClassParams{}, Facts(100)));
+}
+
+TEST(TacticalClassPolicy, ControlConditions)
+{
+    ClassParams const p;
+    EngagementSnapshot s = Single(100, kCdControlKnown | kCdControl);
+    s.attackers = 2;
+    s.melee = 2;
+    s.fearableMelee = 2;
+    TacticId const multi = TacticId::WarriorMulti;
+    // Area control: >= 2 controllable melee and (hp < 60 or >= 3 attackers), no idle adds near.
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Control, multi, s, p, Facts(59)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Control, multi, s, p, Facts(60)));
+    s.attackers = 3;
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Control, multi, s, p, Facts(90)));
+    s.addsNear = 1;  // a fear would run mobs into the next pack
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Control, multi, s, p, Facts(50)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::ControlAdd, multi, s, p, Facts(50)));
+    s.addsNear = 0;
+    s.fearableMelee = 1;  // one immune / out of range
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Control, multi, s, p, Facts(50)));
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::ControlAdd, multi, s, p, Facts(90)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::ControlAdd, TacticId::WarriorSingle, s, p, Facts(90)));
+    s.cds = kCdControlKnown;  // on cooldown
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::ControlAdd, multi, s, p, Facts(90)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::EmergencyControl, TacticId::WarriorEmergency, s, p, Facts(20)));
+    s.cds = kCdControlKnown | kCdControl;
+    // Emergency control: any controllable melee, emergency or escape only.
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::EmergencyControl, TacticId::MageEmergency, s, p, Facts(20)));
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::EmergencyControl, TacticId::MageEscape, s, p, Facts(20)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::EmergencyControl, TacticId::MageMulti, s, p, Facts(20)));
+    s.fearableMelee = 0;
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::EmergencyControl, TacticId::MageEmergency, s, p, Facts(20)));
+}
+
+TEST(TacticalClassPolicy, ResourcePetKiteAndRunnerConditions)
+{
+    ClassParams const p;  // LowManaPct 25, EmergencyExitHpPct 45
+    EngagementSnapshot s = Single(100, 0);
+    // Life Tap discipline: mana < 25 and hp >= 60, while fighting only.
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::LifeTap, TacticId::WarlockSingle, s, p, Facts(60, 24)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::LifeTap, TacticId::WarlockSingle, s, p, Facts(59, 24)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::LifeTap, TacticId::WarlockSingle, s, p, Facts(90, 25)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::LifeTap, TacticId::WarlockEmergency, s, p, Facts(90, 5)));
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::LowMana, TacticId::MageSingle, s, p, Facts(90, 24)));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::LowMana, TacticId::WarriorSingle, s, p, Facts(90, 0, false)));
+
+    TriggerFacts f = Facts(90);
+    f.petLow = true;
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::PetLow, TacticId::HunterSingle, s, p, f));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::PetLow, TacticId::HunterEscape, s, p, f));
+    f = Facts(90);
+    f.targetRootedInMelee = true;
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageSingle, s, p, f));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Kite, TacticId::MageEmergency, s, p, f));
+    f = Facts(90);
+    f.targetFleeing = true;
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::Runner, TacticId::WarriorSingle, s, p, f));
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::Runner, TacticId::WarriorEscape, s, p, f));
+    EXPECT_TRUE(ConditionHolds(ClassTacticCondition::MeleeOnMe, TacticId::HunterSingle, s, p, Facts(90)));
+    s.melee = 0;
+    EXPECT_FALSE(ConditionHolds(ClassTacticCondition::MeleeOnMe, TacticId::HunterSingle, s, p, Facts(90)));
+}
+
+TEST(TacticalClassTables, RowsAreWellFormed)
+{
+    for (Family const f : kClassFamilies)
+    {
+        ClassTable const& t = kClassTables[static_cast<std::uint32_t>(f)];
+        SCOPED_TRACE(std::string(t.key));
+        ASSERT_FALSE(t.key.empty());
+        EXPECT_FALSE(t.control[0].empty());
+        EXPECT_GE(t.healHpPct, 30u);
+        EXPECT_LE(t.healHpPct, 80u);
+        for (std::string_view const table : t.factors)
+        {
+            std::size_t const entries = table.empty() ? 0 : std::size_t(std::count(table.begin(), table.end(), ',')) + 1;
+            FactorTable const parsed = ParseFactors(table);
+            EXPECT_EQ(parsed.size(), entries) << table;  // no malformed entry silently dropped
+            for (auto const& [name, permille] : parsed)
+                EXPECT_LE(permille, 2000u) << name;
+        }
+        // Escape factors switch damage off: every escape table has at least one x0 entry.
+        bool zero = false;
+        for (auto const& [name, permille] : ParseFactors(t.factors[3]))
+            zero = zero || permille == 0;
+        EXPECT_TRUE(zero);
+    }
 }

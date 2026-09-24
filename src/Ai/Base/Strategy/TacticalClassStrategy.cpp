@@ -36,64 +36,28 @@ bool ClassTacticTrigger::IsActive()
     Family const family = AutoWowTactics::FamilyOf(id);
     if (id == TacticId::None || family == Family::Priest)  // priests run TacticalPriestStrategy
         return false;
-    AutoWowTactics::ClassParams const& p = AutoWowTactics::Params(family);
-    std::uint32_t const slot = AutoWowTactics::SlotOf(id);
-    bool const single = slot == AutoWowTactics::kSlotSingle;
-    bool const multi = slot == AutoWowTactics::kSlotMulti;
-    bool const emergency = slot == AutoWowTactics::kSlotEmergency;
-    bool const escape = slot == AutoWowTactics::kSlotEscape;
-    bool const fighting = single || multi;
-    bool const controlReady = (snap.cds & AutoWowTactics::kCdControl) != 0;
-    std::uint32_t const hp = Pct(bot->GetHealth(), bot->GetMaxHealth());
-    std::uint32_t const maxMana = bot->GetMaxPower(POWER_MANA);
-    std::uint32_t const mana = Pct(bot->GetPower(POWER_MANA), maxMana);
 
-    switch (condition)
+    // Live facts for the pure condition (AutoWowTactics::ConditionHolds); unit reads only where needed.
+    AutoWowTactics::TriggerFacts f;
+    f.hpPct = Pct(bot->GetHealth(), bot->GetMaxHealth());
+    f.usesMana = bot->GetMaxPower(POWER_MANA) > 0;
+    f.manaPct = Pct(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA));
+    if (condition == ClassTacticCondition::PetLow)
     {
-        case ClassTacticCondition::Single:
-            return single;
-        case ClassTacticCondition::Multi:
-            return multi;
-        case ClassTacticCondition::Emergency:
-            return emergency;
-        case ClassTacticCondition::Escape:
-            return escape;
-        case ClassTacticCondition::Heal:
-            return fighting && hp < p.healHpPct + (multi ? 10 : 0);
-        case ClassTacticCondition::Control:
-            return multi && controlReady && snap.fearableMelee >= p.controlMinMelee &&
-                   (hp < p.controlHpPct || snap.attackers >= 3) && !snap.addsNear;
-        case ClassTacticCondition::ControlAdd:
-            return multi && controlReady && snap.attackers >= 2 && !snap.addsNear;
-        case ClassTacticCondition::EmergencyControl:
-            return (emergency || escape) && controlReady && snap.fearableMelee >= 1;
-        case ClassTacticCondition::MeleeOnMe:
-            return fighting && snap.melee >= 1;
-        case ClassTacticCondition::LowMana:
-            return fighting && maxMana && mana < p.lowManaPct;
-        case ClassTacticCondition::LifeTap:
-            return fighting && maxMana && mana < p.lowManaPct && hp >= p.emergencyExitHpPct + 15;
-        case ClassTacticCondition::PetLow:
-        {
-            Pet* pet = bot->GetPet();
-            return fighting && pet && pet->IsAlive() && Pct(pet->GetHealth(), pet->GetMaxHealth()) < 40;
-        }
-        case ClassTacticCondition::Runner:
-        case ClassTacticCondition::Kite:
-        {
-            if (!fighting)
-                return false;
-            Unit* target = botAI->GetAiObjectContext()->GetValue<Unit*>("current target")->Get();
-            if (!target || !target->IsAlive())
-                return false;
-            if (condition == ClassTacticCondition::Kite)
-                return (target->isFrozen() || target->HasRootAura()) && bot->IsWithinMeleeRange(target);
-            return target->HasUnitState(UNIT_STATE_FLEEING) && !target->HasAuraType(SPELL_AURA_MOD_FEAR) &&
-                   !target->HasAuraType(SPELL_AURA_MOD_DECREASE_SPEED);
-        }
-        default:
-            return false;
+        Pet* pet = bot->GetPet();
+        f.petLow = pet && pet->IsAlive() && Pct(pet->GetHealth(), pet->GetMaxHealth()) < 40;
     }
+    if (condition == ClassTacticCondition::Runner || condition == ClassTacticCondition::Kite)
+    {
+        Unit* target = botAI->GetAiObjectContext()->GetValue<Unit*>("current target")->Get();
+        if (target && target->IsAlive())
+        {
+            f.targetRootedInMelee = (target->isFrozen() || target->HasRootAura()) && bot->IsWithinMeleeRange(target);
+            f.targetFleeing = target->HasUnitState(UNIT_STATE_FLEEING) && !target->HasAuraType(SPELL_AURA_MOD_FEAR) &&
+                              !target->HasAuraType(SPELL_AURA_MOD_DECREASE_SPEED);
+        }
+    }
+    return AutoWowTactics::ConditionHolds(condition, id, snap, AutoWowTactics::Params(family), f);
 }
 
 float ClassTacticMultiplier::GetValue(Action* action)

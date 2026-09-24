@@ -23,25 +23,9 @@ class PlayerbotAI;
 // every trigger is off and every factor is 1. The "tac ..." triggers are registered once, in the shared
 // TriggerContext; each class context registers "tactical" with its family.
 
-// Wire-stable condition ids of the "tac ..." triggers (slot names: TacticalPolicy.h).
-enum class ClassTacticCondition : std::uint8_t
-{
-    Single = 0,
-    Multi = 1,
-    Emergency = 2,
-    Escape = 3,
-    Heal = 4,              // single/multi, hp < HealHpPct (+10 in multi)
-    Control = 5,           // multi, control ready, >= ControlMinMelee controllable melee on the bot,
-                           // (hp < ControlHpPct or >= 3 attackers), no idle adds near (area fear/stun/nova)
-    ControlAdd = 6,        // multi, control ready, >= 2 attackers, no idle adds near (single-target cc on the add)
-    EmergencyControl = 7,  // emergency/escape, control ready, >= 1 controllable melee on the bot
-    MeleeOnMe = 8,         // single/multi, a melee attacker on the bot
-    Runner = 9,            // single/multi, the current target flees (not feared) and is not snared
-    LowMana = 10,          // single/multi, mana user below LowManaPct
-    LifeTap = 11,          // single/multi, mana below LowManaPct and hp >= EmergencyExitHpPct + 15
-    PetLow = 12,           // single/multi, combat pet alive below 40 % hp
-    Kite = 13              // single/multi, the current target is rooted/frozen in melee range (step out)
-};
+// Condition ids and their pure evaluation: AutoWowTactics::ClassTacticCondition / ConditionHolds
+// (TacticalPolicy.h, unit-tested).
+using ClassTacticCondition = AutoWowTactics::ClassTacticCondition;
 
 class ClassTacticTrigger : public Trigger
 {
