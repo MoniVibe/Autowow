@@ -18,6 +18,7 @@
 #include "NewRpgTriggers.h"
 #include "PvpTriggers.h"
 #include "PullTriggers.h"
+#include "RestGateTriggers.h"
 #include "RpgTriggers.h"
 #include "RtiTriggers.h"
 #include "StuckTriggers.h"
@@ -48,6 +49,8 @@ public:
         creators["critical health"] = &TriggerContext::CriticalHealth;
         creators["low health"] = &TriggerContext::LowHealth;
         creators["medium health"] = &TriggerContext::MediumHealth;
+        creators["rest gate health"] = &TriggerContext::rest_gate_health;
+        creators["rest gate mana"] = &TriggerContext::rest_gate_mana;
         creators["almost full health"] = &TriggerContext::AlmostFullHealth;
 
         creators["low mana"] = &TriggerContext::LowMana;
@@ -312,6 +315,8 @@ private:
     static Trigger* HasAggro(PlayerbotAI* botAI) { return new HasAggroTrigger(botAI); }
     static Trigger* LowHealth(PlayerbotAI* botAI) { return new LowHealthTrigger(botAI); }
     static Trigger* MediumHealth(PlayerbotAI* botAI) { return new MediumHealthTrigger(botAI); }
+    static Trigger* rest_gate_health(PlayerbotAI* botAI) { return new RestGateTrigger(botAI, "rest gate health", false); }
+    static Trigger* rest_gate_mana(PlayerbotAI* botAI) { return new RestGateTrigger(botAI, "rest gate mana", true); }
     static Trigger* AlmostFullHealth(PlayerbotAI* botAI) { return new AlmostFullHealthTrigger(botAI); }
     static Trigger* CriticalHealth(PlayerbotAI* botAI) { return new CriticalHealthTrigger(botAI); }
     static Trigger* TargetCriticalHealth(PlayerbotAI* botAI) { return new TargetCriticalHealthTrigger(botAI); }

@@ -28,6 +28,7 @@
 #include "ErrandsPolicy.h"
 #include "TacticalRuntime.h"
 #include "PullLevelCap.h"
+#include "RestGate.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -541,6 +542,7 @@ public:
         AutoWowErrands::LoadConfig();     // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowTactics::LoadConfig();
         AutoWowPullCap::LoadConfig();
+        AutoWowRestGate::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));

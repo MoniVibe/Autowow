@@ -2424,6 +2424,15 @@ AutoWow.Survival.PullLevelCap.ElitePenalty = 3
 AutoWow.Survival.PullLevelCap.HealthyPct = 80
 AutoWow.Survival.PullLevelCap.AloneYards = 15
 
+# Universal rest gate for solo independent bots (RestGate.h; default 0). Grind and quest-kill target picks
+# return nothing while hp < MinHpPct, mana < MinManaPct (mana users) or Resurrection Sickness is on; the
+# "food" strategy eats / drinks up to the thresholds when the bot carries food / drink (bought with its
+# own gold; no cheat food), otherwise the bot just regenerates. Self-defence is never gated. 0 disables a
+# threshold. Read once at world init.
+AutoWow.Survival.RestGate = 0
+AutoWow.Survival.RestGate.MinHpPct = 70
+AutoWow.Survival.RestGate.MinManaPct = 60
+
 # Zone progression for independent AutoWoW bots (Oracle-managed bots and bots with a real master are
 # never moved). Every CheckIntervalMs an idle bot graduates when its level >= its zone's
 # AiPlayerbot.ZoneBracket max - LevelMargin, or when its quest log had nothing actionable for

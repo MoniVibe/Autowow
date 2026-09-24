@@ -16,6 +16,7 @@
 #include "PullLevelCap.h"
 #include "QuestObjectiveContext.h"
 #include "ReputationMgr.h"
+#include "RestGate.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
 #include "TacticalRuntime.h"
@@ -95,6 +96,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     // AutoWow.Tactics.Enable (default 0), treatment-arm solo priests: no proactive pull below the pull
     // hp/mana thresholds (the "tactical nc" rest triggers drink/eat instead). Self-defence returned above.
     if (AutoWowTactics::Enabled() && AutoWowTactics::HoldProactivePull(botAI))
+        return nullptr;
+    // AutoWow.Survival.RestGate (default 0), every solo independent bot: the same hold below MinHpPct /
+    // MinManaPct, and while Resurrection Sickness lasts. Self-defence returned above.
+    if (AutoWowRestGate::Enabled() && AutoWowRestGate::HoldProactivePull(botAI))
         return nullptr;
     // Same arm: pack-risk pull choice (hard reject + risk band sort key / distance penalty).
     bool const packRisk = AutoWowTactics::Enabled() && AutoWowTactics::PullRiskActive(botAI);

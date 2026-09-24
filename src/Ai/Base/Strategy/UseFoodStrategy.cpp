@@ -8,6 +8,7 @@
 
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "RestGate.h"
 
 void UseFoodStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
@@ -21,5 +22,13 @@ void UseFoodStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
     {
         triggers.push_back(new TriggerNode("low health", { NextAction("food", 3.0f) }));
         triggers.push_back(new TriggerNode("low mana", { NextAction("drink", 3.0f) }));
+    }
+
+    // AutoWow.Survival.RestGate (default 0): a solo independent bot eats / drinks up to the pull thresholds
+    // (above the New RPG moves at 3.0). Without food it just regenerates while the pull hold lasts.
+    if (AutoWowRestGate::Enabled())
+    {
+        triggers.push_back(new TriggerNode("rest gate health", { NextAction("food", 4.1f) }));
+        triggers.push_back(new TriggerNode("rest gate mana", { NextAction("drink", 4.1f) }));
     }
 }
