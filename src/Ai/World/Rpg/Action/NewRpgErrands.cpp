@@ -732,6 +732,7 @@ void LoadConfig()
     p.maxWalkYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MaxWalkYards", 4000);
     p.travelTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.TravelTimeoutMs", 1200000);
     p.auctionDetourMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.AuctionDetourMs", 0);
+    p.sellTradeGoods = sConfigMgr->GetOption<bool>("AutoWow.Errands.SellTradeGoods", false);
     p.keepConsumables = sConfigMgr->GetOption<bool>("AutoWow.Survival.KeepConsumables", false);
     p.sellDetourYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.KeepConsumables.SellDetourYards", 30);
     // AutoWow.Gear.Upgrades (GearUpgradePolicy.h): read before the catalog (vendors list their gear with it on).
@@ -1187,6 +1188,8 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
         uint64 const m0 = money();
         // Stock `rpg sell` event: vendor-usage items when any, else gray.
         botAI->DoSpecificAction("sell", Event("rpg action", AI_VALUE(bool, "can sell") ? "vendor" : "gray"), true);
+        if (p.sellTradeGoods)
+            botAI->DoSpecificAction("sell", Event("autowow errands", "autowow-trade"), true);
         if (money() > m0)
         {
             s.sold += money() - m0;

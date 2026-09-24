@@ -72,6 +72,31 @@ private:
     AiObjectContext* context;
 };
 
+// AutoWow.Errands.SellTradeGoods: white/grey trade goods no profession of the bot needs (usage vendor / AH /
+// none). soak-s25..s27: 811 such items (11.8k copper) sat in cohort bags; the AH saw 0 sales.
+class SellAutoWowTradeGoodsVisitor : public SellItemsVisitor
+{
+public:
+    SellAutoWowTradeGoodsVisitor(SellAction* action, AiObjectContext* context)
+        : SellItemsVisitor(action), context(context)
+    {
+    }
+
+    bool Visit(Item* item) override
+    {
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto || proto->Class != ITEM_CLASS_TRADE_GOODS || proto->Quality > ITEM_QUALITY_NORMAL)
+            return true;
+        ItemUsage const usage = context->GetValue<ItemUsage>("item usage", proto->ItemId)->Get();
+        if (usage != ITEM_USAGE_NONE && usage != ITEM_USAGE_VENDOR && usage != ITEM_USAGE_AH)
+            return true;
+        return SellItemsVisitor::Visit(item);
+    }
+
+private:
+    AiObjectContext* context;
+};
+
 class SellVendorItemsVisitor : public SellItemsVisitor
 {
 public:
@@ -95,6 +120,13 @@ bool SellAction::Execute(Event event)
     if (text == "gray" || text == "*")
     {
         SellGrayItemsVisitor visitor(this);
+        IterateItems(&visitor);
+        return true;
+    }
+
+    if (text == "autowow-trade")
+    {
+        SellAutoWowTradeGoodsVisitor visitor(this, context);
         IterateItems(&visitor);
         return true;
     }

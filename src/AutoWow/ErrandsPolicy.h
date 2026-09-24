@@ -183,6 +183,7 @@ struct Params
     std::uint32_t maxWalkYards = 4000;         // AutoWow.Errands.MaxWalkYards
     std::uint32_t levelOver = 3;               // skip towns in zones whose bracket starts above level + this
     std::uint32_t candidateTowns = 8;          // nearest same-map towns costed per decision
+    bool sellTradeGoods = false;               // AutoWow.Errands.SellTradeGoods: vendor unneeded trade goods
     std::uint32_t auctionDetourMs = 0;         // AutoWow.Errands.AuctionDetourMs: with AutoWow.Trade on, a
                                                // town with an auctioneer costs this much less
     std::uint32_t travelTimeoutMs = 1200000;   // AutoWow.Errands.TravelTimeoutMs
