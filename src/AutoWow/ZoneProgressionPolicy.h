@@ -657,6 +657,9 @@ inline bool Enabled() { return detail::gEnabled; }
 void LoadConfig();
 // A graduation (travel or flight-path learning) is under way for this bot. Town runs wait for it.
 bool Active(std::uint32_t guid);
+// AutoWow.Survival.HardEscape: drop any trip (and crossing chain) of this bot, no ledger line of its own
+// (the caller emits zone_move reason hard_escape), and hold new ones for GiveUpCooldownMs. Flag off: no-op.
+void CancelTrip(std::uint32_t guid, std::uint64_t nowMs);
 }  // namespace AutoWowZoneProgression
 
 #endif  // AUTOWOW_ZONE_PROGRESSION_POLICY_H

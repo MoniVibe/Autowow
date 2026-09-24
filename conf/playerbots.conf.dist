@@ -2589,9 +2589,24 @@ AutoWow.DeathLoop.V2 = 0
 # nearest (replaces the V2 lowest-band pick). (2) AutoWow.Walking.V2 chunks: an endpoint (with
 # AutoWow.Travel.Safe also its path points) inside a danger zone other than the bot's own is not
 # admissible - the fan steers around, or the leg stalls into the usual reissue / portal fallback instead
-# of beelining through.
+# of beelining through. (3) Hard fallback, sampled every 5 s from the player update (dead or in combat
+# too) for autonomous open-world non-Oracle bots: the bot's zone bracket low is more than ZoneGap above it,
+# or it died Deaths times within AutoWow.DeathLoop.WindowMs with the latest killer KillerGap or more above
+# it, and while alive it has not moved MoveYards for StuckMs: it casts its hearthstone (in the bags, off
+# cooldown, bound over 100 yd away in a zone that is not a danger zone, out of combat); if that fails to
+# start or has not moved it 30 s later, it is portalled to that bind point, else to its faction capital
+# (Stormwind / Darnassus / Undercity / Orgrimmar). The portal drops the zone-progression trip (held for
+# AutoWow.ZoneProgression.GiveUpCooldownMs), forgets the recorded deaths, logs "[HardEscape]", emits
+# ledger zone_move reason hard_escape mode portal (travel_ms = time stuck) and starts CooldownMs. Bots under
+# the persistent no-teleport policy never portal. 0 = legacy.
 AutoWow.Survival.HardEscape = 0
 AutoWow.Survival.HardEscape.WalkZoneMargin = 5
+AutoWow.Survival.HardEscape.ZoneGap = 10
+AutoWow.Survival.HardEscape.Deaths = 4
+AutoWow.Survival.HardEscape.KillerGap = 10
+AutoWow.Survival.HardEscape.StuckMs = 120000
+AutoWow.Survival.HardEscape.MoveYards = 100
+AutoWow.Survival.HardEscape.CooldownMs = 900000
 
 # Pull level cap for solo independent bots (PullLevelCap.h; default 0). Grind and quest-objective target
 # picks skip creatures whose level (+ElitePenalty for elites) is more than MaxLevelAbove above the bot,

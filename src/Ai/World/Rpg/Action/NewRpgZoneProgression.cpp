@@ -84,6 +84,17 @@ static void StoreState(std::uint32_t guid, BotState const& s)
 
 bool Active(std::uint32_t guid) { return LoadState(guid).phase != Phase::None; }
 
+void CancelTrip(std::uint32_t guid, std::uint64_t nowMs)
+{
+    if (!Enabled())
+        return;
+    BotState s;
+    s.cooldownUntilMs = nowMs + detail::gParams.cooldownMs;
+    std::lock_guard<std::mutex> guard(gLock);
+    gStates[guid] = s;
+    gChains.erase(guid);
+}
+
 static AutoWowTransports::ChainState LoadChain(std::uint32_t guid)
 {
     std::lock_guard<std::mutex> guard(gLock);

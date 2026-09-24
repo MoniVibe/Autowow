@@ -59,6 +59,21 @@ struct DangerArea
     std::uint32_t radius = 0;
 };
 
+// AutoWow.Survival.HardEscape (3) episode: the bot has been in the hard condition since sinceMs without
+// moving moveYards from the anchor (alive samples only).
+struct HardState
+{
+    bool active = false;
+    std::uint64_t sinceMs = 0;
+    std::uint32_t map = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    bool hearthTried = false;
+    std::uint64_t retryAtMs = 0;        // after a hearth attempt: the portal no earlier than this
+    std::uint64_t cooldownUntilMs = 0;  // after a portal
+    std::uint64_t nextCheckMs = 0;      // runtime throttle
+};
+
 // Per-bot state. deaths[0..deathCount) is oldest first.
 struct BotState
 {
@@ -70,6 +85,8 @@ struct BotState
     bool relocate = false;                 // one relocation attempt pending
     std::uint32_t deferQuest = 0;          // Oracle-managed quest to defer at the next Oracle pass
     bool restPending = false;              // V2: spirit-healer res taken, full rest before any pull
+    std::uint32_t lastKillerLevel = 0;     // HardEscape: killer level of the latest death
+    HardState hard;                        // HardEscape (3)
 };
 
 // Wire-stable ledger reason names; append only.
@@ -256,7 +273,107 @@ inline std::string LedgerFields(std::uint32_t clusterDeaths, std::uint32_t kille
 struct HardParams
 {
     std::uint32_t walkZoneMargin = 5;   // AutoWow.Survival.HardEscape.WalkZoneMargin: zone too high to cross
+    std::uint32_t zoneGap = 10;         // AutoWow.Survival.HardEscape.ZoneGap: stuck in a zone this far above
+    std::uint32_t deaths = 4;           // AutoWow.Survival.HardEscape.Deaths (0 = death rule off)
+    std::uint32_t killerGap = 10;       // AutoWow.Survival.HardEscape.KillerGap
+    std::uint64_t stuckMs = 120000;     // AutoWow.Survival.HardEscape.StuckMs: no movement for this long
+    std::uint32_t moveYards = 100;      // AutoWow.Survival.HardEscape.MoveYards: farther = it is moving
+    std::uint64_t cooldownMs = 900000;  // AutoWow.Survival.HardEscape.CooldownMs after a portal
 };
+inline constexpr std::uint64_t kHardCheckMs = 5000;         // runtime sampling stride
+inline constexpr std::uint64_t kHardHearthRetryMs = 30000;  // a hearth that did not move the bot -> portal
+
+// The hard condition: the zone's bracket starts more than zoneGap above the bot, or deaths recent deaths
+// with the latest killer killerGap or more above it.
+inline bool HardCondition(HardParams const& h, std::uint32_t level, std::uint32_t zoneLow, std::uint32_t recentDeaths,
+                          std::uint32_t killerLevel)
+{
+    return Overshoot(zoneLow, level, h.zoneGap) ||
+           (h.deaths && recentDeaths >= h.deaths && h.killerGap && killerLevel >= level + h.killerGap);
+}
+
+enum class HardAction : std::uint8_t
+{
+    None = 0,
+    Hearth = 1,
+    Portal = 2
+};
+
+inline constexpr char const* HardActionName(HardAction a)
+{
+    switch (a)
+    {
+        case HardAction::None: return "none";
+        case HardAction::Hearth: return "hearth";
+        case HardAction::Portal: return "portal";
+    }
+    return "none";
+}
+
+// One sample. Not hard: the episode ends. Dead: the clock runs, the anchor holds (ghost walks and the
+// graveyard do not count as movement). Alive and moved moveYards off the anchor (or another map): a new
+// episode. stuckMs in the hard condition without moving: the hearthstone once when usable (a bound, ready
+// hearth in a level-fitting zone, out of combat), then after kHardHearthRetryMs still here: the portal,
+// which ends the episode and starts cooldownMs.
+inline HardAction HardStep(HardParams const& h, HardState& s, std::uint64_t nowMs, bool hard, bool alive,
+                           std::uint32_t map, std::int32_t x, std::int32_t y, bool hearthUsable)
+{
+    if (!hard)
+    {
+        s.active = false;
+        return HardAction::None;
+    }
+    if (nowMs < s.cooldownUntilMs || !alive)
+        return HardAction::None;
+    if (!s.active || s.map != map || !Within(s.x, s.y, x, y, h.moveYards))
+    {
+        s.active = true;
+        s.sinceMs = nowMs;
+        s.map = map;
+        s.x = x;
+        s.y = y;
+        s.hearthTried = false;
+        s.retryAtMs = 0;
+        return HardAction::None;
+    }
+    if (nowMs < s.sinceMs || nowMs - s.sinceMs < h.stuckMs || nowMs < s.retryAtMs)
+        return HardAction::None;
+    if (hearthUsable && !s.hearthTried)
+    {
+        s.hearthTried = true;
+        s.retryAtMs = nowMs + kHardHearthRetryMs;
+        return HardAction::Hearth;
+    }
+    s.active = false;
+    s.cooldownUntilMs = nowMs + h.cooldownMs;
+    return HardAction::Portal;
+}
+
+// Portal target: the bind point when its zone fits the bot (bracket low <= level + walkZoneMargin),
+// else the faction capital of the bot's continent (world DB game_tele). team: 1 alliance, 2 horde.
+struct Place
+{
+    std::uint32_t map = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint32_t zone = 0;
+};
+
+inline Place CapitalFor(std::uint32_t team, std::uint32_t map)
+{
+    if (team == 1)
+        return map == 1 ? Place{1, 9949, 2284, 1341, 1657}    // Darnassus
+                        : Place{0, -8833, 628, 94, 1519};     // Stormwind
+    return map == 0 ? Place{0, 1584, 240, -52, 1497}          // Undercity
+                    : Place{1, 1629, -4373, 31, 1637};        // Orgrimmar
+}
+
+inline Place HardPortalTarget(std::uint32_t team, std::uint32_t map, Place const& home, std::uint32_t homeZoneLow,
+                              std::uint32_t level, std::uint32_t margin)
+{
+    return home.zone && !Overshoot(homeZoneLow, level, margin) ? home : CapitalFor(team, map);
+}
 
 // ---- runtime (DeathLoopBreaker.cpp) -------------------------------------------------------------
 // Per-bot state is mutex-guarded (deaths and bot AI updates run on map threads). Every query below

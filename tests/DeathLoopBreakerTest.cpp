@@ -201,4 +201,106 @@ TEST(DeathLoopBreaker, RuntimeQueriesAreInertWhenDisabled)
     EXPECT_FALSE(TakeQuestDeferral(112, 4183));
     EXPECT_EQ(RecentDeaths(112U), 0U);
 }
+
+// ---- AutoWow.Survival.HardEscape (3) --------------------------------------------------------------------
+TEST(DeathLoopBreaker, HardEscapeDefaultsOff)
+{
+    EXPECT_FALSE(HardEscapeEnabled());
+    HardParams const h;
+    EXPECT_EQ(h.walkZoneMargin, 5U);
+    EXPECT_EQ(h.zoneGap, 10U);
+    EXPECT_EQ(h.deaths, 4U);
+    EXPECT_EQ(h.killerGap, 10U);
+    EXPECT_EQ(h.stuckMs, 120000U);
+    EXPECT_FALSE(BotState{}.hard.active);
+}
+
+TEST(DeathLoopBreaker, HardConditionIsAFarOverZoneOrADeathLoopFarAbove)
+{
+    HardParams const h;
+    // soak-s22-full-r1: Taelorin L18 in Burning Steppes (low 51 > 28), killer 57.
+    EXPECT_TRUE(HardCondition(h, 18, 51, 0, 0));
+    EXPECT_FALSE(HardCondition(h, 18, 28, 0, 0));      // strictly above level + ZoneGap
+    EXPECT_FALSE(HardCondition(h, 18, 0, 0, 0));       // unknown zone
+    EXPECT_TRUE(HardCondition(h, 18, 10, 4, 28));      // 4 deaths, killer 10 above, in a fitting zone
+    EXPECT_FALSE(HardCondition(h, 18, 10, 3, 57));     // 3 deaths
+    EXPECT_FALSE(HardCondition(h, 18, 10, 8, 27));     // killer only 9 above (Westfall loops: klvl 16-17)
+    HardParams off = h;
+    off.deaths = 0;
+    EXPECT_FALSE(HardCondition(off, 18, 10, 8, 57));
+}
+
+// soak-s22-full-r1 replay: Taelorin rezzes at (-7924,-1354) and dies again within seconds, in combat on every
+// alive sample (no hearth), for 55 minutes. Here the portal fires once 120 s pass without movement.
+TEST(DeathLoopBreaker, HardStepReplaysTaelorin)
+{
+    HardParams const h;
+    HardState s;
+    std::uint64_t t = 1000000;
+    EXPECT_EQ(HardStep(h, s, t, true, true, 0, -7924, -1354, false), HardAction::None);  // episode starts
+    EXPECT_TRUE(s.active);
+    for (std::uint64_t dt = 5000; dt < 120000; dt += 5000)
+    {
+        bool const alive = (dt / 5000) % 3 == 0;  // dead two samples in three; ghost walks do not reset
+        std::int32_t const x = alive ? -7924 + std::int32_t(dt % 40) : -7600;
+        EXPECT_EQ(HardStep(h, s, t + dt, true, alive, 0, x, -1354, false), HardAction::None) << dt;
+    }
+    EXPECT_EQ(HardStep(h, s, t + 120000, true, false, 0, -7924, -1354, false), HardAction::None);  // dead: waits
+    EXPECT_EQ(HardStep(h, s, t + 125000, true, true, 0, -7910, -1350, false), HardAction::Portal);
+    EXPECT_FALSE(s.active);
+    // Cooldown: nothing until it runs out, then a fresh episode.
+    EXPECT_EQ(HardStep(h, s, t + 125000 + 600000, true, true, 0, -7910, -1350, false), HardAction::None);
+    EXPECT_FALSE(s.active);
+    EXPECT_EQ(HardStep(h, s, t + 125000 + h.cooldownMs, true, true, 0, -7910, -1350, false), HardAction::None);
+    EXPECT_TRUE(s.active);
+}
+
+TEST(DeathLoopBreaker, HardStepHearthsFirstThenPortals)
+{
+    HardParams const h;
+    HardState s;
+    EXPECT_EQ(HardStep(h, s, 0, true, true, 0, 0, 0, true), HardAction::None);
+    EXPECT_EQ(HardStep(h, s, 119999, true, true, 0, 0, 0, true), HardAction::None);
+    EXPECT_EQ(HardStep(h, s, 120000, true, true, 0, 50, 0, true), HardAction::Hearth);
+    // The hearth did not move it (interrupted): the portal after kHardHearthRetryMs, never a second hearth.
+    EXPECT_EQ(HardStep(h, s, 120000 + kHardHearthRetryMs - 1, true, true, 0, 0, 0, true), HardAction::None);
+    EXPECT_EQ(HardStep(h, s, 120000 + kHardHearthRetryMs, true, true, 0, 0, 0, true), HardAction::Portal);
+}
+
+TEST(DeathLoopBreaker, HardStepMovingOrSafeEndsTheEpisode)
+{
+    HardParams const h;
+    HardState s;
+    EXPECT_EQ(HardStep(h, s, 0, true, true, 0, 0, 0, false), HardAction::None);
+    // Walking out: every sample 101 yd on restarts the clock.
+    for (std::uint64_t t = 60000; t <= 600000; t += 60000)
+        EXPECT_EQ(HardStep(h, s, t, true, true, 0, std::int32_t(t / 60000) * 101, 0, false), HardAction::None);
+    // Another map is movement too.
+    EXPECT_EQ(HardStep(h, s, 700000, true, true, 1, 1010, 0, false), HardAction::None);
+    EXPECT_EQ(s.sinceMs, 700000U);
+    // Out of the hard condition: the episode ends; back in it: a new one.
+    EXPECT_EQ(HardStep(h, s, 800000, false, true, 1, 1010, 0, false), HardAction::None);
+    EXPECT_FALSE(s.active);
+    EXPECT_EQ(HardStep(h, s, 900000, true, true, 1, 1010, 0, false), HardAction::None);
+    EXPECT_EQ(HardStep(h, s, 1019999, true, true, 1, 1010, 0, false), HardAction::None);
+    EXPECT_EQ(HardStep(h, s, 1020000, true, true, 1, 1010, 0, false), HardAction::Portal);
+}
+
+TEST(DeathLoopBreaker, HardPortalTargetIsAFittingBindElseTheCapital)
+{
+    Place const westfall{0, -10653, 1166, 34, 40};  // Sentinel Hill inn, Westfall low 10
+    Place const steppes{0, -8365, -2737, 186, 46};  // low 51
+    // Taelorin bound in Westfall: home. Bound in the Steppes (or nowhere): Stormwind.
+    Place p = HardPortalTarget(1, 0, westfall, 10, 18, 5);
+    EXPECT_EQ(p.zone, 40U);
+    EXPECT_EQ(p.x, -10653);
+    p = HardPortalTarget(1, 0, steppes, 51, 18, 5);
+    EXPECT_EQ(p.zone, 1519U);
+    EXPECT_EQ(p.x, -8833);
+    EXPECT_EQ(HardPortalTarget(1, 0, Place{}, 0, 18, 5).zone, 1519U);
+    EXPECT_EQ(HardPortalTarget(1, 1, steppes, 51, 18, 5).zone, 1657U);  // Darnassus
+    EXPECT_EQ(HardPortalTarget(2, 0, steppes, 51, 18, 5).zone, 1497U);  // Undercity
+    EXPECT_EQ(HardPortalTarget(2, 1, steppes, 51, 18, 5).zone, 1637U);  // Orgrimmar
+    EXPECT_EQ(HardPortalTarget(2, 530, steppes, 51, 18, 5).map, 1U);   // elsewhere: Orgrimmar
+}
 }  // namespace
