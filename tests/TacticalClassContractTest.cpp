@@ -91,12 +91,14 @@ TEST(TacticalClassContract, TriggersActionsFactorsAndRegistrationResolve)
         EXPECT_TRUE(tacTriggers.count(name)) << "unregistered trigger: " << name;
     EXPECT_NE(conf.find("\nAutoWow.Tactics.Classes = \"priest\"\n"), std::string::npos);  // default = priest only
 
+    std::uint32_t rows = 0;
     for (FamilySource const& src : kSources)
     {
         ClassTable const& t = kClassTables[static_cast<std::uint32_t>(src.family)];
         std::string const key(t.key);
         if (key.empty())
             continue;
+        ++rows;
         SCOPED_TRACE(key);
         std::string const ctx = Read(src.context);
         std::set<std::string> actions =
@@ -124,4 +126,6 @@ TEST(TacticalClassContract, TriggersActionsFactorsAndRegistrationResolve)
         EXPECT_NE(ctx.find("creators[\"tactical\"]"), std::string::npos);
         EXPECT_NE(ctx.find("new TacticalClassStrategy(botAI, AutoWowTactics::Family::" + key + ")"), std::string::npos);
     }
+    EXPECT_EQ(rows, 9u);  // every non-priest family has tactics
+    EXPECT_TRUE(kClassTables[static_cast<std::uint32_t>(Family::Priest)].key.empty());  // priest: own tables
 }

@@ -2523,6 +2523,21 @@ AutoWow.Tactics.Druid.Factors.Single = ""
 AutoWow.Tactics.Druid.Factors.Multi = "wrath:0.3,starfire:0.3,moonfire:0.5"
 AutoWow.Tactics.Druid.Factors.Emergency = "wrath:0,starfire:0,moonfire:0,insect swarm:0,hurricane:0,moonfire on attacker:0,insect swarm on attacker:0"
 AutoWow.Tactics.Druid.Factors.Escape = "wrath:0,starfire:0,moonfire:0,insect swarm:0,hurricane:0,moonfire on attacker:0,insect swarm on attacker:0,claw:0,shred:0,rake:0,rip:0,ferocious bite:0,maul:0,swipe (bear):0,mangle (bear):0,mangle (cat):0,lacerate:0,melee:0,reach melee:0"
+# Death knight (100/102/103/104; DeathKnightNodes): Death Strike below HealHpPct; multi Pestilence / Blood Boil /
+# Death and Decay; emergency Icebound Fortitude / Death Strike / Anti-Magic Shell / Death Pact; escape Chains of
+# Ice / flee. Tools: Strangulate / Chains of Ice (control), Icebound Fortitude / Anti-Magic Shell (defensive).
+AutoWow.Tactics.DeathKnight.SingleMaxPct = 120
+AutoWow.Tactics.DeathKnight.BasePct = 100
+AutoWow.Tactics.DeathKnight.HealHpPct = 50
+AutoWow.Tactics.DeathKnight.LowManaPct = 25
+AutoWow.Tactics.DeathKnight.EmergencyHpPct = 30
+AutoWow.Tactics.DeathKnight.EmergencyExitHpPct = 45
+AutoWow.Tactics.DeathKnight.ControlMinMelee = 2
+AutoWow.Tactics.DeathKnight.ControlHpPct = 60
+AutoWow.Tactics.DeathKnight.Factors.Single = ""
+AutoWow.Tactics.DeathKnight.Factors.Multi = ""
+AutoWow.Tactics.DeathKnight.Factors.Emergency = "army of the dead:0,death and decay:0"
+AutoWow.Tactics.DeathKnight.Factors.Escape = "army of the dead:0,death and decay:0,blood boil:0,pestilence:0,death grip:0,obliterate:0,scourge strike:0,heart strike:0,frost strike:0,blood strike:0,plague strike:0,icy touch:0,howling blast:0,rune strike:0,death coil:0,melee:0,reach melee:0"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within

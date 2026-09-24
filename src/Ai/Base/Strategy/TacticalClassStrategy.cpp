@@ -265,12 +265,30 @@ void DruidNodes(std::vector<TriggerNode*>& t)
                                                NextAction("dash", ACTION_EMERGENCY + 4),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
+// Death Knight (100-104, level 55+): Death Strike below HealHpPct; multi: Pestilence, Blood Boil, Death and
+// Decay; emergency: Icebound Fortitude, Death Strike, Anti-Magic Shell, Death Pact; escape: Chains of Ice, flee.
+void DeathKnightNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac heal", {NextAction("death strike", ACTION_HIGH + 6)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("pestilence", ACTION_HIGH + 5),
+                                              NextAction("blood boil", ACTION_HIGH + 4),
+                                              NextAction("death and decay", ACTION_HIGH + 3)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("icebound fortitude", ACTION_EMERGENCY + 6),
+                                                  NextAction("death strike", ACTION_EMERGENCY + 5),
+                                                  NextAction("anti magic shell", ACTION_EMERGENCY + 4),
+                                                  NextAction("death pact", ACTION_EMERGENCY + 3)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("chains of ice", ACTION_EMERGENCY + 4),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
 }  // namespace
 
 void TacticalClassStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     switch (family)
     {
+        case Family::DeathKnight:
+            DeathKnightNodes(triggers);
+            break;
         case Family::Druid:
             DruidNodes(triggers);
             break;

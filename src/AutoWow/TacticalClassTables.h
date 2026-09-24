@@ -136,7 +136,17 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"shamanistic rage"},
      {"ghost wolf"},
      50},  // Shaman
-    {},  // DeathKnight
+    {"DeathKnight",
+     {"",
+      "",
+      "army of the dead:0,death and decay:0",
+      "army of the dead:0,death and decay:0,blood boil:0,pestilence:0,death grip:0,obliterate:0,"
+         "scourge strike:0,heart strike:0,frost strike:0,blood strike:0,plague strike:0,icy touch:0,"
+         "howling blast:0,rune strike:0,death coil:0,melee:0,reach melee:0"},
+     {"strangulate", "chains of ice"},
+     {"icebound fortitude", "anti-magic shell"},
+     {},
+     50},  // DeathKnight
 };
 }  // namespace AutoWowTactics
 

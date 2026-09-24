@@ -15,6 +15,7 @@
 #include "GenericTriggers.h"
 #include "Playerbots.h"
 #include "UnholyDKStrategy.h"
+#include "TacticalClassStrategy.h"
 
 class DeathKnightStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -22,6 +23,9 @@ public:
     DeathKnightStrategyFactoryInternal()
     {
         creators["nc"] = &DeathKnightStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::DeathKnight);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &DeathKnightStrategyFactoryInternal::pull;
         creators["frost aoe"] = &DeathKnightStrategyFactoryInternal::frost_aoe;
         creators["unholy aoe"] = &DeathKnightStrategyFactoryInternal::unholy_aoe;
