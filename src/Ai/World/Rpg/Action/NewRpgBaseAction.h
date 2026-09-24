@@ -63,6 +63,9 @@ protected:
     // no-teleport travellers here; on give-up `outStuck` is set and TravelStuckReason() names why.
     bool MoveFarToIntent(WorldPosition const& dest, bool questNoTeleport, bool* outStuck, bool deterministicPath,
                          StrictFinisherMovementPolicy::RouteIdentity strictRoute);
+    // AutoWow.Walking.V2: MoveFarToIntent with chunked long walks (WalkingV2Policy.h).
+    bool MoveFarToIntentV2(WorldPosition const& dest, bool questNoTeleport, bool* outStuck, bool deterministicPath,
+                           StrictFinisherMovementPolicy::RouteIdentity strictRoute);
     // Typed block reason for a MoveFarTo `outStuck`: the travel intent's give-up reason when it gave
     // up (read-and-clear), otherwise the legacy MovementStuckNoTeleport.
     QuestFailureReason TravelStuckReason();

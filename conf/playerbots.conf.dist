@@ -2560,6 +2560,14 @@ AutoWow.TravelIntent.Enable = 0
 AutoWow.TravelIntent.ReplanFailCount = 5
 AutoWow.TravelIntent.ProgressWindowMs = 90000
 AutoWow.TravelIntent.HysteresisPct = 20
+# Chunked long walks (WalkingV2Policy.h; needs AutoWow.TravelIntent.Enable = 1). 1 = a travel goal more
+# than 120 yd away is walked in chunks: a sub-goal 120 yd (then 60 yd) along the bearing, fanned 0/30/60/90
+# degrees, is pathed on its own and its endpoint committed only when it brings the goal 10 yd closer (no
+# revisit refusal needed); an interrupted segment is replanned from where the bot stands without charging
+# the replan budget (only a replan with no candidate counts); zone-progression roads never join a point
+# the bot is already past. Fixes long walks (zone moves, town runs) that asked the navmesh for the whole
+# 300-2000 yd route, which its 74-point path cap refuses. 0 = legacy.
+AutoWow.Walking.V2 = 0
 # Blocked-quest defer-and-return (non-Oracle directives only). 1 = a quest held in Blocked for 30 s is
 # deferred for 10 minutes (ledger `deferred` reason blocked_deferred) and the bot returns to Idle to pick
 # other work; the quest is eligible again after the deferral. 0 = hold Blocked until the 30-minute

@@ -544,7 +544,8 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
         if (!s.roadJoined)
         {
-            s.wp = JoinRoad(road, bx, by);
+            // AutoWow.Walking.V2: never join a road point the bot is already past.
+            s.wp = sPlayerbotAIConfig.autoWowWalkingV2 ? JoinRoadAhead(road, bx, by) : JoinRoad(road, bx, by);
             s.roadJoined = true;
         }
         s.wp = AdvanceRoad(road, s.wp, bx, by, 20);

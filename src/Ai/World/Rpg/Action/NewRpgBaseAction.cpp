@@ -57,6 +57,7 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "TravelNode.h"
+#include "WalkingV2Policy.h"
 
 namespace
 {
@@ -471,6 +472,9 @@ bool NewRpgBaseAction::MoveFarToIntent(WorldPosition const& dest, bool questNoTe
                                        bool deterministicPath,
                                        StrictFinisherMovementPolicy::RouteIdentity strictRoute)
 {
+    if (sPlayerbotAIConfig.autoWowWalkingV2)
+        return MoveFarToIntentV2(dest, questNoTeleport, outStuck, deterministicPath, strictRoute);
+
     using namespace TravelIntentPolicy;
     Intent& intent = botAI->rpgInfo.travelIntent;
     Params const params{sPlayerbotAIConfig.autoWowTravelIntentReplanFailCount,
@@ -621,6 +625,192 @@ bool NewRpgBaseAction::MoveFarToIntent(WorldPosition const& dest, bool questNoTe
             recordStrict();
         return moved;
     }
+    if (NoteFailure(intent, now, params))
+        return giveUp(GiveUp::ReplanExhausted);
+    return false;
+}
+
+// AutoWow.Walking.V2 (WalkingV2Policy.h has the root cause). The committed intent of MoveFarToIntent with
+// two changes: a goal beyond the chunk ring is first walked by per-chunk mmap paths (goal-monotone
+// admission), and an interrupted segment is dropped and replanned from where the bot stands - only a
+// replan that finds nothing is charged to the replan budget, so combat/rest stops no longer spend it.
+bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& dest, bool questNoTeleport, bool* outStuck,
+                                         bool deterministicPath,
+                                         StrictFinisherMovementPolicy::RouteIdentity strictRoute)
+{
+    using namespace TravelIntentPolicy;
+    Intent& intent = botAI->rpgInfo.travelIntent;
+    Params const params{sPlayerbotAIConfig.autoWowTravelIntentReplanFailCount,
+                        sPlayerbotAIConfig.autoWowTravelIntentProgressWindowMs,
+                        sPlayerbotAIConfig.autoWowTravelIntentHysteresisPct};
+    uint32 const now = getMSTime();
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    Point const goal = MakePoint(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+    Point const here = MakePoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
+
+    auto dangerous = [&](Point const& p)
+    {
+        return AutoWowDeathLoop::Enabled() &&
+            AutoWowDeathLoop::IsDangerous(botGuid, p.mapId, static_cast<float>(p.x), static_cast<float>(p.y));
+    };
+    auto recordStrict = [&]()
+    {
+        if (!deterministicPath)
+            return;
+        LastMovement& issued = AI_VALUE(LastMovement&, "last movement");
+        botAI->rpgInfo.strictFinisherMovement = {
+            true,
+            strictRoute,
+            {true, issued.msTime, issued.lastMoveToMapId, issued.lastMoveToX,
+             issued.lastMoveToY, issued.lastMoveToZ}};
+    };
+    auto giveUp = [&](GiveUp reason) -> bool
+    {
+        LOG_INFO("playerbots", "[New RPG] AutoWow {} travel intent gives up ({}) toward ({},{},{},{}) at ({},{}) "
+                 "best={} segments={} failures={} walking=v2",
+                 bot->GetName(), reason == GiveUp::NoProgress ? "intent_no_progress" : "intent_replan_exhausted",
+                 dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                 bot->GetPositionX(), bot->GetPositionY(), intent.bestGoalYards, intent.segmentsCommitted,
+                 intent.failures);
+        Abandon(intent, reason);
+        if (outStuck)
+            *outStuck = true;
+        return questNoTeleport;
+    };
+    // Commits `end` as the segment and walks it; a refused MoveTo drops the commitment again.
+    auto walkSegment = [&](G3D::Vector3 const& end, Point const& candidate) -> bool
+    {
+        Commit(intent, here, candidate, DistanceYards(candidate, goal));
+        if (MoveTo(bot->GetMapId(), end.x, end.y, end.z, false, false, false, true))
+        {
+            recordStrict();
+            return true;
+        }
+        DropSegment(intent);
+        return false;
+    };
+
+    if (Observe(intent, goal, DistanceYards(here, goal), now, params) == Verdict::NoProgress)
+        return giveUp(GiveUp::NoProgress);
+
+    bool const moving = IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL) || bot->isMoving();
+    bool const inCombat = bot->IsInCombat();
+
+    if (bot->GetExactDist(dest) < pathFinderDis)
+    {
+        if (moving)
+            return true;
+        bool const moved = MoveTo(dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(),
+                                  false, false, false, true);
+        if (moved)
+            recordStrict();
+        return moved;
+    }
+
+    switch (ClassifySegment(intent, here, moving, inCombat || (intent.hasSegment && dangerous(intent.segment))))
+    {
+        case SegmentState::Follow:
+            return true;
+        case SegmentState::Reached:
+            CompleteSegment(intent);
+            break;
+        case SegmentState::Unsafe:
+            DropSegment(intent);
+            if (inCombat)
+                return false;
+            break;
+        case SegmentState::Interrupted:
+            DropSegment(intent);  // replan from here; not a failure until the replan finds nothing
+            break;
+        case SegmentState::None:
+            if (ReplanCoolingDown(intent, now))
+                return true;
+            break;
+    }
+
+    // 0. Chunked walk: path each chunk probe on its own, commit the first goal-monotone endpoint.
+    if (WalkingV2Policy::UseChunks(here, goal))
+    {
+        Map* map = bot->GetMap();
+        for (std::size_t k = 0; k < WalkingV2Policy::kChunkProbes; ++k)
+        {
+            Point const probe = WalkingV2Policy::ChunkProbe(here, goal, k);
+            float const px = static_cast<float>(probe.x);
+            float const py = static_cast<float>(probe.y);
+            // ponytail: probe height from vmap/grid below bot z + 50; the navmesh end-poly search spans
+            // 200 yd vertically anyway, so a miss falls back to the bot's own z.
+            float pz = map->GetHeight(bot->GetPhaseMask(), px, py, bot->GetPositionZ() + 50.0f, true, 100.0f);
+            if (!std::isfinite(pz) || pz <= INVALID_HEIGHT)
+                pz = bot->GetPositionZ();
+            PathGenerator path(bot);
+            path.SetSlopeCheck(true);
+            path.CalculatePath(px, py, pz);
+            if (path.GetPathType() & ~typeOk)
+                continue;
+            G3D::Vector3 const endPos = path.GetActualEndPosition();
+            Point const candidate = MakePoint(bot->GetMapId(), endPos.x, endPos.y, endPos.z);
+            if (WalkingV2Policy::AdmitChunk(here, candidate, goal, dangerous(candidate)) &&
+                walkSegment(endPos, candidate))
+                return true;
+        }
+    }
+
+    auto admit = [&](G3D::Vector3 const& end) -> bool
+    {
+        Point const candidate = MakePoint(bot->GetMapId(), end.x, end.y, end.z);
+        uint32 const candidateGoalYards = DistanceYards(candidate, goal);
+        if (!Admit(intent, here, candidate, candidateGoalYards, dangerous(candidate), params))
+            return false;
+        Commit(intent, here, candidate, candidateGoalYards);
+        return true;
+    };
+
+    // 1. Prepared quest walk (as MoveFarToIntent).
+    if (questNoTeleport)
+    {
+        AutoWowQuestGiverTravel::QuestWalkProbeSelection selection =
+            AutoWowQuestGiverTravel::SelectQuestWalkProbeDetailed(bot, dest);
+        if (selection.probe && !selection.probe->path.empty() && admit(selection.probe->path.back()))
+        {
+            AutoWowDungeonWalkAction walk(botAI);
+            selection.diagnostics.walkPreparedCalled = true;
+            AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason rejectReason =
+                AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::None;
+            bool const accepted = walk.WalkPrepared(*selection.probe, &rejectReason);
+            selection.diagnostics.walkPreparedAccepted = accepted;
+            selection.diagnostics.walkRejectReason = rejectReason;
+            AutoWowQuestGiverTravel::RecordQuestWalkDiagnostics(botGuid, selection.diagnostics);
+            if (accepted)
+            {
+                recordStrict();
+                return true;
+            }
+            DropSegment(intent);
+        }
+    }
+
+    // 2. mmap route to the true destination (as MoveFarToIntent).
+    {
+        PathGenerator path(bot);
+        path.SetSlopeCheck(true);
+        path.CalculatePath(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+        if (!(path.GetPathType() & ~typeOk))
+        {
+            G3D::Vector3 const endPos = path.GetActualEndPosition();
+            if (dest.GetExactDist(endPos.x, endPos.y, endPos.z) + 5.0f < bot->GetDistance(dest) && admit(endPos))
+            {
+                if (MoveTo(bot->GetMapId(), endPos.x, endPos.y, endPos.z, false, false, false, true))
+                {
+                    recordStrict();
+                    return true;
+                }
+                DropSegment(intent);
+            }
+        }
+    }
+
+    // 3. Nothing admissible from here: one failed replan.
     if (NoteFailure(intent, now, params))
         return giveUp(GiveUp::ReplanExhausted);
     return false;

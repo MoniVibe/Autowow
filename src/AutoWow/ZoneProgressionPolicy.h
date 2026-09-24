@@ -359,6 +359,17 @@ inline std::int64_t RoadDist2(RoadPoint const& p, std::int32_t x, std::int32_t y
     return best;
 }
 
+// AutoWow.Walking.V2: JoinRoad, then one point further when the bot already lies between the nearest
+// point and the next (closer to the next than the nearest is). soak-s14: a Coldridge bot at
+// (-6080,389) joined (-6342,482) behind it and spent its walk budget heading back into the valley.
+[[nodiscard]] inline std::uint32_t JoinRoadAhead(std::vector<RoadPoint> const& road, std::int32_t x, std::int32_t y)
+{
+    std::uint32_t k = JoinRoad(road, x, y);
+    if (k + 1 < road.size() && RoadDist2(road[k + 1], x, y) < RoadDist2(road[k + 1], road[k].x, road[k].y))
+        ++k;
+    return k;
+}
+
 // Skips every road point already within reachYards; returns the index to walk to (== size: the hub).
 [[nodiscard]] inline std::uint32_t AdvanceRoad(std::vector<RoadPoint> const& road, std::uint32_t wp, std::int32_t x,
                                                std::int32_t y, std::uint32_t reachYards)
