@@ -2603,6 +2603,14 @@ AutoWow.Walking.V2 = 0
 # one rescue leg (hearthstone to a serving bound town, else a known flight) before travel_gave_up.
 # 0 = legacy.
 AutoWow.Travel.Safe = 0
+# Flight-master trap exit (FlightTrapPolicy.h). 1 = an RPG TravelFlight status whose walk to the flight
+# master the travel intent gave up on, or that has not boarded within TimeoutMs, ends in Idle, and that
+# master is skipped by every flight pick for this bot (random TravelFlight, death-loop relocation, errands,
+# zone progression) for CooldownMs; errands and zone progression then walk their leg. Log: [FlightTrap].
+# 0 = legacy (the status only ends on landing). Makes RpgStatusProbWeight.TravelFlight safe to re-enable.
+AutoWow.Travel.FlightTrapFix = 0
+AutoWow.Travel.FlightTrapFix.TimeoutMs = 600000
+AutoWow.Travel.FlightTrapFix.CooldownMs = 1800000
 # Blocked-quest defer-and-return (non-Oracle directives only). 1 = a quest held in Blocked for 30 s is
 # deferred for 10 minutes (ledger `deferred` reason blocked_deferred) and the bot returns to Idle to pick
 # other work; the quest is eligible again after the deferral. 0 = hold Blocked until the 30-minute

@@ -31,6 +31,7 @@
 #include "DungeonPathWalkAction.h"
 #include "DungeonPullReadinessGuard.h"
 #include "ExactQuestAttackRecoveryPolicy.h"
+#include "FlightTrapPolicy.h"
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GameObjectLockPolicy.h"
@@ -113,6 +114,32 @@ bool ShouldLogExactAttackRejection(uint64 botGuid, uint64 spawnGuid,
         static_cast<uint32>(nowMs - slot.lastAtMs) < 5000)
         return false;
     slot = {botGuid, spawnGuid, reason, nowMs};
+    return true;
+}
+
+// AutoWow.Travel.FlightTrapFix (FlightTrapPolicy.h): leave an RPG_TRAVEL_FLIGHT approach that cannot board.
+// The master is blocked for this bot, so no entry path (random pick, death loop, errands, zone progression)
+// sends it back to the same master within the cooldown.
+bool AbandonTravelFlight(PlayerbotAI* botAI, FlightTrapPolicy::Exit exit)
+{
+    Player* bot = botAI->GetBot();
+    NewRpgInfo& info = botAI->rpgInfo;
+    auto const* data = std::get_if<NewRpgInfo::TravelFlight>(&info.data);
+    if (!data)
+        return false;
+    AutoWowFlightTrap::Block(bot->GetGUID().GetCounter(), data->flightMasterEntry, getMSTime());
+    LOG_INFO("playerbots", "[FlightTrap] bot={} abandon fm={} reason={} fm_pos=({},{},{},{}) at ({},{},{}) "
+             "status_ms={} cooldown_ms={}",
+             bot->GetName(), data->flightMasterEntry, FlightTrapPolicy::ExitName(exit),
+             data->flightMasterPos.GetMapId(), data->flightMasterPos.GetPositionX(),
+             data->flightMasterPos.GetPositionY(), data->flightMasterPos.GetPositionZ(), bot->GetPositionX(),
+             bot->GetPositionY(), bot->GetPositionZ(), GetMSTimeDiffToNow(info.startT),
+             AutoWowFlightTrap::detail::gCooldownMs);
+    bot->StopMoving();
+    bot->GetMotionMaster()->Clear();
+    botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get().clear();
+    info.SetMoveFarTo(WorldPosition());
+    info.ChangeToIdle();
     return true;
 }
 
@@ -495,6 +522,11 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
                 info.ChangeToIdle();
                 return true;
             }
+            // AutoWow.Travel.FlightTrapFix: an approach that has not boarded within TimeoutMs is abandoned.
+            if (AutoWowFlightTrap::Enabled() &&
+                FlightTrapPolicy::Decide(data.inFlight || bot->IsInFlight(), false, GetMSTimeDiffToNow(info.startT),
+                                         AutoWowFlightTrap::detail::gTimeoutMs) == FlightTrapPolicy::Exit::TimedOut)
+                return AbandonTravelFlight(botAI, FlightTrapPolicy::Exit::TimedOut);
             break;
         }
         case RPG_REST:
@@ -3580,6 +3612,17 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     {
         data.inFlight = true;
         return false;
+    }
+
+    // AutoWow.Travel.FlightTrapFix: a walk to the master that the travel intent gave up on ends the status
+    // (the master is blocked for this bot) instead of re-planning the same point forever.
+    if (AutoWowFlightTrap::Enabled() && bot->GetDistance(data.flightMasterPos) > INTERACTION_DISTANCE)
+    {
+        bool stuck = false;
+        bool const moved = MoveFarTo(data.flightMasterPos, /*questNoTeleport*/ false, &stuck);
+        if (stuck)
+            return AbandonTravelFlight(botAI, FlightTrapPolicy::Exit::GaveUp);
+        return moved;
     }
 
     if (bot->GetDistance(data.flightMasterPos) > INTERACTION_DISTANCE)

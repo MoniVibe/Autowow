@@ -12,6 +12,7 @@
 
 #include "AreaDefines.h"
 #include "Creature.h"
+#include "FlightTrapPolicy.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
 #include "TravelNode.h"
@@ -4438,6 +4439,10 @@ TravelMgr::FlightMasterInfo const* TravelMgr::GetNearestFlightMasterInfo(Player*
     for (auto const& [dbGuid, info] : flightMasterCache)
     {
         if (info.pos.GetMapId() != bot->GetMapId())
+            continue;
+        // AutoWow.Travel.FlightTrapFix: a master this bot abandoned stays skipped for the cooldown.
+        if (AutoWowFlightTrap::Enabled() &&
+            AutoWowFlightTrap::IsBlocked(bot->GetGUID().GetCounter(), info.templateEntry, getMSTime()))
             continue;
 
         float distance = bot->GetExactDist2dSq(info.pos);

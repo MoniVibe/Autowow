@@ -11,6 +11,7 @@
 #include "AutoWowTrainPolicy.h"
 #include "BisListMgr.h"
 #include "Config.h"
+#include "FlightTrapPolicy.h"
 #include "NewRpgInfo.h"
 #include "PlayerbotDungeonRepository.h"
 #include "PlayerbotFactory.h"
@@ -714,6 +715,11 @@ bool PlayerbotAIConfig::Initialize()
     autoWowTravelIntentHysteresisPct = sConfigMgr->GetOption<uint32>("AutoWow.TravelIntent.HysteresisPct", 20);
     autoWowWalkingV2 = sConfigMgr->GetOption<bool>("AutoWow.Walking.V2", false);
     autoWowTravelSafe = sConfigMgr->GetOption<bool>("AutoWow.Travel.Safe", false);
+    AutoWowFlightTrap::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Travel.FlightTrapFix", false);
+    AutoWowFlightTrap::detail::gTimeoutMs =
+        sConfigMgr->GetOption<uint32>("AutoWow.Travel.FlightTrapFix.TimeoutMs", 600000);
+    AutoWowFlightTrap::detail::gCooldownMs =
+        sConfigMgr->GetOption<uint32>("AutoWow.Travel.FlightTrapFix.CooldownMs", 1800000);
     autoWowQuestBlockedDefer = sConfigMgr->GetOption<bool>("AutoWow.QuestBlockedDefer.Enable", false);
     autoWowQuestItemTargetConditions = sConfigMgr->GetOption<bool>("AutoWow.QuestItemTargetConditions.Enable", false);
     autoWowQuestScheduler = sConfigMgr->GetOption<bool>("AutoWow.QuestScheduler.Enable", false);
