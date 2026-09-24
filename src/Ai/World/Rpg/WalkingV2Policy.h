@@ -166,6 +166,17 @@ inline constexpr std::size_t kNoChunk = static_cast<std::size_t>(-1);
     }
     return best;
 }
+
+// ---- AutoWow.Survival.HardEscape (default 0): zone-danger-aware chunks ---------------------------------
+// soak-s22-full-r1: an L18 escape walk beelined NE through Redridge into Burning Steppes (bracket 51-60)
+// and died 183 times. With the flag on, a chunk endpoint (and, with AutoWow.Travel.Safe, its path points)
+// in a zone whose bracket low is more than `margin` above the bot is not admissible - the bot's own zone
+// excepted, so a bot already inside can still walk out. zoneLow 0 = unknown: never.
+[[nodiscard]] inline bool ZoneDanger(std::uint32_t pointZone, std::uint32_t botZone, std::uint32_t zoneLow,
+                                     std::uint32_t botLevel, std::uint32_t margin)
+{
+    return pointZone && pointZone != botZone && zoneLow && zoneLow > botLevel + margin;
+}
 }  // namespace WalkingV2Policy
 
 #endif

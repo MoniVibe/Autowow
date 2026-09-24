@@ -2586,7 +2586,10 @@ AutoWow.DeathLoop.V2 = 0
 # whose bracket low (AiPlayerbot.ZoneBracket, else its AreaTable level) is more than WalkZoneMargin above
 # the bot. (1) With EscapeViaZoneProgression the escape hub is the nearest one on the bot's map whose
 # straight line crosses no danger zone (the bot's own zone excepted), else one on another map, else the
-# nearest (replaces the V2 lowest-band pick).
+# nearest (replaces the V2 lowest-band pick). (2) AutoWow.Walking.V2 chunks: an endpoint (with
+# AutoWow.Travel.Safe also its path points) inside a danger zone other than the bot's own is not
+# admissible - the fan steers around, or the leg stalls into the usual reissue / portal fallback instead
+# of beelining through.
 AutoWow.Survival.HardEscape = 0
 AutoWow.Survival.HardEscape.WalkZoneMargin = 5
 

@@ -701,10 +701,20 @@ bool NewRpgBaseAction::MoveFarToIntentV2(WorldPosition const& requestedDest, boo
     Point const here = MakePoint(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
     uint32 const typeOk = PATHFIND_NORMAL | PATHFIND_INCOMPLETE | PATHFIND_FARFROMPOLY;
 
+    // AutoWow.Survival.HardEscape (2): a point in a zone bracketed WalkZoneMargin above the bot (not the bot's
+    // own zone) is dangerous too. OFF: hardEscape is false and `dangerous` is the death-loop query alone.
+    bool const hardEscape = AutoWowDeathLoop::HardEscapeEnabled();
+    uint32 const botZone = bot->GetZoneId();
     auto dangerous = [&](Point const& p)
     {
-        return AutoWowDeathLoop::Enabled() &&
-            AutoWowDeathLoop::IsDangerous(botGuid, p.mapId, static_cast<float>(p.x), static_cast<float>(p.y));
+        if (AutoWowDeathLoop::Enabled() &&
+            AutoWowDeathLoop::IsDangerous(botGuid, p.mapId, static_cast<float>(p.x), static_cast<float>(p.y)))
+            return true;
+        if (!hardEscape || p.mapId != bot->GetMapId())
+            return false;
+        uint32 const zone = AutoWowDeathLoop::ZoneAt(bot->GetMap(), static_cast<float>(p.x), static_cast<float>(p.y));
+        return WalkingV2Policy::ZoneDanger(zone, botZone, AutoWowDeathLoop::ZoneMinLevel(zone), bot->GetLevel(),
+                                           AutoWowDeathLoop::detail::gHardParams.walkZoneMargin);
     };
     auto recordStrict = [&]()
     {

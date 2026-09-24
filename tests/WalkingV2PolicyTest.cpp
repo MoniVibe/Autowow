@@ -312,4 +312,74 @@ TEST(WalkingV2PolicyTest, SafeReplayWalksAroundACampOnTheBearing)
     EXPECT_TRUE(forced.arrived);
     EXPECT_GE(forced.touches, 1u);
 }
+
+// ---- AutoWow.Survival.HardEscape (2) --------------------------------------------------------------------
+TEST(WalkingV2PolicyTest, ZoneDangerIsAHighZoneOtherThanTheBotsOwn)
+{
+    // soak-s22-full-r1: Taelorin, L18, Redridge (44) -> Burning Steppes (46, bracket low 51).
+    EXPECT_TRUE(ZoneDanger(46, 44, 51, 18, 5));
+    EXPECT_FALSE(ZoneDanger(46, 46, 51, 18, 5));  // already inside: walking out is allowed
+    EXPECT_FALSE(ZoneDanger(46, 44, 51, 50, 5));  // a L50 may go (51 <= 55)
+    EXPECT_FALSE(ZoneDanger(10, 44, 19, 18, 5));  // Duskwood 19 <= 23
+    EXPECT_TRUE(ZoneDanger(10, 44, 24, 18, 5));   // strictly above level + margin
+    EXPECT_FALSE(ZoneDanger(0, 44, 60, 18, 5));   // no zone
+    EXPECT_FALSE(ZoneDanger(41, 44, 0, 18, 5));   // unknown bracket: never
+}
+
+// Walks a chunk replay (ideal navmesh: each probe is its own endpoint; endpoint and chunk midpoint are
+// zone-checked as the Travel.Safe path sampling does) with zone 46 (low 51) in a box, zone 44 elsewhere.
+struct ZoneWalkResult
+{
+    bool arrived = false;
+    bool enteredDanger = false;
+    std::uint32_t segments = 0;
+};
+
+ZoneWalkResult ReplayZoneWalk(Point from, Point goal, std::int32_t boxY0, std::int32_t boxY1)
+{
+    auto zoneOf = [&](Point const& p) -> std::uint32_t
+    { return p.x >= 800 && p.x <= 1200 && p.y >= boxY0 && p.y <= boxY1 ? 46 : 44; };
+    auto danger = [&](Point const& p, Point const& here)
+    { return ZoneDanger(zoneOf(p), zoneOf(here), zoneOf(p) == 46 ? 51 : 16, 18, 5); };
+    ZoneWalkResult out;
+    Point here = from;
+    for (std::uint32_t step = 0; step < 200; ++step)
+    {
+        if (DistanceYards(here, goal) <= kChunkYards)
+        {
+            out.arrived = true;
+            return out;
+        }
+        bool moved = false;
+        for (std::size_t k = 0; k < kChunkProbes && !moved; ++k)
+        {
+            Point const c = ChunkProbe(here, goal, k);
+            Point const mid = P((here.x + c.x) / 2, (here.y + c.y) / 2);
+            if (!AdmitChunk(here, c, goal, danger(c, here) || danger(mid, here)))
+                continue;
+            here = c;
+            ++out.segments;
+            out.enteredDanger = out.enteredDanger || zoneOf(here) == 46;
+            moved = true;
+        }
+        if (!moved)
+            return out;  // no admissible chunk: the leg stalls (reissue / portal fallback), never beelines
+    }
+    return out;
+}
+
+TEST(WalkingV2PolicyTest, ZoneDangerChunksSkirtOrStallButNeverEnter)
+{
+    // The box covers the straight line but leaves the north side open: the fan skirts it.
+    ZoneWalkResult const skirt = ReplayZoneWalk(P(0, 0), P(2000, 0), -300, 60);
+    EXPECT_TRUE(skirt.arrived);
+    EXPECT_FALSE(skirt.enteredDanger);
+    // A wall across the whole route: no admissible chunk - the walk stops short, it does not cross.
+    ZoneWalkResult const wall = ReplayZoneWalk(P(0, 0), P(2000, 0), -5000, 5000);
+    EXPECT_FALSE(wall.arrived);
+    EXPECT_FALSE(wall.enteredDanger);
+    EXPECT_GE(wall.segments, 1u);
+    // Deterministic replay.
+    EXPECT_EQ(ReplayZoneWalk(P(0, 0), P(2000, 0), -300, 60).segments, skirt.segments);
+}
 }  // namespace
