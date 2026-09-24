@@ -2492,6 +2492,37 @@ AutoWow.Tactics.Warlock.Factors.Single = ""
 AutoWow.Tactics.Warlock.Factors.Multi = "shadow bolt:0.5"
 AutoWow.Tactics.Warlock.Factors.Emergency = "life tap:0,shadow bolt:0,incinerate:0,soul fire:0,immolate:0,immolate on attacker:0,corruption on attacker:0,curse of agony on attacker:0,drain soul:0,health funnel:0"
 AutoWow.Tactics.Warlock.Factors.Escape = "life tap:0,shadow bolt:0,incinerate:0,soul fire:0,immolate:0,immolate on attacker:0,corruption:0,corruption on attacker:0,curse of agony:0,curse of agony on attacker:0,drain soul:0,drain life:0,health funnel:0,shoot:0"
+# Paladin (70/72/73/74; PaladinNodes): FoL / Holy Light below HealHpPct; multi Consecration / Hammer of
+# Justice; emergency HoJ / Divine Shield / Lay on Hands / Divine Protection / FoL / Holy Light; escape Divine
+# Shield / flee. Tools: HoJ (control), Divine Protection / Shield / Lay on Hands (defensive), Divine Shield.
+AutoWow.Tactics.Paladin.SingleMaxPct = 120
+AutoWow.Tactics.Paladin.BasePct = 100
+AutoWow.Tactics.Paladin.HealHpPct = 50
+AutoWow.Tactics.Paladin.LowManaPct = 25
+AutoWow.Tactics.Paladin.EmergencyHpPct = 30
+AutoWow.Tactics.Paladin.EmergencyExitHpPct = 45
+AutoWow.Tactics.Paladin.ControlMinMelee = 2
+AutoWow.Tactics.Paladin.ControlHpPct = 60
+AutoWow.Tactics.Paladin.Factors.Single = ""
+AutoWow.Tactics.Paladin.Factors.Multi = ""
+AutoWow.Tactics.Paladin.Factors.Emergency = "consecration:0,exorcism:0,holy wrath:0,crusader strike:0,divine storm:0,judgement:0,judgement of light:0,judgement of wisdom:0,hammer of wrath:0"
+AutoWow.Tactics.Paladin.Factors.Escape = "consecration:0,exorcism:0,holy wrath:0,crusader strike:0,divine storm:0,judgement:0,judgement of light:0,judgement of wisdom:0,hammer of wrath:0,melee:0,reach melee:0"
+# Druid (80/82/83/84; DruidNodes): Regrowth / Rejuvenation below HealHpPct (leaves the form); multi Bear Form /
+# Demoralizing Roar / Swipe, Entangling Roots on the add; emergency Barkskin / Frenzied Regeneration / heals;
+# escape Entangling Roots / Dash / flee. Tools: Bash / Entangling Roots (control), Barkskin / Frenzied
+# Regeneration (defensive), Dash (escape).
+AutoWow.Tactics.Druid.SingleMaxPct = 120
+AutoWow.Tactics.Druid.BasePct = 100
+AutoWow.Tactics.Druid.HealHpPct = 50
+AutoWow.Tactics.Druid.LowManaPct = 25
+AutoWow.Tactics.Druid.EmergencyHpPct = 30
+AutoWow.Tactics.Druid.EmergencyExitHpPct = 45
+AutoWow.Tactics.Druid.ControlMinMelee = 2
+AutoWow.Tactics.Druid.ControlHpPct = 60
+AutoWow.Tactics.Druid.Factors.Single = ""
+AutoWow.Tactics.Druid.Factors.Multi = "wrath:0.3,starfire:0.3,moonfire:0.5"
+AutoWow.Tactics.Druid.Factors.Emergency = "wrath:0,starfire:0,moonfire:0,insect swarm:0,hurricane:0,moonfire on attacker:0,insect swarm on attacker:0"
+AutoWow.Tactics.Druid.Factors.Escape = "wrath:0,starfire:0,moonfire:0,insect swarm:0,hurricane:0,moonfire on attacker:0,insect swarm on attacker:0,claw:0,shred:0,rake:0,rip:0,ferocious bite:0,maul:0,swipe (bear):0,mangle (bear):0,mangle (cat):0,lacerate:0,melee:0,reach melee:0"
 
 # AutoWoW death-loop breaker. Default 0 = off (one cached bool per hook/call site; legacy paths
 # untouched). 1 = an autonomous bot's open-world death escalates when it is the Deaths-th death within

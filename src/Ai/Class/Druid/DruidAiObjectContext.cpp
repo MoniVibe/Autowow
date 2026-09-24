@@ -19,6 +19,7 @@
 #include "RestoDruidStrategy.h"
 #include "Playerbots.h"
 #include "DruidPullStrategy.h"
+#include "TacticalClassStrategy.h"
 
 class DruidStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -26,6 +27,9 @@ public:
     DruidStrategyFactoryInternal()
     {
         creators["nc"] = &DruidStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Druid);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &DruidStrategyFactoryInternal::pull;
         creators["aoe"] = &DruidStrategyFactoryInternal::aoe;
         creators["cure"] = &DruidStrategyFactoryInternal::cure;

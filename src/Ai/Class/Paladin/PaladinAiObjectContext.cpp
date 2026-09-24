@@ -18,6 +18,7 @@
 #include "PaladinTriggers.h"
 #include "Playerbots.h"
 #include "TankPaladinStrategy.h"
+#include "TacticalClassStrategy.h"
 
 class PaladinStrategyFactoryInternal : public NamedObjectContext<Strategy>
 {
@@ -25,6 +26,9 @@ public:
     PaladinStrategyFactoryInternal()
     {
         creators["nc"] = &PaladinStrategyFactoryInternal::nc;
+        creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Paladin);
+        };  // AutoWow.Tactics (AiFactory, treatment arm)
         creators["pull"] = &PaladinStrategyFactoryInternal::pull;
         creators["cure"] = &PaladinStrategyFactoryInternal::cure;
         creators["boost"] = &PaladinStrategyFactoryInternal::boost;

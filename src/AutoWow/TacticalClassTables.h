@@ -103,8 +103,29 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"shield wall", "retaliation", "last stand"},
      {},
      50},  // Warrior
-    {},  // Paladin
-    {},  // Druid
+    {"Paladin",
+     {"",
+      "",
+      "consecration:0,exorcism:0,holy wrath:0,crusader strike:0,divine storm:0,judgement:0,"
+         "judgement of light:0,judgement of wisdom:0,hammer of wrath:0",
+      "consecration:0,exorcism:0,holy wrath:0,crusader strike:0,divine storm:0,judgement:0,"
+         "judgement of light:0,judgement of wisdom:0,hammer of wrath:0,melee:0,reach melee:0"},
+     {"hammer of justice"},
+     {"divine protection", "divine shield", "lay on hands"},
+     {"divine shield"},
+     50},  // Paladin
+    {"Druid",
+     {"",
+      "wrath:0.3,starfire:0.3,moonfire:0.5",
+      "wrath:0,starfire:0,moonfire:0,insect swarm:0,hurricane:0,moonfire on attacker:0,"
+         "insect swarm on attacker:0",
+      "wrath:0,starfire:0,moonfire:0,insect swarm:0,hurricane:0,moonfire on attacker:0,"
+         "insect swarm on attacker:0,claw:0,shred:0,rake:0,rip:0,ferocious bite:0,maul:0,"
+         "swipe (bear):0,mangle (bear):0,mangle (cat):0,lacerate:0,melee:0,reach melee:0"},
+     {"bash", "entangling roots"},
+     {"barkskin", "frenzied regeneration"},
+     {"dash"},
+     50},  // Druid
     {"Shaman",
      {"magma totem:0,chain lightning:0.5,fire nova:0",
       "",

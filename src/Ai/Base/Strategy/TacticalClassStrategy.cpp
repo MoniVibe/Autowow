@@ -226,12 +226,57 @@ void WarlockNodes(std::vector<TriggerNode*>& t)
                                                NextAction("death coil", ACTION_EMERGENCY + 4),
                                                NextAction("flee", ACTION_EMERGENCY + 2)}));
 }
+// Paladin (70-74): Flash of Light / Holy Light below HealHpPct; multi: Consecration, Hammer of Justice on the
+// target; emergency: Hammer of Justice on melee, Divine Shield, Lay on Hands, Divine Protection, Flash of
+// Light, Holy Light (offence off); escape: Divine Shield, flee.
+void PaladinNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac heal", {NextAction("flash of light", ACTION_CRITICAL_HEAL + 2),
+                                             NextAction("holy light", ACTION_CRITICAL_HEAL + 1)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("consecration", ACTION_HIGH + 5)}));
+    t.push_back(new TriggerNode("tac control add", {NextAction("hammer of justice", ACTION_INTERRUPT + 3)}));
+    t.push_back(new TriggerNode("tac emergency control", {NextAction("hammer of justice", ACTION_EMERGENCY + 8)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("divine shield", ACTION_EMERGENCY + 7),
+                                                  NextAction("lay on hands", ACTION_EMERGENCY + 6),
+                                                  NextAction("divine protection", ACTION_EMERGENCY + 5),
+                                                  NextAction("flash of light", ACTION_EMERGENCY + 4),
+                                                  NextAction("holy light", ACTION_EMERGENCY + 3)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("divine shield", ACTION_EMERGENCY + 5),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
+// Druid (80-84): form switching - Regrowth / Rejuvenation below HealHpPct (the stock caster-form prerequisite
+// leaves the form); multi: Bear Form + Demoralizing Roar + Swipe, Entangling Roots on the add (caster nukes
+// x0.3); emergency: Barkskin, Frenzied Regeneration, Regrowth, Rejuvenation, Healing Touch (offence off);
+// escape: Entangling Roots on the target, Dash, flee.
+void DruidNodes(std::vector<TriggerNode*>& t)
+{
+    t.push_back(new TriggerNode("tac heal", {NextAction("regrowth", ACTION_CRITICAL_HEAL + 2),
+                                             NextAction("rejuvenation", ACTION_CRITICAL_HEAL + 1)}));
+    t.push_back(new TriggerNode("tac multi", {NextAction("bear form", ACTION_HIGH + 9),
+                                              NextAction("demoralizing roar", ACTION_HIGH + 5),
+                                              NextAction("swipe (bear)", ACTION_HIGH + 4)}));
+    t.push_back(new TriggerNode("tac control add", {NextAction("entangling roots on cc", ACTION_INTERRUPT + 3)}));
+    t.push_back(new TriggerNode("tac emergency", {NextAction("barkskin", ACTION_EMERGENCY + 6),
+                                                  NextAction("frenzied regeneration", ACTION_EMERGENCY + 5),
+                                                  NextAction("regrowth", ACTION_EMERGENCY + 4),
+                                                  NextAction("rejuvenation", ACTION_EMERGENCY + 3),
+                                                  NextAction("healing touch", ACTION_EMERGENCY + 2)}));
+    t.push_back(new TriggerNode("tac escape", {NextAction("entangling roots", ACTION_EMERGENCY + 5),
+                                               NextAction("dash", ACTION_EMERGENCY + 4),
+                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+}
 }  // namespace
 
 void TacticalClassStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
 {
     switch (family)
     {
+        case Family::Druid:
+            DruidNodes(triggers);
+            break;
+        case Family::Paladin:
+            PaladinNodes(triggers);
+            break;
         case Family::Warlock:
             WarlockNodes(triggers);
             break;
