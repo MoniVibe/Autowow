@@ -314,6 +314,30 @@ TEST(AutoWowQuestLedgerTest, TradeEventIsId17AndCarriesTrailingFields)
               "\"reason\":\"post\",\"phase\":\"\",\"action\":\"post\",\"gold\":-100}");
 }
 
+TEST(AutoWowQuestLedgerTest, PartyAndDungeonEventsAreAppendOnlyAndCarryTrailingFields)
+{
+    EXPECT_EQ(static_cast<int>(Event::Party), 15);
+    EXPECT_EQ(static_cast<int>(Event::Dungeon), 16);
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Party), "party");
+    EXPECT_STREQ(AutoWowQuestLedger::EventName(Event::Dungeon), "dungeon");
+    Row row;
+    row.ev = Event::Party;
+    row.bot = 62955;
+    row.level = 14;
+    row.zone = 17;
+    row.reason = "formed";
+    row.extra = ",\"pid\":1,\"members\":[62955,62960]";
+    EXPECT_EQ(AutoWowQuestLedger::FormatLine("r", row),
+              "{\"v\":1,\"run\":\"r\",\"ms\":0,\"ev\":\"party\",\"bot\":62955,\"team\":0,\"lvl\":14,"
+              "\"quest\":0,\"map\":0,\"zone\":17,\"x\":0,\"y\":0,\"c\":[0,0,0,0],\"i\":[0,0,0,0,0,0],"
+              "\"reason\":\"formed\",\"phase\":\"\",\"pid\":1,\"members\":[62955,62960]}");
+    row.ev = Event::Dungeon;
+    row.reason = "boss_killed";
+    row.extra = ",\"pid\":1,\"enc\":2";
+    EXPECT_NE(AutoWowQuestLedger::FormatLine("r", row).find("\"ev\":\"dungeon\""), std::string::npos);
+    EXPECT_NE(AutoWowQuestLedger::FormatLine("r", row).find("\"phase\":\"\",\"pid\":1,\"enc\":2}"), std::string::npos);
+}
+
 TEST(AutoWowQuestLedgerTest, DiffProgressEmitsOnlyChangedKnownQuests)
 {
     using AutoWowQuestLedger::DiffProgress;

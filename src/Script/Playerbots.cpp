@@ -28,6 +28,7 @@
 #include "ZoneProgressionPolicy.h"
 #include "ErrandsPolicy.h"
 #include "TradePolicy.h"
+#include "PartyPolicy.h"
 #include "TacticalRuntime.h"
 #include "PullLevelCap.h"
 #include "RestGate.h"
@@ -545,6 +546,7 @@ public:
         AutoWowGatherDetour::LoadConfig();
         AutoWowTrade::LoadConfig();       // before Errands: its town catalog adds auctioneers / mailboxes
         AutoWowErrands::LoadConfig();     // after sPlayerbotAIConfig (random-bot maps) and world spawns
+        AutoWowParty::LoadConfig();       // after world data (area triggers, quest templates)
         AutoWowTactics::LoadConfig();
         AutoWowPullCap::LoadConfig();
         AutoWowRestGate::LoadConfig();
@@ -577,6 +579,8 @@ public:
     {
         PlayerbotWorldThreadProcessor::instance().Update(diff);
         AutoWowOracleRuntime::Update(diff);
+        if (AutoWowParty::Enabled())
+            AutoWowParty::WorldUpdate(diff);  // world thread, after the map updates
         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
     }
 };

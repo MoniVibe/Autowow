@@ -60,6 +60,15 @@
 //     action (post|buy|sold|expired|mail|fee), item (entry, 0 = none), count, price (copper: listing
 //     buyout, purchase price, sale's winning bid, fee), gold (signed copper change of the bot's money),
 //     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train).
+//   - `party` (AutoWow.Party.Enable): one line when a cohort party forms (reason `formed`) and one when it
+//     disbands (reason = level_drift|separated|member_offline|dungeon_done|no_purpose|max_age|too_small|
+//     disabled). bot/lvl/zone/x/y = the leader (else the first online member); quest 0. Trailing: pid
+//     (run-scoped party id, never reused), members (guids ascending), roles (tank|healer|dps, same order),
+//     leader, why (dungeon|group_quest), dmap (dungeon map id, 0 = none), age_ms (0 at formation).
+//   - `dungeon` (AutoWow.Dungeon.Enable): one line per run event. reason = entered|boss_killed|completed|
+//     wiped|abandoned|approach_gave_up|stage_failed|portal_fallback. Trailing: pid, dmap, inst (instance id,
+//     0 before entry), enc (encounter index for boss_killed, else -1), mask / all (completed / all
+//     DungeonEncounter bits), dur_ms (since the approach started), members.
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -95,7 +104,8 @@ enum class Event : std::uint8_t
     Engage = 12,
     ZoneMove = 13,
     Errand = 14,
-    // 15 (party), 16 (dungeon) reserved for the parties lane; never reuse.
+    Party = 15,
+    Dungeon = 16,
     Trade = 17
 };
 
@@ -118,6 +128,8 @@ inline constexpr char const* EventName(Event ev)
         case Event::Engage: return "engage";
         case Event::ZoneMove: return "zone_move";
         case Event::Errand: return "errand";
+        case Event::Party: return "party";
+        case Event::Dungeon: return "dungeon";
         case Event::Trade: return "trade";
     }
     return "unknown";
@@ -388,7 +400,8 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
         out += row.honorable ? "true" : "false";
     }
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
-             row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade)
+             row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
+             row.ev == Event::Party || row.ev == Event::Dungeon)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -446,6 +459,10 @@ void EmitErrand(Player* player, char const* reason, std::string_view fields);
 // `trade` (no-op unless the player is a recorded bot); reason is a static literal (action name), fields
 // from AutoWowTrade::LedgerFields.
 void EmitTrade(Player* player, char const* reason, std::string_view fields);
+// `party` / `dungeon` (no-op unless the player is a recorded bot); reason is a static literal, fields from
+// AutoWowParty::PartyFields / DungeonFields.
+void EmitParty(Player* player, char const* reason, std::string_view fields);
+void EmitDungeon(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

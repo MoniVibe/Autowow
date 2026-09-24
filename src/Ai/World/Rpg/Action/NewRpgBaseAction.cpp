@@ -40,6 +40,7 @@
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
 #include "ObjectMgr.h"
+#include "PartyPolicy.h"
 #include "PathGenerator.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
@@ -1965,6 +1966,15 @@ bool NewRpgBaseAction::IsQuestCapableDoing(Quest const* quest)
     bool highLevelQuest = bot->GetLevel() + 3 < bot->GetQuestLevel(quest);
     if (highLevelQuest)
         return false;
+
+    // AutoWow.Party.Enable: in a cohort party, group quests up to the party size (and dungeon quests for a
+    // dungeon party) are doable; the avoid list still applies. Flag off / no party: the solo rule below.
+    bool dungeonParty = false;
+    if (std::uint32_t const partySize = AutoWowParty::Enabled() ?
+            AutoWowParty::PartySize(bot->GetGUID().GetCounter(), &dungeonParty) : 0)
+        return AutoWowParty::QuestCapableInParty(quest->GetType(), quest->GetSuggestedPlayers(), partySize,
+                                                 dungeonParty) &&
+               !QuestSchedulerPolicy::ContainsQuestId(sPlayerbotAIConfig.autoWowQuestAvoidIds, quest->GetQuestId());
 
     // Elite quest and dungeon quest etc
     if (quest->GetType() != 0)

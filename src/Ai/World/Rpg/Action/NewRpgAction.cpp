@@ -62,6 +62,7 @@
 #include "TradePolicy.h"
 #include "QuestInventoryReliefPolicy.h"
 #include "ErrandsPolicy.h"
+#include "PartyPolicy.h"
 #include "QuestObjectiveContext.h"
 #include "QuestObjectiveTransitionPolicy.h"
 #include "QuestSourceStallPolicy.h"
@@ -443,6 +444,11 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             return true;
         }
     }
+
+    // AutoWow.Party: a cohort party leader walks its party to a dungeon entrance, holds during the run and
+    // puts the party's group quest first (flag off: never reached).
+    if (AutoWowParty::Enabled() && PartyStep())
+        return true;
 
     // AutoWow.ZoneProgression: independent bots graduate to the next zone by normal travel (no teleport).
     if (AutoWowZoneProgression::Enabled() && ZoneProgressionStep())

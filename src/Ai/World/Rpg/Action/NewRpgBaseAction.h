@@ -123,6 +123,9 @@ protected:
     // train, bind, flight path; real gold) and the way back. True when it consumed the tick. Caller
     // checks the flag.
     bool ErrandsStep();
+    // AutoWow.Party.Enable (PartyPolicy.h): the tick of a cohort party leader (dungeon approach walk, hold
+    // during the run, group quest first). True when it consumed the tick. Caller checks the flag.
+    bool PartyStep();
     void ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& stop, AutoWowErrands::BotState& s);
     bool WalkLeg(WorldPosition const& dest);
     // AutoWow.Gathering.Detours (GatherDetourPolicy.h): walk to a nearby herb/ore node the bot can gather,

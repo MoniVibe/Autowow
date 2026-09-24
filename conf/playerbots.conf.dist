@@ -2727,6 +2727,65 @@ AutoWow.Errands.HearthMinYards = 800
 AutoWow.Errands.MaxWalkYards = 4000
 AutoWow.Errands.TravelTimeoutMs = 1200000
 
+# Cohort parties (PartyPolicy.h). Every CheckIntervalMs (world thread) ungrouped independent bots of one faction,
+# one map, the same zone or within HubYards, levels spanning at most LevelSpread, form parties of MinSize..MaxSize
+# when they have a reason: a dungeon of AutoWow.Dungeon.List brackets every level and the roster has a tank and a
+# healer (AutoWow.Dungeon.Enable), else a group quest is in a log or offered in the zone at the bot's level.
+# Roles by class (tank: warrior > paladin > druid > DK; healer: priest > shaman > druid > paladin); leader = tank,
+# else highest level. Loot need-before-greed from uncommon. The leader keeps its New-RPG loop (scheduler, quests,
+# errands) and puts the party's group quest first; followers "+follow,-new rpg,-grind" and assist; quests are
+# pushed by the stock auto share. In a party, group quests up to the party size (dungeon quests for a dungeon
+# party) are acceptable. Roles = 1: tank class tank strategy + "tank assist", healer class heal strategy +
+# "healer dps", and in combat the tank taunts mobs off party members within TauntYards, the healer heals the
+# lowest member below HealPct first. Disband: a member offline or out of the group, levels drift past
+# LevelSpread, a member off the leader's map / beyond SeparatedYards for SeparatedMs, no reason for
+# PurposelessMs, older than MaxAgeMs, dungeon done. Strategies are restored on disband; a bot rejoins no party
+# for RejoinCooldownMs. Ledger `party` (event 15).
+AutoWow.Party.Enable = 0
+AutoWow.Party.CheckIntervalMs = 30000
+AutoWow.Party.LevelSpread = 3
+AutoWow.Party.HubYards = 300
+AutoWow.Party.MinSize = 2
+AutoWow.Party.MaxSize = 5
+AutoWow.Party.SeparatedYards = 500
+AutoWow.Party.SeparatedMs = 600000
+AutoWow.Party.PurposelessMs = 1800000
+AutoWow.Party.MaxAgeMs = 7200000
+AutoWow.Party.RejoinCooldownMs = 600000
+AutoWow.Party.Roles = 1
+AutoWow.Party.HealPct = 60
+AutoWow.Party.TauntYards = 30
+# A bot-only ordinary group (at most five, every member online, no real-player master, not oracle-managed)
+# that no cohort party owns is disbanded at the next formation pass: the core persists groups across a
+# restart, the party registry does not. Set 0 while bridge `party` rosters of non-managed bots are in use.
+AutoWow.Party.DisbandOrphans = 1
+
+# Dungeon runs of cohort parties (needs AutoWow.Party.Enable). List = "map:minLevel:maxLevel:A|H|AH" in priority
+# order (389 Ragefire Chasm, 36 Deadmines, 43 Wailing Caverns, 33 Shadowfang Keep, 48 Blackfathom Deeps, 34 The
+# Stockade); the entrance is the lowest continent area trigger into the map. A dungeon party with MinSize members
+# together (TogetherYards) within MaxWalkYards of the entrance walks there (leader: no-teleport long walk,
+# followers follow), steps into the trigger volume and is admitted by the stock DungeonTransition; inside, the
+# stock dungeon navigator leads (the leader's New-RPG is off), followers follow. Every DungeonEncounter bit set =
+# completed; all dead = wiped; InsideTimeoutMs = abandoned. Exit: hearthstone when ready, then the party
+# disbands (the core boots members still inside). Approach gives up after ApproachTimeoutMs or
+# ApproachStuckTicks stuck walk ticks; PortalFallback = 1 (owner ruling) then teleports the party to the
+# entrance instead (ledger `dungeon` portal_fallback + `contaminated`). CooldownMs between runs of one party.
+# Ledger `dungeon` (event 16).
+AutoWow.Dungeon.Enable = 0
+AutoWow.Dungeon.List = "389:13:18:H,36:17:26:A,43:17:24:AH,33:18:25:AH,48:20:30:AH,34:22:30:A"
+AutoWow.Dungeon.MinSize = 3
+AutoWow.Dungeon.RequireTankHealer = 1
+AutoWow.Dungeon.TogetherYards = 60
+AutoWow.Dungeon.MaxWalkYards = 6000
+AutoWow.Dungeon.ApproachTimeoutMs = 1800000
+AutoWow.Dungeon.ApproachStuckTicks = 60
+AutoWow.Dungeon.StageYards = 40
+AutoWow.Dungeon.StageTimeoutMs = 120000
+AutoWow.Dungeon.InsideTimeoutMs = 3600000
+AutoWow.Dungeon.ExitTimeoutMs = 120000
+AutoWow.Dungeon.CooldownMs = 3600000
+AutoWow.Dungeon.PortalFallback = 0
+
 # Consumable economy for independent bots (ErrandsPolicy.h; default 0; needs AutoWow.Errands.Enable = 1,
 # inert otherwise). Real gold only, no free items. With it on: no food left (no drink, mana users) is an
 # urgent errand need; a restock counts as affordable when money + the vendor value of the grey loot covers

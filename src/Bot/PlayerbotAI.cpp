@@ -6,6 +6,7 @@
 #include "PlayerbotAI.h"
 #include "AutoWowQuestLedger.h"
 #include "TacticalRuntime.h"
+#include "PartyPolicy.h"
 #include "AutoWow/AutoWowIndependentActivityPolicy.h"
 
 #include <cmath>
@@ -280,6 +281,10 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
             bot->StopMoving();
         return;
     }
+
+    // AutoWow.Party.Roles: party tank taunts mobs off its party, party healer heals first (flag off: one bool).
+    if (AutoWowParty::RolesEnabled())
+        AutoWowParty::CombatUpdate(this);
 
     // Handle cheat options (set bot health and power if cheats are enabled)
     if (bot->IsAlive() &&
