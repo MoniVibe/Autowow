@@ -594,7 +594,11 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                 p.stagePortalDone = true;
                 EmitRun(p, RunEvent::PortalFallback, -1, now);
                 LOG_INFO("playerbots", "[Party] pid={} stage portal leader_yd={}", p.id, int(leader->GetExactDist2d(e.x, e.y)));
-                leader->TeleportTo(e.map, e.x, e.y, e.z, leader->GetOrientation());
+                // The whole party: a trigger the leader cannot walk into is out of the followers' reach too
+                // (soak-s32-full-r1: 2/2 Wailing Caverns runs entered with the leader alone, then abandoned).
+                for (Player* b : bots)
+                    if (b->IsAlive() && !b->IsInCombat() && b->GetMapId() == e.map)
+                        b->TeleportTo(e.map, e.x, e.y, e.z, b->GetOrientation());
                 return Disband::None;
             }
             // Every member steps into the trigger volume; followers hold there (paused) until the stock
