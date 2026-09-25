@@ -196,9 +196,10 @@ bool NewRpgBaseAction::ContractStep()
     std::int32_t const by = static_cast<std::int32_t>(bot->GetPositionY());
     // Another trip (zone progression, errand run) or a party owns the bot.
     Group const* group = bot->GetGroup();
-    bool const busy = (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(guid)) ||
-                      (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid)) ||
-                      (group && group->GetMembersCount() > 1);
+    bool const onTrip = AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(guid);
+    bool const onErrand = AutoWowErrands::Enabled() && AutoWowErrands::Active(guid);
+    bool const inParty = group && group->GetMembersCount() > 1;
+    bool const busy = onTrip || onErrand || inParty;
 
     auto emit = [&](Reason r)
     {
@@ -243,11 +244,15 @@ bool NewRpgBaseAction::ContractStep()
         emit(Reason::Issued);
     }
 
+    // An errand run (sell / repair / restock, then a return leg) pauses the contract instead of ending it:
+    // soak-s36-full-r1 abandoned 20 of 25 contracts as busy. Its timeout keeps running.
+    if (onErrand && !onTrip && !inParty && s.phase != Phase::None && now < s.startMs + p.timeoutMs)
+        return false;
     Reason r = Judge(p, s, now, AutoWowDeathLoop::IsDangerous(guid, s.map, float(s.x), float(s.y)));
     char const* why = "";
     if (r == Reason::Issued)
-        why = busy ? "busy" : bot->GetMapId() != s.map ? "map" : Displaced(p, s, bx, by) ? "displaced"
-            : s.stuck > kMaxStuck ? "stuck" : "";
+        why = onTrip ? "zone_trip" : inParty ? "party" : onErrand ? "errand" : bot->GetMapId() != s.map ? "map"
+            : Displaced(p, s, bx, by) ? "displaced" : s.stuck > kMaxStuck ? "stuck" : "";
     if (*why)
         r = Reason::Abandoned;
     // Quest work is back (a quest picked up while hunting, a deferral expired): the quest loop wins.
