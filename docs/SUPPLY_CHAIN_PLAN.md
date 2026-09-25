@@ -18,7 +18,16 @@ Class spells stay auto-learned for now (trainer visits come later).
 - **Everything goes behind flags that default to off.** Everything writes to the ledger with append-only event ids. Pure policy lives in headers with unit tests.
 - **Retrofit-proofing.** Versioned state, deterministic ordering, numeric ids (no strings in decisions), bounded maps, locks on map-thread state. The guild-bank balance is the persistent treasury, so there is no side-table snapshot to keep in sync.
 
-## Lane A: guilds and treasury
+## Owner refinements (2026-09-25)
+
+- **Profession houses.** Each faction gets several guilds, one per profession house: Weavers (tailoring, enchanting), Smiths (mining, blacksmithing, engineering), Tanners (skinning, leatherworking), Herbalists (herbalism, alchemy). A bot joins the house that matches its profession.
+- **The guild rep is the hub.** Materials are mailed to the rep. The rep hands out craft contracts and materials, collects the goods, and delivers them to members who need them.
+  - The rep needs plenty of storage. For V1 that is the rep's own bags plus the character bank.
+  - Guild bank item tabs cost 100g and up in 3.3.5. Buying the first tab becomes a faction milestone unlock.
+- **Inter-rep trade (lane C).** Reps buy and sell between houses, for example Weavers buying leather from Tanners. Gold and items move rep to rep by mail, priced from vendor value and AH price.
+- **Who plays the rep.** Recommended: a dedicated non-questing character per house, created on the existing cohort accounts. Fallback: the lowest-guid member of the house.
+
+## Lane A: guilds and treasury (superseded in part by the refinements above)
 
 1. **Bootstrap** (`AutoWow.Guilds.Enable`). At startup, make sure one guild exists per faction for the cohort: "AutoWoW Alliance Cohort" and "AutoWoW Horde Cohort".
    - Configurable guild master. Default: the lowest cohort guid of that team.
