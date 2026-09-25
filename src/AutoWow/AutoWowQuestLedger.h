@@ -80,6 +80,11 @@
 //     (AutoWowGuildsPolicy.h). reason = created|joined|skip_other_guild|tax|pay|deposit|refused|postage;
 //     quest is 0; team is the row's. Trailing: house (house name), gid (guild id), copper, balance_after
 //     (guild bank copper after the movement), op (refused only: the movement refused).
+//   - `supply` (event 20; AutoWow.Supply.Enable): one line per bag-chain step (SupplyPolicy.h). reason =
+//     order|donate|feed|craft|deliver|pay|surplus|xp|refused|travel; quest is 0; team is the row's. Trailing:
+//     house, oid (team order id, run-scoped, never reused), item, count, copper (xp: the XP amount), from,
+//     to (guid-lows, 0 = treasury / none), op (refused: the movement; travel: other_map|stuck; surplus:
+//     auction|vendor).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -119,7 +124,8 @@ enum class Event : std::uint8_t
     Dungeon = 16,
     Trade = 17,
     Contract = 18,
-    Guild = 19
+    Guild = 19,
+    Supply = 20
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -146,6 +152,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Trade: return "trade";
         case Event::Contract: return "contract";
         case Event::Guild: return "guild";
+        case Event::Supply: return "supply";
     }
     return "unknown";
 }
@@ -417,7 +424,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
              row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
              row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract ||
-             row.ev == Event::Guild)
+             row.ev == Event::Guild || row.ev == Event::Supply)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -485,6 +492,9 @@ void EmitContract(Player* player, char const* reason, std::string_view fields);
 // `guild` (no-op unless the player is a recorded bot); reason is a static literal (AutoWowGuilds::ReasonName),
 // fields from AutoWowGuilds::LedgerFields.
 void EmitGuild(Player* player, char const* reason, std::string_view fields);
+// `supply` (no-op unless the player is a recorded bot); reason is a static literal (AutoWowSupply::ReasonName),
+// fields from AutoWowSupply::LedgerFields.
+void EmitSupply(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

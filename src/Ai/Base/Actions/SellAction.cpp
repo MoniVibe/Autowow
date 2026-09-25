@@ -11,6 +11,7 @@
 #include "ItemVisitors.h"
 #include "Playerbots.h"
 #include "ItemPackets.h"
+#include "SupplyPolicy.h"
 
 class SellItemsVisitor : public IterateItemsVisitor
 {
@@ -171,6 +172,9 @@ void SellAction::Sell(FindItemVisitor* visitor)
 
 void SellAction::Sell(Item* item)
 {
+    // AutoWow.Supply.RouteCloth: cloth queued for a donation mail is not sold.
+    if (AutoWowSupply::Enabled() && AutoWowSupply::HeldForDonation(static_cast<uint32>(item->GetGUID().GetCounter())))
+        return;
     std::ostringstream out;
 
     GuidVector vendors = botAI->GetAiObjectContext()->GetValue<GuidVector>("nearest npcs")->Get();

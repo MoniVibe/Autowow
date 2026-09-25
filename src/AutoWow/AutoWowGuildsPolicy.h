@@ -289,6 +289,13 @@ std::uint32_t RepFreeSlots(Player* rep);
 bool SendMoney(std::uint32_t fromGuid, std::uint32_t toGuid, std::uint32_t copper, std::string const& subject);
 bool SendItems(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
                std::string const& subject);
+// Read-only after LoadConfig (any thread): the houses in config order, a house's configured rep (0 = none
+// configured) and the cohort guid ranges.
+std::vector<House> const& Houses();
+std::uint32_t ConfiguredRep(std::size_t house, bool alliance);
+std::vector<GuidRange> const& Cohort();
+// World thread: the guild id of (house, team), found by name when not cached; 0 = no such guild yet.
+std::uint32_t HouseGuildId(std::size_t house, bool alliance);
 }  // namespace AutoWowGuilds
 
 #endif

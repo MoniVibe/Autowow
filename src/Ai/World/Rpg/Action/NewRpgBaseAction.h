@@ -137,6 +137,10 @@ protected:
     // live quest work, walk it to the anchor, hold it hunting there, end it. True when it consumed the tick.
     // Caller checks the flag.
     bool ContractStep();
+    // AutoWow.Supply.Enable (SupplyPolicy.h): a configured rep / artisan stays at its capital home and runs its
+    // ops (mailbox, trainer, thread, craft, surplus). True for every role bot (the RPG machine never picks
+    // quests / grind for it); false for everyone else. Caller checks the flag.
+    bool SupplyStep();
 
 protected:
     /* FOR MOVE FAR */

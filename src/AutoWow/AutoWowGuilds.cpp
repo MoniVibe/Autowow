@@ -433,4 +433,25 @@ bool SendItems(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::ui
 {
     return SendMail(fromGuid, toGuid, itemGuids, 0, subject);
 }
+
+std::vector<House> const& Houses() { return gDefs; }
+
+std::uint32_t ConfiguredRep(std::size_t house, bool alliance)
+{
+    return house < gHouses.size() ? gHouses[house].rep[alliance ? 0 : 1] : 0;
+}
+
+std::vector<GuidRange> const& Cohort() { return gCohort; }
+
+std::uint32_t HouseGuildId(std::size_t house, bool alliance)
+{
+    if (house >= gHouses.size())
+        return 0;
+    HouseRuntime& h = gHouses[house];
+    std::size_t const team = alliance ? 0 : 1;
+    if (!h.guildId[team] && !h.guildName[team].empty())
+        if (Guild* g = sGuildMgr->GetGuildByName(h.guildName[team]))
+            h.guildId[team] = g->GetId();
+    return h.guildId[team];
+}
 }  // namespace AutoWowGuilds

@@ -2780,6 +2780,52 @@ AutoWow.Guilds.TaxPct = 10
 # AutoWow.Guilds.Rep.Weavers.Alliance = 0
 # AutoWow.Guilds.Rep.Weavers.Horde = 0
 
+# Supply chain V1: the bag production chain (SupplyPolicy.h; docs SUPPLY_CHAIN_PLAN.md lane B). Needs
+# AutoWow.Guilds.Enable (houses, reps, treasury, mail). Off = no behavior change (every hook early-outs).
+# Roles: a configured house rep (AutoWow.Guilds.Rep.<House>.<Team>) and a configured artisan
+# (Artisan.<House>.<Alliance|Horde>, guid-low, 0 = none) never quest, grind, run errands or take contracts:
+# they live at their team's capital home (Home.<Team>: "map,x,y,z", default the Stormwind trade district /
+# Orgrimmar Valley of Strength mailbox next to the auction house), walk there once (portal fallback when the
+# home is on another map or the walk is stuck: [Supply] travel=portal, ledger reason travel), collect their
+# mail and hold still. Only the House (default Weavers) artisan crafts in V1; it must be a tailor.
+# Overlord (per team, no body, every OverlordMs): bag want = online cohort members' empty bag slots (19-22)
+# plus equipped bags smaller than the product (Linen Bag, 6 slots), minus bags already in their bags or
+# mailbox; ranked most empty first, ties the lower guid. Order = min(want - finished bags at rep + artisan,
+# bags the house linen can make, MaxOrder). Every TickMs (world thread): the artisan's finished bags are
+# mailed to the rep, the treasury pays BagPayPct of the bag's vendor value per bag (refused when short) and the
+# artisan gets WorkXpPerItem XP per bag (0 = XP-for-level / 20, about a level per 20 bags); the rep mails
+# the artisan the linen for the order (below the bag recipe: up to SkillupCloth linen, bolts level the
+# skill); the treasury pays the copper the artisan lacks for thread and due trainer spells; the rep mails
+# bags to the ranked members (RepXpPerDeal XP per mail, 0 = the same rule); with no want the rep lists bags
+# above SurplusKeep at the auctioneer near home (priced as AutoWow.Trade posts) or vendors them.
+# Artisan (map thread, at home): learns Artisan.Learn (trainer spell ids; default tailoring ranks + Linen
+# Bag) at the tailoring trainer near home with its own money, buys Coarse Thread at the trade-supplies vendor,
+# crafts Bolt of Linen Cloth / Linen Bag by the stock spell cast (skill-ups by the stock rules).
+# RouteCloth: at the errand sell stop a cohort non-tailor mails its linen / wool / silk to its team's House
+# rep (not its own house) instead of selling it, while the rep is online with free bag slots and the rep's
+# cloth is under ClothCap. Members equip delivered bags by the stock equip action once they take the mail
+# (errand mail stops need AutoWow.Trade.Enable). Mail with items takes the core MailDeliveryDelay between
+# different accounts. No free gold or items: all moves are mail, guild bank, vendor, trainer or auction.
+# Ledger `supply` (event 20): order|donate|feed|craft|deliver|pay|surplus|xp|refused|travel; [Supply] log.
+AutoWow.Supply.Enable = 0
+AutoWow.Supply.House = "Weavers"
+AutoWow.Supply.TickMs = 30000
+AutoWow.Supply.OverlordMs = 300000
+AutoWow.Supply.RouteCloth = 0
+AutoWow.Supply.ClothCap = 200
+AutoWow.Supply.MaxOrder = 6
+AutoWow.Supply.BagPayPct = 200
+AutoWow.Supply.WorkXpPerItem = 0
+AutoWow.Supply.RepXpPerDeal = 0
+AutoWow.Supply.SurplusKeep = 4
+AutoWow.Supply.SkillupCloth = 40
+AutoWow.Supply.HomeYards = 25
+AutoWow.Supply.Home.Alliance = "0,-8813,650,95"
+AutoWow.Supply.Home.Horde = "1,1660,-4436,18"
+AutoWow.Supply.Artisan.Learn = "3911,3912,3913,12181,3755"
+# AutoWow.Supply.Artisan.Weavers.Alliance = 0
+# AutoWow.Supply.Artisan.Weavers.Horde = 0
+
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
 # -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport

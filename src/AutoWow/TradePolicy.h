@@ -375,6 +375,10 @@ bool HasCollectableMail(Player* bot);
 void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve);
 // At the mailbox (map thread): queue the collection for the world thread.
 void VisitMailbox(Player* bot, GameObject* mailbox);
+// AutoWow.Supply surplus (map thread, at the auctioneer): list these whole stacks, priced as PlanPosts prices
+// (undercut / vendor * PriceMultPct, never under the floor), deposits within the bot's money; queued for the
+// world thread. Returns the listings planned (0 = none: priced out or no house).
+std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids);
 // AutoWow.Ledger.Treasury: `fee` line for copper the bot just paid (no-op when off or copper is 0).
 void NoteFee(Player* bot, FeeKind kind, std::uint64_t copper);
 }  // namespace AutoWowTrade
