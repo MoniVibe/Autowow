@@ -31,7 +31,9 @@ inline constexpr std::uint32_t kStateVersion = 1;  // RoleState / TeamState layo
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
 inline constexpr std::uint32_t kLinen = 2589, kWool = 2592, kSilk = 4306;
-inline constexpr std::uint32_t kCloth[] = {kLinen, kWool, kSilk};
+// ponytail: linen only while the Linen Bag is the one product; wool and silk (101 of 141 donated units in
+// soak-s41-full-r1) filled ClothCap without feeding a recipe. Add them back with a recipe that uses them.
+inline constexpr std::uint32_t kCloth[] = {kLinen};
 inline constexpr std::uint32_t kMaxMailStacks = 12;  // core MAX_MAIL_ITEMS
 
 struct Params

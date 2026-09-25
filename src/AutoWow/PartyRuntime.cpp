@@ -16,6 +16,7 @@
 
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
+#include "SupplyPolicy.h"
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -339,7 +340,10 @@ void Form(std::uint64_t now)
         std::uint32_t const g = guid.GetCounter();
         if (AutoWowOracleRuntime::IsManagedBot(g) ||
             (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(g)) ||
-            (AutoWowErrands::Enabled() && AutoWowErrands::Active(g)))
+            (AutoWowErrands::Enabled() && AutoWowErrands::Active(g)) ||
+            // Supply reps and artisans stay home: a party took the Horde artisan from Orgrimmar to Thousand
+            // Needles and turned off its supply step (soak-s41-full-r1).
+            (AutoWowSupply::Enabled() && AutoWowSupply::RoleOf(g).role != AutoWowSupply::Role::None))
             continue;
         {
             std::lock_guard<std::mutex> guard(gLock);
