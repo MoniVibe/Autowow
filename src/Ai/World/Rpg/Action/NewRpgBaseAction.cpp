@@ -1338,7 +1338,7 @@ bool NewRpgBaseAction::MoveWorldObjectTo(ObjectGuid guid, float distance)
     return MoveTo(mapId, x, y, z, false, false, false, true);
 }
 
-bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority, WorldObject*)
+bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority, WorldObject*, Position const* anchor)
 {
     // Random movement can never be inherited as exact-finisher movement, even if it happened to
     // use the same map and endpoint in the same update.
@@ -1347,9 +1347,9 @@ bool NewRpgBaseAction::MoveRandomNear(float moveStep, MovementPriority priority,
         return false;
 
     Map* map = bot->GetMap();
-    const float x = bot->GetPositionX();
-    const float y = bot->GetPositionY();
-    const float z = bot->GetPositionZ();
+    const float x = anchor ? anchor->GetPositionX() : bot->GetPositionX();
+    const float y = anchor ? anchor->GetPositionY() : bot->GetPositionY();
+    const float z = anchor ? anchor->GetPositionZ() : bot->GetPositionZ();
     // Previously: attempts = 1. A single random sample often landed in
     // water / blocked geometry / unreachable poly, the function returned
     // false, and the caller had no fallback — bot stood still. Retry a

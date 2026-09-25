@@ -2733,8 +2733,11 @@ AutoWow.Gathering.DetourTimeoutMs = 45000
 # MinClusterSpawns; ties nearer, then lower spawn id), skipping the bot's death-loop danger areas and zones
 # bracketed more than 3 levels above it. The bot walks to the anchor (no teleport), grinds only the
 # contract entries within LeashYards of it, walks back past the leash out of combat, and returns to its
-# quest loop when done, expired (TimeoutMs, or the anchor became a danger area) or abandoned (quest work
-# came back, a zone trip / errand run / party took the bot). The anchor then cools down for CooldownMs.
+# quest loop when done, expired (TimeoutMs, no credited kill for StallMs, or the anchor became a danger
+# area) or abandoned (quest work came back, a zone trip / party took the bot). An errand run pauses both
+# clocks. While hunting the bot wanders within LeashYards/2 of the anchor, and zone progression (Level /
+# NoQuests triggers) waits for the contract to end. Anchors in water are skipped; lootless mobs only count
+# for the team they are hostile to. The anchor then cools down for CooldownMs.
 # No reward (no free gold). Ledger `contract` (event 18) per issue and end; [Contracts] log lines.
 AutoWow.Contracts.Enable = 0
 AutoWow.Contracts.Kills = 15
@@ -2746,6 +2749,9 @@ AutoWow.Contracts.SearchYards = 700
 AutoWow.Contracts.ClusterYards = 120
 AutoWow.Contracts.LeashYards = 150
 AutoWow.Contracts.TimeoutMs = 1200000
+# StallMs: no credited contract kill for this long (errand pauses excluded) expires the contract with
+# cause stall. 0 = off.
+AutoWow.Contracts.StallMs = 480000
 AutoWow.Contracts.CooldownMs = 300000
 AutoWow.Contracts.MinClusterSpawns = 6
 

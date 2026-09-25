@@ -19,19 +19,21 @@
 // It walks to the cluster anchor (the ordinary no-teleport long walk), grinds only the contract entries
 // within LeashYards of the anchor (GrindTargetValue), walks back when it drifts past the leash out of
 // combat, and returns to its quest loop when the contract is done (Kills credited kills), expired
-// (TimeoutMs, or the anchor fell inside one of the bot's death-loop danger areas) or abandoned (quest
-// work appeared, another trip took the bot, the walk got stuck). No reward in V1 (no free gold).
-// Each issue and end emits ledger `contract` (event 18).
+// (TimeoutMs, no credited kill for StallMs, or the anchor fell inside one of the bot's death-loop danger
+// areas) or abandoned (quest work appeared, another trip took the bot, the walk got stuck). An errand run
+// pauses both clocks. No reward in V1 (no free gold). Each issue and end emits ledger `contract` (event 18).
 //
 // Spawn index: world-DB creature spawns on the random-bot maps whose template is a normal-rank,
 // attackable, non-critter/totem/trigger/civilian creature without service npc flags (gossip allowed),
-// with the teams that may attack it (faction template not friendly to the team).
+// with the teams that may attack it (faction template not friendly to the team; a creature without loot
+// only for the teams it is hostile to, as the grind filter skips it otherwise). Anchors in water are
+// rejected at issue time (no map terrain at index time).
 //
 // Value-only: integer yards and game-time ms, no floats in decisions, no RNG, no strings in decisions;
 // stable orders (spawn id / entry ascending on ties).
 namespace AutoWowContracts
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 2;  // 2: lastKillMs, pause
 inline constexpr std::size_t kMaxEntries = 8;         // target entries per contract (most spawns first)
 inline constexpr std::size_t kMaxCandidates = 512;    // nearest candidate spawns scored per search
 inline constexpr std::size_t kMaxTrackedBots = 2048;  // hard cap; beyond it new bots get no contract
@@ -48,6 +50,7 @@ struct Params
     std::uint32_t clusterYards = 120;      // AutoWow.Contracts.ClusterYards
     std::uint32_t leashYards = 150;        // AutoWow.Contracts.LeashYards
     std::uint32_t timeoutMs = 1200000;     // AutoWow.Contracts.TimeoutMs
+    std::uint32_t stallMs = 480000;        // AutoWow.Contracts.StallMs: no credited kill this long expires (0 = off)
     std::uint32_t cooldownMs = 300000;     // AutoWow.Contracts.CooldownMs (same anchor after an end)
     std::uint32_t minClusterSpawns = 6;    // AutoWow.Contracts.MinClusterSpawns
 };
@@ -227,6 +230,9 @@ struct BotState
     std::uint32_t kills = 0;
     std::uint32_t target = 0;
     std::uint64_t startMs = 0;
+    std::uint64_t lastKillMs = 0;     // last credited kill (issue time before the first)
+    bool paused = false;              // errand run in progress: clocks stopped since pauseSinceMs
+    std::uint64_t pauseSinceMs = 0;
     std::uint32_t stuck = 0;          // stuck walk ticks this contract
     std::uint64_t nextSearchMs = 0;   // no issue search before
     std::uint64_t nextQuestMs = 0;    // next quest-work recheck while hunting
@@ -253,6 +259,9 @@ inline void Issue(BotState& s, Params const& p, Cluster const& c, std::uint32_t 
     s.kills = 0;
     s.target = p.kills;
     s.startMs = nowMs;
+    s.lastKillMs = nowMs;
+    s.paused = false;
+    s.pauseSinceMs = 0;
     s.stuck = 0;
 }
 
@@ -267,12 +276,27 @@ inline void Issue(BotState& s, Params const& p, Cluster const& c, std::uint32_t 
 }
 
 // A credited kill of `entry`; true when it counted toward the contract.
-inline bool NoteKill(BotState& s, std::uint32_t entry)
+inline bool NoteKill(BotState& s, std::uint32_t entry, std::uint64_t nowMs)
 {
     if (!Accepts(s, entry) || s.kills >= s.target)
         return false;
     ++s.kills;
+    s.lastKillMs = nowMs;
     return true;
+}
+
+// Why a running contract expires now ("" = it does not): danger, then timeout, then the no-kill
+// watchdog (soak-s38: 17% of hunt minutes frozen, 22% walking outside the leash, 4 of 89 done).
+[[nodiscard]] inline char const* ExpiredCause(Params const& p, BotState const& s, std::uint64_t nowMs,
+                                             bool anchorDangerous)
+{
+    if (anchorDangerous)
+        return "danger";
+    if (nowMs >= s.startMs && nowMs - s.startMs >= p.timeoutMs)
+        return "timeout";
+    if (p.stallMs && nowMs >= s.lastKillMs && nowMs - s.lastKillMs >= p.stallMs)
+        return "stall";
+    return "";
 }
 
 // Done beats expired: a contract that reached its count ends done even past its deadline.
@@ -282,9 +306,30 @@ inline bool NoteKill(BotState& s, std::uint32_t entry)
         return Reason::Issued;
     if (s.kills >= s.target)
         return Reason::Done;
-    if (anchorDangerous || (nowMs >= s.startMs && nowMs - s.startMs >= p.timeoutMs))
+    if (*ExpiredCause(p, s, nowMs, anchorDangerous))
         return Reason::Expired;
     return Reason::Issued;
+}
+
+// An errand run (sell / repair / restock) stops the contract clocks; Resume shifts the timeout start and
+// the last kill by the paused span (a kill credited during the errand stays at most `now`).
+inline void Pause(BotState& s, std::uint64_t nowMs)
+{
+    if (s.paused)
+        return;
+    s.paused = true;
+    s.pauseSinceMs = nowMs;
+}
+
+inline void Resume(BotState& s, std::uint64_t nowMs)
+{
+    if (!s.paused)
+        return;
+    std::uint64_t const span = nowMs >= s.pauseSinceMs ? nowMs - s.pauseSinceMs : 0;
+    s.startMs += span;
+    s.lastKillMs = std::min(s.lastKillMs + span, nowMs);
+    s.paused = false;
+    s.pauseSinceMs = 0;
 }
 
 // The contract ends (any reason): its anchor cools down for CooldownMs (a done pack respawns, a failed
@@ -337,14 +382,16 @@ inline constexpr std::uint32_t kArriveYards = 30;
     return Accepts(s, entry) && map == s.map && Within(x, y, s.x, s.y, p.leashYards);
 }
 
-// Ledger `contract` trailing fields (append only).
-inline std::string LedgerFields(BotState const& s, std::uint64_t nowMs)
+// Ledger `contract` trailing fields (append only). `cause` (expired: timeout|stall|danger; abandoned: the
+// abandon cause) is appended when given.
+inline std::string LedgerFields(BotState const& s, std::uint64_t nowMs, char const* cause = "")
 {
     return ",\"issuer\":\"faction_board\",\"cid\":" + std::to_string(s.id) + ",\"amap\":" + std::to_string(s.map) +
            ",\"ax\":" + std::to_string(s.x) + ",\"ay\":" + std::to_string(s.y) +
            ",\"anchor\":" + std::to_string(s.anchorSpawn) + ",\"entries\":" + std::to_string(s.entryCount) +
            ",\"kills\":" + std::to_string(s.kills) + ",\"target\":" + std::to_string(s.target) +
-           ",\"dur_ms\":" + std::to_string(nowMs >= s.startMs ? nowMs - s.startMs : 0);
+           ",\"dur_ms\":" + std::to_string(nowMs >= s.startMs ? nowMs - s.startMs : 0) +
+           (*cause ? ",\"cause\":\"" + std::string(cause) + "\"" : std::string());
 }
 
 // ---- runtime (NewRpgContracts.cpp) ----------------------------------------------------------------
