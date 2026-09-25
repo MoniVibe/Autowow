@@ -25,7 +25,13 @@ Class spells stay auto-learned for now (trainer visits come later).
   - The rep needs plenty of storage. For V1 that is the rep's own bags plus the character bank.
   - Guild bank item tabs cost 100g and up in 3.3.5. Buying the first tab becomes a faction milestone unlock.
 - **Inter-rep trade (lane C).** Reps buy and sell between houses, for example Weavers buying leather from Tanners. Gold and items move rep to rep by mail, priced from vendor value and AH price.
-- **Who plays the rep.** Recommended: a dedicated non-questing character per house, created on the existing cohort accounts. Fallback: the lowest-guid member of the house.
+- **Who plays the rep (owner ruling 2026-09-25).** A dedicated character per house per faction, 8 in total.
+  - **Never quests.** Starts at level 1. Gains XP only from successful trades and deals, with the XP award named and logged.
+  - **Home:** a faction capital, next to the bank, mailbox and auction house. Level 1 is safe there.
+  - **The guild's mule.** It runs operations for members: gear, bags, materials and mail.
+  - **Keeps ticking.** It has its own operations loop (the RepRuntime), not the questing AI.
+  - **Provisioning:** `.autowow cohort create <account> <race> <class> <gender> <name>` in the one-shot console, with the world stopped. It goes on spare slots of the existing cohort accounts, so no new accounts are needed.
+  - **Guild role:** the rep is the guild leader, so it controls the guild bank.
 
 ## Lane A: guilds and treasury (superseded in part by the refinements above)
 
