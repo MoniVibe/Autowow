@@ -33,6 +33,39 @@ Class spells stay auto-learned for now (trainer visits come later).
   - **Provisioning:** `.autowow cohort create <account> <race> <class> <gender> <name>` in the one-shot console, with the world stopped. It goes on spare slots of the existing cohort accounts, so no new accounts are needed.
   - **Guild role:** the rep is the guild leader, so it controls the guild bank.
 
+## Production model (orchestrator design, owner deferred 2026-09-25)
+
+Owner vibe: a bot has 2 professions, and guilds follow those professions. Some bots stay home and craft, others gather. Reps deliver to the next step of the production chain. The overlord decides what is needed now. Overlord and rep nuance is the orchestrator's call. Everything below is config, so role mixes can be A/B tested.
+
+### Roles
+
+- **Adventurers** (default: the whole cohort except artisans).
+  - Quest and take hunt contracts.
+  - Carry 2 gathering professions (herbalism, mining, skinning) and gather along the routes they already travel.
+  - Mail gathered materials to their house rep.
+- **Artisans** (1 per house per faction, 8 in total).
+  - Live in the capital next to their rep and carry the house's crafting professions.
+  - Craft the overlord's orders. The treasury pays per delivered item.
+  - Rank gating: 3.3.5 locks profession ranks behind character level (Journeyman 10, Expert 20, Artisan 35). Artisans therefore earn **work XP per delivered order**, a named and logged custom award like rep trade XP. They level by producing, which unlocks higher ranks.
+  - The bot in each house that already holds the house craft becomes that house's artisan.
+- **Reps** (8). The mules described above: receive materials, supply artisans, route goods, trade rep to rep.
+- **Overlord** (1 per faction, no body). The production planner.
+  - Every N minutes it scores the faction's needs and picks the current priority. Inputs: empty bag slots, weapon DPS vs level, potion stock, materials held by reps, treasury balance.
+  - It posts orders down the chain: gather orders to adventurers (contracts near them) → craft orders to artisans → delivery by reps → payment from the treasury.
+- **Experiment knob:** `AutoWow.Supply.RoleMix = specialist|hybrid`. Specialist is the default. Hybrid means 1 gathering + 1 crafting profession, with the bot crafting on its town visits.
+
+### First slice (bags, end to end)
+
+1. The overlord's priority is bags.
+2. The Weavers artisan is a tailor.
+3. Adventurers route cloth to the Weavers rep.
+4. The rep feeds cloth and thread to the artisan.
+5. The artisan crafts, is paid and earns work XP.
+6. The rep mails bags to the members with the most empty slots.
+7. Surplus goes to the AH or a vendor.
+
+Next products: weapons and armor (Smiths, Tanners) and potions (Brewers).
+
 ## Lane A: guilds and treasury (superseded in part by the refinements above)
 
 1. **Bootstrap** (`AutoWow.Guilds.Enable`). At startup, make sure one guild exists per faction for the cohort: "AutoWoW Alliance Cohort" and "AutoWoW Horde Cohort".
