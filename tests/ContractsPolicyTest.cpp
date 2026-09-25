@@ -205,4 +205,19 @@ TEST(Contracts, LedgerLine)
     EXPECT_NE(line.find("\"ev\":\"contract\""), std::string::npos);
     EXPECT_NE(line.find("\"reason\":\"done\",\"phase\":\"\",\"issuer\":\"faction_board\""), std::string::npos);
 }
+TEST(ContractsPolicy, LevelGapMinCapsTheWindowBelowTheBot)
+{
+    Params p;
+    p.levelBelow = 6;
+    p.levelGapMin = 2;
+    Spawn s;
+    s.minLevel = 18;
+    s.maxLevel = 18;
+    EXPECT_TRUE(InLevelWindow(p, 20, s));
+    s.minLevel = s.maxLevel = 19;
+    EXPECT_FALSE(InLevelWindow(p, 20, s));
+    s.minLevel = s.maxLevel = 13;
+    EXPECT_FALSE(InLevelWindow(p, 20, s));
+}
+
 }  // namespace

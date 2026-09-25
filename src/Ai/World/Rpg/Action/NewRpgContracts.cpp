@@ -146,6 +146,7 @@ void LoadConfig()
     p.kills = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.Kills", 15));
     p.levelBelow = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.LevelBelow", 3);
     p.levelAbove = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.LevelAbove", 1);
+    p.levelGapMin = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.LevelGapMin", 0);
     p.searchYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.SearchYards", 700);
     p.clusterYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.ClusterYards", 120);
     p.leashYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.LeashYards", 150);

@@ -2740,6 +2740,8 @@ AutoWow.Contracts.Enable = 0
 AutoWow.Contracts.Kills = 15
 AutoWow.Contracts.LevelBelow = 3
 AutoWow.Contracts.LevelAbove = 1
+# LevelGapMin: when > 0, contract mobs top out this many levels below the bot (overrides LevelAbove).
+AutoWow.Contracts.LevelGapMin = 0
 AutoWow.Contracts.SearchYards = 700
 AutoWow.Contracts.ClusterYards = 120
 AutoWow.Contracts.LeashYards = 150

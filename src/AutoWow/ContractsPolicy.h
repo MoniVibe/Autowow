@@ -43,6 +43,7 @@ struct Params
     std::uint32_t kills = 15;              // AutoWow.Contracts.Kills
     std::uint32_t levelBelow = 3;          // AutoWow.Contracts.LevelBelow
     std::uint32_t levelAbove = 1;          // AutoWow.Contracts.LevelAbove
+    std::uint32_t levelGapMin = 0;         // AutoWow.Contracts.LevelGapMin: max level at least this far below the bot
     std::uint32_t searchYards = 700;       // AutoWow.Contracts.SearchYards
     std::uint32_t clusterYards = 120;      // AutoWow.Contracts.ClusterYards
     std::uint32_t leashYards = 150;        // AutoWow.Contracts.LeashYards
@@ -81,7 +82,11 @@ struct Spawn
 [[nodiscard]] inline bool InLevelWindow(Params const& p, std::uint32_t botLevel, Spawn const& s)
 {
     std::uint32_t const low = botLevel > p.levelBelow ? botLevel - p.levelBelow : 1;
-    return s.minLevel >= low && s.maxLevel <= botLevel + p.levelAbove;
+    // LevelGapMin wins over LevelAbove: soak-s35-full-r1 contract deaths were near-level fair fights lost
+    // (7.3 deaths per contract bot-hour vs 3.0 off contract).
+    std::uint32_t const high = p.levelGapMin ? (botLevel > p.levelGapMin ? botLevel - p.levelGapMin : 0)
+                                             : botLevel + p.levelAbove;
+    return s.minLevel >= low && s.maxLevel <= high;
 }
 
 // Spawns of the bot's map the bot's team may hunt, in its level window, within SearchYards of the bot:
