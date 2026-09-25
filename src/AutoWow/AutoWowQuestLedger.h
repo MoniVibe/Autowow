@@ -58,9 +58,10 @@
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast).
 //   - `trade` (event 17; AutoWow.Trade.Enable, AutoWow.Ledger.Treasury): one line per auction-house or
 //     mail result, or per fee paid (AutoWowTrade, TradePolicy.h). reason = action; quest is 0. Trailing:
-//     action (post|buy|sold|expired|mail|fee), item (entry, 0 = none), count, price (copper: listing
+//     action (post|buy|sold|expired|mail|fee|tax), item (entry, 0 = none), count, price (copper: listing
 //     buyout, purchase price, sale's winning bid, fee), gold (signed copper change of the bot's money),
-//     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train).
+//     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train). `tax` (AutoWow.Guilds.TaxPct): the
+//     vendor-income tax paid into the bot's house guild bank (also a `guild` row, reason tax).
 //   - `party` (AutoWow.Party.Enable): one line when a cohort party forms (reason `formed`) and one when it
 //     disbands (reason = level_drift|separated|member_offline|dungeon_done|no_purpose|max_age|too_small|
 //     disabled). bot/lvl/zone/x/y = the leader (else the first online member); quest 0. Trailing: pid
@@ -75,6 +76,10 @@
 //     Trailing: issuer (faction_board), cid (run-scoped contract id, never reused), amap, ax, ay (anchor
 //     map and integer yards), anchor (anchor spawn id), entries (target entry count), kills, target,
 //     dur_ms (since issue; 0 on issued).
+//   - `guild` (event 19; AutoWow.Guilds.Enable): one line per house-guild membership or treasury movement
+//     (AutoWowGuildsPolicy.h). reason = created|joined|skip_other_guild|tax|pay|deposit|refused|postage;
+//     quest is 0; team is the row's. Trailing: house (house name), gid (guild id), copper, balance_after
+//     (guild bank copper after the movement), op (refused only: the movement refused).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -113,7 +118,8 @@ enum class Event : std::uint8_t
     Party = 15,
     Dungeon = 16,
     Trade = 17,
-    Contract = 18
+    Contract = 18,
+    Guild = 19
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -139,6 +145,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Dungeon: return "dungeon";
         case Event::Trade: return "trade";
         case Event::Contract: return "contract";
+        case Event::Guild: return "guild";
     }
     return "unknown";
 }
@@ -409,7 +416,8 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
     }
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
              row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
-             row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract)
+             row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract ||
+             row.ev == Event::Guild)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -474,6 +482,9 @@ void EmitDungeon(Player* player, char const* reason, std::string_view fields);
 // `contract` (no-op unless the player is a recorded bot); reason is a static literal (ReasonName), fields
 // from AutoWowContracts::LedgerFields.
 void EmitContract(Player* player, char const* reason, std::string_view fields);
+// `guild` (no-op unless the player is a recorded bot); reason is a static literal (AutoWowGuilds::ReasonName),
+// fields from AutoWowGuilds::LedgerFields.
+void EmitGuild(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

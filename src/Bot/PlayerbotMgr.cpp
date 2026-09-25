@@ -13,6 +13,7 @@
 #include <iomanip>
 #include <algorithm>
 
+#include "AutoWowGuildsPolicy.h"
 #include "ChannelMgr.h"
 #include "CharacterCache.h"
 #include "CharacterPackets.h"
@@ -477,6 +478,10 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
     playerBots[bot->GetGUID()] = bot;
 
     OnBotLoginInternal(bot);
+
+    // AutoWow.Guilds (default 0): house-guild membership; OnBotLogin runs on the world thread.
+    if (AutoWowGuilds::Enabled())
+        AutoWowGuilds::OnLogin(bot);
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)

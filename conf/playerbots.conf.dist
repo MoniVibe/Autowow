@@ -2755,6 +2755,31 @@ AutoWow.Contracts.StallMs = 480000
 AutoWow.Contracts.CooldownMs = 300000
 AutoWow.Contracts.MinClusterSpawns = 6
 
+# Profession-house guilds for the persistent cohort (AutoWowGuildsPolicy.h; docs SUPPLY_CHAIN_PLAN.md lane A).
+# Houses: ';'-separated "Name:skillId,skillId,...", name ASCII letters only (1-16), in priority order. Each
+# house has one guild per team, named by NamePattern ({house}, {team} = Alliance|Horde; at most 24 characters,
+# a longer name skips that house with an error at startup). When a cohort bot (CohortGuids: ','-separated
+# guid-lows or lo-hi ranges, at most 65536 guids) logs in it joins the house of the lowest-listed house
+# holding any skill it has; a bot without a matching skill joins the first house. A bot already in any other
+# guild is never moved (logged skip_other_guild). The house is fixed at the first join. A missing house
+# guild is created at that login, led by the house rep when online, else by the logging-in bot; guilds are
+# found again by name after a restart (the core guild tables are the only state).
+# Rep.<House>.<Alliance|Horde>: guid-low of that house's rep (the logistics hub and core guild leader; any
+# same-team character, need not be in the cohort, may be offline: it is added as an offline member).
+# 0 = the lowest cohort guid in the guild. Leadership moves to the rep when it and the current leader are online.
+# Treasury = the guild bank money. TaxPct of the copper a member earns at an errand vendor stop (sell) is
+# deposited into its house guild bank (stock deposit; capped by what the bot still holds when the world thread
+# runs it). Pay (bank -> member) is refused when the bank is short. Mail helper postage (30 copper per item,
+# 30 for a money-only mail) is the sender's, except the rep's is paid from the guild bank.
+# No free gold or items. Ledger `guild` (event 19) per join / movement; `trade` action tax; [Guilds] log lines.
+AutoWow.Guilds.Enable = 0
+AutoWow.Guilds.Houses = "Weavers:197,333;Smiths:186,164,202;Tanners:393,165;Brewers:182,171"
+AutoWow.Guilds.NamePattern = "{house} of the {team}"
+AutoWow.Guilds.CohortGuids = "62955-63004"
+AutoWow.Guilds.TaxPct = 10
+# AutoWow.Guilds.Rep.Weavers.Alliance = 0
+# AutoWow.Guilds.Rep.Weavers.Horde = 0
+
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
 # -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport

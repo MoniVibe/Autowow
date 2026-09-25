@@ -42,7 +42,8 @@ enum class Action : std::uint8_t
     Sold = 2,     // took a sale's money; price = winning bid, gold = bid + deposit - cut
     Expired = 3,  // took back an expired / cancelled listing's item
     Mail = 4,     // took any other mail (won auction item, outbid refund, ...)
-    Fee = 5       // AutoWow.Ledger.Treasury: copper paid to the world (kind)
+    Fee = 5,      // AutoWow.Ledger.Treasury: copper paid to the world (kind)
+    Tax = 6       // AutoWow.Guilds: vendor-income tax paid into the house guild bank; price = copper, gold = -copper
 };
 
 inline constexpr char const* ActionName(Action a)
@@ -55,6 +56,7 @@ inline constexpr char const* ActionName(Action a)
         case Action::Expired: return "expired";
         case Action::Mail: return "mail";
         case Action::Fee: return "fee";
+        case Action::Tax: return "tax";
     }
     return "mail";
 }
