@@ -222,7 +222,8 @@ enum class Reason : std::uint8_t
     Pay = 4,             // bank -> player
     Deposit = 5,         // player -> bank
     Refused = 6,         // a movement not made; op names it
-    Postage = 7          // mail postage paid from the bank for the house rep
+    Postage = 7,         // mail postage paid from the bank for the house rep
+    Levy = 8             // faction levy: a short house bank drew copper from the richest same-team house bank
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -237,6 +238,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Deposit: return "deposit";
         case Reason::Refused: return "refused";
         case Reason::Postage: return "postage";
+        case Reason::Levy: return "levy";
     }
     return "refused";
 }

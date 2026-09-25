@@ -34,6 +34,7 @@
 
 namespace AutoWowGuilds
 {
+void Levy(Player* p, std::uint32_t guildId, std::uint64_t copper);  // defined below Balance
 namespace
 {
 struct HouseRuntime
@@ -49,6 +50,7 @@ std::vector<House> gDefs;
 std::vector<HouseRuntime> gHouses;
 std::vector<GuidRange> gCohort;
 std::uint32_t gTaxPct = 10;
+bool gLevy = false;  // AutoWow.Guilds.Levy
 
 ObjectGuid PlayerGuid(std::uint32_t low) { return ObjectGuid::Create<HighGuid::Player>(low); }
 std::uint32_t Low(Player* p) { return static_cast<std::uint32_t>(p->GetGUID().GetCounter()); }
@@ -181,6 +183,8 @@ bool SendMail(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uin
     std::uint64_t const fromCost = std::uint64_t(money) + (bank ? 0 : postage);
     if (!refusal && from->GetMoney() < fromCost)
         refusal = "sender_money";
+    if (!refusal && bank)
+        Levy(from, houseGuild, postage);
     if (!refusal && bank && !PayAllowed(bank->GetTotalBankMoney(), postage))
         refusal = "bank_postage";
     if (refusal)
@@ -257,6 +261,7 @@ void LoadConfig()
 {
     detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Guilds.Enable", false);
     gTaxPct = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Guilds.TaxPct", 10));
+    gLevy = sConfigMgr->GetOption<bool>("AutoWow.Guilds.Levy", false);
     gDefs.clear();
     gHouses.clear();
     gCohort.clear();
@@ -350,6 +355,36 @@ std::uint32_t RepOf(std::uint32_t guildId)
     return best;
 }
 
+// AutoWow.Guilds.Levy: a house bank short of the copper draws the shortfall from the richest other house bank
+// of the same team (a real bank-to-bank transfer; soak-s40-full-r1: the Weavers bank that funds the
+// faction's bags held 57 copper while other houses held up to 998, and 56 feed mails were refused).
+void Levy(Player* p, std::uint32_t guildId, std::uint64_t copper)
+{
+    std::size_t team = 0;
+    HouseRuntime* h = HouseOfGuild(guildId, &team);
+    Guild* g = h ? sGuildMgr->GetGuildById(guildId) : nullptr;
+    if (!gLevy || !g || g->GetTotalBankMoney() >= copper)
+        return;
+    std::uint64_t const need = copper - g->GetTotalBankMoney();
+    Guild* rich = nullptr;
+    HouseRuntime* richHouse = nullptr;
+    for (HouseRuntime& o : gHouses)
+        if (Guild* og = o.guildId[team] && o.guildId[team] != guildId ? sGuildMgr->GetGuildById(o.guildId[team]) : nullptr)
+            if (og->GetTotalBankMoney() >= need && (!rich || og->GetTotalBankMoney() > rich->GetTotalBankMoney()))
+            {
+                rich = og;
+                richHouse = &o;
+            }
+    if (!rich)
+        return;
+    CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+    if (!rich->ModifyBankMoney(trans, need, false) || !g->ModifyBankMoney(trans, need, true))
+        return;
+    CharacterDatabase.CommitTransaction(trans);
+    Emit(p, Reason::Levy, *richHouse, rich->GetId(), need);
+    Emit(p, Reason::Levy, *h, guildId, need);
+}
+
 std::uint64_t Balance(std::uint32_t guildId)
 {
     Guild* g = HouseOfGuild(guildId) ? sGuildMgr->GetGuildById(guildId) : nullptr;
@@ -382,6 +417,7 @@ bool Pay(std::uint32_t guildId, Player* to, std::uint64_t copper, Reason reason)
     Guild* g = h ? sGuildMgr->GetGuildById(guildId) : nullptr;
     if (!g || !to)
         return false;
+    Levy(to, guildId, copper);
     if (!PayAllowed(g->GetTotalBankMoney(), copper) || copper > 0x7FFFFFFFu ||
         to->GetMoney() + copper > MAX_MONEY_AMOUNT)
     {

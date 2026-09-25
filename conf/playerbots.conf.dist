@@ -2777,6 +2777,8 @@ AutoWow.Guilds.Houses = "Weavers:197,333;Smiths:186,164,202;Tanners:393,165;Brew
 AutoWow.Guilds.NamePattern = "{house} of the {team}"
 AutoWow.Guilds.CohortGuids = "62955-63004"
 AutoWow.Guilds.TaxPct = 10
+# Levy: a house bank short for a payment or postage draws the shortfall from the richest same-team house bank.
+AutoWow.Guilds.Levy = 0
 # AutoWow.Guilds.Rep.Weavers.Alliance = 0
 # AutoWow.Guilds.Rep.Weavers.Horde = 0
 
