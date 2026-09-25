@@ -18,6 +18,7 @@
 #include "Playerbots.h"
 
 #include "AutoWowBridge.h"
+#include "AutoWowGuildsPolicy.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
@@ -553,6 +554,7 @@ public:
         AutoWowRestGate::LoadConfig();
         AutoWowSurvivalRecovery::LoadConfig();
         AutoWowContracts::LoadConfig();   // after sPlayerbotAIConfig (random-bot maps) and world spawns
+        AutoWowGuilds::LoadConfig();
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));

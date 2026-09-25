@@ -10,6 +10,7 @@
 #include <mutex>
 #include <unordered_map>
 
+#include "AutoWowGuildsPolicy.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
 #include "Bag.h"
@@ -1182,6 +1183,7 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
     bot->SetFacingToObject(npc);
     RESET_AI_VALUE(GuidVector, "nearest npcs");  // the stock sell / repair actions pick their npc from it
     auto money = [&]() { return uint64(bot->GetMoney()); };
+    uint64 const sold0 = s.sold;
 
     if (st.ops & OpSell)
     {
@@ -1219,6 +1221,9 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             s.done |= DoneSold;
         }
     }
+    // AutoWow.Guilds: TaxPct of this stop's vendor income goes to the bot's house guild bank (world thread).
+    if (AutoWowGuilds::Enabled() && s.sold > sold0)
+        AutoWowGuilds::QueueTax(bot, s.sold - sold0);
     if ((st.ops & OpBuy) && p.keepConsumables)
         KeepBuy(bot, npc, st, s, p);
     else if (st.ops & OpBuy)
