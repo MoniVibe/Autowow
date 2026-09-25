@@ -706,9 +706,15 @@ bool SpiritHealerAction::ExecuteNoTeleportCorpseRecovery(Corpse* corpse)
             return true;
         }
 
-        corpseRouteState_.Observe(MovementObservation::Waiting);
-        botAI->SetNextCheckDelay(WaitingRetryDelayMs);
-        return true;
+        // Wait for a spirit healer only on the graveyard point itself. Farther out (the healer out of the
+        // nearest-npc range or line of sight) the ghost walks on: soak-s37-full-r1 had 10-13 cohort ghosts
+        // 37-115 yd from their healers waiting here for hours (Waiting never spends the route budget).
+        if (bot->GetDistance2d(grave.x, grave.y) < 15.0f)
+        {
+            corpseRouteState_.Observe(MovementObservation::Waiting);
+            botAI->SetNextCheckDelay(WaitingRetryDelayMs);
+            return true;
+        }
     }
 
     if (grave.IsValid())

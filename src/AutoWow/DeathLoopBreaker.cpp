@@ -481,19 +481,10 @@ private:
     static constexpr std::uint64_t kStaleCorpseMs = 60000;
     static void ReleaseStaleCorpse(Player* player)
     {
-        static std::mutex lock;
-        static std::unordered_map<std::uint32_t, std::uint64_t> since;
-        if (!sConfigMgr->GetOption<bool>("AutoWow.Survival.CorpsePortal", false) || !AutonomousBotAI(player))
+        // The core counts an unreleased corpse down from 6 min (m_deathTimer; 0 after a login dead).
+        if (!sConfigMgr->GetOption<bool>("AutoWow.Survival.CorpsePortal", false) || !AutonomousBotAI(player) ||
+            player->GetDeathTimer() + kStaleCorpseMs > 6 * MINUTE * IN_MILLISECONDS)
             return;
-        std::uint64_t const now = NowMs();
-        std::uint32_t const guid = GuidOf(player);
-        {
-            std::lock_guard<std::mutex> guard(lock);
-            auto const it = since.try_emplace(guid, now).first;
-            if (now < it->second + kStaleCorpseMs)
-                return;
-            since.erase(it);  // ponytail: a stale entry after a normal release only delays the next release
-        }
         LOG_INFO("playerbots", "[SafeRevive] bot={} release stale corpse", player->GetName());
         player->BuildPlayerRepop();
         player->RepopAtGraveyard();
