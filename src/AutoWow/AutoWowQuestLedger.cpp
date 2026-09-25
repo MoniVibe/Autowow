@@ -367,6 +367,16 @@ void EmitGuild(Player* player, char const* reason, std::string_view fields)
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
 }
 
+void EmitSupply(Player* player, char const* reason, std::string_view fields)
+{
+    if (!IsRecordedBot(player))
+        return;
+    Row row;
+    FillRow(player, Event::Supply, 0, reason, "", row);
+    row.extra = fields;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
 void Emit(Player* player, Event ev, std::uint32_t questId, char const* reason, char const* phase)
 {
     if (!IsRecordedBot(player))

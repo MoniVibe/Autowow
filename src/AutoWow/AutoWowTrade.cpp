@@ -295,6 +295,40 @@ void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
         std::make_unique<AuctionOperation>(bot->GetGUID(), auctioneer->GetGUID(), std::move(posts), std::move(buys)));
 }
 
+std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids)
+{
+    Params const& p = detail::gParams;
+    AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
+    AuctionHouseObject* ah = sAuctionMgr->GetAuctionsMap(auctioneer->GetFaction());
+    if (!house || !ah)
+        return 0;
+    std::vector<Post> posts;
+    uint64 budget = bot->GetMoney();
+    for (std::uint32_t const guid : itemGuids)
+    {
+        Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(guid));
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (!proto)
+            continue;
+        uint32 lowest = 0;
+        for (auto const& [id, a] : ah->GetAuctions())
+            if (a && a->owner != bot->GetGUID() && a->buyout && a->itemCount && a->item_template == proto->ItemId)
+                lowest = lowest ? std::min(lowest, a->buyout / a->itemCount) : a->buyout / a->itemCount;
+        uint64 const buyout = UnitPrice(p, proto->SellPrice, lowest) * item->GetCount();
+        uint32 const deposit = AuctionHouseMgr::GetAuctionDeposit(house, p.durationMin * MINUTE, item, item->GetCount());
+        if (!buyout || buyout > kMaxMoney || deposit > budget)
+            continue;
+        budget -= deposit;
+        posts.push_back({proto->ItemId, guid, item->GetCount(),
+                         static_cast<uint32>(std::max<uint64>(1, buyout * p.bidPct / 100)), static_cast<uint32>(buyout),
+                         deposit});
+    }
+    if (!posts.empty())
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(
+            std::make_unique<AuctionOperation>(bot->GetGUID(), auctioneer->GetGUID(), posts, std::vector<Buy>{}));
+    return static_cast<std::uint32_t>(posts.size());
+}
+
 void VisitMailbox(Player* bot, GameObject* mailbox)
 {
     if (!HasCollectableMail(bot))

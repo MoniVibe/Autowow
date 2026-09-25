@@ -25,6 +25,7 @@
 #include "MapMgr.h"
 #include "NewRpgBaseAction.h"
 #include "ObjectMgr.h"
+#include "SupplyPolicy.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
@@ -1185,6 +1186,10 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
     auto money = [&]() { return uint64(bot->GetMoney()); };
     uint64 const sold0 = s.sold;
 
+    // AutoWow.Supply.RouteCloth: a cohort non-tailor mails its cloth to the bag house rep instead of selling it
+    // (the stacks are held back from this stop's sales; the mail runs on the world thread).
+    if (AutoWowSupply::Enabled() && (st.ops & OpSell))
+        AutoWowSupply::RouteCloth(bot);
     if (st.ops & OpSell)
     {
         uint64 const m0 = money();

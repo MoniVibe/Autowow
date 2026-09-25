@@ -74,6 +74,7 @@
 #include "RaidTargetClaimValue.h"
 #include "Random.h"
 #include "SharedDefines.h"
+#include "SupplyPolicy.h"
 #include "SurvivalRecovery.h"
 #include "Timer.h"
 #include "TravelMgr.h"
@@ -397,6 +398,11 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
 {
     NewRpgInfo& info = botAI->rpgInfo;
     NewRpgStatus status = info.GetStatus();
+
+    // AutoWow.Supply: a configured house rep / artisan lives at its capital home and never quests (flag off:
+    // never reached).
+    if (AutoWowSupply::Enabled() && SupplyStep())
+        return true;
 
     // AutoWow.Survival.SafeRevive: after a corpse revive the bot first walks off the kill spot, then the RPG
     // holds in REST below the rest-gate hp/mana thresholds while the food strategy eats (SurvivalRecovery.h).
