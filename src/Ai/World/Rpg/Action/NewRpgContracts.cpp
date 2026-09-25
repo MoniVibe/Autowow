@@ -243,18 +243,27 @@ bool NewRpgBaseAction::ContractStep()
     }
 
     Reason r = Judge(p, s, now, AutoWowDeathLoop::IsDangerous(guid, s.map, float(s.x), float(s.y)));
-    if (r == Reason::Issued &&
-        (busy || bot->GetMapId() != s.map || Displaced(p, s, bx, by) || s.stuck > kMaxStuck))
+    char const* why = "";
+    if (r == Reason::Issued)
+        why = busy ? "busy" : bot->GetMapId() != s.map ? "map" : Displaced(p, s, bx, by) ? "displaced"
+            : s.stuck > kMaxStuck ? "stuck" : "";
+    if (*why)
         r = Reason::Abandoned;
     // Quest work is back (a quest picked up while hunting, a deferral expired): the quest loop wins.
     if (r == Reason::Issued && s.phase == Phase::Hunt && now >= s.nextQuestMs && !bot->IsInCombat())
     {
         s.nextQuestMs = now + kQuestRecheckMs;
         if (CheckRpgStatusAvailable(RPG_DO_QUEST))
+        {
             r = Reason::Abandoned;
+            why = "quest_work";
+        }
     }
     if (r != Reason::Issued)
     {
+        if (*why)
+            LOG_INFO("playerbots", "[Contracts] bot={} abandon_cause={} cid={} kills={} phase={}", bot->GetName(), why,
+                     s.id, s.kills, std::uint32_t(s.phase));
         emit(r);
         Finish(s, p, now);
         StoreState(guid, s);
