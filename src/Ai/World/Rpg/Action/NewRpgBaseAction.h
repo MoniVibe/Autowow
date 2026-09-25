@@ -70,7 +70,9 @@ protected:
     // up (read-and-clear), otherwise the legacy MovementStuckNoTeleport.
     QuestFailureReason TravelStuckReason();
     bool MoveWorldObjectTo(ObjectGuid guid, float distance = INTERACTION_DISTANCE);
-    bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr);
+    // anchor: sample around this point instead of the bot (the stock `center` argument stays unused).
+    bool MoveRandomNear(float moveStep = 50.0f, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL, WorldObject* center = nullptr,
+                        Position const* anchor = nullptr);
     bool ForceToWait(uint32 duration, MovementPriority priority = MovementPriority::MOVEMENT_NORMAL);
 
     /* QUEST RELATED CHECK */

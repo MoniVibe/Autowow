@@ -662,6 +662,19 @@ bool NewRpgWanderRandomAction::Execute(Event /*event*/)
     if (SearchQuestGiverAndAcceptOrReward())
         return true;
 
+    // AutoWow.Contracts: a hunting contract holder wanders within LeashYards/2 of the anchor, not of itself
+    // (soak-s38: 22% of hunt minutes walking outside the leash).
+    if (AutoWowContracts::Enabled())
+    {
+        AutoWowContracts::BotState const c = AutoWowContracts::Snapshot(bot->GetGUID().GetCounter());
+        if (c.phase == AutoWowContracts::Phase::Hunt && c.map == bot->GetMapId())
+        {
+            Position const anchor(float(c.x), float(c.y), float(c.z));
+            return MoveRandomNear(float(AutoWowContracts::detail::gParams.leashYards) / 2,
+                                  MovementPriority::MOVEMENT_NORMAL, nullptr, &anchor);
+        }
+    }
+
     return MoveRandomNear();
 }
 

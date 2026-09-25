@@ -16,6 +16,7 @@
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
 #include "Config.h"
+#include "ContractsPolicy.h"
 #include "Creature.h"
 #include "DeathLoopBreaker.h"
 #include "ErrandsPolicy.h"
@@ -543,7 +544,12 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         auto const bracket = sPlayerbotAIConfig.zoneBrackets.find(zone);
         std::uint32_t const zoneMax = bracket == sPlayerbotAIConfig.zoneBrackets.end() ? 0 : bracket->second.second;
         Trigger const trigger = Evaluate(p, bot->GetLevel(), zoneMax, s.stall, route != nullptr);
-        if (trigger == Trigger::None)
+        // AutoWow.Contracts: a running hunt contract defers graduation (the stall count keeps counting); the
+        // bot graduates at the next check after the contract ends. Death-loop escapes do not wait.
+        bool const huntingContract = (trigger == Trigger::Level || trigger == Trigger::NoQuests) &&
+                                     AutoWowContracts::Enabled() &&
+                                     AutoWowContracts::Snapshot(guid).phase != AutoWowContracts::Phase::None;
+        if (trigger == Trigger::None || huntingContract)
         {
             StoreState(guid, s);
             return false;

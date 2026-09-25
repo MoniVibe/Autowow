@@ -48,8 +48,9 @@ std::unordered_map<std::uint32_t, BotState> gStates;
 std::uint32_t gNextId = 0;
 
 // The teams whose players may attack a creature of this faction template (not friendly to the team's
-// player faction: human 1, orc 2).
-std::uint8_t HuntTeams(uint32 faction)
+// player faction: human 1, orc 2). Without loot only the teams it is hostile to: GrindTargetValue skips a
+// lootless creature the bot is not hostile with (faction template stands in for the bot's reaction).
+std::uint8_t HuntTeams(uint32 faction, bool hasLoot)
 {
     FactionTemplateEntry const* f = sFactionTemplateStore.LookupEntry(faction);
     FactionTemplateEntry const* alliance = sFactionTemplateStore.LookupEntry(1);
@@ -57,9 +58,9 @@ std::uint8_t HuntTeams(uint32 faction)
     if (!f || !alliance || !horde)
         return 0;
     std::uint8_t teams = 0;
-    if (!f->IsFriendlyTo(*alliance))
+    if (!f->IsFriendlyTo(*alliance) && (hasLoot || f->IsHostileTo(*alliance)))
         teams |= kAlliance;
-    if (!f->IsFriendlyTo(*horde))
+    if (!f->IsFriendlyTo(*horde) && (hasLoot || f->IsHostileTo(*horde)))
         teams |= kHorde;
     return teams;
 }
@@ -88,7 +89,7 @@ void BuildIndex()
         ObjectMgr::ChooseCreatureFlags(ct, npcflag, unitFlags, dynamicFlags, &data);  // spawn overrides
         if ((npcflag & serviceFlags) || (unitFlags & blockedUnitFlags))
             continue;
-        std::uint8_t const teams = HuntTeams(ct->faction);
+        std::uint8_t const teams = HuntTeams(ct->faction, ct->lootid != 0);
         if (!teams)
             continue;
         Spawn s;
@@ -151,6 +152,7 @@ void LoadConfig()
     p.clusterYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.ClusterYards", 120);
     p.leashYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.LeashYards", 150);
     p.timeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.TimeoutMs", 1200000);
+    p.stallMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.StallMs", 480000);
     p.cooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.CooldownMs", 300000);
     p.minClusterSpawns = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Contracts.MinClusterSpawns", 6));
     if (detail::gEnabled)
@@ -168,10 +170,11 @@ void CreditKill(std::uint32_t guid, std::uint32_t entry)
 {
     if (!Enabled())
         return;
+    std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
     std::lock_guard<std::mutex> guard(gLock);
     auto const it = gStates.find(guid);
     if (it != gStates.end())
-        NoteKill(it->second, entry);
+        NoteKill(it->second, entry, now);
 }
 }  // namespace AutoWowContracts
 
@@ -201,10 +204,10 @@ bool NewRpgBaseAction::ContractStep()
     bool const inParty = group && group->GetMembersCount() > 1;
     bool const busy = onTrip || onErrand || inParty;
 
-    auto emit = [&](Reason r)
+    auto emit = [&](Reason r, char const* cause)
     {
         if (AutoWowQuestLedger::Enabled())
-            AutoWowQuestLedger::EmitContract(bot, ReasonName(r), LedgerFields(s, now));
+            AutoWowQuestLedger::EmitContract(bot, ReasonName(r), LedgerFields(s, now, cause));
         LOG_INFO("playerbots", "[Contracts] bot={} {} cid={} lvl={} map={} anchor=({},{}) spawn={} entries={} "
                  "kills={}/{} ms={}", bot->GetName(), ReasonName(r), s.id, level, s.map, s.x, s.y, s.anchorSpawn,
                  s.entryCount, s.kills, s.target, now >= s.startMs ? now - s.startMs : 0);
@@ -225,12 +228,19 @@ bool NewRpgBaseAction::ContractStep()
         std::vector<Cluster> const ranked =
             RankClusters(p, Candidates(p, index->second, team, level, bx, by), bx, by);
         Map* map = bot->GetMap();
+        uint32 const phaseMask = bot->GetPhaseMask();
+        float const height = bot->GetCollisionHeight();
         std::uint32_t tries = 0;
         Cluster const* pick = PickCluster(ranked,
             [&](Cluster const& c)
             {
                 if (++tries > kMaxPickTries || AnchorCooling(p, s, bot->GetMapId(), c.x, c.y, now) ||
                     AutoWowDeathLoop::IsDangerous(guid, bot->GetMapId(), float(c.x), float(c.y)))
+                    return true;
+                // ponytail: water checked on the anchor only, at issue time (the index is built before any map
+                // terrain exists); member spawns in water still count toward density. Per-spawn liquid flags
+                // in the index if water packs keep getting picked.
+                if (map->IsInWater(phaseMask, float(c.x), float(c.y), float(c.z), height))
                     return true;
                 std::uint32_t const zoneLow =
                     AutoWowDeathLoop::ZoneMinLevel(AutoWowDeathLoop::ZoneAt(map, float(c.x), float(c.y)));
@@ -241,20 +251,31 @@ bool NewRpgBaseAction::ContractStep()
         Issue(s, p, *pick, bot->GetMapId(), NextId(), now);
         s.nextQuestMs = now + kQuestRecheckMs;
         StoreState(guid, s);
-        emit(Reason::Issued);
+        emit(Reason::Issued, "");
     }
 
     // An errand run (sell / repair / restock, then a return leg) pauses the contract instead of ending it:
-    // soak-s36-full-r1 abandoned 20 of 25 contracts as busy. Its timeout keeps running.
-    if (onErrand && !onTrip && !inParty && s.phase != Phase::None && now < s.startMs + p.timeoutMs)
+    // soak-s36-full-r1 abandoned 20 of 25 contracts as busy. Its clocks (timeout, no-kill watchdog) stop
+    // too; one pause longer than TimeoutMs falls through and expires on the unshifted start.
+    if (onErrand && !onTrip && !inParty && s.phase != Phase::None &&
+        (!s.paused || now < s.pauseSinceMs + p.timeoutMs))
+    {
+        Pause(s, now);
+        StoreState(guid, s);
         return false;
-    Reason r = Judge(p, s, now, AutoWowDeathLoop::IsDangerous(guid, s.map, float(s.x), float(s.y)));
-    char const* why = "";
+    }
+    if (!onErrand)
+        Resume(s, now);
+    bool const danger = AutoWowDeathLoop::IsDangerous(guid, s.map, float(s.x), float(s.y));
+    Reason r = Judge(p, s, now, danger);
+    char const* why = r == Reason::Expired ? ExpiredCause(p, s, now, danger) : "";
     if (r == Reason::Issued)
+    {
         why = onTrip ? "zone_trip" : inParty ? "party" : onErrand ? "errand" : bot->GetMapId() != s.map ? "map"
             : Displaced(p, s, bx, by) ? "displaced" : s.stuck > kMaxStuck ? "stuck" : "";
-    if (*why)
-        r = Reason::Abandoned;
+        if (*why)
+            r = Reason::Abandoned;
+    }
     // Quest work is back (a quest picked up while hunting, a deferral expired): the quest loop wins.
     if (r == Reason::Issued && s.phase == Phase::Hunt && now >= s.nextQuestMs && !bot->IsInCombat())
     {
@@ -267,10 +288,10 @@ bool NewRpgBaseAction::ContractStep()
     }
     if (r != Reason::Issued)
     {
-        if (*why)
+        if (r == Reason::Abandoned)
             LOG_INFO("playerbots", "[Contracts] bot={} abandon_cause={} cid={} kills={} phase={}", bot->GetName(), why,
                      s.id, s.kills, std::uint32_t(s.phase));
-        emit(r);
+        emit(r, why);
         Finish(s, p, now);
         StoreState(guid, s);
         info.ChangeToIdle();

@@ -121,14 +121,14 @@ TEST(Contracts, KillCountDoneAndTimeout)
     BotState s;
     Issue(s, p, c, 0, 1, 1000);
     EXPECT_EQ(s.phase, Phase::Travel);
-    EXPECT_FALSE(NoteKill(s, 9));  // not a contract entry
-    EXPECT_TRUE(NoteKill(s, 7));
-    EXPECT_TRUE(NoteKill(s, 8));
+    EXPECT_FALSE(NoteKill(s, 9, 1500));  // not a contract entry
+    EXPECT_TRUE(NoteKill(s, 7, 1500));
+    EXPECT_TRUE(NoteKill(s, 8, 1500));
     EXPECT_EQ(Judge(p, s, 2000, false), Reason::Issued);
     EXPECT_EQ(Judge(p, s, 1000 + p.timeoutMs, false), Reason::Expired);
     EXPECT_EQ(Judge(p, s, 2000, true), Reason::Expired);  // anchor became a danger area
-    EXPECT_TRUE(NoteKill(s, 7));
-    EXPECT_FALSE(NoteKill(s, 7));  // capped at the target
+    EXPECT_TRUE(NoteKill(s, 7, 1500));
+    EXPECT_FALSE(NoteKill(s, 7, 1500));  // capped at the target
     EXPECT_EQ(Judge(p, s, 1000 + p.timeoutMs, true), Reason::Done);  // done beats expired
 }
 
@@ -205,6 +205,70 @@ TEST(Contracts, LedgerLine)
     EXPECT_NE(line.find("\"ev\":\"contract\""), std::string::npos);
     EXPECT_NE(line.find("\"reason\":\"done\",\"phase\":\"\",\"issuer\":\"faction_board\""), std::string::npos);
 }
+TEST(Contracts, NoKillWatchdog)
+{
+    Params p;  // timeout 1200000, stall 480000
+    Cluster c;
+    c.entries = {7};
+    BotState s;
+    Issue(s, p, c, 0, 1, 1000);
+    EXPECT_EQ(s.lastKillMs, 1000u);
+    EXPECT_EQ(Judge(p, s, 1000 + p.stallMs - 1, false), Reason::Issued);
+    EXPECT_EQ(Judge(p, s, 1000 + p.stallMs, false), Reason::Expired);
+    EXPECT_STREQ(ExpiredCause(p, s, 1000 + p.stallMs, false), "stall");
+    EXPECT_TRUE(NoteKill(s, 7, 300000));  // a kill rearms the watchdog
+    EXPECT_EQ(Judge(p, s, 1000 + p.stallMs, false), Reason::Issued);
+    EXPECT_STREQ(ExpiredCause(p, s, 300000 + p.stallMs, false), "stall");
+    EXPECT_STREQ(ExpiredCause(p, s, 1000 + p.timeoutMs, false), "timeout");  // timeout named first
+    EXPECT_STREQ(ExpiredCause(p, s, 2000, true), "danger");
+    EXPECT_STREQ(ExpiredCause(p, s, 2000, false), "");
+    EXPECT_FALSE(NoteKill(s, 9, 400000));  // not an entry: no rearm
+    EXPECT_EQ(s.lastKillMs, 300000u);
+    Params off = p;
+    off.stallMs = 0;
+    EXPECT_EQ(Judge(off, s, 300000 + p.stallMs, false), Reason::Issued);
+}
+
+TEST(Contracts, ErrandPauseStopsTheClocks)
+{
+    Params p;
+    Cluster c;
+    c.entries = {7};
+    BotState s;
+    Issue(s, p, c, 0, 1, 1000);
+    Resume(s, 5000);  // not paused: no-op
+    EXPECT_EQ(s.startMs, 1000u);
+    Pause(s, 100000);
+    Pause(s, 200000);  // already paused: the first start holds
+    EXPECT_EQ(s.pauseSinceMs, 100000u);
+    Resume(s, 400000);  // 300 s errand
+    EXPECT_FALSE(s.paused);
+    EXPECT_EQ(s.startMs, 301000u);
+    EXPECT_EQ(s.lastKillMs, 301000u);
+    EXPECT_EQ(Judge(p, s, 301000 + p.stallMs - 1, false), Reason::Issued);  // unpaused it expired at 481000
+    EXPECT_STREQ(ExpiredCause(p, s, 301000 + p.stallMs, false), "stall");
+    EXPECT_STREQ(ExpiredCause(p, s, 301000 + p.timeoutMs, false), "timeout");
+
+    // A kill credited during the errand never lands in the future.
+    Pause(s, 500000);
+    EXPECT_TRUE(NoteKill(s, 7, 590000));
+    Resume(s, 600000);
+    EXPECT_EQ(s.lastKillMs, 600000u);
+    EXPECT_EQ(s.startMs, 401000u);
+}
+
+TEST(Contracts, LedgerCause)
+{
+    Params p;
+    Cluster c;
+    c.entries = {7};
+    BotState s;
+    Issue(s, p, c, 0, 3, 1000);
+    std::string const fields = LedgerFields(s, 61000, "stall");
+    EXPECT_EQ(fields.substr(fields.find("\"dur_ms\"")), "\"dur_ms\":60000,\"cause\":\"stall\"");
+    EXPECT_EQ(LedgerFields(s, 61000).find("cause"), std::string::npos);
+}
+
 TEST(ContractsPolicy, LevelGapMinCapsTheWindowBelowTheBot)
 {
     Params p;
