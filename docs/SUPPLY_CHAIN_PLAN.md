@@ -86,6 +86,20 @@ The owner wants several lines running together, not bags alone. Order:
 4. **One world stop:** reassign professions. Each house gets 1 artisan per team; every adventurer gets 2 gathering professions.
 5. **Later:** jewelcrafting (joins Smiths when gems matter), enchanting, engineering.
 
+### Gatherer squad (owner 2026-09-26, lane G after lane D)
+
+Evidence: soak-s43-full-r1 made 2 crafts in 2 h. Tailoring 1-75 needs linen, which drops from L5-15 humanoids, but the cohort is about L28. No vendor sells linen and nobody lists it on the auction house.
+
+- **The squad.** 5 new level-1 characters per faction, created on spare cohort-account slots. They carry gathering professions: 2 miners, 2 herbalists, 1 skinner. Cloth farming is shared across all of them.
+- **Grouping.** They travel as a party squad using PartyRuntime.
+- **Priority: overlord material orders first, then quests.**
+  - The overlord posts demand, for example "40 linen".
+  - The squad picks the nearest level-safe source: humanoids whose loot table has the cloth, herb or ore node clusters, or beasts to skin.
+  - It mails the materials to the house rep.
+- **Levelling.** The squad levels as it works, but stays in a tier's zones while that tier's material is in demand.
+- **Tiers.** Its level path follows material tiers in the same order the artisans need them: linen, copper and peacebloom first, then wool, iron and bruiseweed.
+- **Cohort growth.** This is the first step of growing each faction beyond 25 bots.
+
 ## Lane A: guilds and treasury (superseded in part by the refinements above)
 
 1. **Bootstrap** (`AutoWow.Guilds.Enable`). At startup, make sure one guild exists per faction for the cohort: "AutoWoW Alliance Cohort" and "AutoWoW Horde Cohort".
