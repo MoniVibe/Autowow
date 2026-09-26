@@ -2936,6 +2936,31 @@ AutoWow.Gear.FarBelowPct = 50
 AutoWow.Gear.ArmorSpendPct = 25
 AutoWow.Gear.MaxArmorBuys = 4
 
+# Self-sufficiency secondary professions for cohort adventurers (SelfCraftPolicy.h; default 0). Not supply
+# reps / artisans, not Oracle-managed bots. Learning is the stock errand trainer stop (the learn filter admits
+# AutoWow.Professions.Secondaries, default 129,185,356; ranks and recipes cost real gold). With the flag on,
+# out of combat: FirstAid - below UseHpPct health with no attacker the bot applies its best usable bandage
+# (before the rest-gate food); it crafts bandages from its own linen / wool / silk up to BandageTarget, and
+# BandageCloth units of the cloth of the bandage it works toward are never sold (whole stacks). Cooking - it
+# cooks its own beast meat (Charred / Spiced Wolf Meat .. Spider Sausage, trainer recipes to 225) at a cooking
+# fire, lighting a Basic Campfire (learned with Cooking, no reagent) when none is near: food while its food
+# stock is under FoodTarget, else skill-ups on non-grey recipes; cooked food at most 10 levels under its
+# vendor food tier counts toward the errand food stock, so errands buy less. Crafting only when ungrouped, not
+# resting / travelling / on an errand or zone trip, health >= CraftMinHpPct and mana >= CraftMinManaPct; at
+# most BatchMax casts per CheckIntervalMs. Ledger `selfcraft` (event 21): learn|craft|use|skip; [SelfCraft] log.
+# Known gap: AutoWow.Supply.RouteCloth still mails reserve cloth stacks (only the sale is held back).
+AutoWow.SelfCraft.Enable = 0
+AutoWow.SelfCraft.FirstAid = 1
+AutoWow.SelfCraft.Cooking = 1
+AutoWow.SelfCraft.BandageTarget = 10
+AutoWow.SelfCraft.BandageCloth = 20
+AutoWow.SelfCraft.UseHpPct = 60
+AutoWow.SelfCraft.FoodTarget = 20
+AutoWow.SelfCraft.CheckIntervalMs = 20000
+AutoWow.SelfCraft.BatchMax = 5
+AutoWow.SelfCraft.CraftMinHpPct = 70
+AutoWow.SelfCraft.CraftMinManaPct = 50
+
 # Cohort parties (PartyPolicy.h). Every CheckIntervalMs (world thread) ungrouped independent bots of one faction,
 # one map, the same zone or within HubYards, levels spanning at most LevelSpread, form parties of MinSize..MaxSize
 # when they have a reason: a dungeon of AutoWow.Dungeon.List brackets every level and the roster has a tank and a

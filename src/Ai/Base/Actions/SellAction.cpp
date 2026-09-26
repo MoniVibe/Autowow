@@ -12,6 +12,7 @@
 #include "Playerbots.h"
 #include "ItemPackets.h"
 #include "SupplyPolicy.h"
+#include "SelfCraftPolicy.h"
 
 class SellItemsVisitor : public IterateItemsVisitor
 {
@@ -174,6 +175,9 @@ void SellAction::Sell(Item* item)
 {
     // AutoWow.Supply.RouteCloth: cloth queued for a donation mail is not sold.
     if (AutoWowSupply::Enabled() && AutoWowSupply::HeldForDonation(static_cast<uint32>(item->GetGUID().GetCounter())))
+        return;
+    // AutoWow.SelfCraft.FirstAid: the bandage cloth reserve is not sold.
+    if (AutoWowSelfCraft::Enabled() && AutoWowSelfCraft::ReservedCloth(botAI, bot, item))
         return;
     std::ostringstream out;
 

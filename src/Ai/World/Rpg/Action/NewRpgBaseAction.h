@@ -133,6 +133,10 @@ protected:
     // AutoWow.Gathering.Detours (GatherDetourPolicy.h): walk to a nearby herb/ore node the bot can gather,
     // then yield to the stock loot strategy. True when it consumed the tick. Caller checks the flag.
     bool GatherDetourStep();
+    // AutoWow.SelfCraft.Enable (SelfCraftPolicy.h): a cohort adventurer bandages itself out of combat and
+    // crafts bandages / cooks food from its own loot. True while it holds the tick (a cast or bandage in
+    // flight, or one just started). Caller checks the flag.
+    bool SelfCraftStep();
     // AutoWow.Contracts.Enable (ContractsPolicy.h): issue a hunt contract to an idle independent bot with no
     // live quest work, walk it to the anchor, hold it hunting there, end it. True when it consumed the tick.
     // Caller checks the flag.
