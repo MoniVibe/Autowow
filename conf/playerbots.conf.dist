@@ -2858,6 +2858,52 @@ AutoWow.Supply.SellKeep = 60
 # the deposit to the rep, an expiry loses it: a gold sink). Only the sale proceeds (bid - cut) go to the bank.
 AutoWow.Supply.ListFloat = 1000
 
+# Product catalog (lane D; SupplyPolicy.h kCatalog). Products: ','-separated lines the overlord runs, each
+# TickMs per team: bags (Weavers / tailoring; the chain above, unchanged) and potions (Brewers / alchemy).
+# Default "bags" = exactly the chain above. A bad list logs an error and runs bags only. Every `supply` ledger
+# row carries "line":"bags|potions" (appended field).
+AutoWow.Supply.Products = "bags"
+# Potions line: tiers Minor Healing Potion 118 (spell 2330, learned with alchemy, grey 95; Peacebloom 2447 +
+# Silverleaf 765 + Empty Vial 3371), Lesser Healing Potion 858 (spell 2337, alchemy 55, grey 125; Minor Healing
+# Potion + Briarthorn 2450), Healing Potion 929 (spell 3447, alchemy 110, grey 175; Bruiseweed 2453 + Briarthorn
+# + Leaded Vial 3372). The table is checked against the loaded spells / items at startup (mismatch: line off).
+# House.Potions: the house that makes it (default Brewers; must differ from House). Its artisan is
+# AutoWow.Supply.Artisan.<House>.<Team> (e.g. Artisan.Brewers.Alliance = guid; 0 = none, the line idles).
+# Need (overlord, every OverlordMs): each online cohort member's tier = the highest tier the artisan knows that
+# is usable at its level (item RequiredLevel 1 / 3 / 12), else the highest usable one; it wants PotionTarget
+# minus its stock of that potion (bags + mailbox). Ranked lowest stock first, ties the lower guid. The product
+# = the highest known tier members want that the house can make (else the highest known wanted tier: Market
+# buys its herbs). Order = min(want - finished potions at rep + artisan, craftable, PotionMaxOrder).
+# Every TickMs (world thread): the artisan's potions (keeping the Minor Healing Potions a Lesser order needs)
+# are mailed to the rep; the treasury pays PotionPayPct of the vendor value per potion and the artisan gets
+# WorkXpPerItem XP per potion; the rep mails the herbs the order (else SkillupCasts casts of the skill-up
+# recipe: the cheapest known non-grey tier the house holds herbs for) still lacks; the treasury pays the copper
+# the artisan lacks for vials, due trainer spells and postage; the rep mails potions to the ranked members
+# (whole stacks, the last may overshoot; RepXpPerDeal per mail); with no want the rep lists potions above
+# PotionSurplusKeep per tier at the auctioneer near home, else vendors them. Market (needs Tiers + Market):
+# the Brewers rep buys the herbs the house lacks on the faction AH (BuyMaxPct, BuyBudget; buys only).
+# Artisan (map thread, at home): learns Artisan.Learn.Potions (default Apprentice 2275 (level 5), Journeyman
+# 2280 (skill 50, level 10), Expert 3465 (skill 125, level 20)) plus Lesser / Healing Potion at the alchemy
+# trainer near home (Stormwind 5499, Orgrimmar 3347), buys vials at the vendor near home (Stormwind 1286,
+# Orgrimmar 5817), crafts by the stock spell cast (a missing Minor Healing Potion for a Lesser first).
+# The artisan must be level 5+ to learn alchemy (no work XP before its first craft).
+# Consumer: the stock combat "potions" strategy (every non-battleground bot): critical health
+# (AiPlayerbot.CriticalHealth) -> healthstone, else "healing potion" (any potion with a heal effect).
+# RouteHerbs: at the errand sell stop a cohort adventurer (any profession: adventurers never craft alchemy)
+# mails Peacebloom / Silverleaf / Briarthorn / Bruiseweed to its team's Brewers rep instead of selling them,
+# each while the rep holds under HerbCap of it and has free bag slots (held stacks are never vendored).
+AutoWow.Supply.House.Potions = "Brewers"
+AutoWow.Supply.Artisan.Learn.Potions = "2275,2280,3465"
+# AutoWow.Supply.Artisan.Brewers.Alliance = 0
+# AutoWow.Supply.Artisan.Brewers.Horde = 0
+AutoWow.Supply.RouteHerbs = 0
+AutoWow.Supply.HerbCap = 100
+AutoWow.Supply.PotionTarget = 5
+AutoWow.Supply.PotionPayPct = 200
+AutoWow.Supply.PotionMaxOrder = 20
+AutoWow.Supply.PotionSurplusKeep = 20
+AutoWow.Supply.SkillupCasts = 10
+
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
 # -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport

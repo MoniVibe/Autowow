@@ -60,6 +60,13 @@ std::array<std::uint32_t, 2> gArtisan{};  // the bag house artisan per team
 Recipe gRecipe;
 std::uint32_t gBagItem = 0, gBoltItem = 0, gBagSell = 0, gBagSlots = 0, gThreadPrice = 0;
 std::vector<std::uint32_t> gLearn;
+// Catalog lines with tierCount > 0 (index = Line; the bags entries stay unused), read-only after LoadConfig.
+std::array<std::size_t, kLineCount> gLineHouse{};
+std::array<std::string, kLineCount> gLineHouseName;
+std::array<std::array<std::uint32_t, 2>, kLineCount> gLineArtisan{};
+std::array<std::array<Stations, 2>, kLineCount> gLineStations;
+std::array<std::vector<std::uint32_t>, kLineCount> gLineLearn;
+std::array<std::vector<std::uint32_t>, kLineCount> gLineRoute;
 
 // Shared: the world thread writes, role bots' map threads and donors read / take.
 struct TeamState
@@ -81,8 +88,14 @@ struct TeamState
     std::array<std::uint32_t, kTierCount> surplusBags{};
     std::vector<MarketWant> buy;
 };
+struct LineState
+{
+    LineView v;
+    std::uint64_t artisanWant = 0;
+};
 std::mutex gLock;
 std::array<TeamState, 2> gTeams;
+std::array<std::array<LineState, 2>, kLineCount> gLines;  // [line][team]
 std::uint32_t gNextOrderId = 0;  // run-scoped, never reused (both teams)
 std::unordered_set<std::uint32_t> gHeld;
 
@@ -203,21 +216,23 @@ std::uint32_t XpFor(std::uint32_t configured, Player* p)
     return WorkXp(configured, sObjectMgr->GetXPForLevel(p->GetLevel()));
 }
 
-void GrantXp(Player* p, std::uint32_t xp, std::uint32_t oid, std::uint32_t item, std::uint32_t count)
+void GrantXp(Player* p, std::uint32_t xp, std::uint32_t oid, std::uint32_t item, std::uint32_t count,
+             Line line = Line::Bags)
 {
     std::uint32_t const lvl = p->GetLevel(), before = p->GetUInt32Value(PLAYER_XP);
     p->GiveXP(xp, nullptr);
     LOG_INFO("playerbots", "[Supply] xp player={} xp={} lvl={}->{} xp_bar={}->{}", p->GetName(), xp, lvl,
              p->GetLevel(), before, p->GetUInt32Value(PLAYER_XP));
-    Emit(p, Reason::Xp, oid, item, count, xp, 0, Low(p));
+    EmitLine(line, p, Reason::Xp, oid, item, count, xp, 0, Low(p));
 }
 
-// World thread: mail a cloth donation (one row per cloth entry) and release the held stacks.
+// World thread: mail a donation (cloth to the bag house, or a catalog line's routed reagents to its house; one
+// row per entry) and release the held stacks.
 class DonateOperation : public PlayerbotOperation
 {
 public:
-    DonateOperation(ObjectGuid bot, bool alliance, std::vector<std::uint32_t> guids)
-        : bot_(bot), alliance_(alliance), guids_(std::move(guids))
+    DonateOperation(ObjectGuid bot, bool alliance, std::vector<std::uint32_t> guids, Line line = Line::Bags)
+        : bot_(bot), alliance_(alliance), guids_(std::move(guids)), line_(line)
     {
     }
 
@@ -227,20 +242,26 @@ public:
         bool ok = false;
         if (bot)
         {
-            std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gBagHouse, alliance_);
+            bool const bags = line_ == Line::Bags;
+            std::size_t const house = bags ? gBagHouse : gLineHouse[static_cast<std::size_t>(line_)];
+            std::uint32_t const gid = AutoWowGuilds::HouseGuildId(house, alliance_);
             std::uint32_t const rep = gid ? AutoWowGuilds::RepOf(gid) : 0;
             // Tiers route wool and silk too; off, only linen stacks are ever picked, so the extra rows stay 0.
-            std::array<std::uint32_t, std::size(kTierCloth)> units{};
+            std::vector<std::uint32_t> const entries = bags ? std::vector<std::uint32_t>(std::begin(kTierCloth),
+                                                                                         std::end(kTierCloth))
+                                                            : gLineRoute[static_cast<std::size_t>(line_)];
+            std::vector<std::uint32_t> units(entries.size(), 0);
             for (std::uint32_t const g : guids_)
                 if (Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g)))
                     for (std::size_t k = 0; k < units.size(); ++k)
-                        if (item->GetEntry() == kTierCloth[k])
+                        if (item->GetEntry() == entries[k])
                             units[k] += item->GetCount();
-            ok = rep && rep != Low(bot) && AutoWowGuilds::SendItems(Low(bot), rep, guids_, "AutoWoW cloth");
+            ok = rep && rep != Low(bot) &&
+                 AutoWowGuilds::SendItems(Low(bot), rep, guids_, bags ? "AutoWoW cloth" : "AutoWoW materials");
             for (std::size_t k = 0; k < units.size(); ++k)
                 if (units[k])
-                    Emit(bot, ok ? Reason::Donate : Reason::Refused, 0, kTierCloth[k], units[k], 0, Low(bot), rep,
-                         ok ? nullptr : "donate");
+                    EmitLine(line_, bot, ok ? Reason::Donate : Reason::Refused, 0, entries[k], units[k], 0, Low(bot),
+                             rep, ok ? nullptr : "donate");
         }
         std::lock_guard<std::mutex> guard(gLock);
         for (std::uint32_t const g : guids_)
@@ -254,6 +275,7 @@ private:
     ObjectGuid bot_;
     bool alliance_;
     std::vector<std::uint32_t> guids_;
+    Line line_;
 };
 
 std::vector<std::uint32_t> Guids(std::vector<Stack> const& stacks, std::uint32_t maxStacks)
@@ -675,6 +697,261 @@ void TierTick(bool alliance, bool overlord)
     out.artisanWant = ts.artisanWant;  // no map update runs during the world tick: nothing set since the copy
 }
 
+// Vendor value of one cast of tier `i`'s reagents (copper): Route / Market at the sell value, Vendor at the
+// buy price, Craft at its own tier's cost.
+std::uint64_t CastCost(ProductLine const& l, std::size_t i, std::size_t depth = kMaxLineTiers)
+{
+    std::uint64_t cost = 0;
+    for (Reagent const& r : l.tiers[i].reagents)
+    {
+        if (!r.item || !depth)
+            continue;
+        std::uint8_t const sub = r.source == Source::Craft ? TierOf(l, r.item) : kNoTier;
+        std::uint64_t const unit = sub != kNoTier && sub != i ? CastCost(l, sub, depth - 1)
+                                   : r.source == Source::Vendor ? BuyOf(r.item) : SellOf(r.item);
+        cost += unit * r.count;
+    }
+    return cost;
+}
+
+std::vector<StockMember> StockMembers(bool alliance, ProductLine const& l)
+{
+    std::vector<StockMember> out;
+    for (AutoWowGuilds::GuidRange const& r : AutoWowGuilds::Cohort())
+        for (std::uint64_t g = r.lo; g <= r.hi; ++g)
+        {
+            std::uint32_t const guid = static_cast<std::uint32_t>(g);
+            if (IsRole(guid))
+                continue;
+            Player* m = Online(guid);
+            if (!m || !m->IsInWorld() || (m->GetTeamId() == TEAM_ALLIANCE) != alliance)
+                continue;
+            StockMember sm{guid, m->GetLevel(), {}};
+            for (std::size_t i = 0; i < l.tierCount; ++i)
+                sm.held[i] = HeldUnits(m, l.tiers[i].product);
+            out.push_back(sm);
+        }
+    return out;
+}
+
+// A catalog line (tierCount > 0: single-step recipes, e.g. potions) over one team: TierTick's chain generalized.
+// Route reagents come from adventurers via the rep, Vendor reagents the artisan buys, a Craft reagent (a lower
+// tier's product) the artisan makes. Need = members' stock of their best usable tier under PotionTarget.
+void LineTick(Line line, bool alliance, bool overlord)
+{
+    Params const& p = detail::gParams;
+    ProductLine const& L = LineOf(line);
+    std::size_t const li = static_cast<std::size_t>(line), t = T(alliance);
+    std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gLineHouse[li], alliance);
+    std::uint32_t const repGuid = gid ? AutoWowGuilds::RepOf(gid) : 0;
+    Player* rep = Online(repGuid);
+    Player* art = Online(gLineArtisan[li][t]);
+    if (rep && !rep->IsInWorld())
+        rep = nullptr;
+    if (art && !art->IsInWorld())
+        art = nullptr;
+    LineState ts;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        ts = gLines[li][t];
+    }
+    LineView& v = ts.v;
+    auto house = [&](std::uint32_t item) { return HeldUnits(rep, item) + HeldUnits(art, item); };
+    auto artHeld = [&](std::uint32_t item) { return HeldUnits(art, item); };
+
+    // Donor room per routed reagent, each under HerbCap.
+    std::vector<std::uint32_t> const& route = gLineRoute[li];
+    bool const repReady = rep && AutoWowGuilds::RepFreeSlots(rep) > 0;
+    v.rooms.assign(route.size(), 0);
+    for (std::size_t i = 0; i < route.size(); ++i)
+        v.rooms[i] = ClothRoom(HeldUnits(rep, route[i]), p.herbCap, repReady);
+    v.artisanSkill = art ? art->GetSkillValue(L.skillLine) : 0;
+    std::array<bool, kMaxLineTiers> known{};
+    for (std::size_t i = 0; i < L.tierCount; ++i)
+        known[i] = art && art->HasSpell(L.tiers[i].spell);
+
+    // The artisan's current target (the order, else the skill-up recipe) and its casts: a Craft reagent of it
+    // stays with the artisan.
+    std::uint8_t const target = v.remaining && v.product != kNoTier ? v.product : v.skillup;
+    std::uint32_t const targetCasts = v.remaining && v.product != kNoTier ? v.remaining : p.skillupCasts;
+
+    // Artisan -> rep: finished products of every tier, paid per unit, work XP per unit; product units count
+    // down the order.
+    if (art && rep && art != rep)
+        for (std::size_t i = 0; i < L.tierCount; ++i)
+        {
+            LineTier const& tier = L.tiers[i];
+            std::vector<Stack> const stacks = LooseStacks(art, tier.product);
+            std::vector<std::uint32_t> const ship =
+                SellStacks(stacks, CraftReserve(L, target, targetCasts, tier.product));
+            if (ship.empty())
+                continue;
+            std::uint32_t n = 0;
+            for (Stack const& s : stacks)
+                if (std::find(ship.begin(), ship.end(), s.guid) != ship.end())
+                    n += s.count;
+            if (!AutoWowGuilds::SendItems(Low(art), repGuid, ship, "AutoWoW goods"))
+            {
+                EmitLine(line, art, Reason::Refused, v.orderId, tier.product, n, 0, Low(art), repGuid, "deliver");
+                continue;
+            }
+            EmitLine(line, art, Reason::Deliver, v.orderId, tier.product, n, 0, Low(art), repGuid);
+            if (i == v.product)
+                v.remaining -= std::min(v.remaining, n);
+            std::uint64_t const pay = BagPay(SellOf(tier.product), p.potionPayPct, n);
+            bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
+            EmitLine(line, art, paid ? Reason::Pay : Reason::Refused, v.orderId, tier.product, n, pay, 0, Low(art),
+                     paid ? nullptr : "pay");
+            GrantXp(art, XpFor(p.workXpPerItem, art) * n, v.orderId, tier.product, n, line);
+        }
+
+    // Need scan (the overlord's order; every tick for the rep's deliveries).
+    std::vector<StockNeed> ranked;
+    if (overlord || rep)
+        ranked = RankStock(L, StockMembers(alliance, L), known, p.potionTarget);
+    if (overlord)
+    {
+        std::vector<ProductOption> opts(L.tierCount);
+        std::array<std::uint32_t, kMaxLineTiers> wants{};
+        for (std::size_t i = 0; i < L.tierCount; ++i)
+        {
+            wants[i] = TierWant(ranked, static_cast<std::uint8_t>(i));
+            opts[i] = {known[i], wants[i], Casts(L, i, house)};
+            v.surplus[i] = Surplus(wants[i], Loose(rep, L.tiers[i].product), p.potionKeep);
+        }
+        std::uint8_t const product = PickProduct(opts);
+        std::uint32_t const n = product == kNoTier ? 0 : OrderSize(wants[product], house(L.tiers[product].product),
+                                                                   opts[product].craftable, p.potionMaxOrder);
+        if (n && (!v.remaining || product != v.product))
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            v.orderId = ++gNextOrderId;
+        }
+        v.product = product;
+        v.productWant = product == kNoTier ? 0 : wants[product];
+        v.remaining = n;
+        LOG_INFO("playerbots", "[Supply] overlord line={} team={} gid={} rep={} artisan={} skill={} members_wanting={} "
+                 "want={}/{}/{} craftable={}/{}/{} product={} order={} oid={} surplus={}/{}/{}", L.name,
+                 alliance ? "alliance" : "horde", gid, repGuid, gLineArtisan[li][t], v.artisanSkill, ranked.size(),
+                 wants[0], wants[1], wants[2], L.tierCount > 0 ? opts[0].craftable : 0,
+                 L.tierCount > 1 ? opts[1].craftable : 0, L.tierCount > 2 ? opts[2].craftable : 0,
+                 product == kNoTier ? -1 : int(product), n, v.orderId, v.surplus[0], v.surplus[1], v.surplus[2]);
+        if (n)
+            if (Player* who = art ? art : rep)
+                EmitLine(line, who, Reason::Order, v.orderId, L.tiers[product].product, n, 0, 0, gLineArtisan[li][t]);
+    }
+
+    // Skill-up recipe: the cheapest known non-grey recipe the house holds one cast of (none at the rank cap).
+    std::vector<SkillupOption> skillups;
+    if (art && v.artisanSkill < art->GetMaxSkillValue(L.skillLine))
+        for (std::size_t i = 0; i < L.tierCount; ++i)
+            skillups.push_back({L.tiers[i].spell, static_cast<std::uint8_t>(i), false, known[i], L.tiers[i].grey,
+                                Casts(L, i, house) > 0, CastCost(L, i)});
+    int const pick = PickSkillup(v.artisanSkill, skillups, true);
+    v.skillup = pick < 0 ? kNoTier : skillups[pick].tier;
+
+    // What the artisan lacks for its casts: the order's (toMake beyond the finished units it holds), else
+    // SkillupCasts of the skill-up recipe. Route / Market reagents come from the rep, Vendor ones it buys.
+    std::vector<Lack> lacks;
+    std::uint32_t toMake = 0;
+    if (v.remaining && v.product != kNoTier)
+    {
+        std::uint32_t const held = HeldUnits(art, L.tiers[v.product].product);
+        toMake = v.remaining > held ? v.remaining - held : 0;
+        lacks = Lacks(L, v.product, toMake, artHeld);
+    }
+    else if (v.skillup != kNoTier)
+        lacks = Lacks(L, v.skillup, p.skillupCasts, artHeld);
+    v.vendor.clear();
+    for (Lack const& k : lacks)
+        if (k.source == Source::Vendor)
+            v.vendor.push_back({k.item, k.units + HeldUnits(art, k.item), BuyOf(k.item)});
+    if (art && rep && art != rep)
+        for (Lack const& k : lacks)
+        {
+            if (k.source == Source::Vendor)
+                continue;
+            std::vector<std::uint32_t> const stacks = PickStacks(LooseStacks(rep, k.item), k.units);
+            if (stacks.empty())
+                continue;
+            std::uint32_t sent = 0;
+            for (Stack const& s : LooseStacks(rep, k.item))
+                if (std::find(stacks.begin(), stacks.end(), s.guid) != stacks.end())
+                    sent += s.count;
+            bool const ok = AutoWowGuilds::SendItems(repGuid, Low(art), stacks, "AutoWoW materials");
+            EmitLine(line, rep, ok ? Reason::Feed : Reason::Refused, v.orderId, k.item, sent, 0, repGuid, Low(art),
+                     ok ? nullptr : "feed");
+        }
+    if (art && ts.artisanWant)
+    {
+        bool const paid = gid && AutoWowGuilds::Pay(gid, art, ts.artisanWant);
+        EmitLine(line, art, paid ? Reason::Feed : Reason::Refused, v.orderId, 0, 0, ts.artisanWant, 0, Low(art),
+                 paid ? nullptr : "feed_copper");
+        ts.artisanWant = 0;
+    }
+
+    // Market: what the house (rep + artisan) lacks for the product members want (even when nothing is
+    // craftable yet), else for the skill-up recipe (the stock-free pick when the house holds none).
+    v.buy.clear();
+    if (p.market && art)
+    {
+        std::vector<Lack> short_;
+        if (v.product != kNoTier && v.productWant)
+        {
+            std::uint32_t const open = v.remaining ? v.remaining : std::min(v.productWant, p.potionMaxOrder);
+            std::uint32_t const finished = house(L.tiers[v.product].product);
+            short_ = Lacks(L, v.product, open > finished ? open - finished : 0, house);
+        }
+        else
+        {
+            int const want = pick >= 0 ? pick : PickSkillup(v.artisanSkill, skillups, false);
+            if (want >= 0)
+                short_ = Lacks(L, skillups[want].tier, p.skillupCasts, house);
+        }
+        for (Lack const& k : short_)
+            if (k.source != Source::Vendor)
+                v.buy.push_back({k.item, k.units, SellOf(k.item)});
+    }
+
+    // Rep -> members: its products, best tier first, lowest stock first (whole stacks); rep XP per deal.
+    if (rep)
+        for (std::size_t i = L.tierCount; i-- > 0;)
+        {
+            LineTier const& tier = L.tiers[i];
+            std::vector<Stack> const stacks = LooseStacks(rep, tier.product);
+            if (stacks.empty())
+                continue;
+            for (StackDelivery const& d : PlanStackDeliveries(ranked, static_cast<std::uint8_t>(i), stacks))
+            {
+                if (!AutoWowGuilds::SendItems(repGuid, d.guid, d.stacks, "AutoWoW supplies"))
+                {
+                    EmitLine(line, rep, Reason::Refused, v.orderId, tier.product, d.units, 0, repGuid, d.guid,
+                             "deliver");
+                    continue;
+                }
+                EmitLine(line, rep, Reason::Deliver, v.orderId, tier.product, d.units, 0, repGuid, d.guid);
+                GrantXp(rep, XpFor(p.repXpPerDeal, rep), v.orderId, tier.product, d.units, line);
+            }
+        }
+
+    std::lock_guard<std::mutex> guard(gLock);
+    LineView& out = gLines[li][t].v;
+    out.orderId = v.orderId;
+    out.remaining = v.remaining;
+    out.rooms = v.rooms;
+    out.artisanSkill = v.artisanSkill;
+    out.skillup = v.skillup;
+    out.buy = v.buy;
+    out.vendor = v.vendor;
+    if (overlord)
+    {
+        out.product = v.product;
+        out.productWant = v.productWant;
+        out.surplus = v.surplus;
+    }
+    gLines[li][t].artisanWant = ts.artisanWant;  // no map update runs during the world tick
+}
+
 // World thread: the rep's market buyouts, funded by its house bank (bank -> rep -> AH seller); the copper a
 // rejected bid did not spend goes back to the bank. The auction house is the faction house the rep stands at.
 class MarketBuyOperation : public PlayerbotOperation
@@ -728,9 +1005,10 @@ private:
     std::vector<MarketListing> buys_;
 };
 
-void BuildStations(bool alliance, Home const& home)
+// The stations near `home`: the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no extended
+// cost), the auctioneer and the mailbox, each the nearest (ties the lower spawn id).
+void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t trainerSpell, std::uint32_t vendorItem)
 {
-    Stations& st = gStations[T(alliance)];
     st = Stations{};
     std::array<std::int64_t, 4> best{};
     std::array<std::uint64_t, 4> bestSpawn{};
@@ -758,7 +1036,7 @@ void BuildStations(bool alliance, Home const& home)
         if ((npcflag & UNIT_NPC_FLAG_TRAINER_PROFESSION))
             if (Trainer::Trainer* tr = sObjectMgr->GetTrainer(data.id))
                 for (Trainer::Spell const& s : tr->GetSpells())
-                    if (s.SpellId == kBagSpell)
+                    if (s.SpellId == trainerSpell)
                     {
                         consider(0, st.trainer, spawn, data.id, data.posX, data.posY, data.posZ);
                         break;
@@ -766,7 +1044,7 @@ void BuildStations(bool alliance, Home const& home)
         if ((npcflag & UNIT_NPC_FLAG_VENDOR))
             if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id))
                 for (VendorItem const* vi : list->m_items)
-                    if (vi && vi->item == kThreadItem && !vi->ExtendedCost)
+                    if (vi && vi->item == vendorItem && !vi->ExtendedCost)
                     {
                         consider(1, st.threadVendor, spawn, data.id, data.posX, data.posY, data.posZ);
                         break;
@@ -780,6 +1058,12 @@ void BuildStations(bool alliance, Home const& home)
         if (gt && gt->type == GAMEOBJECT_TYPE_MAILBOX)
             consider(3, st.mailbox, spawn, data.id, data.posX, data.posY, data.posZ);
     }
+}
+
+void BuildStations(bool alliance, Home const& home)
+{
+    Stations& st = gStations[T(alliance)];
+    FindStations(st, alliance, home, kBagSpell, kThreadItem);
     LOG_INFO("server.loading", "[Supply] {} home map={} ({},{}) stations: mailbox={} trainer={} thread_vendor={} "
              "auctioneer={}", alliance ? "alliance" : "horde", home.map, home.x, home.y, st.mailbox.entry,
              st.trainer.entry, st.threadVendor.entry, st.auctioneer.entry);
@@ -824,12 +1108,32 @@ void LoadConfig()
     p.buyBudget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.BuyBudget", 500);
     p.sellKeep = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.SellKeep", 60);
     p.listFloat = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ListFloat", 1000);
+    p.routeHerbs = sConfigMgr->GetOption<bool>("AutoWow.Supply.RouteHerbs", false);
+    p.herbCap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.HerbCap", 100);
+    p.potionTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.PotionTarget", 5);
+    p.potionPayPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.PotionPayPct", 200);
+    p.potionMaxOrder = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.PotionMaxOrder", 20));
+    p.potionKeep = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.PotionSurplusKeep", 20);
+    p.skillupCasts = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.SkillupCasts", 10);
+    p.lines = 1;
+    std::string const products = sConfigMgr->GetOption<std::string>("AutoWow.Supply.Products", "bags");
+    if (!ParseProducts(products, p.lines))
+        LOG_ERROR("server.loading", "[Supply] bad AutoWow.Supply.Products '{}': bags only", products);
     gRoles.clear();
     gArtisan = {};
     gLearn.clear();
+    gLineHouse = {};
+    gLineArtisan = {};
+    for (std::size_t i = 0; i < kLineCount; ++i)
+    {
+        gLineHouseName[i].clear();
+        gLineLearn[i].clear();
+        gLineRoute[i].clear();
+    }
     {
         std::lock_guard<std::mutex> guard(gLock);
         gTeams = {};
+        gLines = {};
         gHeld.clear();
     }
     if (!detail::gEnabled)
@@ -905,6 +1209,67 @@ void LoadConfig()
                 if (std::find(gLearn.begin(), gLearn.end(), id) == gLearn.end())
                     gLearn.push_back(id);
 
+    // Catalog lines with their own runtime (tierCount > 0): house, table check, learn list, routed reagents.
+    for (std::size_t li = 0; li < kLineCount; ++li)
+    {
+        ProductLine const& L = kCatalog[li];
+        if (!L.tierCount || !LineOn(L.id))
+            continue;
+        auto off = [&](std::string const& why)
+        {
+            LOG_ERROR("server.loading", "[Supply] line {} off: {}", L.name, why);
+            p.lines &= static_cast<std::uint8_t>(~(1u << li));
+        };
+        std::string const key = std::string("AutoWow.Supply.House.") + L.key;
+        gLineHouseName[li] = sConfigMgr->GetOption<std::string>(key, L.house);
+        gLineHouse[li] = houses.size();
+        for (std::size_t i = 0; i < houses.size(); ++i)
+            if (houses[i].name == gLineHouseName[li])
+                gLineHouse[li] = i;
+        if (gLineHouse[li] == houses.size())
+        {
+            off(key + " '" + gLineHouseName[li] + "' is not an AutoWow.Guilds.Houses house");
+            continue;
+        }
+        if (LineOn(Line::Bags) && gLineHouse[li] == gBagHouse)
+        {
+            off("its house is the bag house");
+            continue;
+        }
+        bool ok = true;
+        for (std::size_t i = 0; i < L.tierCount; ++i)
+        {
+            LineTier const& tier = L.tiers[i];
+            SpellInfo const* s = sSpellMgr->GetSpellInfo(tier.spell);
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(tier.product);
+            bool t = s && Output(s) == tier.product && proto && proto->RequiredLevel == tier.reqLevel;
+            for (Reagent const& r : tier.reagents)
+                t = t && (!r.item || (ReagentCount(s, r.item) == r.count && sObjectMgr->GetItemTemplate(r.item)));
+            if (!t)
+                LOG_ERROR("server.loading", "[Supply] line {} tier {} (spell {}, product {}) does not match the "
+                          "loaded spells / items", L.name, i, tier.spell, tier.product);
+            ok = ok && t;
+        }
+        if (!ok)
+        {
+            off("tier table mismatch");
+            continue;
+        }
+        std::string const learn =
+            sConfigMgr->GetOption<std::string>(std::string("AutoWow.Supply.Artisan.Learn.") + L.key, L.learn);
+        AutoWowGuilds::detail::Split(learn, ',', [&](std::string_view s) {
+            std::uint32_t id = 0;
+            if (AutoWowGuilds::detail::ParseU32(s, id) && id)
+                gLineLearn[li].push_back(id);
+        });
+        // The artisan learns every trainer-taught tier recipe once its skill allows (CanTeachSpell checks it).
+        for (std::size_t i = 0; i < L.tierCount; ++i)
+            if (L.tiers[i].skill > 1 &&
+                std::find(gLineLearn[li].begin(), gLineLearn[li].end(), L.tiers[i].spell) == gLineLearn[li].end())
+                gLineLearn[li].push_back(L.tiers[i].spell);
+        gLineRoute[li] = RouteItems(L);
+    }
+
     for (bool const alliance : {true, false})
     {
         std::string const team = alliance ? "Alliance" : "Horde";
@@ -916,12 +1281,36 @@ void LoadConfig()
                       homeText, team);
         else
             BuildStations(alliance, home);
+        for (std::size_t li = 0; li < kLineCount && home.set; ++li)
+        {
+            ProductLine const& L = kCatalog[li];
+            if (!L.tierCount || !LineOn(L.id))
+                continue;
+            // Trainer: the one teaching the first trainer-taught recipe; vendor: the first Vendor reagent's.
+            std::uint32_t trainerSpell = 0, vendorItem = 0;
+            for (std::size_t i = 0; i < L.tierCount; ++i)
+            {
+                if (!trainerSpell && L.tiers[i].skill > 1)
+                    trainerSpell = L.tiers[i].spell;
+                for (Reagent const& r : L.tiers[i].reagents)
+                    if (!vendorItem && r.item && r.source == Source::Vendor)
+                        vendorItem = r.item;
+            }
+            Stations& st = gLineStations[li][T(alliance)];
+            FindStations(st, alliance, home, trainerSpell, vendorItem);
+            LOG_INFO("server.loading", "[Supply] line {} {} stations: mailbox={} trainer={} vendor={} auctioneer={}",
+                     L.name, alliance ? "alliance" : "horde", st.mailbox.entry, st.trainer.entry,
+                     st.threadVendor.entry, st.auctioneer.entry);
+        }
         for (std::size_t i = 0; i < houses.size(); ++i)
         {
             RoleInfo info;
             info.alliance = alliance;
-            info.bagHouse = i == gBagHouse;
+            info.bagHouse = LineOn(Line::Bags) && i == gBagHouse;
             info.home = home;
+            for (std::size_t li = 0; li < kLineCount; ++li)
+                if (kCatalog[li].tierCount && LineOn(kCatalog[li].id) && gLineHouse[li] == i)
+                    info.line = static_cast<std::uint8_t>(li);
             if (std::uint32_t const rep = AutoWowGuilds::ConfiguredRep(i, alliance))
             {
                 info.role = Role::Rep;
@@ -935,6 +1324,8 @@ void LoadConfig()
                 gRoles[artisan] = info;
                 if (info.bagHouse)
                     gArtisan[T(alliance)] = artisan;
+                if (info.line != kNoLine)
+                    gLineArtisan[info.line][T(alliance)] = artisan;
             }
         }
     }
@@ -946,6 +1337,13 @@ void LoadConfig()
         LOG_INFO("server.loading", "[Supply] tiers on: {} tiers, cloth cap {} per cloth; market={} buy_max_pct={} "
                  "buy_budget={} sell_keep={} list_float={}", kTierCount, p.clothCap, p.market, p.buyMaxPct, p.buyBudget,
                  p.sellKeep, p.listFloat);
+    for (std::size_t li = 0; li < kLineCount; ++li)
+        if (kCatalog[li].tierCount && LineOn(kCatalog[li].id))
+            LOG_INFO("server.loading", "[Supply] line {} on: house={} artisan A={} H={} learn={} routed={} "
+                     "route_herbs={} herb_cap={} target={} pay_pct={} max_order={} keep={} skillup_casts={}",
+                     kCatalog[li].name, gLineHouseName[li], gLineArtisan[li][0], gLineArtisan[li][1],
+                     gLineLearn[li].size(), gLineRoute[li].size(), p.routeHerbs, p.herbCap, p.potionTarget,
+                     p.potionPayPct, p.potionMaxOrder, p.potionKeep, p.skillupCasts);
 }
 
 void WorldUpdate(std::uint32_t diff)
@@ -964,8 +1362,18 @@ void WorldUpdate(std::uint32_t diff)
         gOverlordAcc = 0;
         gFirstOverlord = false;
     }
-    TeamTick(true, overlord);
-    TeamTick(false, overlord);
+    // The overlord walks every enabled catalog line per team: bags on its bespoke chain, the rest on LineTick.
+    if (LineOn(Line::Bags))
+    {
+        TeamTick(true, overlord);
+        TeamTick(false, overlord);
+    }
+    for (ProductLine const& L : kCatalog)
+        if (L.tierCount && LineOn(L.id))
+        {
+            LineTick(L.id, true, overlord);
+            LineTick(L.id, false, overlord);
+        }
 }
 
 RoleInfo RoleOf(std::uint32_t guid)
@@ -1019,17 +1427,71 @@ void ClearSurplus(bool alliance)
 void Emit(Player* p, Reason r, std::uint32_t oid, std::uint32_t item, std::uint32_t count, std::uint64_t copper,
           std::uint32_t from, std::uint32_t to, char const* op)
 {
+    EmitLine(Line::Bags, p, r, oid, item, count, copper, from, to, op);
+}
+
+void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item, std::uint32_t count,
+              std::uint64_t copper, std::uint32_t from, std::uint32_t to, char const* op)
+{
+    std::string const& house = l == Line::Bags ? gBagHouseName : gLineHouseName[static_cast<std::size_t>(l)];
     LOG_INFO("playerbots", "[Supply] player={} {} house={} oid={} item={} count={} copper={} from={} to={}{}{}",
-             p ? p->GetName() : "-", ReasonName(r), gBagHouseName, oid, item, count, copper, from, to,
+             p ? p->GetName() : "-", ReasonName(r), house, oid, item, count, copper, from, to,
              op ? " op=" : "", op ? op : "");
     if (p && AutoWowQuestLedger::Enabled())
-        AutoWowQuestLedger::EmitSupply(p, ReasonName(r), LedgerFields(gBagHouseName, oid, item, count, copper, from, to, op));
+        AutoWowQuestLedger::EmitSupply(p, ReasonName(r),
+                                       LedgerFields(house, oid, item, count, copper, from, to, op) + LineField(l));
+}
+
+// Errand sell stop: a cohort adventurer mails the line's routed reagents to its team's house rep, each within
+// its own room (HerbCap); the stacks are held back from this stop's sales. Unlike cloth, holders of the line's
+// profession route too: adventurers never craft it (6 of the 9 cohort herbalists are alchemists at skill 1).
+static void RouteLine(Line l, Player* bot)
+{
+    Params const& p = detail::gParams;
+    std::size_t const li = static_cast<std::size_t>(l);
+    if (!LineOn(l) || !p.routeHerbs || !LineOf(l).tierCount || gLineRoute[li].empty())
+        return;
+    std::uint32_t const guid = Low(bot);
+    bool const alliance = bot->GetTeamId() == TEAM_ALLIANCE;
+    std::vector<std::uint32_t> rooms;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        rooms = gLines[li][T(alliance)].v.rooms;
+    }
+    std::uint32_t total = 0;
+    for (std::uint32_t const r : rooms)
+        total += r;
+    if (rooms.size() != gLineRoute[li].size() ||
+        !RoutesCloth(true, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(guid), false, total))
+        return;
+    std::vector<std::vector<Stack>> stacks;
+    for (std::uint32_t const item : gLineRoute[li])
+        stacks.push_back(LooseStacks(bot, item));
+    RoutePlan plan = PlanRoute(stacks, rooms);
+    if (plan.picks.empty())
+        return;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        std::vector<std::uint32_t>& live = gLines[li][T(alliance)].v.rooms;
+        if (live.size() != plan.units.size() || gHeld.size() + plan.picks.size() > kMaxHeld)
+            return;
+        for (std::size_t i = 0; i < live.size(); ++i)
+            live[i] -= std::min(live[i], plan.units[i]);
+        gHeld.insert(plan.picks.begin(), plan.picks.end());
+    }
+    PlayerbotWorldThreadProcessor::instance().QueueOperation(
+        std::make_unique<DonateOperation>(bot->GetGUID(), alliance, std::move(plan.picks), l));
 }
 
 void RouteCloth(Player* bot)
 {
     Params const& p = detail::gParams;
     if (!detail::gEnabled || !bot)
+        return;
+    for (ProductLine const& L : kCatalog)
+        if (L.tierCount)
+            RouteLine(L.id, bot);
+    if (!LineOn(Line::Bags))
         return;
     std::uint32_t const guid = Low(bot);
     bool const alliance = bot->GetTeamId() == TEAM_ALLIANCE;
@@ -1132,5 +1594,26 @@ void OnAuctionSold(Player* bot, std::uint32_t item, std::uint32_t count, std::in
     std::uint64_t const copper = std::min<std::uint64_t>(std::uint64_t(gold), bot->GetMoney());
     bool const ok = copper && AutoWowGuilds::Deposit(bot, copper);
     Emit(bot, ok ? Reason::Sold : Reason::Refused, 0, item, count, copper, Low(bot), 0, ok ? nullptr : "sold");
+}
+
+LineView LineViewOf(Line l, bool alliance)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    return gLines[static_cast<std::size_t>(l)][T(alliance)].v;
+}
+
+Stations const& LineStationsOf(Line l, bool alliance) { return gLineStations[static_cast<std::size_t>(l)][T(alliance)]; }
+std::vector<std::uint32_t> const& LineLearnSpells(Line l) { return gLineLearn[static_cast<std::size_t>(l)]; }
+
+void SetLineArtisanWant(Line l, bool alliance, std::uint64_t copper)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    gLines[static_cast<std::size_t>(l)][T(alliance)].artisanWant = copper;
+}
+
+void ClearLineSurplus(Line l, bool alliance)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    gLines[static_cast<std::size_t>(l)][T(alliance)].v.surplus = {};
 }
 }  // namespace AutoWowSupply

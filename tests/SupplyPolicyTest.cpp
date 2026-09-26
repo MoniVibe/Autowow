@@ -6,6 +6,8 @@
 
 #include "SupplyPolicy.h"
 
+#include <unordered_map>
+
 #include "AutoWowQuestLedger.h"
 #include "gtest/gtest.h"
 
@@ -283,5 +285,149 @@ TEST(SupplyMarket, SellsWholeStacksAboveTheKeep)
     EXPECT_FALSE(OutOfReach(kTiers[1], 75));
     EXPECT_EQ(Short(10, 4), 6u);
     EXPECT_EQ(Short(4, 10), 0u);
+}
+
+// ---- product catalog (AutoWow.Supply.Products) ----
+
+TEST(SupplyCatalog, ProductsSelectLines)
+{
+    std::uint8_t mask = 0xAA;
+    EXPECT_TRUE(ParseProducts("bags", mask));
+    EXPECT_EQ(mask, 1u);
+    EXPECT_TRUE(ParseProducts("bags,potions", mask));
+    EXPECT_EQ(mask, 3u);
+    EXPECT_TRUE(ParseProducts(" potions ", mask));
+    EXPECT_EQ(mask, 2u);
+    EXPECT_FALSE(ParseProducts("bags,elixirs", mask));  // unknown name: untouched
+    EXPECT_FALSE(ParseProducts("", mask));
+    EXPECT_EQ(mask, 2u);
+    // Wire-stable ids and ledger names; the default is bags only (the lane B/C chain, unchanged).
+    EXPECT_EQ(static_cast<int>(Line::Bags), 0);
+    EXPECT_EQ(static_cast<int>(Line::Potions), 1);
+    EXPECT_EQ(Params{}.lines, 1u);
+    EXPECT_EQ(LineField(Line::Bags), ",\"line\":\"bags\"");
+    EXPECT_EQ(LineField(Line::Potions), ",\"line\":\"potions\"");
+    EXPECT_EQ(LineOf(Line::Bags).tierCount, 0u);  // bespoke runtime (kTiers)
+    EXPECT_STREQ(LineOf(Line::Bags).house, "Weavers");
+}
+
+TEST(SupplyCatalog, PotionTableMatchesTheWorldDb)
+{
+    ProductLine const& l = LineOf(Line::Potions);
+    EXPECT_STREQ(l.house, "Brewers");
+    EXPECT_EQ(l.skillLine, 171u);
+    EXPECT_EQ(l.need, NeedRule::PotionStock);
+    EXPECT_EQ(l.consumer, Consumer::DrinkAtLowHp);
+    ASSERT_EQ(l.tierCount, 3u);
+    EXPECT_EQ(l.tiers[0].spell, 2330u);
+    EXPECT_EQ(l.tiers[0].product, 118u);
+    EXPECT_EQ(l.tiers[1].spell, 2337u);
+    EXPECT_EQ(l.tiers[1].product, 858u);
+    EXPECT_EQ(l.tiers[1].skill, 55u);
+    EXPECT_EQ(l.tiers[2].spell, 3447u);
+    EXPECT_EQ(l.tiers[2].product, 929u);
+    EXPECT_EQ(l.tiers[2].skill, 110u);
+    EXPECT_EQ(l.tiers[2].reqLevel, 12u);
+    EXPECT_EQ(TierOf(l, 858), 1u);
+    EXPECT_EQ(TierOf(l, 2447), kNoTier);
+    // Routed herbs: Peacebloom, Silverleaf, Briarthorn, Bruiseweed (vials are bought, minors are crafted).
+    EXPECT_EQ(RouteItems(l), (std::vector<std::uint32_t>{2447, 765, 2450, 2453}));
+}
+
+TEST(SupplyCatalog, CastsAndLacksFollowCraftReagents)
+{
+    ProductLine const& l = LineOf(Line::Potions);
+    std::unordered_map<std::uint32_t, std::uint32_t> held{{2447, 5}, {765, 3}, {2450, 4}, {118, 1}};
+    auto have = [&](std::uint32_t item)
+    {
+        auto const it = held.find(item);
+        return it == held.end() ? 0u : it->second;
+    };
+    EXPECT_EQ(Casts(l, 0, have), 3u);  // silverleaf-bound; vials never limit
+    EXPECT_EQ(Casts(l, 1, have), 4u);  // briarthorn 4, minors 1 held + 3 craftable
+    EXPECT_EQ(Casts(l, 2, have), 0u);  // no bruiseweed
+    // 6 lessers: briarthorn 2 short; minors 5 short -> 5 minor casts: peacebloom 0, silverleaf 2, vials 5.
+    std::vector<Lack> const lack = Lacks(l, 1, 6, have);
+    ASSERT_EQ(lack.size(), 3u);
+    EXPECT_EQ(lack[0].item, 765u);
+    EXPECT_EQ(lack[0].units, 2u);
+    EXPECT_EQ(lack[1].item, 3371u);
+    EXPECT_EQ(lack[1].units, 5u);
+    EXPECT_EQ(lack[1].source, Source::Vendor);
+    EXPECT_EQ(lack[2].item, 2450u);
+    EXPECT_EQ(lack[2].units, 2u);
+    EXPECT_TRUE(Lacks(l, 0, 0, have).empty());
+    // Next cast toward a lesser: it (a minor and a briarthorn in hand); with no minor, a minor (vial in hand).
+    EXPECT_EQ(NextCast(l, 1, have), 1u);
+    held[118] = 0;
+    EXPECT_EQ(NextCast(l, 1, have), kNoTier);  // no vial for the minor
+    held[3371] = 1;
+    EXPECT_EQ(NextCast(l, 1, have), 0u);
+    EXPECT_EQ(CraftReserve(l, 1, 6, 118), 6u);  // an order of 6 lessers keeps 6 minors at the artisan
+    EXPECT_EQ(CraftReserve(l, 0, 6, 118), 0u);
+    EXPECT_EQ(CraftReserve(l, kNoTier, 6, 118), 0u);
+}
+
+TEST(SupplyCatalog, PotionNeedRanksLowestStockOfTheBestUsableTier)
+{
+    ProductLine const& l = LineOf(Line::Potions);
+    std::array<bool, kMaxLineTiers> const minorOnly{true, false, false}, all{true, true, true}, none{};
+    // Best tier: the highest known usable at the level, else the highest usable at the level.
+    EXPECT_EQ(BestTier(l, 30, all), 2u);
+    EXPECT_EQ(BestTier(l, 11, all), 1u);   // Healing Potion needs 12
+    EXPECT_EQ(BestTier(l, 30, minorOnly), 0u);
+    EXPECT_EQ(BestTier(l, 30, none), 2u);
+    EXPECT_EQ(BestTier(l, 0, all), kNoTier);
+    std::vector<StockMember> const members = {
+        {40, 30, {0, 0, 2}},   // healing 2 -> want 3
+        {10, 30, {9, 9, 5}},   // at target: dropped
+        {30, 5, {0, 0, 0}},    // lesser 0 -> want 5
+        {20, 20, {0, 0, 2}},   // healing 2, lower guid than 40
+        {50, 2, {1, 0, 0}},    // minor 1 -> want 4
+    };
+    std::vector<StockNeed> const ranked = RankStock(l, members, all, 5);
+    ASSERT_EQ(ranked.size(), 4u);
+    EXPECT_EQ(ranked[0].guid, 30u);
+    EXPECT_EQ(ranked[0].tier, 1u);
+    EXPECT_EQ(ranked[1].guid, 50u);
+    EXPECT_EQ(ranked[2].guid, 20u);
+    EXPECT_EQ(ranked[3].guid, 40u);
+    EXPECT_EQ(ranked[3].want, 3u);
+    EXPECT_EQ(TierWant(ranked, 2), 6u);
+    EXPECT_EQ(TierWant(ranked, 1), 5u);
+    EXPECT_EQ(TierWant(ranked, 0), 4u);
+    // Only minors known: every member wants minors (its best known usable tier).
+    EXPECT_EQ(TierWant(RankStock(l, members, minorOnly, 5), 0), 5u + 5u + 5u + 4u);
+    // Deliveries: whole stacks, ascending guid, lowest stock first; the last stack may overshoot.
+    std::vector<StackDelivery> const d = PlanStackDeliveries(ranked, 2, {{7, 5}, {3, 2}, {5, 1}});
+    ASSERT_EQ(d.size(), 2u);
+    EXPECT_EQ(d[0].guid, 20u);
+    EXPECT_EQ(d[0].stacks, (std::vector<std::uint32_t>{3, 5}));
+    EXPECT_EQ(d[0].units, 3u);
+    EXPECT_EQ(d[1].guid, 40u);
+    EXPECT_EQ(d[1].units, 5u);
+    EXPECT_TRUE(PlanStackDeliveries(ranked, 2, {}).empty());
+}
+
+TEST(SupplyCatalog, HerbRoutingKeepsEachHerbUnderItsCap)
+{
+    // Rooms per herb from the rep's stock under HerbCap 100; none while the rep is not ready.
+    std::array<std::uint32_t, 4> const rooms = ClothRooms<4>({100, 40, 0, 130}, 100, true);
+    EXPECT_EQ(rooms[0], 0u);
+    EXPECT_EQ(rooms[1], 60u);
+    EXPECT_EQ(rooms[2], 100u);
+    EXPECT_EQ(rooms[3], 0u);
+    EXPECT_EQ(ClothRooms<4>({0, 0, 0, 0}, 100, false)[2], 0u);
+    // Peacebloom full (room 0): kept for the vendor; silverleaf within 60 units; briarthorn all.
+    RoutePlan const plan = PlanRoute({{{1, 20}}, {{12, 20}, {11, 20}, {13, 20}, {14, 20}}, {{21, 7}}, {}},
+                                     {rooms[0], rooms[1], rooms[2], rooms[3]});
+    EXPECT_EQ(plan.picks, (std::vector<std::uint32_t>{11, 12, 13, 21}));
+    EXPECT_EQ(plan.units, (std::vector<std::uint32_t>{0, 60, 7, 0}));
+    // At most one mail of stacks.
+    std::vector<Stack> many;
+    for (std::uint32_t g = 1; g <= 20; ++g)
+        many.push_back({g, 1});
+    EXPECT_EQ(PlanRoute({many, many}, {100, 100}).picks.size(), kMaxMailStacks);
+    EXPECT_TRUE(PlanRoute({many}, {0}).picks.empty());
 }
 }  // namespace
