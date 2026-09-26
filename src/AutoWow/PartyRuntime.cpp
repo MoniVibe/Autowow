@@ -344,8 +344,9 @@ void Form(std::uint64_t now)
             (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(g)) ||
             (AutoWowErrands::Enabled() && AutoWowErrands::Active(g)) ||
             // Supply reps and artisans stay home: a party took the Horde artisan from Orgrimmar to Thousand
-            // Needles and turned off its supply step (soak-s41-full-r1).
-            (AutoWowSupply::Enabled() && AutoWowSupply::RoleOf(g).role != AutoWowSupply::Role::None))
+            // Needles and turned off its supply step (soak-s41-full-r1). An apprentice artisan (below
+            // AutoWow.Supply.ArtisanMinLevel) is an ordinary adventurer here (ActiveRoleOf).
+            (AutoWowSupply::Enabled() && AutoWowSupply::ActiveRoleOf(bot).role != AutoWowSupply::Role::None))
             continue;
         {
             std::lock_guard<std::mutex> guard(gLock);

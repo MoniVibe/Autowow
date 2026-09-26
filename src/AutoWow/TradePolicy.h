@@ -381,6 +381,11 @@ namespace AutoWowTrade
 {
 // The bot has a delivered, non-COD mail with money or items.
 bool HasCollectableMail(Player* bot);
+// The same, but only a mail the bot can take something from now: its money, or an item its bags can store (the
+// core take-item check). AutoWow.Supply role bots pick the mailbox with this one: with full bags the mail stays
+// collectable and the plain check re-picked the mailbox every tick (soak-s45-full-r1: 3602 task=2 loops, no craft).
+// The errand mail stop keeps HasCollectableMail (one visit per errand run, not a loop).
+bool HasCollectableMailWithRoom(Player* bot);
 // At the auctioneer (map thread): plan posts and buys (ErrandsPolicy reserve: `reserve` copper kept),
 // queue them for the world thread.
 void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve);

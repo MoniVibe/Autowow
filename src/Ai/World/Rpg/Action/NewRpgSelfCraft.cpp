@@ -53,7 +53,7 @@ bool Adventurer(PlayerbotAI* botAI, Player* bot)
 {
     std::uint32_t const guid = bot->GetGUID().GetCounter();
     return botAI && botAI->IsAutoWowIndependentParty() && !AutoWowOracleRuntime::IsManagedBot(guid) &&
-           !(AutoWowSupply::Enabled() && AutoWowSupply::RoleOf(guid).role != AutoWowSupply::Role::None);
+           !(AutoWowSupply::Enabled() && AutoWowSupply::ActiveRoleOf(bot).role != AutoWowSupply::Role::None);
 }
 
 template <std::size_t N>

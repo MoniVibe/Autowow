@@ -30,8 +30,9 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 3;  // RoleState / TeamState layout; bump on change (2: tiers, market;
-                                                   // 3: catalog LineView / RoleInfo.line)
+inline constexpr std::uint32_t kStateVersion = 4;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+                                                   // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
+                                                   // craftBlocked)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -81,6 +82,11 @@ struct Params
                                               // this often on its own
     std::uint32_t outfitMaxCopper = 500;      // AutoWow.Supply.OutfitMaxCopper: grants per bot per level
     std::uint32_t outfitBudgetPerHour = 5000;  // AutoWow.Supply.OutfitBudgetPerHour: grants per team per game hour
+    // Artisan upkeep (lane F):
+    std::uint32_t artisanFreeSlots = 4;  // AutoWow.Supply.ArtisanFreeSlots: the artisan makes room below this many
+                                         // free bag slots (0 = off; a blocked craft still makes one)
+    std::uint32_t artisanMinLevel = 10;  // AutoWow.Supply.ArtisanMinLevel: below it a configured artisan is an
+                                         // apprentice, an ordinary cohort adventurer (0 = off)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -1012,7 +1018,8 @@ enum class Reason : std::uint8_t
     List = 10,    // Market: rep listed a house surplus stack on the faction AH (copper = buyout)
     Buy = 11,     // Market: rep bought out a listing with treasury copper (copper = price)
     Sold = 12,    // Market: a rep's auction sold; its proceeds went to the house bank (copper = proceeds)
-    Outfit = 13   // Outfit: a member bought a gathering tool at a vendor with its own gold (copper = price)
+    Outfit = 13,  // Outfit: a member bought a gathering tool at a vendor with its own gold (copper = price)
+    Junk = 14     // artisan make-room: op vendor (count = stacks sold, copper = proceeds) | destroy (item, count)
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -1033,6 +1040,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Buy: return "buy";
         case Reason::Sold: return "sold";
         case Reason::Outfit: return "outfit";
+        case Reason::Junk: return "junk";
     }
     return "refused";
 }
@@ -1080,6 +1088,93 @@ struct RoleInfo
     Home home;
     std::uint8_t line = kNoLine;  // the enabled catalog line (tierCount > 0) its house makes, else kNoLine
 };
+
+// ---- artisan upkeep (lane F) ----
+
+// Apprentice phase (ArtisanMinLevel, 0 = off): a configured artisan below the level is no role at all (it quests,
+// runs errands, joins parties like any cohort adventurer; soak-s45-full-r1: the level 1-2 Brewers artisans could
+// never learn Apprentice Alchemy, which needs level 5); at the level it goes home, but never out of a dungeon run.
+// Reps are never gated.
+[[nodiscard]] inline Role GatedRole(Role r, std::uint32_t level, std::uint32_t minLevel, bool inInstance)
+{
+    return r == Role::Artisan && minLevel && (level < minLevel || inInstance) ? Role::None : r;
+}
+
+// A material or product of a catalog line (any tier's product or reagent).
+[[nodiscard]] inline bool LineItem(ProductLine const& l, std::uint32_t item)
+{
+    for (std::size_t i = 0; i < l.tierCount; ++i)
+    {
+        if (l.tiers[i].product == item)
+            return true;
+        for (Reagent const& r : l.tiers[i].reagents)
+            if (r.item == item)
+                return true;
+    }
+    return false;
+}
+
+// One loose stack in an artisan's bags, as the make-room step sees it.
+struct BagStack
+{
+    std::uint32_t guid = 0;       // item guid low
+    std::uint32_t sellPrice = 0;  // vendor sell value per unit
+    bool house = false;           // a material / product of its house's line
+    bool quest = false;           // needed by a quest in its log
+    bool keep = false;            // hearthstone, profession tool, container, not user-destroyable
+};
+
+enum class Junk : std::uint8_t
+{
+    Keep = 0,
+    Sell = 1,
+    Destroy = 2  // unsellable (SellPrice 0)
+};
+
+[[nodiscard]] inline Junk ClassifyJunk(BagStack const& s)
+{
+    if (s.house || s.quest || s.keep)
+        return Junk::Keep;
+    return s.sellPrice ? Junk::Sell : Junk::Destroy;
+}
+
+// Free slots the make-room step works toward: ArtisanFreeSlots, at least one while a craft has no room.
+[[nodiscard]] inline std::uint32_t RoomTarget(std::uint32_t freeSlots, bool craftBlocked)
+{
+    return std::max<std::uint32_t>(freeSlots, craftBlocked ? 1 : 0);
+}
+
+struct RoomPlan
+{
+    std::vector<std::uint32_t> sell;     // every sellable junk stack (the next vendor trip)
+    std::vector<std::uint32_t> destroy;  // unsellable junk, only for the slots the sales cannot free
+};
+
+// Nothing while free >= want. Ascending guid.
+[[nodiscard]] inline RoomPlan PlanRoom(std::vector<BagStack> stacks, std::uint32_t free, std::uint32_t want)
+{
+    RoomPlan out;
+    if (free >= want)
+        return out;
+    std::sort(stacks.begin(), stacks.end(), [](BagStack const& a, BagStack const& b) { return a.guid < b.guid; });
+    for (BagStack const& s : stacks)
+        if (ClassifyJunk(s) == Junk::Sell)
+            out.sell.push_back(s.guid);
+    std::uint64_t room = std::uint64_t(free) + out.sell.size();
+    for (BagStack const& s : stacks)
+        if (room < want && ClassifyJunk(s) == Junk::Destroy)
+        {
+            out.destroy.push_back(s.guid);
+            ++room;
+        }
+    return out;
+}
+
+// A bag to buy: none worn and still short of `want` free slots once the junk went (no sale left to make).
+[[nodiscard]] inline bool WantsBag(bool bagWorn, std::uint32_t free, std::uint32_t want)
+{
+    return !bagWorn && free < want;
+}
 
 // Station near a team's home (read-only after LoadConfig): creature entry (or mailbox go entry) + position.
 struct Station
@@ -1131,7 +1226,14 @@ void LoadConfig();
 // World thread (PlayerbotsWorldScript::OnUpdate): overlord, feed, delivery, pay, XP, routing room.
 void WorldUpdate(std::uint32_t diff);
 RoleInfo RoleOf(std::uint32_t guid);
+// RoleOf with the apprentice gate (GatedRole) applied: what every gate uses (supply step, party exclusion, self
+// craft, the chain's artisan and members). Any thread for the bot itself; the world thread for anyone.
+RoleInfo ActiveRoleOf(Player* p);
 Stations const& StationsOf(bool alliance);
+// The general-goods vendor near home selling kPouch (entry 0 = none), for an artisan with no bag worn.
+Station const& BagVendorOf(bool alliance);
+inline constexpr std::uint32_t kPouch = 4496;  // Small Brown Pouch, 6 slots, 500 copper (checked in the world DB:
+                                               // Thurman Mullby 1285 in Stormwind, Gotri 3369 in Orgrimmar)
 TeamView ViewOf(bool alliance);
 Recipe const& BagRecipe();
 std::uint32_t BagItem();

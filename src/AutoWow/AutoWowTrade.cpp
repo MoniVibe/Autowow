@@ -230,6 +230,27 @@ bool HasCollectableMail(Player* bot)
     return false;
 }
 
+bool HasCollectableMailWithRoom(Player* bot)
+{
+    time_t const now = GameTime::GetGameTime().count();
+    for (Mail const* m : bot->GetMails())
+    {
+        if (!Collectable(m, now))
+            continue;
+        if (m->money)
+            return true;
+        for (MailItemInfo const& mi : m->items)
+        {
+            Item* it = bot->GetMItem(mi.item_guid);
+            ItemPosCountVec dest;
+            if (it ? bot->CanStoreItem(NULL_BAG, NULL_SLOT, dest, it, false) == EQUIP_ERR_OK
+                   : bot->GetFreeInventorySpace() > 0)  // mail items not loaded: any free slot
+                return true;
+        }
+    }
+    return false;
+}
+
 void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve)
 {
     Params const& p = detail::gParams;

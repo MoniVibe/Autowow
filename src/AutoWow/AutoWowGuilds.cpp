@@ -42,6 +42,7 @@ struct HouseRuntime
     House house;
     std::array<std::string, 2> guildName;  // by TeamId (0 alliance, 1 horde); empty = too long, skipped
     std::array<std::uint32_t, 2> rep{};    // configured rep guid-low, 0 = lowest cohort member
+    std::array<std::uint32_t, 2> artisan{};  // pinned AutoWow.Supply artisan guid-low, 0 = none
     std::array<std::uint32_t, 2> guildId{};  // resolved guild id (world thread), 0 = not yet
 };
 
@@ -112,14 +113,22 @@ Guild* EnsureGuild(HouseRuntime& h, std::size_t team, Player* candidate)
     return g;
 }
 
-// Adds guid to g unless already in it; a character in another guild is never moved. online may be null.
-void Join(HouseRuntime const& h, Guild* g, std::uint32_t guid, Player* online)
+// Adds guid to g unless already in it; a character in another guild is never moved, except a pinned one out of
+// another of our house guilds (MovesToOwnHouse). online may be null.
+void Join(HouseRuntime const& h, Guild* g, std::uint32_t guid, Player* online, bool pinned = false)
 {
     ObjectGuid const og = PlayerGuid(guid);
     if (g->GetMember(og))
         return;
     std::uint32_t const current = online ? online->GetGuildId() : sCharacterCache->GetCharacterGuildIdByGuid(og);
-    if (current)
+    HouseRuntime* other = current ? HouseOfGuild(current) : nullptr;
+    Guild* otherGuild = other ? sGuildMgr->GetGuildById(current) : nullptr;
+    if (otherGuild && MovesToOwnHouse(pinned, true, otherGuild->GetLeaderGUID() == og))
+    {
+        otherGuild->DeleteMember(og);  // stock removal (an online member's guild id and rank are cleared)
+        Emit(online, Reason::Moved, *other, current, 0);
+    }
+    else if (current)
     {
         Emit(online, Reason::SkipOtherGuild, h, current, 0);
         return;
@@ -305,8 +314,9 @@ void OnLogin(Player* player)
     std::size_t const team = TeamIndex(player);
     HouseRuntime* house = nullptr;
     for (HouseRuntime& h : gHouses)
-        if (h.rep[team] == guid)
-            house = &h;  // a configured rep joins its own house, whatever its professions
+        if (h.rep[team] == guid || h.artisan[team] == guid)
+            house = &h;  // a configured rep / artisan joins its own house, whatever its professions
+    bool const pinned = house != nullptr;
     if (!house && InRanges(gCohort, guid))
         house = &gHouses[HouseFor(gDefs, [player](std::uint32_t skill) { return player->HasSkill(skill); })];
     if (!house)
@@ -318,7 +328,7 @@ void OnLogin(Player* player)
             Emit(player, Reason::SkipOtherGuild, *house, player->GetGuildId(), 0);
         return;
     }
-    Join(*house, g, guid, player);
+    Join(*house, g, guid, player, pinned);
     if (house->rep[team] && house->rep[team] != guid)
     {
         // The configured rep may be offline or not a bot: AddMember takes an offline character.
@@ -484,6 +494,12 @@ std::uint32_t ConfiguredRep(std::size_t house, bool alliance)
 }
 
 std::vector<GuidRange> const& Cohort() { return gCohort; }
+
+void PinArtisan(std::size_t house, bool alliance, std::uint32_t guid)
+{
+    if (house < gHouses.size())
+        gHouses[house].artisan[alliance ? 0 : 1] = guid;
+}
 
 std::uint32_t HouseGuildId(std::size_t house, bool alliance)
 {

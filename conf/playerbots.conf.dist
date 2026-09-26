@@ -2886,7 +2886,8 @@ AutoWow.Supply.Products = "bags"
 # 2280 (skill 50, level 10), Expert 3465 (skill 125, level 20)) plus Lesser / Healing Potion at the alchemy
 # trainer near home (Stormwind 5499, Orgrimmar 3347), buys vials at the vendor near home (Stormwind 1286,
 # Orgrimmar 5817), crafts by the stock spell cast (a missing Minor Healing Potion for a Lesser first).
-# The artisan must be level 5+ to learn alchemy (no work XP before its first craft).
+# The artisan must be level 5+ to learn alchemy (no work XP before its first craft; ArtisanMinLevel keeps it an
+# adventurer until then).
 # Consumer: the stock combat "potions" strategy (every non-battleground bot): critical health
 # (AiPlayerbot.CriticalHealth) -> healthstone, else "healing potion" (any potion with a heal effect).
 # RouteHerbs: at the errand sell stop a cohort adventurer (any profession: adventurers never craft alchemy)
@@ -2931,6 +2932,23 @@ AutoWow.Supply.Outfit = 0
 AutoWow.Supply.OutfitCheckMs = 600000
 AutoWow.Supply.OutfitMaxCopper = 500
 AutoWow.Supply.OutfitBudgetPerHour = 5000
+# Artisan upkeep (lane F; soak-s45-full-r1). Every role bot (rep and artisan) picks its mailbox only for a mail it
+# can take something from (its money, or an item its bags can store). ArtisanFreeSlots (0 = off): a crafting
+# artisan (bag house / catalog line) under this many free bag slots makes room at its next decision: unsellable
+# junk (SellPrice 0, not a material / product of its line, not wanted by a quest in its log, not the hearthstone,
+# a profession tool, a fishing pole, a container or a not-destroyable item) is destroyed, ascending item guid, only
+# for the slots the sales below cannot free; the sellable junk is sold at the vendor near home (a `supply` junk
+# row, op vendor; each destroyed stack op destroy + a "[Supply] junk" log line); still short with no bag worn it
+# buys a Small Brown Pouch 4496 (500 copper, general goods near home: Stormwind 1285, Orgrimmar 3369) with its own
+# gold, asking an Outfit grant for a shortfall (needs AutoWow.Supply.Outfit), and wears it (`supply` outfit row).
+# A craft whose product has no room (no free slot, no partial stack) is skipped and makes room (one slot at least).
+# ArtisanMinLevel (0 = off): a configured artisan below this level is an apprentice, an ordinary cohort adventurer
+# (quests, errands, parties; the chain treats it as offline: no feed / pay / deliveries); at the level (out of any
+# dungeon) it goes home and trains ("[Supply] apprentice ... graduated"). Apprentice Alchemy needs level 5.
+# Configured artisans are pinned to their house guild at login like reps (AutoWow.Guilds): a pinned rep / artisan
+# in another of our house guilds (not its leader) is moved (`guild` moved row); other guilds are never touched.
+AutoWow.Supply.ArtisanFreeSlots = 4
+AutoWow.Supply.ArtisanMinLevel = 10
 
 # Gatherer squad (lane G; SquadPolicy.h; docs/SUPPLY_CHAIN_PLAN.md "Gatherer squad"). Enable: a per-team roster
 # (Alliance / Horde: ','-separated guids or lo-hi ranges, at most 10 per team, sorted; the guids must also be in
