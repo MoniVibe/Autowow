@@ -24,7 +24,15 @@ Class spells stay auto-learned for now (trainer visits come later).
 - **The guild rep is the hub.** Materials are mailed to the rep. The rep hands out craft contracts and materials, collects the goods, and delivers them to members who need them.
   - The rep needs plenty of storage. For V1 that is the rep's own bags plus the character bank.
   - Guild bank item tabs cost 100g and up in 3.3.5. Buying the first tab becomes a faction milestone unlock.
-- **Inter-rep trade (lane C).** Reps buy and sell between houses, for example Weavers buying leather from Tanners. Gold and items move rep to rep by mail, priced from vendor value and AH price.
+- **Inter-rep trade (lane C), owner ruling 2026-09-26: through the faction auction house.** Reps list house surplus materials and buy what their artisans need on the faction auction house.
+  - Price discovery comes from the auction house itself.
+  - The deposit and the 5% house cut act as a gold sink.
+  - Direct rep-to-rep deals (standing contracts, alliance discounts, favours) come later as flavour.
+  - The neutral goblin auction houses (Booty Bay, Gadgetzan) are the future cross-faction or smuggling channel.
+- **Material tiers (lane C).** Evidence: soak-s42-full-r1, cohort mean level 26.5, got 4 linen donations in 2 h. Bots at that level loot wool and silk, not linen.
+  - The overlord picks the highest bag tier the house can supply: Linen Bag (tailoring 45), Woolen Bag (80), Small Silk Pack (Silk tier).
+  - It also picks a skill-up recipe for the artisan's current tier.
+  - All cloth types are routed. Stock the artisan can't use yet is kept until the artisan reaches its tier.
 - **Who plays the rep (owner ruling 2026-09-25).** A dedicated character per house per faction, 8 in total.
   - **Never quests.** Starts at level 1. Gains XP only from successful trades and deals, with the XP award named and logged.
   - **Home:** a faction capital, next to the bank, mailbox and auction house. Level 1 is safe there.
