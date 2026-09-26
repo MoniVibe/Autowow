@@ -35,6 +35,8 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "Playerbots.h"
+#include "SelfCraftPolicy.h"
 #include "SupplyPolicy.h"
 #include "Trainer.h"
 #include "WorldPacket.h"
@@ -1548,9 +1550,16 @@ void RouteCloth(Player* bot)
                      bot->HasSkill(SKILL_TAILORING), room))
         return;
     std::vector<Stack> stacks;
+    PlayerbotAI* const selfAI = AutoWowSelfCraft::Enabled() ? PlayerbotsMgr::instance().GetPlayerbotAI(bot) : nullptr;
     for (std::uint32_t const c : kCloth)
         for (Stack const& s : LooseStacks(bot, c))
+        {
+            // AutoWow.SelfCraft: the bandage cloth reserve stays with the bot.
+            Item* item = selfAI ? bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(s.guid)) : nullptr;
+            if (item && AutoWowSelfCraft::ReservedCloth(selfAI, bot, item))
+                continue;
             stacks.push_back(s);
+        }
     std::vector<std::uint32_t> pick = PickStacks(stacks, room);
     if (pick.empty())
         return;
