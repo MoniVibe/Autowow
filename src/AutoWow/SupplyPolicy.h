@@ -13,6 +13,8 @@
 // the rep mails bags to the members with the most empty slots. Pure rules here (unit-tested); runtime in
 // AutoWowSupply.cpp (world thread) and NewRpgSupply.cpp (the role bots' map-thread step). No free gold or
 // items: every item and copper moves by mail, vendor, trainer, auction house or the guild bank.
+// Product catalog (lane D, AutoWow.Supply.Products): kCatalog lists the lines; bags keep the bespoke chain
+// above, a single-step line (potions) runs on the generic LineTick over its tier table.
 
 #include <algorithm>
 #include <array>
@@ -28,7 +30,8 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 2;  // RoleState / TeamState layout; bump on change (2: tiers, market)
+inline constexpr std::uint32_t kStateVersion = 3;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+                                                   // 3: catalog LineView / RoleInfo.line)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -60,6 +63,15 @@ struct Params
     std::uint32_t buyBudget = 500;      // AutoWow.Supply.BuyBudget: copper the rep may spend per market visit
     std::uint32_t sellKeep = 60;        // AutoWow.Supply.SellKeep: units of an out-of-reach cloth kept, not listed
     std::uint32_t listFloat = 1000;     // AutoWow.Supply.ListFloat: copper the bank keeps on the rep for deposits
+    // Product catalog (AutoWow.Supply.Products; bit i = kCatalog[i]; default bags only):
+    std::uint8_t lines = 1;             // AutoWow.Supply.Products
+    bool routeHerbs = false;            // AutoWow.Supply.RouteHerbs
+    std::uint32_t herbCap = 100;        // AutoWow.Supply.HerbCap: per routed herb, rep stock above which routing stops
+    std::uint32_t potionTarget = 5;     // AutoWow.Supply.PotionTarget: potions of its best tier a member should hold
+    std::uint32_t potionPayPct = 200;   // AutoWow.Supply.PotionPayPct: pay per potion = vendor sell value * this / 100
+    std::uint32_t potionMaxOrder = 20;  // AutoWow.Supply.PotionMaxOrder: potions per order
+    std::uint32_t potionKeep = 20;      // AutoWow.Supply.PotionSurplusKeep: potions per tier the rep keeps, no need
+    std::uint32_t skillupCasts = 10;    // AutoWow.Supply.SkillupCasts: casts of reagents kept at a leveling artisan
 };
 
 // ---- bag need (overlord) ----
@@ -454,6 +466,369 @@ inline constexpr std::uint32_t kXpDivisor = 20;  // auto work XP: about one leve
     return !openWant && repBags > keep ? repBags - keep : 0;
 }
 
+// ---- product catalog (AutoWow.Supply.Products) ----
+
+// A product line: one house's profession making one family of goods for the members. Wire-stable ids (the
+// ledger `line` field and the Products bit), append only.
+enum class Line : std::uint8_t
+{
+    Bags = 0,
+    Potions = 1
+};
+inline constexpr std::uint8_t kNoLine = 0xFF;
+
+// Where a reagent comes from: Route = adventurers mail it to the house rep (and, with Market, the rep buys what
+// is short on the faction AH); Vendor = the artisan buys it at the vendor near home (treasury-funded copper);
+// Market = the rep buys it on the faction AH only; Craft = the artisan makes it (the product of a lower tier).
+enum class Source : std::uint8_t
+{
+    Route = 0,
+    Vendor = 1,
+    Market = 2,
+    Craft = 3
+};
+
+enum class NeedRule : std::uint8_t
+{
+    BagSlots = 0,    // empty / smaller equipped bag slots (RankNeeds)
+    PotionStock = 1  // member stock of its best usable tier below PotionTarget (RankStock)
+};
+
+enum class Consumer : std::uint8_t
+{
+    EquipBag = 0,     // the stock equip action wears a delivered bag
+    DrinkAtLowHp = 1  // the stock combat "potions" strategy: critical health -> healthstone -> healing potion
+};
+
+struct Reagent
+{
+    std::uint32_t item = 0;
+    std::uint32_t count = 0;
+    Source source = Source::Route;
+};
+
+inline constexpr std::size_t kMaxReagents = 3;
+inline constexpr std::size_t kMaxLineTiers = 3;
+
+// One recipe of a single-step line: spell -> one product per cast.
+struct LineTier
+{
+    std::uint32_t spell = 0, product = 0;
+    std::uint32_t skill = 0;     // profession skill to learn it (trainer ReqSkillRank; 1 = learned with the skill)
+    std::uint32_t grey = 0;      // no skill-up at or above (SkillLineAbility TrivialSkillLineRankHigh)
+    std::uint32_t reqLevel = 0;  // product item RequiredLevel (the need rule's "usable at their level")
+    std::array<Reagent, kMaxReagents> reagents{};
+};
+
+struct ProductLine
+{
+    Line id = Line::Bags;
+    char const* name = "";   // AutoWow.Supply.Products token and ledger `line`
+    char const* key = "";    // config suffix: AutoWow.Supply.House.<key>, AutoWow.Supply.Artisan.Learn.<key>
+    char const* house = "";  // default house (bags: AutoWow.Supply.House)
+    char const* learn = "";  // default trainer spells the artisan learns (profession ranks), plus tier recipes
+    std::uint32_t skillLine = 0;
+    NeedRule need = NeedRule::BagSlots;
+    Consumer consumer = Consumer::EquipBag;
+    std::array<LineTier, kMaxLineTiers> tiers{};
+    std::uint8_t tierCount = 0;  // 0 = a bespoke runtime (bags: the bolt -> bag chain over kTiers)
+};
+
+// Bags: Weavers / tailoring 197, the lane B/C runtime (TeamTick / TierTick over kTiers), unchanged.
+// Potions (Brewers / alchemy 171), checked against the 3.3.5 world DB (item_template, trainer_spell of trainer
+// 67 = Stormwind 5499 / Orgrimmar 3347) and Spell.dbc / SkillLineAbility.dbc; the runtime re-checks outputs and
+// reagent counts against the loaded spells and disables the line on a mismatch:
+//   Minor Healing Potion 118 (req 1): spell 2330, learned with the skill, grey 95; Peacebloom 2447 + Silverleaf
+//     765 + Empty Vial 3371 (vendor).
+//   Lesser Healing Potion 858 (req 3): spell 2337, alchemy 55, grey 125; Minor Healing Potion + Briarthorn 2450.
+//   Healing Potion 929 (req 12): spell 3447, alchemy 110, grey 175; Bruiseweed 2453 + Briarthorn + Leaded Vial
+//     3372 (vendor).
+inline constexpr ProductLine kCatalog[] = {
+    {Line::Bags, "bags", "Bags", "Weavers", "", 197, NeedRule::BagSlots, Consumer::EquipBag, {}, 0},
+    // Alchemy ranks (trainer 67): Apprentice 2275 (level 5), Journeyman 2280 (skill 50, level 10), Expert 3465
+    // (skill 125, level 20).
+    {Line::Potions, "potions", "Potions", "Brewers", "2275,2280,3465", 171, NeedRule::PotionStock,
+     Consumer::DrinkAtLowHp,
+     {{{2330, 118, 1, 95, 1, {{{2447, 1, Source::Route}, {765, 1, Source::Route}, {3371, 1, Source::Vendor}}}},
+       {2337, 858, 55, 125, 3, {{{118, 1, Source::Craft}, {2450, 1, Source::Route}, {}}}},
+       {3447, 929, 110, 175, 12, {{{2453, 1, Source::Route}, {2450, 1, Source::Route}, {3372, 1, Source::Vendor}}}}}},
+     3},
+};
+inline constexpr std::size_t kLineCount = std::size(kCatalog);
+
+[[nodiscard]] inline constexpr ProductLine const& LineOf(Line l) { return kCatalog[static_cast<std::size_t>(l)]; }
+
+// ",\"line\":\"bags\"": appended to every `supply` row (append-only schema).
+inline std::string LineField(Line l)
+{
+    std::string out = ",\"line\":\"";
+    out += LineOf(l).name;
+    out += "\"";
+    return out;
+}
+
+// "bags,potions" -> bit i per kCatalog[i]. False (out untouched) on an unknown or empty name.
+inline bool ParseProducts(std::string_view text, std::uint8_t& out)
+{
+    std::uint8_t mask = 0;
+    bool ok = true;
+    AutoWowGuilds::detail::Split(text, ',', [&](std::string_view token) {
+        token = AutoWowGuilds::detail::Trim(token);
+        std::size_t i = 0;
+        while (i < kLineCount && token != kCatalog[i].name)
+            ++i;
+        if (i == kLineCount)
+            ok = false;
+        else
+            mask |= static_cast<std::uint8_t>(1u << i);
+    });
+    if (!ok || !mask)
+        return false;
+    out = mask;
+    return true;
+}
+
+// The tier whose product is `item`, else kNoTier.
+[[nodiscard]] inline std::uint8_t TierOf(ProductLine const& l, std::uint32_t item)
+{
+    for (std::uint8_t i = 0; i < l.tierCount; ++i)
+        if (l.tiers[i].product == item)
+            return i;
+    return kNoTier;
+}
+
+// The distinct Route reagents of the line (routed by adventurers), in table order.
+[[nodiscard]] inline std::vector<std::uint32_t> RouteItems(ProductLine const& l)
+{
+    std::vector<std::uint32_t> out;
+    for (std::size_t i = 0; i < l.tierCount; ++i)
+        for (Reagent const& r : l.tiers[i].reagents)
+            if (r.item && r.source == Source::Route && std::find(out.begin(), out.end(), r.item) == out.end())
+                out.push_back(r.item);
+    return out;
+}
+
+// Casts of tier `i` the holdings make: every Route / Market / Craft reagent in hand (a Craft reagent also
+// counts the casts its own tier makes from the holdings); Vendor reagents are bought, never a limit.
+// have(item) -> units. Holdings shared by two levels are counted at both (not so in kCatalog).
+template <typename Have>
+[[nodiscard]] std::uint32_t Casts(ProductLine const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
+{
+    std::uint64_t best = 0xFFFFFFFFu;
+    if (i >= l.tierCount || !depth)
+        return 0;
+    for (Reagent const& r : l.tiers[i].reagents)
+    {
+        if (!r.item || !r.count || r.source == Source::Vendor)
+            continue;
+        std::uint64_t units = have(r.item);
+        if (r.source == Source::Craft)
+            if (std::uint8_t const sub = TierOf(l, r.item); sub != kNoTier && sub != i)
+                units += Casts(l, sub, have, depth - 1);
+        best = std::min<std::uint64_t>(best, units / r.count);
+    }
+    return static_cast<std::uint32_t>(best);
+}
+
+// What `n` casts of tier `i` still lack beyond the holdings, per non-Craft reagent (item, units, source); a
+// short Craft reagent adds its own tier's reagents for the missing casts. Merged per item, table order.
+struct Lack
+{
+    std::uint32_t item = 0;
+    std::uint32_t units = 0;
+    Source source = Source::Route;
+};
+
+template <typename Have>
+void AddLacks(ProductLine const& l, std::size_t i, std::uint64_t n, Have&& have, std::vector<Lack>& out,
+              std::size_t depth = kMaxLineTiers)
+{
+    if (i >= l.tierCount || !depth || !n)
+        return;
+    for (Reagent const& r : l.tiers[i].reagents)
+    {
+        if (!r.item || !r.count)
+            continue;
+        std::uint32_t const miss = Short(n * r.count, have(r.item));
+        if (!miss)
+            continue;
+        if (r.source == Source::Craft)
+        {
+            if (std::uint8_t const sub = TierOf(l, r.item); sub != kNoTier && sub != i)
+                AddLacks(l, sub, miss, have, out, depth - 1);
+            continue;
+        }
+        auto const it = std::find_if(out.begin(), out.end(), [&](Lack const& x) { return x.item == r.item; });
+        if (it == out.end())
+            out.push_back({r.item, miss, r.source});
+        else
+            it->units = static_cast<std::uint32_t>(std::min<std::uint64_t>(0xFFFFFFFFu, std::uint64_t(it->units) + miss));
+    }
+}
+
+template <typename Have>
+[[nodiscard]] std::vector<Lack> Lacks(ProductLine const& l, std::size_t i, std::uint64_t n, Have&& have)
+{
+    std::vector<Lack> out;
+    AddLacks(l, i, n, have, out);
+    return out;
+}
+
+// The next cast toward tier `i`: `i` when every reagent is in hand, else the tier of a short Craft reagent whose
+// own next cast is possible, else kNoTier. have(item) -> units in the artisan's bags.
+template <typename Have>
+[[nodiscard]] std::uint8_t NextCast(ProductLine const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
+{
+    if (i >= l.tierCount || !depth)
+        return kNoTier;
+    bool ready = true;
+    for (Reagent const& r : l.tiers[i].reagents)
+        if (r.item && r.count && have(r.item) < r.count)
+        {
+            ready = false;
+            if (r.source == Source::Craft)
+                if (std::uint8_t const sub = TierOf(l, r.item); sub != kNoTier && sub != i)
+                    if (std::uint8_t const c = NextCast(l, sub, have, depth - 1); c != kNoTier)
+                        return c;
+        }
+    return ready ? static_cast<std::uint8_t>(i) : kNoTier;
+}
+
+// Units of `item` the artisan keeps (not shipped to the rep) as a Craft reagent of `casts` casts of tier `i`.
+[[nodiscard]] inline std::uint32_t CraftReserve(ProductLine const& l, std::uint8_t i, std::uint32_t casts,
+                                                std::uint32_t item)
+{
+    if (i >= l.tierCount)
+        return 0;
+    for (Reagent const& r : l.tiers[i].reagents)
+        if (r.item == item && r.source == Source::Craft)
+            return static_cast<std::uint32_t>(std::min<std::uint64_t>(0xFFFFFFFFu, std::uint64_t(casts) * r.count));
+    return 0;
+}
+
+// ---- stock need (NeedRule::PotionStock) ----
+
+// One online cohort member of the team: level and held units (bags + mailbox) of each tier's product.
+struct StockMember
+{
+    std::uint32_t guid = 0;
+    std::uint32_t level = 0;
+    std::array<std::uint32_t, kMaxLineTiers> held{};
+};
+
+// The member's tier: the highest the house can make (known) usable at its level, else the highest usable at
+// its level (nothing known yet); kNoTier = none usable.
+[[nodiscard]] inline std::uint8_t BestTier(ProductLine const& l, std::uint32_t level,
+                                           std::array<bool, kMaxLineTiers> const& known)
+{
+    std::uint8_t best = kNoTier, bestKnown = kNoTier;
+    for (std::uint8_t i = 0; i < l.tierCount; ++i)
+        if (l.tiers[i].reqLevel <= level)
+        {
+            best = i;
+            if (known[i])
+                bestKnown = i;
+        }
+    return bestKnown != kNoTier ? bestKnown : best;
+}
+
+struct StockNeed
+{
+    std::uint32_t guid = 0;
+    std::uint8_t tier = kNoTier;
+    std::uint32_t stock = 0;
+    std::uint32_t want = 0;  // target - stock
+};
+
+// Members below `target` of their tier's product, lowest stock first, ties the lower guid.
+[[nodiscard]] inline std::vector<StockNeed> RankStock(ProductLine const& l, std::vector<StockMember> const& members,
+                                                      std::array<bool, kMaxLineTiers> const& known,
+                                                      std::uint32_t target)
+{
+    std::vector<StockNeed> out;
+    for (StockMember const& m : members)
+    {
+        std::uint8_t const tier = BestTier(l, m.level, known);
+        if (tier == kNoTier || m.held[tier] >= target)
+            continue;
+        out.push_back({m.guid, tier, m.held[tier], target - m.held[tier]});
+    }
+    std::sort(out.begin(), out.end(), [](StockNeed const& a, StockNeed const& b)
+              { return a.stock != b.stock ? a.stock < b.stock : a.guid < b.guid; });
+    return out;
+}
+
+// The want of the ranked members on tier `tier`.
+[[nodiscard]] inline std::uint32_t TierWant(std::vector<StockNeed> const& ranked, std::uint8_t tier)
+{
+    std::uint32_t n = 0;
+    for (StockNeed const& s : ranked)
+        if (s.tier == tier)
+            n += s.want;
+    return n;
+}
+
+struct StackDelivery
+{
+    std::uint32_t guid = 0;
+    std::vector<std::uint32_t> stacks;  // item guid lows
+    std::uint32_t units = 0;
+};
+
+// The rep's stacks of tier `tier` (ascending guid) to the ranked members of that tier in order: whole stacks
+// until each want is covered (the last stack may overshoot it), at most kMaxMailStacks per mail.
+// ponytail: whole stacks, no split (a split is a second item + mail); overshoot <= one stack, the next want
+// scan sees it as stock.
+[[nodiscard]] inline std::vector<StackDelivery> PlanStackDeliveries(std::vector<StockNeed> const& ranked,
+                                                                    std::uint8_t tier, std::vector<Stack> stacks)
+{
+    std::sort(stacks.begin(), stacks.end(), [](Stack const& a, Stack const& b) { return a.guid < b.guid; });
+    std::vector<StackDelivery> out;
+    std::size_t next = 0;
+    for (StockNeed const& s : ranked)
+    {
+        if (s.tier != tier)
+            continue;
+        if (next >= stacks.size())
+            break;
+        StackDelivery d{s.guid, {}, 0};
+        for (; next < stacks.size() && d.units < s.want && d.stacks.size() < kMaxMailStacks; ++next)
+        {
+            d.stacks.push_back(stacks[next].guid);
+            d.units += stacks[next].count;
+        }
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+// ---- routing of a line's reagents (adventurer sell stop) ----
+
+// Per routed item (stacks[i] of items[i]): whole stacks within its own room, at most kMaxMailStacks in all.
+struct RoutePlan
+{
+    std::vector<std::uint32_t> picks;  // item guid lows
+    std::vector<std::uint32_t> units;  // per item
+};
+
+[[nodiscard]] inline RoutePlan PlanRoute(std::vector<std::vector<Stack>> const& stacks,
+                                         std::vector<std::uint32_t> const& rooms)
+{
+    RoutePlan out;
+    out.units.assign(stacks.size(), 0);
+    for (std::size_t i = 0; i < stacks.size() && i < rooms.size(); ++i)
+        for (std::uint32_t const g : PickStacks(stacks[i], rooms[i]))
+        {
+            if (out.picks.size() >= kMaxMailStacks)
+                break;
+            out.picks.push_back(g);
+            for (Stack const& s : stacks[i])
+                if (s.guid == g)
+                    out.units[i] += s.count;
+        }
+    return out;
+}
+
 // ---- config parsing ----
 
 // "map,x,y,z" (integers, yards). False (out untouched) on anything else.
@@ -573,6 +948,7 @@ struct RoleInfo
     bool alliance = false;
     bool bagHouse = false;  // its house makes the V1 product (only that artisan crafts)
     Home home;
+    std::uint8_t line = kNoLine;  // the enabled catalog line (tierCount > 0) its house makes, else kNoLine
 };
 
 // Station near a team's home (read-only after LoadConfig): creature entry (or mailbox go entry) + position.
@@ -602,6 +978,22 @@ struct TeamView
     std::uint32_t artisanSkill = 0;  // the artisan's tailoring (0 = offline / unknown)
     std::array<std::uint32_t, kTierCount> surplusBags{};
     std::vector<MarketWant> buy;     // Market: what the rep buys on the faction AH (at most kTierCount + 1)
+};
+
+// A catalog line's per-team view (lines with tierCount > 0; world thread writes, its role bots read).
+struct LineView
+{
+    std::uint32_t version = kStateVersion;
+    std::uint32_t orderId = 0;
+    std::uint32_t remaining = 0;     // product units the order still wants delivered to the rep
+    std::uint8_t product = kNoTier;  // tier index of the ordered product
+    std::uint32_t productWant = 0;
+    std::uint8_t skillup = kNoTier;  // tier index of the skill-up recipe
+    std::uint32_t artisanSkill = 0;  // the artisan's profession skill (0 = offline / unknown)
+    std::vector<std::uint32_t> rooms;                    // per RouteItems(line): donor room (units)
+    std::array<std::uint32_t, kMaxLineTiers> surplus{};  // units per tier the rep lists / sells now
+    std::vector<MarketWant> buy;                         // Market: what the rep buys on the faction AH
+    std::vector<MarketWant> vendor;                      // what the artisan holds at least of each Vendor reagent
 };
 
 // Reads AutoWow.Supply.* (after AutoWowGuilds::LoadConfig; needs AutoWow.Guilds.Enable) and finds the stations.
@@ -642,6 +1034,19 @@ void QueueMarketBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<M
 // World thread (AutoWowTrade mail collection): a rep took an auction-sale mail; with Market on its proceeds
 // (`gold` copper) go to its house bank and a `sold` row is written. No-op for anyone else.
 void OnAuctionSold(Player* bot, std::uint32_t item, std::uint32_t count, std::int64_t gold);
+
+// ---- catalog lines (AutoWow.Supply.Products) ----
+inline bool LineOn(Line l) { return detail::gEnabled && (detail::gParams.lines >> static_cast<unsigned>(l) & 1u); }
+LineView LineViewOf(Line l, bool alliance);
+Stations const& LineStationsOf(Line l, bool alliance);  // mailbox / auctioneer as the team's; trainer and
+                                                        // threadVendor = the line's trainer and reagent vendor
+std::vector<std::uint32_t> const& LineLearnSpells(Line l);
+// Map thread (line artisan step): copper it lacks for vendor reagents / training / postage.
+void SetLineArtisanWant(Line l, bool alliance, std::uint64_t copper);
+void ClearLineSurplus(Line l, bool alliance);
+// Emit a `supply` row of a line (Emit = the bags line).
+void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item, std::uint32_t count,
+              std::uint64_t copper, std::uint32_t from, std::uint32_t to, char const* op = nullptr);
 }  // namespace AutoWowSupply
 
 #endif
