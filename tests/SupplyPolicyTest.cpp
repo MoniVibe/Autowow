@@ -140,5 +140,148 @@ TEST(SupplyPolicy, LedgerWireIsStable)
               ",\"house\":\"Weavers\",\"oid\":3,\"item\":4238,\"count\":2,\"copper\":800,\"from\":62964,\"to\":70001");
     EXPECT_EQ(LedgerFields("Weavers", 0, 0, 0, 0, 1, 1, "stuck"),
               ",\"house\":\"Weavers\",\"oid\":0,\"item\":0,\"count\":0,\"copper\":0,\"from\":1,\"to\":1,\"op\":\"stuck\"");
+    EXPECT_STREQ(ReasonName(Reason::List), "list");
+    EXPECT_STREQ(ReasonName(Reason::Buy), "buy");
+    EXPECT_STREQ(ReasonName(Reason::Sold), "sold");
+    EXPECT_EQ(static_cast<int>(Reason::Sold), 12);
+}
+
+TEST(SupplyTiers, TableMatchesTheWorldDb)
+{
+    ASSERT_EQ(kTierCount, 3u);
+    // Tier 0 is the V1 chain the flag-off path hardwires.
+    EXPECT_EQ(kTiers[0].cloth, kLinen);
+    EXPECT_EQ(kTiers[0].bagSpell, 3755u);
+    EXPECT_EQ(kTiers[0].boltSpell, 2963u);
+    EXPECT_EQ(kTiers[0].bag, 4238u);
+    EXPECT_EQ(kTiers[0].thread, 2320u);
+    EXPECT_EQ(kTiers[1].bag, 4240u);
+    EXPECT_EQ(kTiers[1].bolt, 2997u);
+    EXPECT_EQ(kTiers[2].bag, 4245u);
+    EXPECT_EQ(kTiers[2].extra, 4234u);
+    for (std::size_t i = 0; i < kTierCount; ++i)
+    {
+        EXPECT_EQ(kTiers[i].cloth, kTierCloth[i]);
+        EXPECT_LE(kTiers[i].boltSkill, kTiers[i].bagSkill);
+        if (i)
+        {
+            EXPECT_GT(kTiers[i].bagSlots, kTiers[i - 1].bagSlots);
+            EXPECT_GT(kTiers[i].bagSkill, kTiers[i - 1].bagSkill);
+        }
+    }
+}
+
+TEST(SupplyTiers, ProductIsHighestKnownWantedTier)
+{
+    // Artisan knows linen + wool bags; members want both; the house can make both: wool.
+    EXPECT_EQ(PickProduct({{true, 5, 2}, {true, 3, 1}, {false, 3, 0}}), 1);
+    // Nothing wants the wool bag's 8 slots (every member wears 8+): no product even though linen is known
+    // (a want for a lower tier always implies one for a higher tier: empty slots count for every tier).
+    EXPECT_EQ(PickProduct({{true, 0, 2}, {true, 0, 1}, {false, 0, 0}}), kNoTier);
+    // Wool known and wanted but no wool in the house: linen, which the house can make now.
+    EXPECT_EQ(PickProduct({{true, 5, 2}, {true, 5, 0}, {false, 5, 0}}), 0);
+    // Nothing craftable: the highest known wanted tier (its materials come from the market).
+    EXPECT_EQ(PickProduct({{true, 5, 0}, {true, 5, 0}, {false, 5, 0}}), 1);
+    // Below the linen bag recipe: nothing to order.
+    EXPECT_EQ(PickProduct({{false, 5, 9}, {false, 5, 9}, {false, 5, 9}}), kNoTier);
+}
+
+TEST(SupplyTiers, SkillupIsCheapestNonGreyStockedRecipe)
+{
+    // skill 43: linen bolt (grey 50) and linen bag (grey 105) known; wool not learned yet.
+    std::vector<SkillupOption> const opts = {
+        {2963, 0, false, true, 50, true, 26},   // 2 linen * 13
+        {3755, 0, true, true, 105, true, 138},  // 6 linen + 3 thread
+        {2964, 1, false, false, 105, true, 99},
+    };
+    EXPECT_EQ(PickSkillup(43, opts, true), 0);
+    // At 50 the linen bolt is grey: the linen bag levels.
+    EXPECT_EQ(PickSkillup(50, opts, true), 1);
+    // At 105 everything known is grey.
+    EXPECT_EQ(PickSkillup(105, opts, true), -1);
+    // No linen in the house: nothing stocked, but the market target ignores stock.
+    std::vector<SkillupOption> empty = opts;
+    for (SkillupOption& o : empty)
+        o.stocked = false;
+    EXPECT_EQ(PickSkillup(43, empty, true), -1);
+    EXPECT_EQ(PickSkillup(43, empty, false), 0);
+    // Equal cost: the lower spell id.
+    EXPECT_EQ(PickSkillup(10, {{3000, 0, false, true, 50, true, 5}, {2000, 0, false, true, 50, true, 5}}, true), 1);
+}
+
+TEST(SupplyTiers, PerClothCapsDoNotStarveEachOther)
+{
+    // A full out-of-reach wool stock leaves linen and silk room.
+    std::array<std::uint32_t, 3> const rooms = ClothRooms<3>({10, 200, 0}, 200, true);
+    EXPECT_EQ(rooms[0], 190u);
+    EXPECT_EQ(rooms[1], 0u);
+    EXPECT_EQ(rooms[2], 200u);
+    std::array<std::uint32_t, 3> const off = ClothRooms<3>({0, 0, 0}, 200, false);
+    EXPECT_EQ(off[0] + off[1] + off[2], 0u);
+}
+
+TEST(SupplyTiers, CraftsProductThenSkillup)
+{
+    Tier const& linen = kTiers[0];
+    Tier const& silk = kTiers[2];
+    // Order open, reagents in hand: the bag.
+    EXPECT_EQ(NextTierCraft(linen, 1, true, {0, 3, 3, 0, 0}, nullptr, false, {}), Craft::Bag);
+    // Silk pack: thread and bolts but no Heavy Leather: bolts only when short, else wait.
+    EXPECT_EQ(NextTierCraft(silk, 1, true, {8, 3, 3, 1, 0}, nullptr, false, {}), Craft::None);
+    EXPECT_EQ(NextTierCraft(silk, 1, true, {8, 3, 3, 2, 0}, nullptr, false, {}), Craft::Bag);
+    // No order: the skill-up bolt from its cloth.
+    EXPECT_EQ(NextTierCraft(linen, 0, true, {}, &linen, false, {2, 0, 0, 0, 0}), Craft::Bolt);
+    EXPECT_EQ(NextTierCraft(linen, 0, true, {}, &linen, false, {1, 0, 0, 0, 0}), Craft::None);
+    // Bag skill-up: bolts first, then the bag once thread is in hand.
+    EXPECT_EQ(NextTierCraft(linen, 0, true, {}, &linen, true, {6, 1, 0, 0, 0}), Craft::Bolt);
+    EXPECT_EQ(NextTierCraft(linen, 0, true, {}, &linen, true, {0, 3, 0, 0, 0}), Craft::None);
+    EXPECT_EQ(NextTierCraft(linen, 0, true, {}, &linen, true, {0, 3, 3, 0, 0}), Craft::Bag);
+    EXPECT_EQ(NextTierCraft(linen, 0, true, {}, nullptr, false, {}), Craft::None);
+}
+
+TEST(SupplyMarket, BuysUnderThePriceCeilingWithinBudget)
+{
+    // Linen sells to a vendor for 13: ceiling 400% = 52 per unit. Want 25 linen, budget 1000.
+    std::vector<MarketListing> const listings = {
+        {1, kLinen, 20, 1100},  // 55 / unit: over the ceiling
+        {2, kLinen, 10, 400},   // 40 / unit
+        {3, kLinen, 5, 150},    // 30 / unit: cheapest first
+        {4, kWool, 20, 100},    // not wanted
+        {5, kLinen, 20, 800},   // 40 / unit, id after 2
+        {6, kLinen, 20, 0},     // bid only
+    };
+    // Cheapest per unit first: 3 (150), 2 (400); 5 (800) no longer fits the 450 left.
+    std::vector<MarketListing> buys = PlanMarketBuys(listings, {{kLinen, 25, 13}}, 400, 1000);
+    ASSERT_EQ(buys.size(), 2u);
+    EXPECT_EQ(buys[0].id, 3u);
+    EXPECT_EQ(buys[1].id, 2u);
+    // A bigger budget: 5 too (15 of 25 held, the last stack may overshoot the want).
+    buys = PlanMarketBuys(listings, {{kLinen, 25, 13}}, 400, 2000);
+    ASSERT_EQ(buys.size(), 3u);
+    EXPECT_EQ(buys[2].id, 5u);
+    // Budget 500: 3 (150), then 2 (400) does not fit the 350 left.
+    buys = PlanMarketBuys(listings, {{kLinen, 25, 13}}, 400, 500);
+    ASSERT_EQ(buys.size(), 1u);
+    EXPECT_EQ(buys[0].id, 3u);
+    // Want already covered: nothing.
+    EXPECT_TRUE(PlanMarketBuys(listings, {{kLinen, 0, 13}}, 400, 1000).empty());
+    // Ceiling 100%: nothing at or under 13 a unit.
+    EXPECT_TRUE(PlanMarketBuys(listings, {{kLinen, 25, 13}}, 100, 100000).empty());
+}
+
+TEST(SupplyMarket, SellsWholeStacksAboveTheKeep)
+{
+    // 20 + 20 + 15 wool, keep 20: list the stacks while 20 stay (ascending guid).
+    std::vector<std::uint32_t> const sell = SellStacks({{30, 15}, {10, 20}, {20, 20}}, 20);
+    ASSERT_EQ(sell.size(), 2u);
+    EXPECT_EQ(sell[0], 10u);  // 55 -> 35 left; guid 20 would leave 15 < 20: kept
+    EXPECT_EQ(sell[1], 30u);  // 35 -> 20 left
+    EXPECT_TRUE(SellStacks({{1, 20}}, 20).empty());
+    EXPECT_EQ(SellStacks({{1, 20}, {2, 20}}, 0).size(), 2u);
+    EXPECT_TRUE(OutOfReach(kTiers[1], 43));
+    EXPECT_FALSE(OutOfReach(kTiers[0], 43));
+    EXPECT_FALSE(OutOfReach(kTiers[1], 75));
+    EXPECT_EQ(Short(10, 4), 6u);
+    EXPECT_EQ(Short(4, 10), 0u);
 }
 }  // namespace

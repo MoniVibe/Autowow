@@ -162,6 +162,8 @@ TEST(Trade, ParseAuctionSubjectAndSaleBid)
     EXPECT_EQ(MailAction(ParseAuctionSubject("")), Action::Mail);
     EXPECT_EQ(ParseSaleBid("     1000000f5ab:780:780:117:39:3600:0"), 780U);
     EXPECT_EQ(ParseSaleBid("garbage"), 0U);
+    EXPECT_EQ(ParseSaleDeposit("     1000000f5ab:780:780:117:39:3600:0"), 117U);
+    EXPECT_EQ(ParseSaleDeposit("garbage"), 0U);
 }
 
 TEST(Trade, LedgerFieldsWireFormat)

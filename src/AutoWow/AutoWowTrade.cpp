@@ -33,6 +33,7 @@
 #include "PlayerbotOperation.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
+#include "SupplyPolicy.h"
 #include "TradePolicy.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
@@ -160,6 +161,7 @@ public:
             AuctionMail const am = m->messageType == MAIL_AUCTION ? ParseAuctionSubject(m->subject) : AuctionMail{};
             Action const action = MailAction(am);
             uint32 const bid = action == Action::Sold ? ParseSaleBid(m->body) : 0;
+            uint32 const saleDeposit = action == Action::Sold ? ParseSaleDeposit(m->body) : 0;
             uint64 const m0 = bot->GetMoney();
             if (m->money)
             {
@@ -191,6 +193,9 @@ public:
                 continue;
             Emit(bot, action, am.ok ? am.entry : firstEntry, am.ok ? am.count : count, bid, gold,
                  am.ok ? am.auctionId : 0);
+            if (action == Action::Sold && AutoWowSupply::Market())
+                // A rep's sale proceeds (bid - cut) -> its house bank; the refunded deposit stays its listing float.
+                AutoWowSupply::OnAuctionSold(bot, am.entry, am.count, gold - int64(saleDeposit));
         }
         return true;
     }
@@ -295,7 +300,8 @@ void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
         std::make_unique<AuctionOperation>(bot->GetGUID(), auctioneer->GetGUID(), std::move(posts), std::move(buys)));
 }
 
-std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids)
+std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids,
+                         std::vector<Post>* planned)
 {
     Params const& p = detail::gParams;
     AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
@@ -323,6 +329,8 @@ std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uin
                          static_cast<uint32>(std::max<uint64>(1, buyout * p.bidPct / 100)), static_cast<uint32>(buyout),
                          deposit});
     }
+    if (planned)
+        *planned = posts;
     if (!posts.empty())
         PlayerbotWorldThreadProcessor::instance().QueueOperation(
             std::make_unique<AuctionOperation>(bot->GetGUID(), auctioneer->GetGUID(), posts, std::vector<Buy>{}));
