@@ -68,39 +68,13 @@ std::uint8_t HuntTeams(uint32 faction, bool hasLoot)
 void BuildIndex()
 {
     uint32 const start = getMSTime();
-    uint32 const serviceFlags = ~uint32(UNIT_NPC_FLAG_GOSSIP);
-    uint32 const blockedUnitFlags = UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_IMMUNE_TO_PC;
     std::size_t total = 0;
     gIndex.clear();
     for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
     {
-        if (std::find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(), data.mapid) ==
-            sPlayerbotAIConfig.randomBotMaps.end())
-            continue;
-        CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(data.id);
-        if (!ct || ct->rank != CREATURE_ELITE_NORMAL || !ct->minlevel || ct->minlevel > ct->maxlevel)
-            continue;
-        if (ct->type == CREATURE_TYPE_CRITTER || ct->type == CREATURE_TYPE_TOTEM ||
-            ct->type == CREATURE_TYPE_NON_COMBAT_PET || ct->type == CREATURE_TYPE_GAS_CLOUD)
-            continue;
-        if (ct->HasFlagsExtra(CREATURE_FLAG_EXTRA_TRIGGER | CREATURE_FLAG_EXTRA_CIVILIAN))
-            continue;
-        uint32 npcflag = 0, unitFlags = 0, dynamicFlags = 0;
-        ObjectMgr::ChooseCreatureFlags(ct, npcflag, unitFlags, dynamicFlags, &data);  // spawn overrides
-        if ((npcflag & serviceFlags) || (unitFlags & blockedUnitFlags))
-            continue;
-        std::uint8_t const teams = HuntTeams(ct->faction, ct->lootid != 0);
-        if (!teams)
-            continue;
         Spawn s;
-        s.spawnId = static_cast<std::uint32_t>(spawnId);
-        s.entry = data.id;
-        s.x = static_cast<std::int32_t>(data.posX);
-        s.y = static_cast<std::int32_t>(data.posY);
-        s.z = static_cast<std::int32_t>(data.posZ);
-        s.minLevel = ct->minlevel;
-        s.maxLevel = ct->maxlevel;
-        s.teams = teams;
+        if (!HuntSpawn(static_cast<std::uint32_t>(spawnId), data, s))
+            continue;
         gIndex[data.mapid].push_back(s);
         ++total;
     }
@@ -139,6 +113,39 @@ std::uint32_t NextId()
     return ++gNextId;
 }
 }  // namespace
+
+bool HuntSpawn(std::uint32_t spawnId, CreatureData const& data, Spawn& out)
+{
+    uint32 const serviceFlags = ~uint32(UNIT_NPC_FLAG_GOSSIP);
+    uint32 const blockedUnitFlags = UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_IMMUNE_TO_PC;
+    if (std::find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(), data.mapid) ==
+        sPlayerbotAIConfig.randomBotMaps.end())
+        return false;
+    CreatureTemplate const* ct = sObjectMgr->GetCreatureTemplate(data.id);
+    if (!ct || ct->rank != CREATURE_ELITE_NORMAL || !ct->minlevel || ct->minlevel > ct->maxlevel)
+        return false;
+    if (ct->type == CREATURE_TYPE_CRITTER || ct->type == CREATURE_TYPE_TOTEM ||
+        ct->type == CREATURE_TYPE_NON_COMBAT_PET || ct->type == CREATURE_TYPE_GAS_CLOUD)
+        return false;
+    if (ct->HasFlagsExtra(CREATURE_FLAG_EXTRA_TRIGGER | CREATURE_FLAG_EXTRA_CIVILIAN))
+        return false;
+    uint32 npcflag = 0, unitFlags = 0, dynamicFlags = 0;
+    ObjectMgr::ChooseCreatureFlags(ct, npcflag, unitFlags, dynamicFlags, &data);  // spawn overrides
+    if ((npcflag & serviceFlags) || (unitFlags & blockedUnitFlags))
+        return false;
+    std::uint8_t const teams = HuntTeams(ct->faction, ct->lootid != 0);
+    if (!teams)
+        return false;
+    out.spawnId = spawnId;
+    out.entry = data.id;
+    out.x = static_cast<std::int32_t>(data.posX);
+    out.y = static_cast<std::int32_t>(data.posY);
+    out.z = static_cast<std::int32_t>(data.posZ);
+    out.minLevel = ct->minlevel;
+    out.maxLevel = ct->maxlevel;
+    out.teams = teams;
+    return true;
+}
 
 void LoadConfig()
 {

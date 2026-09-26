@@ -25,6 +25,7 @@
 #include "ConditionMgr.h"
 #include "Config.h"
 #include "ContractsPolicy.h"
+#include "SquadPolicy.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DeathLoopBreaker.h"
@@ -496,6 +497,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     if (AutoWowGatherDetour::Enabled() && GatherDetourStep())
         return true;
 
+    // AutoWow.Squad: a squad member works its team's material stint before questing (flag off: never reached).
+    if (AutoWowSquad::Enabled() && SquadStep())
+        return true;
+
     // AutoWow.Contracts: an idle independent bot with no live quest work hunts a faction contract nearby.
     if (AutoWowContracts::Enabled() && ContractStep())
         return true;
@@ -680,6 +685,8 @@ bool NewRpgWanderRandomAction::Execute(Event /*event*/)
                                   MovementPriority::MOVEMENT_NORMAL, nullptr, &anchor);
         }
     }
+    if (AutoWowSquad::Enabled() && SquadWander())  // AutoWow.Squad: wander within the stint leash of the anchor
+        return true;
 
     return MoveRandomNear();
 }

@@ -13,6 +13,7 @@
 #include <map>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
@@ -125,6 +126,7 @@ std::unordered_map<std::uint32_t, std::uint32_t> gOf;    // member guid -> party
 std::unordered_map<std::uint32_t, std::uint64_t> gLeftMs;
 std::unordered_map<std::uint32_t, std::uint64_t> gNextCastMs;
 std::uint32_t gNextId = 1;
+std::unordered_set<std::uint32_t> gSquadGuids;  // AutoWow.Squad rosters (EnsureSquad), bounded by its config
 std::uint32_t gSinceForm = 0;
 std::uint32_t gSinceSupervise = 0;
 
@@ -348,7 +350,8 @@ void Form(std::uint64_t now)
         {
             std::lock_guard<std::mutex> guard(gLock);
             auto const left = gLeftMs.find(g);
-            if (gOf.count(g) || (left != gLeftMs.end() && now < left->second + gParams.rejoinCooldownMs))
+            if (gOf.count(g) || gSquadGuids.count(g) ||
+                (left != gLeftMs.end() && now < left->second + gParams.rejoinCooldownMs))
                 continue;
         }
         Candidate c;
@@ -734,6 +737,8 @@ void Supervise(std::uint32_t id, std::uint64_t now)
             return;
         p = it->second;
     }
+    if (p.why == Reason::Squad)
+        return;  // EnsureSquad owns it
     std::vector<Player*> bots;
     Player* leader = nullptr;
     Group* group = nullptr;
@@ -951,7 +956,7 @@ bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out)
     if (it == gOf.end())
         return false;
     Party const& p = gParties.at(it->second);
-    if (p.leader != guid)
+    if (p.leader != guid || p.why == Reason::Squad)
         return false;
     out.phase = p.phase;
     auto const e = gEntrances.find(p.dungeonMap);
@@ -975,6 +980,121 @@ void NoteApproachTick(std::uint32_t guid, bool stuck)
     p.stuckTicks = stuck ? p.stuckTicks + 1 : 0;
     if (p.stuckTicks >= gParams.approachStuckTicks)
         p.approachGaveUp = true;
+}
+
+void EnsureSquad(std::vector<std::uint32_t> const& roster)
+{
+    std::uint64_t const now = NowMs();
+    // The online roster: in world, a bot not managed by the oracle, not in a battleground or instance.
+    std::vector<std::uint32_t> online;
+    for (std::uint32_t const g : roster)
+    {
+        Player* bot = Find(g);
+        PlayerbotAI* ai = AiOf(bot);
+        if (bot && ai && bot->IsInWorld() && !ai->IsRealPlayer() && !AutoWowOracleRuntime::IsManagedBot(g) &&
+            !bot->InBattleground() && bot->GetMap() && !bot->GetMap()->Instanceable())
+            online.push_back(g);
+    }
+    std::uint32_t id = 0;
+    std::vector<std::uint32_t> slots;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        gSquadGuids.insert(roster.begin(), roster.end());
+        for (auto const& [pid, party] : gParties)
+            if (party.why == Reason::Squad && std::find(roster.begin(), roster.end(), party.leader) != roster.end())
+            {
+                id = pid;
+                for (Slot const& s : party.slots)
+                    slots.push_back(s.guid);
+            }
+    }
+    if (id)
+    {
+        Group* group = nullptr;
+        bool intact = slots == online;
+        for (std::uint32_t const g : slots)
+        {
+            Player* bot = Find(g);
+            Group* mine = bot ? bot->GetGroup() : nullptr;
+            if (!group)
+                group = mine;
+            intact = intact && mine && mine == group;
+        }
+        if (intact && group && group->GetMembersCount() == slots.size())
+            return;
+        Dissolve(id, Disband::MemberOffline, now);
+    }
+    // A bot-only orphan group of roster members only (the core persists groups across a restart, this registry
+    // does not) is disbanded; members in any other group stay out until it ends.
+    for (std::uint32_t const g : online)
+        if (Group* og = Find(g)->GetGroup(); og && IsOrphan(og) &&
+            std::all_of(og->GetMemberSlots().begin(), og->GetMemberSlots().end(), [&](Group::MemberSlot const& m)
+                        { return std::find(roster.begin(), roster.end(), m.guid.GetCounter()) != roster.end(); }))
+        {
+            std::vector<Player*> members;
+            for (Group::MemberSlot const& m : og->GetMemberSlots())
+                members.push_back(ObjectAccessor::FindPlayer(m.guid));
+            LOG_INFO("playerbots", "[Party] orphan squad group of {} ({} members) disbanded", Find(g)->GetName(),
+                     members.size());
+            og->Disband();  // deletes the group
+            for (Player* m : members)
+                if (PlayerbotAI* mai = AiOf(m))
+                    mai->SetMaster(nullptr);
+        }
+    std::vector<Player*> bots;
+    for (std::uint32_t const g : online)
+        if (Player* bot = Find(g); bot && !bot->GetGroup())
+            bots.push_back(bot);
+    if (bots.size() < 2)
+        return;
+    Party party;
+    party.leader = static_cast<std::uint32_t>(bots.front()->GetGUID().GetCounter());  // lowest online guid
+    party.why = Reason::Squad;
+    party.formedMs = now;
+    for (Player* bot : bots)
+    {
+        PlayerbotAI* ai = AiOf(bot);
+        Slot s;
+        s.guid = static_cast<std::uint32_t>(bot->GetGUID().GetCounter());
+        s.cls = bot->getClass();
+        s.combat0 = ai->GetStrategies(BOT_STATE_COMBAT);
+        s.nonCombat0 = ai->GetStrategies(BOT_STATE_NON_COMBAT);
+        party.slots.push_back(std::move(s));
+    }
+    // Core group: the bridge CreateParty idiom (bot-only, ordinary party), as Form.
+    Group* group = new Group;
+    if (!group->Create(bots.front()))
+    {
+        delete group;
+        return;
+    }
+    sGroupMgr->AddGroup(group);
+    for (Player* bot : bots)
+        if (bot != bots.front() && !group->AddMember(bot))
+        {
+            group->Disband();
+            return;
+        }
+    group->SetLootMethod(NEED_BEFORE_GREED);
+    group->SetLootThreshold(ITEM_QUALITY_UNCOMMON);
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        party.id = gNextId++;
+        for (Slot const& s : party.slots)
+            gOf[s.guid] = party.id;
+        gParties[party.id] = party;
+    }
+    std::vector<Role> roles;
+    for (Player* bot : bots)
+    {
+        PlayerbotAI* ai = AiOf(bot);
+        ai->SetAutoWowIndependentParty(true);  // native group maintenance leaves the roster alone
+        ai->SetMaster(nullptr);                // no follower mode: every member runs its own loop
+        roles.push_back(Role::Dps);
+    }
+    Emit(party, false, "formed", PartyFields(party.id, Guids(party), roles, party.leader, party.why, 0, 0));
+    LOG_INFO("playerbots", "[Party] pid={} formed why=squad leader={} members={}", party.id, bots.front()->GetName(),
+             bots.size());
 }
 
 void CombatUpdate(PlayerbotAI* botAI)

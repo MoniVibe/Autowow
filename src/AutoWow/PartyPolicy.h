@@ -59,7 +59,8 @@ enum class Reason : std::uint8_t
 {
     None = 0,
     Dungeon = 1,
-    GroupQuest = 2
+    GroupQuest = 2,
+    Squad = 3  // AutoWow.Squad roster (EnsureSquad); never formed by FormParties
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -68,6 +69,7 @@ inline constexpr char const* ReasonName(Reason r)
     {
         case Reason::Dungeon: return "dungeon";
         case Reason::GroupQuest: return "group_quest";
+        case Reason::Squad: return "squad";
         case Reason::None: return "none";
     }
     return "none";
@@ -740,6 +742,11 @@ std::uint32_t PartySize(std::uint32_t guid, bool* dungeonParty = nullptr);
 bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out);
 // One Approach walk tick of the leader (stuck = WalkLeg reported no progress).
 void NoteApproachTick(std::uint32_t guid, bool stuck);
+// AutoWow.Squad (world thread, any Party flag state): keep one team's squad roster (guid ascending) as one party
+// (reason squad, leader = the lowest online guid, all dps, no follower mode: every member keeps its own New-RPG loop).
+// Exempt from formation (its guids never join a formed party) and from supervision / the keep rules: a changed
+// online roster or a broken core group dissolves it here and the online members (at least two) re-form it.
+void EnsureSquad(std::vector<std::uint32_t> const& roster);
 }  // namespace AutoWowParty
 
 #endif  // AUTOWOW_PARTY_POLICY_H

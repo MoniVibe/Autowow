@@ -2903,6 +2903,54 @@ AutoWow.Supply.PotionPayPct = 200
 AutoWow.Supply.PotionMaxOrder = 20
 AutoWow.Supply.PotionSurplusKeep = 20
 AutoWow.Supply.SkillupCasts = 10
+# RouteRaw (lane G): at the errand sell stop a cohort adventurer mails ore (Copper 2770 / Tin 2771 / Iron 2772) to
+# its team's House.Ore rep (default Smiths) and leather (Ruined Leather Scraps 2934 / Light 2318 / Medium 2319) to
+# its House.Leather rep (default Tanners) instead of selling them, each while the rep holds under RawCap of it
+# and has free bag slots. No line consumes them yet (weapons / leather armor lines come next). Rows: `supply`
+# donate with "line":"raw".
+AutoWow.Supply.RouteRaw = 0
+AutoWow.Supply.RawCap = 100
+AutoWow.Supply.House.Ore = "Smiths"
+AutoWow.Supply.House.Leather = "Tanners"
+
+# Gatherer squad (lane G; SquadPolicy.h; docs/SUPPLY_CHAIN_PLAN.md "Gatherer squad"). Enable: a per-team roster
+# (Alliance / Horde: ','-separated guids or lo-hi ranges, at most 10 per team, sorted; the guids must also be in
+# AutoWow.Guilds.CohortGuids for routing) puts material demand before levelling. Needs AutoWow.Supply.Enable for
+# demand (RouteCloth / RouteHerbs / RouteRaw decide which materials are demanded) and AutoWow.Gathering.Detours
+# for node gathering. The roster is one core party (ledger `party` why "squad"; leader = the lowest online guid;
+# no follower mode; exempt from cohort formation and the keep rules). Every TickMs (world thread) per team:
+# demand = the supply routing rooms of the materials the houses can use now (at least MinDemand units), largest
+# first; the first material the squad can work (cloth: anyone; herb / ore: a member's herbalism / mining (with a
+# pick) meets the node lock; leather: a skinner (with a knife) meets the corpse's skinning skill) gets the
+# nearest source cluster (at least MinClusterSpawns sources within ClusterYards, within SearchYards of the
+# leader on its map): creature sources are loot-table sources (MinDropPct) whose max level <= squad average
+# level + LevelAbove (min level >= average - LevelBelow; 255 = grey allowed); the anchor is skipped when
+# cooling (CooldownMs after the last stint there), in a death-loop area, in water, or in a zone bracketed above
+# average + ZoneLevelMargin. A stint: the members walk to the anchor (the leader waits until everyone alive on
+# its map is within TogetherYards), then hunt only the source entries (grey included; node stints: anything)
+# and gather within LeashYards; errand runs deliver through the routing above. It ends when the members hold
+# the wanted units more than at the start (done), the demand is gone, the anchor turns dangerous, the leader's
+# walk is stuck, nobody stands on the anchor map, or after StintMs. While a stint runs (and until a search finds
+# no workable demand) zone progression holds the members in their zone unless it is dangerous for them.
+# Ledger `squad` (event 22): stint | gather (cause done|demand_met|danger|stuck|empty|timeout) | deliver | hold |
+# release (cause no_demand|no_source).
+AutoWow.Squad.Enable = 0
+AutoWow.Squad.Alliance = ""
+AutoWow.Squad.Horde = ""
+AutoWow.Squad.TickMs = 30000
+AutoWow.Squad.StintMs = 1800000
+AutoWow.Squad.LevelAbove = 1
+AutoWow.Squad.LevelBelow = 255
+AutoWow.Squad.ZoneLevelMargin = 3
+AutoWow.Squad.SearchYards = 2500
+AutoWow.Squad.ClusterYards = 120
+AutoWow.Squad.MinClusterSpawns = 5
+AutoWow.Squad.LeashYards = 150
+AutoWow.Squad.TogetherYards = 60
+AutoWow.Squad.MinDemand = 5
+AutoWow.Squad.MinDropPct = 5
+AutoWow.Squad.CooldownMs = 600000
+AutoWow.Squad.SearchRetryMs = 60000
 
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk

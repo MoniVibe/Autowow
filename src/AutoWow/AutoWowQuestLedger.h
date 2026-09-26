@@ -125,7 +125,9 @@ enum class Event : std::uint8_t
     Trade = 17,
     Contract = 18,
     Guild = 19,
-    Supply = 20
+    Supply = 20,
+    // 21 is reserved (selfcraft lane).
+    Squad = 22
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -153,6 +155,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Contract: return "contract";
         case Event::Guild: return "guild";
         case Event::Supply: return "supply";
+        case Event::Squad: return "squad";
     }
     return "unknown";
 }
@@ -424,7 +427,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
     else if (row.ev == Event::Combat || row.ev == Event::DeathLoop || row.ev == Event::Engage ||
              row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
              row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract ||
-             row.ev == Event::Guild || row.ev == Event::Supply)
+             row.ev == Event::Guild || row.ev == Event::Supply || row.ev == Event::Squad)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -495,6 +498,9 @@ void EmitGuild(Player* player, char const* reason, std::string_view fields);
 // `supply` (no-op unless the player is a recorded bot); reason is a static literal (AutoWowSupply::ReasonName),
 // fields from AutoWowSupply::LedgerFields.
 void EmitSupply(Player* player, char const* reason, std::string_view fields);
+// `squad` (no-op unless the player is a recorded bot); reason is a static literal (AutoWowSquad::ReasonName),
+// fields from AutoWowSquad::LedgerFields.
+void EmitSquad(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);
