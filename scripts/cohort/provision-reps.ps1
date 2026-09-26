@@ -38,13 +38,13 @@ $sets = @{
         @('Squad','Alliance','AWPVP1A02',3,2,0,'Thordal'),
         @('Squad','Alliance','AWPVP1A02',3,5,1,'Hilvara'),
         @('Squad','Alliance','AWPVP1A02',3,3,0,'Gromdur'),
-        @('Squad','Alliance','AWPVP1A02',3,4,1,'Kellda'),
+        @('Squad','Alliance','AWPVP1A03',3,4,1,'Kellda'),
         @('Artisan.Brewers','Alliance','AWPVP1A03',4,11,1,'Aelmira'),
         @('Squad','Horde','AWPVP1H02',5,1,0,'Morthal'),
         @('Squad','Horde','AWPVP1H02',5,5,1,'Veskara'),
         @('Squad','Horde','AWPVP1H02',5,4,0,'Grimsel'),
         @('Squad','Horde','AWPVP1H02',5,8,0,'Dusmor'),
-        @('Squad','Horde','AWPVP1H02',5,9,1,'Yzolde'),
+        @('Squad','Horde','AWPVP1H03',5,9,1,'Yzolde'),
         @('Artisan.Brewers','Horde','AWPVP1H03',6,11,0,'Tahnoka')
     )
 }
