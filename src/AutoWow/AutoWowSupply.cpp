@@ -24,6 +24,7 @@
 #include "Config.h"
 #include "DBCStores.h"
 #include "GameObject.h"
+#include "GameTime.h"
 #include "Item.h"
 #include "Log.h"
 #include "Mail.h"
@@ -111,6 +112,12 @@ constexpr char const* kRawDefaultHouse[kRawKinds] = {"Smiths", "Tanners"};
 std::array<std::size_t, kRawKinds> gRawHouse{};  // read-only after LoadConfig; houses.size() = kind off
 std::array<std::string, kRawKinds> gRawHouseName;
 std::array<std::array<std::array<std::uint32_t, kRawItems>, kRawKinds>, 2> gRawRooms{};  // [team][kind][item], gLock
+
+// Outfit (AutoWow.Supply.Outfit): pending grant requests, guid -> need copper (gLock; map threads add, the world
+// tick takes). Per-bot level windows and per-team hour budgets are world thread only (in memory, reset on restart).
+std::unordered_map<std::uint32_t, std::uint64_t> gGrantRequests;
+std::unordered_map<std::uint32_t, GrantWindow> gGrantWindows;
+std::array<GrantBudget, 2> gGrantBudgets{};
 
 // World thread only.
 std::uint32_t gTickAcc = 0;
@@ -1172,6 +1179,45 @@ std::uint32_t ReagentCount(SpellInfo const* s, std::uint32_t item)
     return 0;
 }
 
+// World thread, every tick with Outfit on: the pending grant requests, lowest level first (RankGrants), each paid
+// whole from the bot's house bank or refused (DecideGrant; a short bank = Pay's own refused `guild` row).
+void OutfitTick()
+{
+    std::vector<GrantRequest> reqs;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        for (auto const& [guid, need] : gGrantRequests)
+            reqs.push_back({guid, 0, need});
+        gGrantRequests.clear();
+    }
+    for (GrantRequest& r : reqs)
+        if (Player* bot = Online(r.guid))
+            r.level = bot->GetLevel();
+    Params const& p = detail::gParams;
+    std::uint64_t const hour =
+        static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count())) / kGrantHourMs;
+    for (GrantRequest const& r : RankGrants(std::move(reqs)))
+    {
+        Player* bot = Online(r.guid);
+        std::uint32_t const gid = bot ? AutoWowGuilds::HouseGuildOf(bot) : 0;
+        if (!gid)
+            continue;  // logged out / not in a house: nothing to pay into
+        GrantBudget& budget = gGrantBudgets[T(bot->GetTeamId() == TEAM_ALLIANCE)];
+        GrantWindow& window = gGrantWindows[r.guid];
+        GrantDecision const d =
+            DecideGrant(r, bot->GetMoney(), window, budget, hour, p.outfitMaxCopper, p.outfitBudgetPerHour);
+        if (d.verdict == GrantVerdict::Covered)
+            continue;
+        if (d.verdict != GrantVerdict::Pay)
+        {
+            EmitOutfit(bot, Reason::Refused, 0, d.copper, GrantVerdictName(d.verdict));
+            continue;
+        }
+        if (AutoWowGuilds::Pay(gid, bot, d.copper, AutoWowGuilds::Reason::Grant))
+            NoteGrant(window, budget, r.level, hour, d.copper);
+    }
+}
+
 std::uint32_t Output(SpellInfo const* s)
 {
     for (std::size_t i = 0; s && i < MAX_SPELL_EFFECTS; ++i)
@@ -1211,6 +1257,10 @@ void LoadConfig()
     p.skillupCasts = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.SkillupCasts", 10);
     p.routeRaw = sConfigMgr->GetOption<bool>("AutoWow.Supply.RouteRaw", false);
     p.rawCap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RawCap", 100);
+    p.outfit = sConfigMgr->GetOption<bool>("AutoWow.Supply.Outfit", false);
+    p.outfitCheckMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitCheckMs", 600000);
+    p.outfitMaxCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitMaxCopper", 500);
+    p.outfitBudgetPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitBudgetPerHour", 5000);
     p.lines = 1;
     std::string const products = sConfigMgr->GetOption<std::string>("AutoWow.Supply.Products", "bags");
     if (!ParseProducts(products, p.lines))
@@ -1232,7 +1282,10 @@ void LoadConfig()
         gLines = {};
         gHeld.clear();
         gRawRooms = {};
+        gGrantRequests.clear();
     }
+    gGrantWindows.clear();
+    gGrantBudgets = {};
     if (!detail::gEnabled)
         return;
     auto disable = [](std::string const& why)
@@ -1489,6 +1542,8 @@ void WorldUpdate(std::uint32_t diff)
         RawTick(true);
         RawTick(false);
     }
+    if (p.outfit)
+        OutfitTick();
 }
 
 RoleInfo RoleOf(std::uint32_t guid)
@@ -1816,5 +1871,33 @@ std::vector<MaterialNeed> MaterialDemand(bool alliance)
                 for (std::size_t i = 0; i < kRawItems; ++i)
                     out.push_back({kRawLists[k][i], gRawRooms[t][k][i]});
     return out;
+}
+
+void RequestGrant(Player* bot, std::uint64_t need)
+{
+    if (!Outfit() || !bot || !need)
+        return;
+    std::lock_guard<std::mutex> guard(gLock);
+    gGrantRequests[Low(bot)] = need;
+}
+
+bool GrantPending(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    return gGrantRequests.count(guid) != 0;
+}
+
+void EmitOutfit(Player* bot, Reason r, std::uint32_t item, std::uint64_t copper, char const* op)
+{
+    if (!bot)
+        return;
+    std::string const house = AutoWowGuilds::HouseNameOf(AutoWowGuilds::HouseGuildOf(bot));
+    LOG_INFO("playerbots", "[Supply] player={} {} house={} item={} copper={} line=outfit{}{}", bot->GetName(),
+             ReasonName(r), house, item, copper, op ? " op=" : "", op ? op : "");
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::EmitSupply(bot, ReasonName(r),
+                                       LedgerFields(house, 0, item, item ? 1 : 0, copper, item ? Low(bot) : 0,
+                                                    item ? 0 : Low(bot), op) +
+                                           ",\"line\":\"outfit\"");
 }
 }  // namespace AutoWowSupply

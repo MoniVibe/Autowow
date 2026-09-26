@@ -223,7 +223,8 @@ enum class Reason : std::uint8_t
     Deposit = 5,         // player -> bank
     Refused = 6,         // a movement not made; op names it
     Postage = 7,         // mail postage paid from the bank for the house rep
-    Levy = 8             // faction levy: a short house bank drew copper from the richest same-team house bank
+    Levy = 8,            // faction levy: a short house bank drew copper from the richest same-team house bank
+    Grant = 9            // AutoWow.Supply.Outfit: bank -> member starter-equipment grant (tool / trainer rank)
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -239,6 +240,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Refused: return "refused";
         case Reason::Postage: return "postage";
         case Reason::Levy: return "levy";
+        case Reason::Grant: return "grant";
     }
     return "refused";
 }
@@ -274,6 +276,9 @@ void LoadConfig();
 void OnLogin(Player* player);
 // The player's guild id when it is one of the house guilds, else 0.
 std::uint32_t HouseGuildOf(Player* player);
+// The house name of a house guild id, else "". Any thread (reads the resolved ids only; the world thread that
+// resolves them never runs alongside the map updates).
+std::string HouseNameOf(std::uint32_t guildId);
 // The house rep (logistics hub): AutoWow.Guilds.Rep.<House>.<Team>, else the lowest cohort guid in the
 // guild. 0 = unknown guild / no member yet. May be offline.
 std::uint32_t RepOf(std::uint32_t guildId);

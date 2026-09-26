@@ -430,4 +430,59 @@ TEST(SupplyCatalog, HerbRoutingKeepsEachHerbUnderItsCap)
     EXPECT_EQ(PlanRoute({many, many}, {100, 100}).picks.size(), kMaxMailStacks);
     EXPECT_TRUE(PlanRoute({many}, {0}).picks.empty());
 }
+
+// ---- outfitting grants (AutoWow.Supply.Outfit) ----
+
+TEST(SupplyOutfit, GrantsRankLowestLevelFirstTiesLowerGuid)
+{
+    std::vector<GrantRequest> const ranked = RankGrants({{30, 12, 100}, {10, 20, 100}, {20, 12, 50}, {5, 30, 1}});
+    ASSERT_EQ(ranked.size(), 4u);
+    EXPECT_EQ(ranked[0].guid, 20u);
+    EXPECT_EQ(ranked[1].guid, 30u);
+    EXPECT_EQ(ranked[2].guid, 10u);
+    EXPECT_EQ(ranked[3].guid, 5u);
+}
+
+TEST(SupplyOutfit, GrantPaysTheWholeShortfallWithinBothCaps)
+{
+    GrantRequest const r{7, 10, 581};  // Mining Pick 81 + Journeyman 450 + buffer 50
+    GrantWindow w;
+    GrantBudget b;
+    GrantDecision d = DecideGrant(r, 100, w, b, 3, 500, 5000);
+    EXPECT_EQ(d.verdict, GrantVerdict::Pay);
+    EXPECT_EQ(d.copper, 481u);
+    d = DecideGrant(r, 600, w, b, 3, 500, 5000);  // the bot's own money covers it
+    EXPECT_EQ(d.verdict, GrantVerdict::Covered);
+    EXPECT_EQ(d.copper, 0u);
+    EXPECT_EQ(DecideGrant(r, 0, w, b, 3, 500, 5000).verdict, GrantVerdict::BotCap);  // 581 > 500: never a part
+    NoteGrant(w, b, 10, 3, 481);
+    EXPECT_EQ(w.granted, 481u);
+    EXPECT_EQ(b.spent, 481u);
+    // Same level: 19 left in the window (need - money = the shortfall).
+    EXPECT_EQ(DecideGrant({7, 10, 119}, 100, w, b, 3, 500, 5000).verdict, GrantVerdict::Pay);
+    EXPECT_EQ(DecideGrant({7, 10, 120}, 100, w, b, 3, 500, 5000).verdict, GrantVerdict::BotCap);
+    // A level-up opens a fresh window.
+    EXPECT_EQ(DecideGrant({7, 11, 400}, 0, w, b, 3, 500, 5000).verdict, GrantVerdict::Pay);
+    // Team budget: another bot, same hour; the next hour starts over.
+    EXPECT_EQ(DecideGrant({8, 5, 20}, 0, {}, b, 3, 500, 500).verdict, GrantVerdict::TeamBudget);
+    EXPECT_EQ(DecideGrant({8, 5, 20}, 0, {}, b, 4, 500, 500).verdict, GrantVerdict::Pay);
+    NoteGrant(w, b, 11, 4, 100);
+    EXPECT_EQ(w.level, 11u);
+    EXPECT_EQ(w.granted, 100u);
+    EXPECT_EQ(b.hour, 4u);
+    EXPECT_EQ(b.spent, 100u);
+    EXPECT_STREQ(GrantVerdictName(GrantVerdict::BotCap), "grant_bot_cap");
+    EXPECT_STREQ(GrantVerdictName(GrantVerdict::TeamBudget), "grant_team_budget");
+}
+
+TEST(SupplyOutfit, LedgerWireIsStable)
+{
+    EXPECT_STREQ(ReasonName(Reason::Outfit), "outfit");
+    EXPECT_EQ(static_cast<int>(Reason::Outfit), 13);
+    Params const p;
+    EXPECT_FALSE(p.outfit);
+    EXPECT_EQ(p.outfitCheckMs, 600000u);
+    EXPECT_EQ(p.outfitMaxCopper, 500u);
+    EXPECT_EQ(p.outfitBudgetPerHour, 5000u);
+}
 }  // namespace

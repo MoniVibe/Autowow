@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 4U);
+    EXPECT_EQ(s.version, 5U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -699,6 +699,70 @@ TEST(Gear, ErrandNeedServedOnlyByAGearTownAndPlannedAfterTraining)
     BotState s;
     s.lastGearLevel = 17;
     EXPECT_EQ(AfterRun(p, s, 1000).lastGearLevel, 17U);
+}
+
+TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
+{
+    EXPECT_EQ(MissingTools(ToolPick | ToolKnife, ToolKnife), std::uint8_t(ToolPick));
+    EXPECT_EQ(MissingTools(0, 0), 0u);
+    EXPECT_EQ(MissingTools(ToolPick, ToolPick | ToolKnife), 0u);
+    EXPECT_TRUE(OutfitRunDue(ToolPick, 1000, 1000));
+    EXPECT_FALSE(OutfitRunDue(ToolPick, 999, 1000));
+    EXPECT_FALSE(OutfitRunDue(0, 5000, 0));
+
+    Params const p;
+    Obs o = Healthy(kClassWarrior, 12);
+    o.missingTools = ToolPick;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.needs, std::uint32_t(NeedTool));
+    EXPECT_EQ(a.urgent, 0U);
+    EXPECT_FALSE(ShouldRun(a.needs, a.urgent));
+    o.toolRunDue = true;
+    a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedTool));
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+    o.missingTools = 0;  // flag off: all zero
+    EXPECT_EQ(Assess(p, o).needs, 0U);
+
+    TownFacts f;
+    EXPECT_EQ(Serves(f) & NeedTool, 0U);
+    f.tools = ToolKnife;
+    EXPECT_EQ(Serves(f) & NeedTool, std::uint32_t(NeedTool));
+
+    BotState s;
+    s.nextOutfitMs = 700000;
+    EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
+    EXPECT_EQ(kStateVersion, 5u);
+    EXPECT_EQ(kToolItems[0], 2901u);
+    EXPECT_EQ(kToolItems[1], 7005u);
+}
+
+TEST(Outfit, ToolStopsFollowTrainingAtTheFirstVendorSellingEach)
+{
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn | RoleVendor, 0);
+    Npc trainer = MakeNpc(8, RoleTradeTrainer, 30);
+    Npc supplies = MakeNpc(9, RoleVendor, 40);
+    supplies.tools = ToolPick | ToolKnife;
+    Npc leather = MakeNpc(7, RoleVendor, 50);
+    leather.tools = ToolKnife;  // lower spawn: first for the knife
+    Npc horde = MakeNpc(6, RoleVendor, 60, kHorde);
+    horde.tools = ToolPick;  // unusable for the alliance bot
+    t.npcs = {inn, horde, leather, trainer, supplies};
+    PlanInput in;
+    in.team = kAlliance;
+    in.trainers = {8};
+    in.tools = ToolPick | ToolKnife;
+    Plan const plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 4U);
+    EXPECT_EQ(plan.stops[1].spawn, 8U);
+    EXPECT_EQ(plan.stops[2].spawn, 9U);  // pick
+    EXPECT_EQ(plan.stops[2].ops, std::uint32_t(OpTool));
+    EXPECT_EQ(plan.stops[3].spawn, 7U);  // knife
+    EXPECT_EQ(plan.stops[3].ops, std::uint32_t(OpTool));
+    in.tools = 0;  // flag off: no tool stop
+    EXPECT_EQ(PlanStops(t, in).count, 2U);
 }
 
 TEST(ErrandsPolicy, AuctionDetourDiscountsOnlyAuctionTowns)

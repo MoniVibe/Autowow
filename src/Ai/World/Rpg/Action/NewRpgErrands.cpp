@@ -27,6 +27,9 @@
 #include "ObjectMgr.h"
 #include "SupplyPolicy.h"
 #include "SelfCraftPolicy.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
+#include "SquadPolicy.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
@@ -156,6 +159,13 @@ void BuildCatalog()
                         }
             std::sort(n.items.begin(), n.items.end());
             n.items.erase(std::unique(n.items.begin(), n.items.end()), n.items.end());
+            // AutoWow.Supply.Outfit: the gathering tools it sells for plain gold (catalogued always: the Supply
+            // flags load after this catalog; nothing reads the bits with Outfit off).
+            if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id))
+                for (VendorItem const* vi : list->m_items)
+                    for (std::size_t k = 0; vi && !vi->ExtendedCost && k < kTools; ++k)
+                        if (vi->item == kToolItems[k])
+                            n.tools |= static_cast<std::uint8_t>(1u << k);
             // AutoWow.Gear.Upgrades: plain-gold white / green weapons and armor (the bot filters by use).
             if (AutoWowGear::Enabled())
                 if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id))
@@ -394,6 +404,58 @@ bool FlightTo(Player* bot, uint32 node, TravelMgr::FlightMasterInfo const*& fm, 
     return !path.empty();
 }
 
+// ---- AutoWow.Supply.Outfit ----------------------------------------------------------------------------
+// The skill line a trainer spell grants, 0 = none (TrainerAction GrantedSkillLine idiom).
+uint32 GrantedSkill(SpellInfo const* info)
+{
+    for (SpellEffectInfo const& effect : info->GetEffects())
+        if (effect.IsEffect(SPELL_EFFECT_LEARN_SPELL))
+            if (SpellLearnSkillNode const* node = sSpellMgr->GetSpellLearnSkill(effect.TriggerSpell))
+                return node->skill;
+    SpellLearnSkillNode const* node = sSpellMgr->GetSpellLearnSkill(info->Id);
+    return node ? node->skill : 0;
+}
+
+// Copper of the ranks of the bot's planned primaries (AutoWow.Professions plan) this tradeskill trainer can teach
+// now; `skills` collects their skill lines. 0 without a plan.
+uint64 PlannedRankCost(Player* bot, Trainer::Trainer* trainer, std::vector<uint32>* skills = nullptr)
+{
+    std::vector<uint32> const* plan = sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter());
+    if (!plan || !trainer || trainer->GetTrainerType() != Trainer::Type::Tradeskill)
+        return 0;
+    uint64 cost = 0;
+    for (Trainer::Spell const& spell : trainer->GetSpells())
+    {
+        SpellInfo const* info = trainer->CanTeachSpell(bot, &spell) ? sSpellMgr->GetSpellInfo(spell.SpellId) : nullptr;
+        uint32 const skill = info ? GrantedSkill(info) : 0;
+        if (!skill || std::find(plan->begin(), plan->end(), skill) == plan->end())
+            continue;
+        cost += spell.MoneyCost;
+        if (skills)
+            skills->push_back(skill);
+    }
+    return cost;
+}
+
+// Tool bits of a cohort bot missing a gathering tool: a known Mining / Skinning, plus the skill lines in
+// `learning` (planned ranks the town's trainers teach before its tool stop). Any pick / knife of the squad lists
+// counts, in bags or equipped (HasItemCount walks the equipment slots). 0 with Outfit off.
+std::uint8_t BotMissingTools(Player* bot, std::vector<uint32> const& learning = {})
+{
+    if (!AutoWowSupply::Outfit() || !AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), bot->GetGUID().GetCounter()))
+        return 0;
+    auto holds = [bot](auto const& list)
+    { return std::any_of(std::begin(list), std::end(list), [bot](uint32 item) { return bot->HasItemCount(item, 1); }); };
+    std::uint8_t const held = static_cast<std::uint8_t>((holds(AutoWowSquad::kMiningPicks) ? ToolPick : 0) |
+                                                        (holds(AutoWowSquad::kSkinningKnives) ? ToolKnife : 0));
+    std::uint8_t wants = 0;
+    for (std::size_t i = 0; i < kTools; ++i)
+        if (bot->HasSkill(kToolSkills[i]) ||
+            std::find(learning.begin(), learning.end(), kToolSkills[i]) != learning.end())
+            wants |= static_cast<std::uint8_t>(1u << i);
+    return MissingTools(wants, held);
+}
+
 // Class trainer valid for the bot, or (profession-planned bot only) a tradeskill trainer, with at least
 // one spell it can teach now. `unaffordable`: a teachable spell costs more than `money`.
 bool TrainerHasWork(Player* bot, uint32 entry, uint64 money, bool& unaffordable)
@@ -419,6 +481,9 @@ bool TrainerHasWork(Player* bot, uint32 entry, uint64 money, bool& unaffordable)
         else
             unaffordable = true;
     }
+    // AutoWow.Supply.Outfit: an unaffordable rank of a planned primary is work too (a treasury grant covers it).
+    if (!work && unaffordable && AutoWowSupply::Outfit())
+        work = PlannedRankCost(bot, trainer) > 0;
     return work;
 }
 
@@ -443,6 +508,11 @@ TownFacts FactsOf(Player* bot, Town const& t, std::uint8_t team)
     if (AutoWowGear::Enabled())
         f.gearVendor = std::any_of(t.npcs.begin(), t.npcs.end(),
                                    [team](Npc const& n) { return (n.teams & team) && !n.gear.empty(); });
+    if (AutoWowSupply::Outfit())
+        if (std::uint8_t const missing = BotMissingTools(bot))
+            for (Npc const& n : t.npcs)
+                if ((n.teams & team) && (n.roles & RoleVendor))
+                    f.tools |= static_cast<std::uint8_t>(n.tools & missing);
     return f;
 }
 
@@ -559,6 +629,36 @@ void PlanGear(Player* bot, PlayerbotAI* botAI, Town const& town, std::uint8_t te
     in.gearNpcs.erase(std::unique(in.gearNpcs.begin(), in.gearNpcs.end()), in.gearNpcs.end());
 }
 
+// AutoWow.Supply.Outfit, arrival: the missing tools the town sells into the plan, and a grant request when the
+// bot's money is short of them plus its planned trainer ranks here (+ kGrantBufferCopper).
+void PlanOutfit(Player* bot, Town const& town, std::uint8_t team, PlanInput& in)
+{
+    std::vector<uint32> learning;
+    uint64 ranks = 0;
+    for (uint32 const spawn : in.trainers)
+        for (Npc const& n : town.npcs)
+            if (n.spawn == spawn)
+                ranks += PlannedRankCost(bot, sObjectMgr->GetTrainer(n.entry), &learning);
+    std::uint8_t sold = 0;
+    for (Npc const& n : town.npcs)
+        if ((n.teams & team) && (n.roles & RoleVendor))
+            sold |= n.tools;
+    in.tools = static_cast<std::uint8_t>(BotMissingTools(bot, learning) & sold);
+    uint64 tools = 0;
+    for (std::size_t i = 0; i < kTools; ++i)
+        if (in.tools & (1u << i))
+            if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(kToolItems[i]))
+                tools += proto->BuyPrice;
+    uint64 const need = tools + ranks + (ranks ? AutoWowSupply::kGrantBufferCopper : 0);
+    if (!need)
+        return;
+    if (need > bot->GetMoney())
+        AutoWowSupply::RequestGrant(bot, need);
+    LOG_INFO("playerbots", "[Outfit] bot={} plan tools={} tool_copper={} rank_copper={} need={} money={} grant={}",
+             bot->GetName(), static_cast<uint32>(in.tools), tools, ranks, need, bot->GetMoney(),
+             need > bot->GetMoney());
+}
+
 LegInput TownLeg(Player* bot, Town const& t, std::uint8_t team)
 {
     LegInput in;
@@ -606,7 +706,7 @@ uint32 NearestKnownNode(Player* bot, uint32 map, std::int32_t x, std::int32_t y,
 }
 
 // Needs of the bot now (ErrandsPolicy Assess).
-Assessment AssessBot(Player* bot, BotState const& s)
+Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
 {
     Params const& p = detail::gParams;
     Obs o;
@@ -653,6 +753,11 @@ Assessment AssessBot(Player* bot, BotState const& s)
     if (AutoWowGear::Enabled())
         o.gear = AutoWowGear::GearDue(AutoWowGear::Get(), o.level, s.lastGearLevel, money,
                                       EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND));
+    if (AutoWowSupply::Outfit())
+    {
+        o.missingTools = BotMissingTools(bot);
+        o.toolRunDue = OutfitRunDue(o.missingTools, nowMs, s.nextOutfitMs);
+    }
     return Assess(p, o);
 }
 
@@ -842,7 +947,13 @@ bool NewRpgBaseAction::ErrandsStep()
         if (auto const* quest = std::get_if<NewRpgInfo::DoQuest>(&info.data))
             if (quest->objectiveRuntime.phase == QuestActionPhase::EscortEvent)
                 return false;
-        Assessment const a = AssessBot(bot, s);
+        Assessment const a = AssessBot(bot, s, now);
+        if (a.urgent & NeedTool)
+        {
+            // AutoWow.Supply.Outfit only: a tool-due check spends the OutfitCheckMs window, run or not.
+            s.nextOutfitMs = now + AutoWowSupply::detail::gParams.outfitCheckMs;
+            StoreState(guid, s);
+        }
         if (!ShouldRun(a.needs, a.urgent))
             return false;
         Leg leg = Leg::None;
@@ -956,6 +1067,8 @@ bool NewRpgBaseAction::ErrandsStep()
             }
             if (AutoWowGear::Enabled() && (s.needs & NeedGear))
                 PlanGear(bot, botAI, *town, team, s, in);
+            if (AutoWowSupply::Outfit())
+                PlanOutfit(bot, *town, team, in);
             s.plan = PlanStops(*town, in);
             s.buyItems = in.buyItems;
             s.stop = 0;
@@ -1119,6 +1232,15 @@ bool NewRpgBaseAction::ErrandsStep()
         Creature* npc = bot->FindNearestCreature(st.entry, 60.0f);
         if (npc && npc->IsAlive() && bot->IsWithinDistInMap(npc, INTERACTION_DISTANCE - 0.5f))
         {
+            // AutoWow.Supply.Outfit: a trainer / tool stop waits for the bot's pending grant (the world tick pays
+            // or refuses it within AutoWow.Supply.TickMs; the stop timeout bounds the wait).
+            if ((st.ops & (OpTrain | OpTool)) && AutoWowSupply::Outfit() && AutoWowSupply::GrantPending(guid))
+            {
+                if (bot->isMoving())
+                    bot->StopMoving();
+                StoreState(guid, s);
+                return true;
+            }
             ErrandsAtNpc(npc, st, s);
             ++s.stop;
             s.legMs = now;
@@ -1303,6 +1425,45 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             s.done |= DoneSkipped;
             LOG_INFO("playerbots", "[Errands] bot={} skip trainer={} ranks unaffordable money={}", bot->GetName(),
                      npc->GetEntry(), money());
+        }
+    }
+    // AutoWow.Supply.Outfit (only planned with the flag on): the missing tools this vendor sells, with the bot's own
+    // gold (a grant may have topped it up); only for a skill it knows by now (the stock sell keeps a used tool).
+    if (st.ops & OpTool)
+    {
+        VendorItemData const* list = npc->GetVendorItems();
+        std::uint8_t const missing = BotMissingTools(bot);
+        for (std::size_t i = 0; list && i < kTools; ++i)
+        {
+            uint32 const item = kToolItems[i];
+            if (!(missing & (1u << i)))
+                continue;
+            uint32 slot = list->GetItemCount();
+            for (uint32 v = 0; v < list->GetItemCount(); ++v)
+                if (VendorItem const* vi = list->GetItem(v); vi && vi->item == item && !vi->ExtendedCost)
+                {
+                    slot = v;
+                    break;
+                }
+            if (slot == list->GetItemCount())
+                continue;
+            uint64 const m0 = money();
+            uint32 const before = bot->GetItemCount(item, false);
+            bot->BuyItemFromVendorSlot(npc->GetGUID(), slot, item, 1, NULL_BAG, NULL_SLOT);
+            if (bot->GetItemCount(item, false) > before)
+            {
+                uint64 const paid = m0 > money() ? m0 - money() : 0;
+                s.spent += paid;
+                s.done |= DoneTooled;
+                AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::Outfit, item, paid);
+            }
+            else
+            {
+                s.done |= DoneSkipped;  // money short (grant refused), bags full: the core reports its own error
+                ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+                AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::Refused, item, proto ? proto->BuyPrice : 0,
+                                          "outfit");
+            }
         }
     }
     // AutoWow.Gear.Upgrades (only planned with the flag on): buy this vendor's planned pieces while the

@@ -105,6 +105,9 @@ TEST(AutoWowGuildsPolicy, LedgerWireIsStable)
     EXPECT_EQ(static_cast<int>(AutoWowQuestLedger::Event::Guild), 19);
     EXPECT_STREQ(ReasonName(Reason::SkipOtherGuild), "skip_other_guild");
     EXPECT_STREQ(ReasonName(Reason::Postage), "postage");
+    EXPECT_STREQ(ReasonName(Reason::Grant), "grant");  // AutoWow.Supply.Outfit
+    EXPECT_EQ(static_cast<int>(Reason::Levy), 8);
+    EXPECT_EQ(static_cast<int>(Reason::Grant), 9);
     EXPECT_EQ(LedgerFields("Weavers", 7, 50, 1050),
               ",\"house\":\"Weavers\",\"gid\":7,\"copper\":50,\"balance_after\":1050");
     EXPECT_EQ(LedgerFields("Weavers", 7, 50, 10, ReasonName(Reason::Pay)),

@@ -31,8 +31,9 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 4;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
-                                                  // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades)
+inline constexpr std::uint8_t kStateVersion = 5;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+                                                  // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
+                                                  // 5: nextOutfitMs (Supply.Outfit)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -48,7 +49,8 @@ enum Need : std::uint32_t
     NeedProfTrain = 1u << 7,   // a profession rank is learnable (skill near cap, level reached)
     NeedHearth = 1u << 8,      // hearthstone bound outside the current zone
     NeedFlightPath = 1u << 9,  // current zone's flight master node unknown
-    NeedGear = 1u << 10        // AutoWow.Gear.Upgrades: vendor weapon / armor shopping due (AutoWowGear::GearDue)
+    NeedGear = 1u << 10,       // AutoWow.Gear.Upgrades: vendor weapon / armor shopping due (AutoWowGear::GearDue)
+    NeedTool = 1u << 11        // AutoWow.Supply.Outfit: a known Mining / Skinning without its gathering tool
 };
 inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
 
@@ -158,6 +160,31 @@ struct TierSpan
         if (t.data[k].item == item)
             return true;
     return false;
+}
+
+// AutoWow.Supply.Outfit gathering tools: bit per tool (Npc::tools, Obs::missingTools, PlanInput::tools) and the
+// item bought for it. Mining Pick 2901 (BuyPrice 81) / Skinning Knife 7005 (BuyPrice 82): RequiredLevel 1, plain
+// gold on 202 / 103 npc_vendor spawns (trade / mining / leatherworking supplies; world DB checked 2026-09-26).
+// Any pick / knife of AutoWowSquad::kMiningPicks / kSkinningKnives counts as held (a pick equipped too).
+enum Tool : std::uint8_t
+{
+    ToolPick = 1u << 0,
+    ToolKnife = 1u << 1
+};
+inline constexpr std::size_t kTools = 2;
+inline constexpr std::uint32_t kToolItems[kTools] = {2901, 7005};
+inline constexpr std::uint32_t kToolSkills[kTools] = {186, 393};  // Mining, Skinning
+
+// Tool bits missing: a tool whose skill the bot wants (`wants` bit i = kToolSkills[i]) and holds none of.
+[[nodiscard]] inline std::uint8_t MissingTools(std::uint8_t wants, std::uint8_t holds)
+{
+    return static_cast<std::uint8_t>(wants & ~holds & (ToolPick | ToolKnife));
+}
+
+// A missing tool alone starts a run once per AutoWow.Supply.OutfitCheckMs (nextOutfitMs = run start + it).
+[[nodiscard]] inline bool OutfitRunDue(std::uint8_t missingTools, std::uint64_t nowMs, std::uint64_t nextOutfitMs)
+{
+    return missingTools && nowMs >= nextOutfitMs;
 }
 
 struct Params
@@ -285,6 +312,8 @@ struct Obs
     bool hearthElsewhere = false;
     bool unknownFlightPath = false;
     AutoWowGear::Due gear;                     // AutoWow.Gear.Upgrades only (all false with the flag off)
+    std::uint8_t missingTools = 0;             // AutoWow.Supply.Outfit only: Tool bits (MissingTools)
+    bool toolRunDue = false;                   // AutoWow.Supply.Outfit only: OutfitRunDue
 };
 
 struct Assessment
@@ -377,6 +406,11 @@ struct Assessment
         a.needs |= NeedGear;
     if (o.gear.urgent)
         a.urgent |= NeedGear;
+    // AutoWow.Supply.Outfit: a missing tool is soft, and alone starts a run once per OutfitCheckMs.
+    if (o.missingTools)
+        a.needs |= NeedTool;
+    if (o.missingTools && o.toolRunDue)
+        a.urgent |= NeedTool;
     a.needs |= a.urgent;
     return a;
 }
@@ -431,6 +465,7 @@ struct Npc
     std::uint32_t sells = 0;              // (1 << Kind) of tier items on its vendor list
     std::vector<std::uint32_t> items;     // tier items it sells, ascending
     std::vector<std::uint32_t> gear;      // AutoWow.Gear.Upgrades: weapons / armor it sells, ascending
+    std::uint8_t tools = 0;               // Tool bits of the kToolItems it sells for plain gold (read by Outfit only)
     std::uint32_t nodeAlliance = 0;       // flight master: nearest taxi node per team
     std::uint32_t nodeHorde = 0;
 };
@@ -597,6 +632,7 @@ struct TownFacts
     bool inBotZone = false;
     bool unknownFlightMaster = false;  // town has a flight master whose node the bot lacks
     bool gearVendor = false;           // AutoWow.Gear.Upgrades: a usable vendor sells weapons / armor
+    std::uint8_t tools = 0;            // AutoWow.Supply.Outfit: missing Tool bits a usable vendor sells
 };
 
 [[nodiscard]] inline std::uint32_t Serves(TownFacts const& f)
@@ -620,6 +656,8 @@ struct TownFacts
         m |= NeedFlightPath;
     if (f.gearVendor)
         m |= NeedGear;
+    if (f.tools)
+        m |= NeedTool;
     return m;
 }
 
@@ -693,7 +731,8 @@ enum Done : std::uint32_t
     DoneBound = 1u << 4,
     DoneLearnedFp = 1u << 5,
     DoneSkipped = 1u << 6,  // an item or trainer rank was skipped as unaffordable (logged)
-    DoneGeared = 1u << 7    // AutoWow.Gear.Upgrades: a vendor weapon / armor piece was bought
+    DoneGeared = 1u << 7,   // AutoWow.Gear.Upgrades: a vendor weapon / armor piece was bought
+    DoneTooled = 1u << 8    // AutoWow.Supply.Outfit: a gathering tool was bought
 };
 
 // Operations at one npc, run in bit order.
@@ -707,7 +746,8 @@ enum Op : std::uint32_t
     OpLearnFp = 1u << 5,
     OpAuction = 1u << 6,  // AutoWow.Trade (TradePolicy.h): post / buy at the auctioneer
     OpMail = 1u << 7,     // AutoWow.Trade: collect mail at a mailbox (entry = gameobject entry)
-    OpGear = 1u << 8      // AutoWow.Gear.Upgrades: buy the planned weapon / armor this vendor sells
+    OpGear = 1u << 8,     // AutoWow.Gear.Upgrades: buy the planned weapon / armor this vendor sells
+    OpTool = 1u << 9      // AutoWow.Supply.Outfit: buy the missing gathering tools this vendor sells
 };
 
 struct Stop
@@ -739,6 +779,7 @@ struct PlanInput
     bool auction = false;                              // AutoWow.Trade: visit the town's auctioneer
     bool mail = false;                                 // AutoWow.Trade: visit the town's mailbox
     std::vector<std::uint32_t> gearNpcs;               // AutoWow.Gear.Upgrades: vendors with a planned buy
+    std::uint8_t tools = 0;                            // AutoWow.Supply.Outfit: Tool bits to buy
 };
 
 // Errand batch in order: sell junk, repair, restock, train, bind, flight path. Operations on the same
@@ -793,6 +834,16 @@ struct PlanInput
         for (Npc const& n : town.npcs)
             if (n.spawn == spawn && usable(n))
                 add(n, OpTrain, 0);
+    // AutoWow.Supply.Outfit: after training (a tool of a profession learned there is bought too), per missing
+    // tool the first usable vendor selling it.
+    for (std::size_t i = 0; i < kTools; ++i)
+        if (in.tools & (1u << i))
+            for (Npc const& n : town.npcs)
+                if (usable(n) && (n.roles & RoleVendor) && (n.tools & (1u << i)))
+                {
+                    add(n, OpTool, 0);
+                    break;
+                }
     // AutoWow.Gear.Upgrades: after training (its gold comes first), before bind / flight path.
     for (std::uint32_t spawn : in.gearNpcs)
         for (Npc const& n : town.npcs)
@@ -901,6 +952,8 @@ struct BotState
     std::uint32_t lastGearLevel = 0;
     std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearItems{};
     std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearNpcs{};
+    // AutoWow.Supply.Outfit: no tool-triggered run before this (survives runs, not restarts).
+    std::uint64_t nextOutfitMs = 0;
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
@@ -931,6 +984,7 @@ struct BotState
     BotState next;
     next.lastClassTrainLevel = s.lastClassTrainLevel;
     next.lastGearLevel = s.lastGearLevel;
+    next.nextOutfitMs = s.nextOutfitMs;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;

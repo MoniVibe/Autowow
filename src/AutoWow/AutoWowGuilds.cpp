@@ -335,6 +335,12 @@ std::uint32_t HouseGuildOf(Player* player)
     return HouseOfGuild(gid) ? gid : 0;
 }
 
+std::string HouseNameOf(std::uint32_t guildId)
+{
+    HouseRuntime const* h = HouseOfGuild(guildId);
+    return h ? h->house.name : std::string();
+}
+
 std::uint32_t RepOf(std::uint32_t guildId)
 {
     std::size_t team = 0;
