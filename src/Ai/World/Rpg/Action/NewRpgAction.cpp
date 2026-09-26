@@ -73,6 +73,7 @@
 #include "QuestValues.h"
 #include "RaidTargetClaimValue.h"
 #include "Random.h"
+#include "SelfCraftPolicy.h"
 #include "SharedDefines.h"
 #include "SupplyPolicy.h"
 #include "SurvivalRecovery.h"
@@ -478,6 +479,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
             return true;
         }
     }
+
+    // AutoWow.SelfCraft: bandage out of combat, craft bandages / cook food from own loot (flag off: never reached).
+    if (AutoWowSelfCraft::Enabled() && SelfCraftStep())
+        return true;
 
     // AutoWow.Party: a cohort party leader walks its party to a dungeon entrance, holds during the run and
     // puts the party's group quest first (flag off: never reached).

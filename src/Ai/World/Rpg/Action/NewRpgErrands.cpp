@@ -26,6 +26,7 @@
 #include "NewRpgBaseAction.h"
 #include "ObjectMgr.h"
 #include "SupplyPolicy.h"
+#include "SelfCraftPolicy.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
@@ -261,6 +262,9 @@ uint32 Stock(Player* bot, Kind kind)
     uint32 n = 0;
     for (std::size_t k = 0; k < t.size; ++k)
         n += bot->GetItemCount(t.data[k].item, false);
+    // AutoWow.SelfCraft.Cooking: the bot's own cooked food worth eating counts (errands buy less).
+    if (kind == KindFood && AutoWowSelfCraft::CookingOn())
+        n += AutoWowSelfCraft::CookedFoodStock(bot);
     return n;
 }
 
@@ -1277,7 +1281,12 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
     {
         bot->SetSelection(npc->GetGUID());
         uint64 const m0 = money();
+        // AutoWow.SelfCraft: `selfcraft learn` rows for the First Aid / Cooking lines, ranks and recipes.
+        AutoWowSelfCraft::Known const known0 =
+            AutoWowSelfCraft::Enabled() ? AutoWowSelfCraft::KnownOf(bot) : AutoWowSelfCraft::Known{};
         botAI->DoSpecificAction("trainer", Event("autowow errands", "learn"), true);
+        if (AutoWowSelfCraft::Enabled())
+            AutoWowSelfCraft::NoteLearned(bot, known0);
         if (m0 > money())
         {
             s.spent += m0 - money();

@@ -36,6 +36,7 @@
 #include "PullLevelCap.h"
 #include "RestGate.h"
 #include "SurvivalRecovery.h"
+#include "SelfCraftPolicy.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -554,6 +555,7 @@ public:
         AutoWowPullCap::LoadConfig();
         AutoWowRestGate::LoadConfig();
         AutoWowSurvivalRecovery::LoadConfig();
+        AutoWowSelfCraft::LoadConfig();
         AutoWowContracts::LoadConfig();   // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowGuilds::LoadConfig();
         AutoWowSupply::LoadConfig();      // after Guilds (houses, reps, cohort)
