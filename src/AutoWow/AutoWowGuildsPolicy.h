@@ -210,6 +210,14 @@ inline constexpr bool PayAllowed(std::uint64_t balance, std::uint64_t copper) { 
 inline constexpr std::uint32_t kPostagePerItem = 30;
 inline constexpr std::uint32_t Postage(std::uint32_t items) { return items ? kPostagePerItem * items : kPostagePerItem; }
 
+// A pinned member (configured rep / AutoWow.Supply artisan) found in another guild at login moves to its own
+// house only out of one of our house guilds and never as that guild's leader (it would pass on or disband it);
+// a guild that is not a house is never touched.
+[[nodiscard]] inline constexpr bool MovesToOwnHouse(bool pinned, bool otherIsHouse, bool otherLeader)
+{
+    return pinned && otherIsHouse && !otherLeader;
+}
+
 // ---- ledger `guild` (event 19) ----
 
 // Wire-stable; append only.
@@ -224,7 +232,8 @@ enum class Reason : std::uint8_t
     Refused = 6,         // a movement not made; op names it
     Postage = 7,         // mail postage paid from the bank for the house rep
     Levy = 8,            // faction levy: a short house bank drew copper from the richest same-team house bank
-    Grant = 9            // AutoWow.Supply.Outfit: bank -> member starter-equipment grant (tool / trainer rank)
+    Grant = 9,           // AutoWow.Supply.Outfit: bank -> member starter-equipment grant (tool / trainer rank)
+    Moved = 10           // a pinned rep / artisan left another of our house guilds (gid = the one it left)
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -241,6 +250,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Postage: return "postage";
         case Reason::Levy: return "levy";
         case Reason::Grant: return "grant";
+        case Reason::Moved: return "moved";
     }
     return "refused";
 }
@@ -271,9 +281,12 @@ inline bool gEnabled = false;
 inline bool Enabled() { return detail::gEnabled; }
 
 void LoadConfig();
-// Bot login (PlayerbotHolder::OnBotLogin): a cohort bot joins its house guild, a configured rep its own
-// house; creates the house guild when missing (the logging-in player, or the rep when online, leads it).
+// Bot login (PlayerbotHolder::OnBotLogin): a cohort bot joins its house guild, a configured rep or pinned
+// artisan its own house (moved out of another of our house guilds, MovesToOwnHouse); creates the house guild when
+// missing (the logging-in player, or the rep when online, leads it).
 void OnLogin(Player* player);
+// AutoWow.Supply LoadConfig (after LoadConfig here): pin a configured artisan to its house like a rep.
+void PinArtisan(std::size_t house, bool alliance, std::uint32_t guid);
 // The player's guild id when it is one of the house guilds, else 0.
 std::uint32_t HouseGuildOf(Player* player);
 // The house name of a house guild id, else "". Any thread (reads the resolved ids only; the world thread that

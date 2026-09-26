@@ -60,6 +60,7 @@ std::size_t gBagHouse = 0;
 std::string gBagHouseName;
 std::unordered_map<std::uint32_t, RoleInfo> gRoles;
 std::array<Stations, 2> gStations;  // [0] alliance, [1] horde
+std::array<Station, 2> gBagVendor;  // the kPouch vendor near each home (artisan make-room)
 std::array<std::uint32_t, 2> gArtisan{};  // the bag house artisan per team
 Recipe gRecipe;
 std::uint32_t gBagItem = 0, gBoltItem = 0, gBagSell = 0, gBagSlots = 0, gThreadPrice = 0;
@@ -208,7 +209,12 @@ Member MemberOf(Player* m, std::uint32_t slots)
     return out;
 }
 
-bool IsRole(std::uint32_t guid) { return gRoles.count(guid) != 0; }
+// A working role bot (an apprentice artisan is an ordinary member, ActiveRoleOf).
+bool IsRole(Player* p) { return ActiveRoleOf(p).role != Role::None; }
+
+// The house artisan when it works: online, in world and past its apprentice phase; else nullptr (the chain then
+// treats it as offline: no feed, pay or deliveries while it adventures).
+Player* Working(Player* art) { return art && art->IsInWorld() && IsRole(art) ? art : nullptr; }
 
 // The online cohort members of the team (roles excluded), unranked.
 std::vector<Member> Members(bool alliance, std::uint32_t slots)
@@ -217,11 +223,8 @@ std::vector<Member> Members(bool alliance, std::uint32_t slots)
     for (AutoWowGuilds::GuidRange const& r : AutoWowGuilds::Cohort())
         for (std::uint64_t g = r.lo; g <= r.hi; ++g)
         {
-            std::uint32_t const guid = static_cast<std::uint32_t>(g);
-            if (IsRole(guid))
-                continue;
-            Player* m = Online(guid);
-            if (m && m->IsInWorld() && (m->GetTeamId() == TEAM_ALLIANCE) == alliance)
+            Player* m = Online(static_cast<std::uint32_t>(g));
+            if (m && m->IsInWorld() && (m->GetTeamId() == TEAM_ALLIANCE) == alliance && !IsRole(m))
                 members.push_back(MemberOf(m, slots));
         }
     return members;
@@ -401,11 +404,9 @@ void TeamTick(bool alliance, bool overlord)
     std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gBagHouse, alliance);
     std::uint32_t const repGuid = gid ? AutoWowGuilds::RepOf(gid) : 0;
     Player* rep = Online(repGuid);
-    Player* art = Online(gArtisan[t]);
+    Player* art = Working(Online(gArtisan[t]));
     if (rep && !rep->IsInWorld())
         rep = nullptr;
-    if (art && !art->IsInWorld())
-        art = nullptr;
     TeamState ts;
     {
         std::lock_guard<std::mutex> guard(gLock);
@@ -548,11 +549,9 @@ void TierTick(bool alliance, bool overlord)
     std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gBagHouse, alliance);
     std::uint32_t const repGuid = gid ? AutoWowGuilds::RepOf(gid) : 0;
     Player* rep = Online(repGuid);
-    Player* art = Online(gArtisan[t]);
+    Player* art = Working(Online(gArtisan[t]));
     if (rep && !rep->IsInWorld())
         rep = nullptr;
-    if (art && !art->IsInWorld())
-        art = nullptr;
     TeamState ts;
     {
         std::lock_guard<std::mutex> guard(gLock);
@@ -822,10 +821,8 @@ std::vector<StockMember> StockMembers(bool alliance, ProductLine const& l)
         for (std::uint64_t g = r.lo; g <= r.hi; ++g)
         {
             std::uint32_t const guid = static_cast<std::uint32_t>(g);
-            if (IsRole(guid))
-                continue;
             Player* m = Online(guid);
-            if (!m || !m->IsInWorld() || (m->GetTeamId() == TEAM_ALLIANCE) != alliance)
+            if (!m || !m->IsInWorld() || (m->GetTeamId() == TEAM_ALLIANCE) != alliance || IsRole(m))
                 continue;
             StockMember sm{guid, m->GetLevel(), {}};
             for (std::size_t i = 0; i < l.tierCount; ++i)
@@ -846,11 +843,9 @@ void LineTick(Line line, bool alliance, bool overlord)
     std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gLineHouse[li], alliance);
     std::uint32_t const repGuid = gid ? AutoWowGuilds::RepOf(gid) : 0;
     Player* rep = Online(repGuid);
-    Player* art = Online(gLineArtisan[li][t]);
+    Player* art = Working(Online(gLineArtisan[li][t]));
     if (rep && !rep->IsInWorld())
         rep = nullptr;
-    if (art && !art->IsInWorld())
-        art = nullptr;
     LineState ts;
     {
         std::lock_guard<std::mutex> guard(gLock);
@@ -1165,9 +1160,13 @@ void BuildStations(bool alliance, Home const& home)
 {
     Stations& st = gStations[T(alliance)];
     FindStations(st, alliance, home, kBagSpell, kThreadItem);
+    Stations bags;
+    FindStations(bags, alliance, home, 0, kPouch);
+    gBagVendor[T(alliance)] = bags.threadVendor;
     LOG_INFO("server.loading", "[Supply] {} home map={} ({},{}) stations: mailbox={} trainer={} thread_vendor={} "
-             "auctioneer={}", alliance ? "alliance" : "horde", home.map, home.x, home.y, st.mailbox.entry,
-             st.trainer.entry, st.threadVendor.entry, st.auctioneer.entry);
+             "auctioneer={} bag_vendor={} (item {})", alliance ? "alliance" : "horde", home.map, home.x, home.y,
+             st.mailbox.entry, st.trainer.entry, st.threadVendor.entry, st.auctioneer.entry, gBagVendor[T(alliance)].entry,
+             kPouch);
 }
 
 // Reagent count of `item` in `spell` (0 = not a reagent).
@@ -1261,12 +1260,15 @@ void LoadConfig()
     p.outfitCheckMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitCheckMs", 600000);
     p.outfitMaxCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitMaxCopper", 500);
     p.outfitBudgetPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitBudgetPerHour", 5000);
+    p.artisanFreeSlots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanFreeSlots", 4);
+    p.artisanMinLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanMinLevel", 10);
     p.lines = 1;
     std::string const products = sConfigMgr->GetOption<std::string>("AutoWow.Supply.Products", "bags");
     if (!ParseProducts(products, p.lines))
         LOG_ERROR("server.loading", "[Supply] bad AutoWow.Supply.Products '{}': bags only", products);
     gRoles.clear();
     gArtisan = {};
+    gBagVendor = {};
     gLearn.clear();
     gLineHouse = {};
     gLineArtisan = {};
@@ -1485,6 +1487,7 @@ void LoadConfig()
             {
                 info.role = Role::Artisan;
                 gRoles[artisan] = info;
+                AutoWowGuilds::PinArtisan(i, alliance, artisan);  // joins this house at login, like a rep
                 if (info.bagHouse)
                     gArtisan[T(alliance)] = artisan;
                 if (info.line != kNoLine)
@@ -1496,6 +1499,8 @@ void LoadConfig()
              "bolts/bag={} thread/bag={} thread_price={} roles={} artisan A={} H={} learn={}", gBagHouseName, gBagItem,
              gBagSlots, gBagSell, gBoltItem, gRecipe.clothPerBolt, gRecipe.boltsPerBag, gRecipe.threadPerBag,
              gThreadPrice, gRoles.size(), gArtisan[0], gArtisan[1], gLearn.size());
+    LOG_INFO("server.loading", "[Supply] artisan upkeep: free_slots={} min_level={} bag={} outfit={}",
+             p.artisanFreeSlots, p.artisanMinLevel, kPouch, p.outfit);
     if (p.tiers)
         LOG_INFO("server.loading", "[Supply] tiers on: {} tiers, cloth cap {} per cloth; market={} buy_max_pct={} "
                  "buy_budget={} sell_keep={} list_float={}", kTierCount, p.clothCap, p.market, p.buyMaxPct, p.buyBudget,
@@ -1552,7 +1557,18 @@ RoleInfo RoleOf(std::uint32_t guid)
     return it == gRoles.end() ? RoleInfo{} : it->second;
 }
 
+RoleInfo ActiveRoleOf(Player* p)
+{
+    if (!p)
+        return {};
+    RoleInfo r = RoleOf(Low(p));
+    r.role = GatedRole(r.role, p->GetLevel(), detail::gParams.artisanMinLevel,
+                       p->GetMap() && p->GetMap()->Instanceable());
+    return r;
+}
+
 Stations const& StationsOf(bool alliance) { return gStations[T(alliance)]; }
+Station const& BagVendorOf(bool alliance) { return gBagVendor[T(alliance)]; }
 
 TeamView ViewOf(bool alliance)
 {
@@ -1632,7 +1648,7 @@ static void RouteLine(Line l, Player* bot)
     for (std::uint32_t const r : rooms)
         total += r;
     if (rooms.size() != gLineRoute[li].size() ||
-        !RoutesCloth(true, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(guid), false, total))
+        !RoutesCloth(true, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(bot), false, total))
         return;
     std::vector<std::vector<Stack>> stacks;
     for (std::uint32_t const item : gLineRoute[li])
@@ -1659,7 +1675,7 @@ static void RouteRaw(Player* bot)
 {
     std::uint32_t const guid = Low(bot);
     bool const alliance = bot->GetTeamId() == TEAM_ALLIANCE;
-    if (!AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) || IsRole(guid))
+    if (!AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) || IsRole(bot))
         return;
     for (std::size_t k = 0; k < kRawKinds; ++k)
     {
@@ -1715,7 +1731,7 @@ void RouteCloth(Player* bot)
         std::uint32_t total = 0;
         for (std::uint32_t const r : rooms)
             total += r;
-        if (!RoutesCloth(p.routeCloth, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(guid),
+        if (!RoutesCloth(p.routeCloth, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(bot),
                          bot->HasSkill(SKILL_TAILORING), total))
             return;
         std::vector<std::uint32_t> pick;
@@ -1753,7 +1769,7 @@ void RouteCloth(Player* bot)
         std::lock_guard<std::mutex> guard(gLock);
         room = gTeams[T(alliance)].clothRoom;
     }
-    if (!RoutesCloth(p.routeCloth, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(guid),
+    if (!RoutesCloth(p.routeCloth, AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) && !IsRole(bot),
                      bot->HasSkill(SKILL_TAILORING), room))
         return;
     std::vector<Stack> stacks;

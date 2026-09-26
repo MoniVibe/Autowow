@@ -113,5 +113,16 @@ TEST(AutoWowGuildsPolicy, LedgerWireIsStable)
     EXPECT_EQ(LedgerFields("Weavers", 7, 50, 10, ReasonName(Reason::Pay)),
               ",\"house\":\"Weavers\",\"gid\":7,\"copper\":50,\"balance_after\":10,\"op\":\"pay\"");
     EXPECT_STREQ(AutoWowTrade::ActionName(AutoWowTrade::Action::Tax), "tax");
+    EXPECT_STREQ(ReasonName(Reason::Moved), "moved");  // lane F: a pinned rep / artisan left another house guild
+    EXPECT_EQ(static_cast<int>(Reason::Moved), 10);
+}
+
+TEST(AutoWowGuildsPolicy, PinnedMembersMoveOnlyOutOfOurHouseGuilds)
+{
+    // soak-s45-full-r1: the Brewers artisans sat in the Weavers guilds.
+    EXPECT_TRUE(MovesToOwnHouse(true, true, false));
+    EXPECT_FALSE(MovesToOwnHouse(false, true, false));  // an ordinary cohort member is never moved
+    EXPECT_FALSE(MovesToOwnHouse(true, false, false));  // a guild that is not ours is never touched
+    EXPECT_FALSE(MovesToOwnHouse(true, true, true));    // never that guild's leader
 }
 }  // namespace

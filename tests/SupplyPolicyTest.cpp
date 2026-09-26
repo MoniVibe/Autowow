@@ -475,6 +475,93 @@ TEST(SupplyOutfit, GrantPaysTheWholeShortfallWithinBothCaps)
     EXPECT_STREQ(GrantVerdictName(GrantVerdict::TeamBudget), "grant_team_budget");
 }
 
+TEST(SupplyArtisanUpkeep, ApprenticeGateAppliesToArtisansOnly)
+{
+    // soak-s45-full-r1: the level 1 / 2 Brewers artisans never reached Apprentice Alchemy (level 5).
+    EXPECT_EQ(GatedRole(Role::Artisan, 1, 10, false), Role::None);
+    EXPECT_EQ(GatedRole(Role::Artisan, 9, 10, false), Role::None);
+    EXPECT_EQ(GatedRole(Role::Artisan, 10, 10, false), Role::Artisan);  // graduated
+    EXPECT_EQ(GatedRole(Role::Artisan, 12, 10, true), Role::None);      // not pulled out of a dungeon run
+    EXPECT_EQ(GatedRole(Role::Rep, 1, 10, false), Role::Rep);           // reps never gated
+    EXPECT_EQ(GatedRole(Role::None, 1, 10, false), Role::None);
+    EXPECT_EQ(GatedRole(Role::Artisan, 1, 0, false), Role::Artisan);    // 0 = off: the old behaviour
+    EXPECT_EQ(GatedRole(Role::Artisan, 1, 0, true), Role::Artisan);
+}
+
+TEST(SupplyArtisanUpkeep, JunkClassification)
+{
+    EXPECT_EQ(ClassifyJunk({1, 0, false, false, false}), Junk::Destroy);  // e.g. Bristleback Quilboar Tusk 5085
+    EXPECT_EQ(ClassifyJunk({1, 25, false, false, false}), Junk::Sell);
+    EXPECT_EQ(ClassifyJunk({1, 0, true, false, false}), Junk::Keep);   // house material / product
+    EXPECT_EQ(ClassifyJunk({1, 40, true, false, false}), Junk::Keep);  // e.g. Bolt of Linen Cloth
+    EXPECT_EQ(ClassifyJunk({1, 0, false, true, false}), Junk::Keep);   // a quest in the log wants it
+    EXPECT_EQ(ClassifyJunk({1, 0, false, false, true}), Junk::Keep);   // hearthstone / tool / container
+    EXPECT_EQ(ClassifyJunk({1, 16, false, false, true}), Junk::Keep);  // Mining Pick (sellable, a tool)
+}
+
+TEST(SupplyArtisanUpkeep, PlanRoomSellsAllAndDestroysOnlyTheRest)
+{
+    std::vector<BagStack> const bags = {
+        {9, 0, false, false, false},  // junk
+        {5, 30, false, false, false},  // sellable
+        {3, 0, false, false, false},  // junk
+        {7, 40, true, false, false},  // house (bolts)
+        {1, 0, false, false, false},  // junk
+        {2, 0, false, true, false},   // quest in log
+        {4, 0, false, false, false},  // junk
+        {6, 0, false, false, true},   // hearthstone
+    };
+    // Full backpack, want 4: the sale frees one, three junk stacks go (ascending guid).
+    RoomPlan const full = PlanRoom(bags, 0, 4);
+    EXPECT_EQ(full.sell, (std::vector<std::uint32_t>{5}));
+    EXPECT_EQ(full.destroy, (std::vector<std::uint32_t>{1, 3, 4}));
+    // Two free: the sale covers one, one junk stack goes.
+    RoomPlan const two = PlanRoom(bags, 2, 4);
+    EXPECT_EQ(two.sell, (std::vector<std::uint32_t>{5}));
+    EXPECT_EQ(two.destroy, (std::vector<std::uint32_t>{1}));
+    // Enough room: nothing sold, nothing destroyed.
+    RoomPlan const ok = PlanRoom(bags, 4, 4);
+    EXPECT_TRUE(ok.sell.empty());
+    EXPECT_TRUE(ok.destroy.empty());
+    // Not enough junk: every junk stack goes, still short (the bag step's case).
+    RoomPlan const lean = PlanRoom(bags, 0, 12);
+    EXPECT_EQ(lean.destroy, (std::vector<std::uint32_t>{1, 3, 4, 9}));
+}
+
+TEST(SupplyArtisanUpkeep, SpaceTargetsAndBag)
+{
+    EXPECT_EQ(RoomTarget(4, false), 4u);
+    EXPECT_EQ(RoomTarget(4, true), 4u);
+    EXPECT_EQ(RoomTarget(0, false), 0u);  // off
+    EXPECT_EQ(RoomTarget(0, true), 1u);   // a blocked craft still wants a slot
+    EXPECT_TRUE(WantsBag(false, 2, 4));
+    EXPECT_FALSE(WantsBag(true, 2, 4));   // a bag worn: never a second one here
+    EXPECT_FALSE(WantsBag(false, 4, 4));  // the junk made enough room
+}
+
+TEST(SupplyArtisanUpkeep, LineItemsAreHouseItems)
+{
+    ProductLine const& potions = LineOf(Line::Potions);
+    EXPECT_TRUE(LineItem(potions, 118));   // Minor Healing Potion (product)
+    EXPECT_TRUE(LineItem(potions, 2447));  // Peacebloom (routed)
+    EXPECT_TRUE(LineItem(potions, 3371));  // Empty Vial (vendor)
+    EXPECT_TRUE(LineItem(potions, 929));   // Healing Potion
+    EXPECT_FALSE(LineItem(potions, kLinen));
+    EXPECT_FALSE(LineItem(potions, 5085));  // quest junk
+    EXPECT_FALSE(LineItem(LineOf(Line::Bags), kLinen));  // bags: the bespoke tier chain (HouseMaterial), no table
+}
+
+TEST(SupplyArtisanUpkeep, WireAndDefaults)
+{
+    EXPECT_STREQ(ReasonName(Reason::Junk), "junk");
+    EXPECT_EQ(static_cast<int>(Reason::Junk), 14);
+    Params const p;
+    EXPECT_EQ(p.artisanFreeSlots, 4u);
+    EXPECT_EQ(p.artisanMinLevel, 10u);
+    EXPECT_EQ(kStateVersion, 4u);
+    EXPECT_EQ(kPouch, 4496u);
+}
+
 TEST(SupplyOutfit, LedgerWireIsStable)
 {
     EXPECT_STREQ(ReasonName(Reason::Outfit), "outfit");
