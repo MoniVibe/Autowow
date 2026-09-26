@@ -1,4 +1,4 @@
-# soak-s45-full: S44 + gatherer squad (5/faction L1, material orders > levelling; herbalism/mining/skinning; ore+leather routing), squad in cohort range, Brewers artisans get alchemy plan.
+# soak-s45-full: S44 + gatherer squad (5/faction L1, material orders > levelling; herbalism/mining/skinning; ore+leather routing), squad in cohort range, Brewers artisans get alchemy plan; outfitting grants (tools + training from the house bank).
 # 27 Oracle-managed (prior 12 + 15 sub-80 random), rest stock = control. Legacy L80 random bots rerolled once at login (setup).
 # MapUpdateInterval 10 -> 50 (perf A/B vs S2 at 10; confounded by bot count, compare per-bot map-thread CPU).
 pb|AiPlayerbot.MinRandomBots|100
@@ -143,3 +143,5 @@ pb|AutoWow.Squad.Enable|1
 pb|AutoWow.Squad.Alliance|"70573,70574,70575,70576,70763"
 pb|AutoWow.Squad.Horde|"70578,70579,70580,70581,70764"
 pb|AutoWow.Supply.RouteRaw|1
+pb|AutoWow.Supply.Outfit|1
+pb|AutoWow.Supply.OutfitMaxCopper|1500
