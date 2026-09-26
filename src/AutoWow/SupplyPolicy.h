@@ -72,6 +72,22 @@ struct Params
     std::uint32_t potionMaxOrder = 20;  // AutoWow.Supply.PotionMaxOrder: potions per order
     std::uint32_t potionKeep = 20;      // AutoWow.Supply.PotionSurplusKeep: potions per tier the rep keeps, no need
     std::uint32_t skillupCasts = 10;    // AutoWow.Supply.SkillupCasts: casts of reagents kept at a leveling artisan
+    // Raw materials (lane G): ore to the Smiths rep, leather to the Tanners rep, no line consumes them yet.
+    bool routeRaw = false;              // AutoWow.Supply.RouteRaw
+    std::uint32_t rawCap = 100;         // AutoWow.Supply.RawCap: per raw item, rep stock above which routing stops
+};
+
+// Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
+// (AutoWow.Supply.House.Ore, default Smiths; AutoWow.Supply.House.Leather, default Tanners), each under RawCap.
+inline constexpr std::uint32_t kOre[] = {2770, 2771, 2772};      // copper, tin, iron ore
+inline constexpr std::uint32_t kLeather[] = {2934, 2318, 2319};  // ruined leather scraps, light, medium leather
+
+// A material a house wants routed now (AutoWow.Squad reads it): item and units of room (stock target minus the
+// rep's stock, minus donations already queued).
+struct MaterialNeed
+{
+    std::uint32_t item = 0;
+    std::uint32_t count = 0;
 };
 
 // ---- bag need (overlord) ----
@@ -694,6 +710,18 @@ template <typename Have>
     return ready ? static_cast<std::uint8_t>(i) : kNoTier;
 }
 
+// A routed reagent the artisan can use now: some tier needing it is learned with the profession (skill 1) or
+// within the artisan's skill (0 = offline / unknown: skill-1 tiers only).
+[[nodiscard]] inline bool UsableNow(ProductLine const& l, std::uint32_t item, std::uint32_t skill)
+{
+    for (std::size_t i = 0; i < l.tierCount; ++i)
+        if (l.tiers[i].skill <= std::max<std::uint32_t>(1, skill))
+            for (Reagent const& r : l.tiers[i].reagents)
+                if (r.item == item)
+                    return true;
+    return false;
+}
+
 // Units of `item` the artisan keeps (not shipped to the rep) as a Craft reagent of `casts` casts of tier `i`.
 [[nodiscard]] inline std::uint32_t CraftReserve(ProductLine const& l, std::uint8_t i, std::uint32_t casts,
                                                 std::uint32_t item)
@@ -1047,6 +1075,12 @@ void ClearLineSurplus(Line l, bool alliance);
 // Emit a `supply` row of a line (Emit = the bags line).
 void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item, std::uint32_t count,
               std::uint64_t copper, std::uint32_t from, std::uint32_t to, char const* op = nullptr);
+
+// ---- material demand (lane G, read by AutoWow.Squad) ----
+// The team's routing rooms of materials the houses can use now (any thread): cloth tiers within the bag artisan's
+// reach (RouteCloth), the enabled lines' Route reagents UsableNow (RouteHerbs), raw ore / leather (RouteRaw).
+// Table order; zero rooms included. Flag off: empty.
+std::vector<MaterialNeed> MaterialDemand(bool alliance);
 }  // namespace AutoWowSupply
 
 #endif

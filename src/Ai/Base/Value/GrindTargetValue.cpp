@@ -22,6 +22,7 @@
 #include "SafeTravel.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
+#include "SquadPolicy.h"
 #include "TacticalRuntime.h"
 
 // AutoWow.Survival.PullLevelCap: an over-cap candidate is pulled only under the quest exception (counted
@@ -400,6 +401,10 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
     // the anchor (ContractsPolicy.h HuntTarget). No contract: phase None, nothing filtered.
     AutoWowContracts::BotState const contract =
         AutoWowContracts::Enabled() ? AutoWowContracts::Snapshot(botGuid) : AutoWowContracts::BotState{};
+    // AutoWow.Squad (default 0): during a stint a squad member picks only source targets within the leash of the
+    // anchor (SquadPolicy.h HuntTarget), grey ones included (linen mobs stay farmable). No stint: nothing filtered.
+    AutoWowSquad::TeamState const squad =
+        AutoWowSquad::Enabled() ? AutoWowSquad::SnapshotOf(botGuid) : AutoWowSquad::TeamState{};
 
     for (ObjectGuid const guid : targets)
     {
@@ -417,6 +422,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
                                           static_cast<std::int32_t>(unit->GetPositionY())))
             continue;
 
+        bool const squadTarget = squad.phase == AutoWowSquad::Phase::Stint &&
+            AutoWowSquad::HuntTarget(AutoWowSquad::detail::gParams, squad, unit->IsCreature() ? unit->GetEntry() : 0,
+                                     unit->GetMapId(), static_cast<std::int32_t>(unit->GetPositionX()),
+                                     static_cast<std::int32_t>(unit->GetPositionY()));
+        if (squad.phase == AutoWowSquad::Phase::Stint && !squadTarget)
+            continue;
+
         if (unit->ToCreature() && !unit->ToCreature()->GetCreatureTemplate()->lootid &&
             bot->GetReactionTo(unit) >= REP_NEUTRAL)
             continue;
@@ -424,7 +436,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         if (!bot->IsHostileTo(unit) && unit->GetNpcFlags() != UNIT_NPC_FLAG_NONE)
             continue;
 
-        if (!bot->isHonorOrXPTarget(unit))
+        if (!bot->isHonorOrXPTarget(unit) && !squadTarget)
             continue;
 
         if (abs(bot->GetPositionZ() - unit->GetPositionZ()) > INTERACTION_DISTANCE)

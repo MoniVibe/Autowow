@@ -37,6 +37,7 @@
 #include "SpellMgr.h"
 #include "Playerbots.h"
 #include "SelfCraftPolicy.h"
+#include "SquadPolicy.h"
 #include "SupplyPolicy.h"
 #include "Trainer.h"
 #include "WorldPacket.h"
@@ -100,6 +101,16 @@ std::array<TeamState, 2> gTeams;
 std::array<std::array<LineState, 2>, kLineCount> gLines;  // [line][team]
 std::uint32_t gNextOrderId = 0;  // run-scoped, never reused (both teams)
 std::unordered_set<std::uint32_t> gHeld;
+
+// Raw materials (RouteRaw, lane G): kind 0 = ore -> AutoWow.Supply.House.Ore, 1 = leather -> .House.Leather.
+constexpr std::size_t kRawKinds = 2, kRawItems = 3;
+static_assert(std::size(kOre) == kRawItems && std::size(kLeather) == kRawItems);
+constexpr std::uint32_t const* kRawLists[kRawKinds] = {kOre, kLeather};
+constexpr char const* kRawKeys[kRawKinds] = {"Ore", "Leather"};
+constexpr char const* kRawDefaultHouse[kRawKinds] = {"Smiths", "Tanners"};
+std::array<std::size_t, kRawKinds> gRawHouse{};  // read-only after LoadConfig; houses.size() = kind off
+std::array<std::string, kRawKinds> gRawHouseName;
+std::array<std::array<std::array<std::uint32_t, kRawItems>, kRawKinds>, 2> gRawRooms{};  // [team][kind][item], gLock
 
 // World thread only.
 std::uint32_t gTickAcc = 0;
@@ -264,6 +275,10 @@ public:
                 if (units[k])
                     EmitLine(line_, bot, ok ? Reason::Donate : Reason::Refused, 0, entries[k], units[k], 0, Low(bot),
                              rep, ok ? nullptr : "donate");
+            // AutoWow.Squad: a squad member's delivery (`squad` deliver row).
+            for (std::size_t k = 0; ok && AutoWowSquad::Enabled() && k < units.size(); ++k)
+                if (units[k])
+                    AutoWowSquad::NoteDelivered(bot, entries[k], units[k], rep);
         }
         std::lock_guard<std::mutex> guard(gLock);
         for (std::uint32_t const g : guids_)
@@ -279,6 +294,83 @@ private:
     std::vector<std::uint32_t> guids_;
     Line line_;
 };
+
+// World thread: mail a raw-material donation (ore / leather, RouteRaw) to its kind's house rep, one `supply` row per
+// entry (line "raw"), and release the held stacks.
+class RawDonateOperation : public PlayerbotOperation
+{
+public:
+    RawDonateOperation(ObjectGuid bot, bool alliance, std::size_t kind, std::vector<std::uint32_t> guids)
+        : bot_(bot), alliance_(alliance), kind_(kind), guids_(std::move(guids))
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
+        bool ok = false;
+        if (bot)
+        {
+            std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gRawHouse[kind_], alliance_);
+            std::uint32_t const rep = gid ? AutoWowGuilds::RepOf(gid) : 0;
+            std::array<std::uint32_t, kRawItems> units{};
+            for (std::uint32_t const g : guids_)
+                if (Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g)))
+                    for (std::size_t k = 0; k < kRawItems; ++k)
+                        if (item->GetEntry() == kRawLists[kind_][k])
+                            units[k] += item->GetCount();
+            ok = rep && rep != Low(bot) && AutoWowGuilds::SendItems(Low(bot), rep, guids_, "AutoWoW materials");
+            for (std::size_t k = 0; k < kRawItems; ++k)
+            {
+                if (!units[k])
+                    continue;
+                Reason const r = ok ? Reason::Donate : Reason::Refused;
+                LOG_INFO("playerbots", "[Supply] player={} {} house={} item={} count={} from={} to={}{}", bot->GetName(),
+                         ReasonName(r), gRawHouseName[kind_], kRawLists[kind_][k], units[k], Low(bot), rep,
+                         ok ? "" : " op=donate");
+                if (AutoWowQuestLedger::Enabled())
+                    AutoWowQuestLedger::EmitSupply(bot, ReasonName(r),
+                                                   LedgerFields(gRawHouseName[kind_], 0, kRawLists[kind_][k], units[k], 0,
+                                                                Low(bot), rep, ok ? nullptr : "donate") +
+                                                       ",\"line\":\"raw\"");
+                if (ok && AutoWowSquad::Enabled())
+                    AutoWowSquad::NoteDelivered(bot, kRawLists[kind_][k], units[k], rep);
+            }
+        }
+        std::lock_guard<std::mutex> guard(gLock);
+        for (std::uint32_t const g : guids_)
+            gHeld.erase(g);
+        return ok;
+    }
+    ObjectGuid GetBotGuid() const override { return bot_; }
+    std::string GetName() const override { return "AutoWowSupplyRawDonate"; }
+
+private:
+    ObjectGuid bot_;
+    bool alliance_;
+    std::size_t kind_;
+    std::vector<std::uint32_t> guids_;
+};
+
+// World thread (RouteRaw): each raw item's donor room at its kind's house rep, under RawCap.
+void RawTick(bool alliance)
+{
+    Params const& p = detail::gParams;
+    std::array<std::array<std::uint32_t, kRawItems>, kRawKinds> rooms{};
+    for (std::size_t k = 0; k < kRawKinds; ++k)
+    {
+        std::uint32_t const gid = gRawHouse[k] < AutoWowGuilds::Houses().size()
+                                      ? AutoWowGuilds::HouseGuildId(gRawHouse[k], alliance) : 0;
+        Player* rep = Online(gid ? AutoWowGuilds::RepOf(gid) : 0);
+        if (rep && !rep->IsInWorld())
+            rep = nullptr;
+        bool const repReady = rep && AutoWowGuilds::RepFreeSlots(rep) > 0;
+        for (std::size_t i = 0; i < kRawItems; ++i)
+            rooms[k][i] = ClothRoom(HeldUnits(rep, kRawLists[k][i]), p.rawCap, repReady);
+    }
+    std::lock_guard<std::mutex> guard(gLock);
+    gRawRooms[T(alliance)] = rooms;
+}
 
 std::vector<std::uint32_t> Guids(std::vector<Stack> const& stacks, std::uint32_t maxStacks)
 {
@@ -1117,6 +1209,8 @@ void LoadConfig()
     p.potionMaxOrder = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.PotionMaxOrder", 20));
     p.potionKeep = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.PotionSurplusKeep", 20);
     p.skillupCasts = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.SkillupCasts", 10);
+    p.routeRaw = sConfigMgr->GetOption<bool>("AutoWow.Supply.RouteRaw", false);
+    p.rawCap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RawCap", 100);
     p.lines = 1;
     std::string const products = sConfigMgr->GetOption<std::string>("AutoWow.Supply.Products", "bags");
     if (!ParseProducts(products, p.lines))
@@ -1137,6 +1231,7 @@ void LoadConfig()
         gTeams = {};
         gLines = {};
         gHeld.clear();
+        gRawRooms = {};
     }
     if (!detail::gEnabled)
         return;
@@ -1156,6 +1251,19 @@ void LoadConfig()
             gBagHouse = i;
     if (gBagHouse == houses.size())
         return disable("AutoWow.Supply.House '" + gBagHouseName + "' is not an AutoWow.Guilds.Houses house");
+    // RouteRaw: each raw kind's house (a missing house turns that kind off).
+    for (std::size_t k = 0; k < kRawKinds; ++k)
+    {
+        gRawHouseName[k] = sConfigMgr->GetOption<std::string>(std::string("AutoWow.Supply.House.") + kRawKeys[k],
+                                                              kRawDefaultHouse[k]);
+        gRawHouse[k] = houses.size();
+        for (std::size_t i = 0; i < houses.size(); ++i)
+            if (houses[i].name == gRawHouseName[k])
+                gRawHouse[k] = i;
+        if (p.routeRaw)
+            LOG_INFO("server.loading", "[Supply] route raw {} -> house {}{} cap={}", kRawKeys[k], gRawHouseName[k],
+                     gRawHouse[k] == houses.size() ? " (not a house: off)" : "", p.rawCap);
+    }
 
     SpellInfo const* bag = sSpellMgr->GetSpellInfo(kBagSpell);
     SpellInfo const* bolt = sSpellMgr->GetSpellInfo(kBoltSpell);
@@ -1376,6 +1484,11 @@ void WorldUpdate(std::uint32_t diff)
             LineTick(L.id, true, overlord);
             LineTick(L.id, false, overlord);
         }
+    if (p.routeRaw)
+    {
+        RawTick(true);
+        RawTick(false);
+    }
 }
 
 RoleInfo RoleOf(std::uint32_t guid)
@@ -1485,6 +1598,43 @@ static void RouteLine(Line l, Player* bot)
         std::make_unique<DonateOperation>(bot->GetGUID(), alliance, std::move(plan.picks), l));
 }
 
+// Errand sell stop (RouteRaw): a cohort adventurer mails its ore / leather to its kind's house rep, each item within
+// its own room (RawCap); the stacks are held back from this stop's sales. Mirrors RouteLine.
+static void RouteRaw(Player* bot)
+{
+    std::uint32_t const guid = Low(bot);
+    bool const alliance = bot->GetTeamId() == TEAM_ALLIANCE;
+    if (!AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) || IsRole(guid))
+        return;
+    for (std::size_t k = 0; k < kRawKinds; ++k)
+    {
+        if (gRawHouse[k] >= AutoWowGuilds::Houses().size())
+            continue;
+        std::vector<std::uint32_t> rooms(kRawItems, 0);
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            std::copy(gRawRooms[T(alliance)][k].begin(), gRawRooms[T(alliance)][k].end(), rooms.begin());
+        }
+        std::vector<std::vector<Stack>> stacks;
+        for (std::size_t i = 0; i < kRawItems; ++i)
+            stacks.push_back(LooseStacks(bot, kRawLists[k][i]));
+        RoutePlan plan = PlanRoute(stacks, rooms);
+        if (plan.picks.empty())
+            continue;
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            std::array<std::uint32_t, kRawItems>& live = gRawRooms[T(alliance)][k];
+            if (gHeld.size() + plan.picks.size() > kMaxHeld)
+                return;
+            for (std::size_t i = 0; i < kRawItems; ++i)
+                live[i] -= std::min(live[i], plan.units[i]);
+            gHeld.insert(plan.picks.begin(), plan.picks.end());
+        }
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(
+            std::make_unique<RawDonateOperation>(bot->GetGUID(), alliance, k, std::move(plan.picks)));
+    }
+}
+
 void RouteCloth(Player* bot)
 {
     Params const& p = detail::gParams;
@@ -1493,6 +1643,8 @@ void RouteCloth(Player* bot)
     for (ProductLine const& L : kCatalog)
         if (L.tierCount)
             RouteLine(L.id, bot);
+    if (p.routeRaw)
+        RouteRaw(bot);
     if (!LineOn(Line::Bags))
         return;
     std::uint32_t const guid = Low(bot);
@@ -1624,5 +1776,45 @@ void ClearLineSurplus(Line l, bool alliance)
 {
     std::lock_guard<std::mutex> guard(gLock);
     gLines[static_cast<std::size_t>(l)][T(alliance)].v.surplus = {};
+}
+
+std::vector<MaterialNeed> MaterialDemand(bool alliance)
+{
+    std::vector<MaterialNeed> out;
+    if (!detail::gEnabled)
+        return out;
+    Params const& p = detail::gParams;
+    std::size_t const t = T(alliance);
+    std::lock_guard<std::mutex> guard(gLock);
+    TeamState const& ts = gTeams[t];
+    if (LineOn(Line::Bags) && p.routeCloth)
+    {
+        if (p.tiers)
+        {
+            // Cloth the bag artisan can bolt now (linen always); stock beyond its reach waits (lane C).
+            for (std::size_t i = 0; i < kTierCount; ++i)
+                if (i == 0 || !OutOfReach(kTiers[i], ts.artisanSkill))
+                    out.push_back({kTiers[i].cloth, ts.clothRooms[i]});
+        }
+        else
+            out.push_back({kLinen, ts.clothRoom});
+    }
+    if (p.routeHerbs)
+        for (ProductLine const& L : kCatalog)
+        {
+            std::size_t const li = static_cast<std::size_t>(L.id);
+            LineView const& v = gLines[li][t].v;
+            if (!L.tierCount || !LineOn(L.id) || v.rooms.size() != gLineRoute[li].size())
+                continue;
+            for (std::size_t i = 0; i < gLineRoute[li].size(); ++i)
+                if (UsableNow(L, gLineRoute[li][i], v.artisanSkill))
+                    out.push_back({gLineRoute[li][i], v.rooms[i]});
+        }
+    if (p.routeRaw)
+        for (std::size_t k = 0; k < kRawKinds; ++k)
+            if (gRawHouse[k] < AutoWowGuilds::Houses().size())
+                for (std::size_t i = 0; i < kRawItems; ++i)
+                    out.push_back({kRawLists[k][i], gRawRooms[t][k][i]});
+    return out;
 }
 }  // namespace AutoWowSupply

@@ -35,6 +35,7 @@
 #include "TransportCrossingPolicy.h"
 #include "TravelMgr.h"
 #include "TravelNode.h"
+#include "SquadPolicy.h"
 #include "ZoneProgressionPolicy.h"
 
 namespace AutoWowZoneProgression
@@ -549,7 +550,10 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         bool const huntingContract = (trigger == Trigger::Level || trigger == Trigger::NoQuests) &&
                                      AutoWowContracts::Enabled() &&
                                      AutoWowContracts::Snapshot(guid).phase != AutoWowContracts::Phase::None;
-        if (trigger == Trigger::None || huntingContract)
+        // AutoWow.Squad: a squad member holds its tier while its squad has workable material demand.
+        bool const squadHold = (trigger == Trigger::Level || trigger == Trigger::NoQuests) &&
+                                AutoWowSquad::Enabled() && AutoWowSquad::HoldsTier(bot);
+        if (trigger == Trigger::None || huntingContract || squadHold)
         {
             StoreState(guid, s);
             return false;

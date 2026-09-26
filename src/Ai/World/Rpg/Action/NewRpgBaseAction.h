@@ -145,6 +145,11 @@ protected:
     // ops (mailbox, trainer, thread, craft, surplus). True for every role bot (the RPG machine never picks
     // quests / grind for it); false for everyone else. Caller checks the flag.
     bool SupplyStep();
+    // AutoWow.Squad.Enable (SquadPolicy.h): a squad member walks to its team's stint anchor (the leader waits for
+    // stragglers) and hunts / gathers there. True when it consumed the tick. SquadWander: the wander move of a
+    // hunting member (within LeashYards/2 of the anchor); true when it moved. Callers check the flag.
+    bool SquadStep();
+    bool SquadWander();
 
 protected:
     /* FOR MOVE FAR */

@@ -19,6 +19,7 @@
 
 #include "AutoWowBridge.h"
 #include "AutoWowGuildsPolicy.h"
+#include "SquadPolicy.h"
 #include "SupplyPolicy.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
@@ -559,6 +560,7 @@ public:
         AutoWowContracts::LoadConfig();   // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowGuilds::LoadConfig();
         AutoWowSupply::LoadConfig();      // after Guilds (houses, reps, cohort)
+        AutoWowSquad::LoadConfig();       // after Supply and world spawns (source index)
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
@@ -591,6 +593,8 @@ public:
             AutoWowParty::WorldUpdate(diff);  // world thread, after the map updates
         if (AutoWowSupply::Enabled())
             AutoWowSupply::WorldUpdate(diff);  // world thread: overlord, feed, delivery, pay, XP
+        if (AutoWowSquad::Enabled())
+            AutoWowSquad::WorldUpdate(diff);  // world thread: squad party, demand, stints
         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
     }
 };

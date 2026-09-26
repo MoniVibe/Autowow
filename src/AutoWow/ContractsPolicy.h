@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+struct CreatureData;
+
 // Hunt contracts for independent AutoWoW bots (AutoWow.Contracts.Enable, default 0). A bot whose quest
 // scheduler has no live quest work (RPG Idle and DO_QUEST unavailable) is issued a contract by its
 // faction ("faction_board"): kill Kills level-appropriate non-elite mobs of the best nearby spawn cluster.
@@ -408,6 +410,9 @@ void LoadConfig();
 BotState Snapshot(std::uint32_t guid);
 // Kill credit (core kill hook): counts an accepted entry toward the holder's contract.
 void CreditKill(std::uint32_t guid, std::uint32_t entry);
+// The spawn index filter (any flag state): true + `out` filled when the world-DB spawn is huntable (random-bot
+// map, normal rank, attackable, no service flags, some team may hunt it). AutoWow.Squad indexes its sources with it.
+bool HuntSpawn(std::uint32_t spawnId, CreatureData const& data, Spawn& out);
 }  // namespace AutoWowContracts
 
 #endif  // AUTOWOW_CONTRACTS_POLICY_H
