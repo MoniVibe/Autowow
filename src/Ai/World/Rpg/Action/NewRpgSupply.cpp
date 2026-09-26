@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
+#include "AuctionHouseMgr.h"
 #include "AutoWowOracleRuntime.h"
 #include "Bag.h"
 #include "Creature.h"
@@ -47,13 +49,17 @@ enum class Task : std::uint8_t
     Trainer = 3,
     Thread = 4,
     Auction = 5,
-    Sell = 6
+    Sell = 6,
+    Market = 7  // AutoWow.Supply.Market: the bag-house rep lists house surplus / buys artisan materials
 };
+
+constexpr std::uint32_t kSkillupBags = 3;  // Tiers: thread bought for this many skill-up bags
 
 struct RoleState
 {
     std::uint32_t version = kStateVersion;
     std::uint64_t nextMs = 0;       // next task decision
+    std::uint64_t marketMs = 0;     // Market: next faction AH visit
     Task task = Task::None;
     std::uint64_t taskSinceMs = 0;
     std::uint32_t stuck = 0;
@@ -132,9 +138,65 @@ Station const* StationFor(Stations const& st, Task task)
         case Task::Trainer: return st.trainer.entry ? &st.trainer : nullptr;
         case Task::Thread:
         case Task::Sell: return st.threadVendor.entry ? &st.threadVendor : nullptr;
-        case Task::Auction: return st.auctioneer.entry ? &st.auctioneer : nullptr;
+        case Task::Auction:
+        case Task::Market: return st.auctioneer.entry ? &st.auctioneer : nullptr;
         default: return nullptr;
     }
+}
+
+// Tiers: the thread the artisan needs now (item, units): the product order's, else a bag skill-up's.
+std::pair<std::uint32_t, std::uint32_t> TierThread(TeamView const& view, bool canBag)
+{
+    if (canBag && view.remaining && view.product != kNoTier)
+        return {kTiers[view.product].thread, view.remaining * kTiers[view.product].recipe.threadPerBag};
+    if (!view.remaining && view.skillup != kNoTier && view.skillupBag)
+        return {kTiers[view.skillup].thread, kSkillupBags * kTiers[view.skillup].recipe.threadPerBag};
+    return {ThreadItem(), 0};
+}
+
+bool HouseMaterial(std::uint32_t entry)
+{
+    for (Tier const& t : kTiers)
+        if (entry == t.cloth || entry == t.bolt || entry == t.thread || (t.extra && entry == t.extra))
+            return true;
+    return false;
+}
+
+// Market: whole stacks the rep lists (ascending guid, at most kMaxMailStacks): each cloth tier out of the
+// artisan's reach above SellKeep, and every non-house trade good. Nothing while the artisan's skill is unknown.
+std::vector<std::uint32_t> MarketSellable(Player* bot, TeamView const& view)
+{
+    std::vector<std::uint32_t> out;
+    if (!view.artisanSkill)
+        return out;
+    for (Tier const& t : kTiers)
+    {
+        if (!OutOfReach(t, view.artisanSkill))
+            continue;
+        std::vector<Stack> stacks;
+        for (std::uint32_t const g : LooseGuids(bot, t.cloth, 0xFFFFFFFFu))
+            if (Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g)))
+                stacks.push_back({g, item->GetCount()});
+        for (std::uint32_t const g : SellStacks(stacks, detail::gParams.sellKeep))
+            out.push_back(g);
+    }
+    auto take = [&](Item* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && proto->Class == ITEM_CLASS_TRADE_GOODS && !HouseMaterial(proto->ItemId) && !item->IsSoulBound())
+            out.push_back(static_cast<std::uint32_t>(item->GetGUID().GetCounter()));
+    };
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        take(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        if (Bag* b = bot->GetBagByPos(bag))
+            for (uint32 slot = 0; slot < b->GetBagSize(); ++slot)
+                take(b->GetItemByPos(slot));
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    if (out.size() > kMaxMailStacks)
+        out.resize(kMaxMailStacks);
+    return out;
 }
 }  // namespace
 }  // namespace AutoWowSupply
@@ -198,7 +260,26 @@ bool NewRpgBaseAction::SupplyStep()
         Task next = Task::None;
         if (AutoWowTrade::HasCollectableMail(bot) && st.mailbox.entry)
             next = Task::Mailbox;
-        if (artisan)
+        if (artisan && Tiers())
+        {
+            // Tiers: the product tier's bag recipe, the product / skill-up thread.
+            bool const canBag = view.product != kNoTier && bot->HasSpell(kTiers[view.product].bagSpell);
+            bool learnAffordable = false;
+            std::uint64_t const learnCost = st.trainer.entry
+                ? LearnCost(bot, sObjectMgr->GetTrainer(st.trainer.entry), learnAffordable) : 0;
+            auto const [threadItem, threadWant] = TierThread(view, canBag);
+            std::uint32_t const thread = LooseCount(bot, threadItem);
+            std::uint32_t const price = PriceOf(threadItem);
+            std::uint32_t const remaining = canBag ? view.remaining : 0;
+            std::uint64_t const want = std::uint64_t(Short(threadWant, thread)) * price + learnCost +
+                                       (remaining ? AutoWowGuilds::Postage(remaining) : 0);
+            SetArtisanWant(role.alliance, want > bot->GetMoney() ? want - bot->GetMoney() : 0, canBag);
+            if (next == Task::None && learnAffordable)
+                next = Task::Trainer;
+            if (next == Task::None && thread < threadWant && bot->GetMoney() >= price && st.threadVendor.entry)
+                next = Task::Thread;
+        }
+        else if (artisan)
         {
             bool const canBag = bot->HasSpell(BagSpell());
             bool learnAffordable = false;
@@ -218,6 +299,12 @@ bool NewRpgBaseAction::SupplyStep()
         }
         if (role.role == Role::Rep && next == Task::None && view.surplus)
             next = st.auctioneer.entry ? Task::Auction : Task::Sell;
+        if (role.role == Role::Rep && role.bagHouse && Market() && next == Task::None && now >= s.marketMs &&
+            st.auctioneer.entry && (!view.buy.empty() || !MarketSellable(bot, view).empty()))
+        {
+            next = Task::Market;
+            s.marketMs = now + p.tickMs;  // one visit (one BuyBudget) per tick
+        }
         if (next == Task::None && !atHome)
             next = Task::Home;
         if (next != Task::None)
@@ -301,27 +388,54 @@ bool NewRpgBaseAction::SupplyStep()
             {
                 Creature* npc = target->ToCreature();
                 VendorItemData const* list = npc->GetVendorItems();
-                std::uint32_t const want = view.remaining * BagRecipe().threadPerBag;
-                std::uint32_t const have = LooseCount(bot, ThreadItem());
+                // Tiers: the product / skill-up tier's thread (coarse or fine); off: Coarse Thread for the order.
+                std::pair<std::uint32_t, std::uint32_t> const tierThread = Tiers()
+                    ? TierThread(view, view.product != kNoTier && bot->HasSpell(kTiers[view.product].bagSpell))
+                    : std::pair<std::uint32_t, std::uint32_t>{ThreadItem(), view.remaining * BagRecipe().threadPerBag};
+                std::uint32_t const threadItem = tierThread.first;
+                std::uint32_t const want = tierThread.second;
+                std::uint32_t const have = LooseCount(bot, threadItem);
                 std::uint64_t const m0 = bot->GetMoney();
                 for (uint32 i = 0; list && i < list->GetItemCount(); ++i)
-                    if (VendorItem const* vi = list->GetItem(i); vi && vi->item == ThreadItem() && !vi->ExtendedCost)
+                    if (VendorItem const* vi = list->GetItem(i); vi && vi->item == threadItem && !vi->ExtendedCost)
                     {
                         for (std::uint32_t n = have; n < want && n < have + 60; ++n)
                         {
-                            std::uint32_t const before = LooseCount(bot, ThreadItem());
-                            bot->BuyItemFromVendorSlot(npc->GetGUID(), i, ThreadItem(), 1, NULL_BAG, NULL_SLOT);
-                            if (LooseCount(bot, ThreadItem()) <= before)
+                            std::uint32_t const before = LooseCount(bot, threadItem);
+                            bot->BuyItemFromVendorSlot(npc->GetGUID(), i, threadItem, 1, NULL_BAG, NULL_SLOT);
+                            if (LooseCount(bot, threadItem) <= before)
                                 break;  // money, bags or stock
                         }
                         break;
                     }
                 LOG_INFO("playerbots", "[Supply] bot={} bought thread {}->{} spent={}", bot->GetName(), have,
-                         LooseCount(bot, ThreadItem()), m0 - bot->GetMoney());
+                         LooseCount(bot, threadItem), m0 - bot->GetMoney());
                 break;
             }
             case Task::Auction:
             {
+                if (Tiers())
+                {
+                    // Every tier's surplus bags; a row per posted bag item.
+                    std::vector<std::uint32_t> bags;
+                    for (std::size_t i = 0; i < kTierCount; ++i)
+                        for (std::uint32_t const g : LooseGuids(bot, kTiers[i].bag, view.surplusBags[i]))
+                            bags.push_back(g);
+                    std::vector<AutoWowTrade::Post> planned;
+                    if (!bags.empty())
+                        AutoWowTrade::PostStacks(bot, target->ToCreature(), bags, &planned);
+                    for (AutoWowTrade::Post const& post : planned)
+                        Emit(bot, Reason::Surplus, view.orderId, post.entry, post.count, post.buyout, guid, 0, "auction");
+                    if (!planned.empty())
+                    {
+                        ClearSurplus(role.alliance);
+                        break;
+                    }
+                    s.task = Task::Sell;
+                    s.taskSinceMs = now;
+                    StoreRole(guid, s);
+                    return true;
+                }
                 std::vector<std::uint32_t> const bags = LooseGuids(bot, BagItem(), view.surplus);
                 std::uint32_t const posted =
                     bags.empty() ? 0 : AutoWowTrade::PostStacks(bot, target->ToCreature(), bags);
@@ -342,7 +456,16 @@ bool NewRpgBaseAction::SupplyStep()
                 Creature* npc = target->ToCreature();
                 std::uint64_t const m0 = bot->GetMoney();
                 std::uint32_t sold = 0;
-                for (std::uint32_t const g : LooseGuids(bot, BagItem(), view.surplus))
+                std::vector<std::uint32_t> surplus;
+                if (Tiers())
+                {
+                    for (std::size_t i = 0; i < kTierCount; ++i)
+                        for (std::uint32_t const g : LooseGuids(bot, kTiers[i].bag, view.surplusBags[i]))
+                            surplus.push_back(g);
+                }
+                else
+                    surplus = LooseGuids(bot, BagItem(), view.surplus);
+                for (std::uint32_t const g : surplus)
                 {
                     Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g));
                     if (!item)
@@ -356,8 +479,42 @@ bool NewRpgBaseAction::SupplyStep()
                         ++sold;
                 }
                 if (sold)
-                    Emit(bot, Reason::Surplus, view.orderId, BagItem(), sold, bot->GetMoney() - m0, guid, 0, "vendor");
+                    Emit(bot, Reason::Surplus, view.orderId, Tiers() ? 0 : BagItem(), sold, bot->GetMoney() - m0, guid,
+                         0, "vendor");  // Tiers: mixed bag items (item 0)
                 ClearSurplus(role.alliance);
+                break;
+            }
+            case Task::Market:
+            {
+                // Faction AH only: the capital auctioneer near home. The neutral goblin houses (Booty Bay,
+                // Gadgetzan) are the future cross-faction / smuggling channel, never used here; with two-side
+                // auction interaction on, every house is neutral and the market stays shut.
+                Creature* npc = target->ToCreature();
+                AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(npc->GetFaction());
+                AuctionHouseObject* ah = sAuctionMgr->GetAuctionsMap(npc->GetFaction());
+                if (!house || !ah || house->houseId == uint32(AuctionHouseId::Neutral))
+                {
+                    LOG_INFO("playerbots", "[Supply] bot={} market skipped: auctioneer {} is not a faction house",
+                             bot->GetName(), npc->GetEntry());
+                    break;
+                }
+                std::vector<AutoWowTrade::Post> planned;
+                if (std::vector<std::uint32_t> const sell = MarketSellable(bot, view); !sell.empty())
+                    AutoWowTrade::PostStacks(bot, npc, sell, &planned);
+                for (AutoWowTrade::Post const& post : planned)
+                    Emit(bot, Reason::List, 0, post.entry, post.count, post.buyout, guid, 0);
+                std::vector<MarketListing> listings;
+                if (!view.buy.empty())
+                    for (auto const& [id, a] : ah->GetAuctions())
+                        if (a && a->owner != bot->GetGUID() && a->buyout && a->itemCount &&
+                            std::any_of(view.buy.begin(), view.buy.end(),
+                                        [&](MarketWant const& w) { return w.item == a->item_template; }))
+                            listings.push_back({id, a->item_template, a->itemCount, a->buyout});
+                std::vector<MarketListing> buys = PlanMarketBuys(std::move(listings), view.buy,
+                                                                 detail::gParams.buyMaxPct, detail::gParams.buyBudget);
+                LOG_INFO("playerbots", "[Supply] bot={} market ah={} listed={} wants={} buys={}", bot->GetName(),
+                         house->houseId, planned.size(), view.buy.size(), buys.size());
+                QueueMarketBuys(bot, npc->GetGUID().GetRawValue(), std::move(buys));
                 break;
             }
             default:
@@ -371,7 +528,36 @@ bool NewRpgBaseAction::SupplyStep()
 
     // At home, nothing to fetch: the artisan crafts (one cast at a time; the core consumes the reagents and
     // rolls the skill-up).
-    if (artisan && atHome)
+    if (artisan && atHome && Tiers())
+    {
+        // Tiers: the product order first, else the skill-up recipe.
+        Tier const* product = view.product != kNoTier ? &kTiers[view.product] : nullptr;
+        Tier const* skillup = view.skillup != kNoTier ? &kTiers[view.skillup] : nullptr;
+        bool const canBag = product && bot->HasSpell(product->bagSpell);
+        auto hand = [&](Tier const* t)
+        {
+            return t ? Hand{LooseCount(bot, t->cloth), LooseCount(bot, t->bolt), LooseCount(bot, t->thread),
+                            t->extra ? LooseCount(bot, t->extra) : 0, LooseCount(bot, t->bag)}
+                     : Hand{};
+        };
+        std::uint32_t const remaining = canBag ? view.remaining : 0;
+        Craft const c = NextTierCraft(product ? *product : kTiers[0], remaining, canBag, hand(product), skillup,
+                                      view.skillupBag, hand(skillup));
+        Tier const* tier = remaining ? product : skillup;
+        std::uint32_t const spell = !tier ? 0 : c == Craft::Bag ? tier->bagSpell : c == Craft::Bolt ? tier->boltSpell : 0;
+        std::uint32_t const item = !tier ? 0 : c == Craft::Bag ? tier->bag : tier->bolt;
+        if (spell && bot->HasSpell(spell) && botAI->CanCastSpell(spell, bot, true))
+        {
+            std::uint32_t const before = LooseCount(bot, item);
+            if (botAI->CastSpell(spell, bot))
+            {
+                s.castSpell = spell;
+                s.castItem = item;
+                s.castBefore = before;
+            }
+        }
+    }
+    else if (artisan && atHome)
     {
         bool const canBag = bot->HasSpell(BagSpell());
         Recipe const& r = BagRecipe();

@@ -2828,6 +2828,36 @@ AutoWow.Supply.Artisan.Learn = "3911,3912,3913,12181,3755"
 # AutoWow.Supply.Artisan.Weavers.Alliance = 0
 # AutoWow.Supply.Artisan.Weavers.Horde = 0
 
+# Tiers (lane C, default 0; off = the linen-only chain above, unchanged): tailoring tiers Linen (Bolt of Linen
+# Cloth 2963 -> Linen Bag 3755, 6 slots, tailoring 45, Coarse Thread), Wool (Bolt of Woolen Cloth 2964 @75 ->
+# Woolen Bag 3757, 8 slots, @80, Fine Thread), Silk (Bolt of Silk Cloth 3839 @125 -> Small Silk Pack 3813,
+# 10 slots, @150, Fine Thread + 2 Heavy Leather 4234). The overlord's product = the highest bag tier the
+# artisan knows that members want (an empty bag slot or a worn bag with fewer slots) and the house can make
+# now, else the highest known wanted tier (materials from the market). With no order open the artisan levels
+# on the skill-up recipe: the cheapest known recipe still below grey whose cloth the house holds (at the rank
+# cap: none). RouteCloth routes linen, wool and silk, each under its own ClothCap, so a full out-of-reach tier
+# cannot starve a usable one. The artisan learns every tier recipe at its trainer once its skill allows (added
+# to Artisan.Learn). The tier table is checked against the loaded spells at startup (mismatch: Tiers off).
+AutoWow.Supply.Tiers = 0
+# Market (default 0; needs Tiers): the bag house rep trades on its capital's faction auction house (never a
+# neutral goblin house: that is the future cross-faction channel; with two-side auction interaction on the
+# market stays shut). At most one visit per TickMs, at home:
+#   sell: cloth tiers out of the artisan's reach above SellKeep units, and any non-house trade goods it holds,
+#         priced as AutoWow.Trade posts (undercut the lowest buyout, floor AutoWow.Trade.FloorPct of vendor).
+#   buy:  the cloth (and Heavy Leather) the artisan lacks for the product order, else for the skill-up recipe,
+#         cheapest per unit first, each unit at most BuyMaxPct of its vendor sell value, at most BuyBudget
+#         copper per visit. The house bank pays the rep the planned total, the rep buys out, and copper a
+#         rejected bid did not spend goes back to the bank. Won items arrive by mail (the rep's mailbox task).
+#   sold: a rep's auction proceeds (taken from the sale mail) are deposited to its house bank.
+# Ledger `supply` reasons list|buy|sold (item, count, copper).
+AutoWow.Supply.Market = 0
+AutoWow.Supply.BuyMaxPct = 400
+AutoWow.Supply.BuyBudget = 500
+AutoWow.Supply.SellKeep = 60
+# ListFloat: copper the house bank keeps on the rep for listing deposits (topped up each TickMs; a sale refunds
+# the deposit to the rep, an expiry loses it: a gold sink). Only the sale proceeds (bid - cut) go to the bank.
+AutoWow.Supply.ListFloat = 1000
+
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
 # -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport

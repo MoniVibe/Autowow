@@ -81,8 +81,8 @@
 //     quest is 0; team is the row's. Trailing: house (house name), gid (guild id), copper, balance_after
 //     (guild bank copper after the movement), op (refused only: the movement refused).
 //   - `supply` (event 20; AutoWow.Supply.Enable): one line per bag-chain step (SupplyPolicy.h). reason =
-//     order|donate|feed|craft|deliver|pay|surplus|xp|refused|travel; quest is 0; team is the row's. Trailing:
-//     house, oid (team order id, run-scoped, never reused), item, count, copper (xp: the XP amount), from,
+//     order|donate|feed|craft|deliver|pay|surplus|xp|refused|travel|list|buy|sold (the last three:
+//     AutoWow.Supply.Market); quest is 0; team is the row's. Trailing: house, oid (team order id, run-scoped, never reused), item, count, copper (xp: the XP amount), from,
 //     to (guid-lows, 0 = treasury / none), op (refused: the movement; travel: other_map|stuck; surplus:
 //     auction|vendor).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.

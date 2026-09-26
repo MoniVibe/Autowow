@@ -316,6 +316,17 @@ inline bool SplitU32(std::string_view s, std::uint32_t* out, std::size_t n)
     return detail::SplitU32(body.substr(colon + 1), f, 6) ? f[0] : 0;
 }
 
+// Deposit refunded by a sale mail (same body; AutoWow.Supply.Market keeps it as the rep's listing float).
+// 0 = unparsable.
+[[nodiscard]] inline std::uint32_t ParseSaleDeposit(std::string_view body)
+{
+    std::size_t const colon = body.find(':');
+    if (colon == std::string_view::npos)
+        return 0;
+    std::uint32_t f[6] = {};
+    return detail::SplitU32(body.substr(colon + 1), f, 6) ? f[2] : 0;
+}
+
 // Ledger action of a collected mail.
 [[nodiscard]] inline Action MailAction(AuctionMail const& m)
 {
@@ -378,7 +389,9 @@ void VisitMailbox(Player* bot, GameObject* mailbox);
 // AutoWow.Supply surplus (map thread, at the auctioneer): list these whole stacks, priced as PlanPosts prices
 // (undercut / vendor * PriceMultPct, never under the floor), deposits within the bot's money; queued for the
 // world thread. Returns the listings planned (0 = none: priced out or no house).
-std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids);
+// `planned` (optional) receives the planned listings (AutoWow.Supply.Market ledger rows).
+std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids,
+                         std::vector<Post>* planned = nullptr);
 // AutoWow.Ledger.Treasury: `fee` line for copper the bot just paid (no-op when off or copper is 0).
 void NoteFee(Player* bot, FeeKind kind, std::uint64_t copper);
 }  // namespace AutoWowTrade
