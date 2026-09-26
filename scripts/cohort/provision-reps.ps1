@@ -10,6 +10,7 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,
+    [ValidateSet('reps','squad')][string]$Set = 'reps',
     [string]$WslDistro = 'Ubuntu-24.04',
     [string]$WorldserverBinary = '/root/autowow-advisor-t1-build/src/server/apps/worldserver',
     [string]$WorldserverConfig = '/root/p1runtime/worldserver.conf',
@@ -18,17 +19,36 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'cohort-lib.ps1')
 
-# house, team, account, race id, class id (1 = warrior), gender, name
-$reps = @(
-    @('Weavers','Alliance','AWPVP1A01',1,1,0,'Wevrin'),
-    @('Smiths','Alliance','AWPVP1A01',1,1,0,'Smithal'),
-    @('Tanners','Alliance','AWPVP1A01',1,1,0,'Tannoc'),
-    @('Brewers','Alliance','AWPVP1A01',1,1,0,'Brewick'),
-    @('Weavers','Horde','AWPVP1H01',2,1,0,'Zugweva'),
-    @('Smiths','Horde','AWPVP1H01',2,1,0,'Kragsmit'),
-    @('Tanners','Horde','AWPVP1H01',2,1,0,'Durtan'),
-    @('Brewers','Horde','AWPVP1H01',2,1,0,'Gorbrew')
-)
+# role, team, account, race id, class id, gender, name
+# reps: 1 per house per faction (warriors, level 1, capital hubs)
+$sets = @{
+    reps = @(
+        @('Weavers','Alliance','AWPVP1A01',1,1,0,'Wevrin'),
+        @('Smiths','Alliance','AWPVP1A01',1,1,0,'Smithal'),
+        @('Tanners','Alliance','AWPVP1A01',1,1,0,'Tannoc'),
+        @('Brewers','Alliance','AWPVP1A01',1,1,0,'Brewick'),
+        @('Weavers','Horde','AWPVP1H01',2,1,0,'Zugweva'),
+        @('Smiths','Horde','AWPVP1H01',2,1,0,'Kragsmit'),
+        @('Tanners','Horde','AWPVP1H01',2,1,0,'Durtan'),
+        @('Brewers','Horde','AWPVP1H01',2,1,0,'Gorbrew')
+    )
+    # squad: 5 gatherers per faction (dwarves / undead, mixed classes) + 1 Brewers artisan per faction
+    squad = @(
+        @('Squad','Alliance','AWPVP1A02',3,1,0,'Brannik'),
+        @('Squad','Alliance','AWPVP1A02',3,2,0,'Thordal'),
+        @('Squad','Alliance','AWPVP1A02',3,5,1,'Hilvara'),
+        @('Squad','Alliance','AWPVP1A02',3,3,0,'Gromdur'),
+        @('Squad','Alliance','AWPVP1A02',3,4,1,'Kellda'),
+        @('Artisan.Brewers','Alliance','AWPVP1A03',4,11,1,'Aelmira'),
+        @('Squad','Horde','AWPVP1H02',5,1,0,'Morthal'),
+        @('Squad','Horde','AWPVP1H02',5,5,1,'Veskara'),
+        @('Squad','Horde','AWPVP1H02',5,4,0,'Grimsel'),
+        @('Squad','Horde','AWPVP1H02',5,8,0,'Dusmor'),
+        @('Squad','Horde','AWPVP1H02',5,9,1,'Yzolde'),
+        @('Artisan.Brewers','Horde','AWPVP1H03',6,11,0,'Tahnoka')
+    )
+}
+$reps = $sets[$Set]
 $lines = @($reps | ForEach-Object { ".autowow cohort create $($_[2]) $($_[3]) $($_[4]) $($_[5]) $($_[6])" })
 
 if (-not $Apply) {
@@ -70,7 +90,7 @@ finally {
     if (-not $proc.WaitForExit(300000)) { $proc.Kill(); Write-Warning 'One-shot worldserver was killed after 300s.' }
 }
 $text = $out.Result + "`n--- stderr ---`n" + $err.Result
-$log = Join-Path $logDir ("provision-reps-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+$log = Join-Path $logDir ("provision-{1}-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $Set)
 [System.IO.File]::WriteAllText($log, $text, (New-Object System.Text.UTF8Encoding($false)))
 "log: $log"
 $text -split "`n" | Where-Object { $_ -match 'cohort create:' }
@@ -84,5 +104,5 @@ foreach ($line in @(Invoke-CohortSql -DbInfo $db -Parts $db.characters -Sql "SEL
 }
 foreach ($r in $reps) {
     $g = if ($guidOf.ContainsKey($r[6])) { $guidOf[$r[6]] } else { 'MISSING' }
-    'pb|AutoWow.Guilds.Rep.{0}.{1}|{2}' -f $r[0], $r[1], $g
+    '{0}.{1} {2} guid={3}' -f $r[0], $r[1], $r[6], $g
 }
