@@ -75,6 +75,12 @@ struct Params
     // Raw materials (lane G): ore to the Smiths rep, leather to the Tanners rep, no line consumes them yet.
     bool routeRaw = false;              // AutoWow.Supply.RouteRaw
     std::uint32_t rawCap = 100;         // AutoWow.Supply.RawCap: per raw item, rep stock above which routing stops
+    // Outfitting (AutoWow.Supply.Outfit): the treasury funds members' gathering tools and planned trainer ranks.
+    bool outfit = false;                      // AutoWow.Supply.Outfit
+    std::uint32_t outfitCheckMs = 600000;     // AutoWow.Supply.OutfitCheckMs: a missing tool starts a run at most
+                                              // this often on its own
+    std::uint32_t outfitMaxCopper = 500;      // AutoWow.Supply.OutfitMaxCopper: grants per bot per level
+    std::uint32_t outfitBudgetPerHour = 5000;  // AutoWow.Supply.OutfitBudgetPerHour: grants per team per game hour
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -857,6 +863,100 @@ struct RoutePlan
     return out;
 }
 
+// ---- outfitting grants (AutoWow.Supply.Outfit) ----
+
+// A member's pending grant request: it wants `need` copper in hand for its gathering tools / planned trainer
+// ranks (the errand arrival sums them). The overlord pays need - money at the next tick.
+struct GrantRequest
+{
+    std::uint32_t guid = 0;
+    std::uint32_t level = 0;
+    std::uint64_t need = 0;
+};
+
+// Lowest level first, ties the lower guid.
+[[nodiscard]] inline std::vector<GrantRequest> RankGrants(std::vector<GrantRequest> reqs)
+{
+    std::sort(reqs.begin(), reqs.end(), [](GrantRequest const& a, GrantRequest const& b)
+              { return a.level != b.level ? a.level < b.level : a.guid < b.guid; });
+    return reqs;
+}
+
+// Copper granted to a bot at `level` (a level-up opens a fresh window).
+struct GrantWindow
+{
+    std::uint32_t level = 0;
+    std::uint64_t granted = 0;
+};
+
+// Copper granted to a team in game hour `hour` (game time ms / kGrantHourMs).
+struct GrantBudget
+{
+    std::uint64_t hour = 0;
+    std::uint64_t spent = 0;
+};
+
+inline constexpr std::uint64_t kGrantHourMs = 3600000;
+inline constexpr std::uint64_t kGrantBufferCopper = 50;  // on top of a trainer rank's cost (reputation rounding)
+
+// Wire-stable (the refused row's op); append only.
+enum class GrantVerdict : std::uint8_t
+{
+    Pay = 0,
+    Covered = 1,     // the bot's own money covers the need now: nothing paid
+    BotCap = 2,      // OutfitMaxCopper for this level would be exceeded
+    TeamBudget = 3   // OutfitBudgetPerHour of the team would be exceeded
+};
+
+inline constexpr char const* GrantVerdictName(GrantVerdict v)
+{
+    switch (v)
+    {
+        case GrantVerdict::Pay: return "grant";
+        case GrantVerdict::Covered: return "grant_covered";
+        case GrantVerdict::BotCap: return "grant_bot_cap";
+        case GrantVerdict::TeamBudget: return "grant_team_budget";
+    }
+    return "grant";
+}
+
+struct GrantDecision
+{
+    GrantVerdict verdict = GrantVerdict::Covered;
+    std::uint64_t copper = 0;  // the shortfall (paid on Pay, refused otherwise)
+};
+
+// The shortfall (need - money) is granted whole or not at all (a part would not buy the tool or rank).
+[[nodiscard]] inline GrantDecision DecideGrant(GrantRequest const& r, std::uint64_t money, GrantWindow const& w,
+                                               GrantBudget const& b, std::uint64_t hour, std::uint64_t maxCopper,
+                                               std::uint64_t budgetPerHour)
+{
+    GrantDecision d;
+    d.copper = r.need > money ? r.need - money : 0;
+    if (!d.copper)
+        return d;
+    std::uint64_t const granted = w.level == r.level ? w.granted : 0;
+    std::uint64_t const spent = b.hour == hour ? b.spent : 0;
+    if (granted + d.copper > maxCopper)
+        d.verdict = GrantVerdict::BotCap;
+    else if (spent + d.copper > budgetPerHour)
+        d.verdict = GrantVerdict::TeamBudget;
+    else
+        d.verdict = GrantVerdict::Pay;
+    return d;
+}
+
+// Books a paid grant into the bot's level window and the team's hour.
+inline void NoteGrant(GrantWindow& w, GrantBudget& b, std::uint32_t level, std::uint64_t hour, std::uint64_t copper)
+{
+    if (w.level != level)
+        w = {level, 0};
+    if (b.hour != hour)
+        b = {hour, 0};
+    w.granted += copper;
+    b.spent += copper;
+}
+
 // ---- config parsing ----
 
 // "map,x,y,z" (integers, yards). False (out untouched) on anything else.
@@ -911,7 +1011,8 @@ enum class Reason : std::uint8_t
     Travel = 9,   // role bot relocated home by portal fallback (op = other_map | stuck)
     List = 10,    // Market: rep listed a house surplus stack on the faction AH (copper = buyout)
     Buy = 11,     // Market: rep bought out a listing with treasury copper (copper = price)
-    Sold = 12     // Market: a rep's auction sold; its proceeds went to the house bank (copper = proceeds)
+    Sold = 12,    // Market: a rep's auction sold; its proceeds went to the house bank (copper = proceeds)
+    Outfit = 13   // Outfit: a member bought a gathering tool at a vendor with its own gold (copper = price)
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -931,6 +1032,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::List: return "list";
         case Reason::Buy: return "buy";
         case Reason::Sold: return "sold";
+        case Reason::Outfit: return "outfit";
     }
     return "refused";
 }
@@ -1081,6 +1183,18 @@ void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item
 // reach (RouteCloth), the enabled lines' Route reagents UsableNow (RouteHerbs), raw ore / leather (RouteRaw).
 // Table order; zero rooms included. Flag off: empty.
 std::vector<MaterialNeed> MaterialDemand(bool alliance);
+
+// ---- outfitting (AutoWow.Supply.Outfit) ----
+inline bool Outfit() { return detail::gEnabled && detail::gParams.outfit; }
+// Map thread (errand arrival): the bot wants `need` copper in hand for its tools / planned trainer ranks. Every
+// TickMs the world thread ranks the pending requests (RankGrants) and pays each shortfall from the bot's house
+// bank (AutoWowGuilds::Pay, reason grant; a short bank levies or refuses) within OutfitMaxCopper per bot per level
+// and OutfitBudgetPerHour per team. One pending request per bot (a newer one replaces it).
+void RequestGrant(Player* bot, std::uint64_t need);
+bool GrantPending(std::uint32_t guid);
+// Any thread: a `supply` row of the bot's house with line "outfit": a tool bought (item, from = the bot, to 0 =
+// the vendor) or a refusal (op; a grant refusal has item 0, from 0 = the treasury, to = the bot).
+void EmitOutfit(Player* bot, Reason r, std::uint32_t item, std::uint64_t copper, char const* op = nullptr);
 }  // namespace AutoWowSupply
 
 #endif

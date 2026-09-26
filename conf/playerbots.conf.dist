@@ -2912,6 +2912,25 @@ AutoWow.Supply.RouteRaw = 0
 AutoWow.Supply.RawCap = 100
 AutoWow.Supply.House.Ore = "Smiths"
 AutoWow.Supply.House.Leather = "Tanners"
+# Outfit (owner ruling 2026-09-26): the house treasury funds its members' starter equipment. No free gold or items:
+# the grant is a real guild bank -> member transfer, the tool is bought at a vendor. Needs AutoWow.Errands.Enable.
+# A cohort bot (AutoWow.Guilds.CohortGuids) that knows Mining (186) / Skinning (393) and holds no pick / knife
+# (bags or equipped) has an errand need "tool" (needs bit 2048): soft, and alone it starts a town run at most once
+# per OutfitCheckMs. At a town whose vendors sell it (Mining Pick 2901 / Skinning Knife 7005, trade / mining /
+# leatherworking supplies) the bot buys one with its own gold after its trainer stops (a planned Mining / Skinning
+# learned there gets its tool in the same run). A tradeskill trainer with an unaffordable rank of a planned primary
+# (AutoWow.Professions.Assignments) is errand work too. On arrival, when the bot's money is short of its tools plus
+# those ranks (+50 copper), it asks its house for a grant; every AutoWow.Supply.TickMs the world thread pays the
+# pending requests, lowest level first (ties the lower guid), each shortfall whole or not at all, from the bot's
+# house bank (AutoWow.Guilds.Levy draws a short bank from the richest same-team house), capped at OutfitMaxCopper
+# per bot per character level and OutfitBudgetPerHour per team per game hour (caps in memory: reset on restart).
+# The trainer / tool stop waits for its pending request. Rows: `guild` grant (or refused op "grant" when the bank
+# is short); `supply` "line":"outfit": outfit (a tool bought, item + copper), refused op grant_bot_cap /
+# grant_team_budget (item 0) or outfit (the purchase failed); errand done bit 256 = a tool bought.
+AutoWow.Supply.Outfit = 0
+AutoWow.Supply.OutfitCheckMs = 600000
+AutoWow.Supply.OutfitMaxCopper = 500
+AutoWow.Supply.OutfitBudgetPerHour = 5000
 
 # Gatherer squad (lane G; SquadPolicy.h; docs/SUPPLY_CHAIN_PLAN.md "Gatherer squad"). Enable: a per-team roster
 # (Alliance / Horde: ','-separated guids or lo-hi ranges, at most 10 per team, sorted; the guids must also be in
