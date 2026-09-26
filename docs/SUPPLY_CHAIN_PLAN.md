@@ -74,6 +74,18 @@ Owner vibe: a bot has 2 professions, and guilds follow those professions. Some b
 
 Next products: weapons and armor (Smiths, Tanners) and potions (Brewers).
 
+## Production lines in tandem (owner 2026-09-26)
+
+The owner wants several lines running together, not bags alone. Order:
+
+1. **Lane D: product catalog + potions (Brewers).** Turn the bag chain into a data-driven catalog: house, profession, tiers, recipes, reagents and where they come from, need detector, consumer rule.
+   - Potions (Minor, Lesser and Healing) become the second product. The target is survival.
+   - Herbs are routed to the Brewers rep.
+2. **Lane S: self-sufficiency, run in parallel.** Every adventurer learns First Aid (bandages from its own cloth) and Cooking (food from its own meat). Targets: the biggest money sink (food, ~231 copper per bot-hour) and downtime.
+3. **Next:** Smiths weapons (37 of 50 bots still carry starter weapons; the weapon need detector already exists in GearUpgradePolicy) and Tanners leather armor, both as catalog lines, in parallel lanes.
+4. **One world stop:** reassign professions. Each house gets 1 artisan per team; every adventurer gets 2 gathering professions.
+5. **Later:** jewelcrafting (joins Smiths when gems matter), enchanting, engineering.
+
 ## Lane A: guilds and treasury (superseded in part by the refinements above)
 
 1. **Bootstrap** (`AutoWow.Guilds.Enable`). At startup, make sure one guild exists per faction for the cohort: "AutoWoW Alliance Cohort" and "AutoWoW Horde Cohort".
