@@ -86,6 +86,9 @@
 //     AutoWow.Supply.Market)|outfit (AutoWow.Supply.Outfit: a tool bought, "line":"outfit"); quest is 0; team is the row's. Trailing: house, oid (team order id, run-scoped, never reused), item, count, copper (xp: the XP amount), from,
 //     to (guid-lows, 0 = treasury / none), op (refused: the movement; travel: other_map|stuck; surplus:
 //     auction|vendor; line outfit: outfit|grant_bot_cap|grant_team_budget).
+//   - `classquest` (event 23; AutoWow.ClassQuests.Enable): one line per class-quest reward granted to a cohort /
+//     supply role bot (ClassQuestPolicy.h). reason = grant; quest = the reward's quest (not rewarded: quest status
+//     is untouched). Trailing: spell (learned, 0 = none), item (stored, 0 = none), level (the quest's MinLevel).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -128,7 +131,8 @@ enum class Event : std::uint8_t
     Guild = 19,
     Supply = 20,
     SelfCraft = 21,
-    Squad = 22
+    Squad = 22,
+    ClassQuest = 23
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -158,6 +162,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::Supply: return "supply";
         case Event::SelfCraft: return "selfcraft";
         case Event::Squad: return "squad";
+        case Event::ClassQuest: return "classquest";
     }
     return "unknown";
 }
@@ -430,7 +435,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
              row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
              row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract ||
              row.ev == Event::Guild || row.ev == Event::Supply || row.ev == Event::SelfCraft ||
-             row.ev == Event::Squad)
+             row.ev == Event::Squad || row.ev == Event::ClassQuest)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -507,6 +512,9 @@ void EmitSelfCraft(Player* player, char const* reason, std::string_view fields);
 // `squad` (no-op unless the player is a recorded bot); reason is a static literal (AutoWowSquad::ReasonName),
 // fields from AutoWowSquad::LedgerFields.
 void EmitSquad(Player* player, char const* reason, std::string_view fields);
+// `classquest` (no-op unless the player is a recorded bot); reason is a static literal (grant), quest the granted
+// reward's quest, fields from AutoWowClassQuests::LedgerFields.
+void EmitClassQuest(Player* player, char const* reason, std::uint32_t questId, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

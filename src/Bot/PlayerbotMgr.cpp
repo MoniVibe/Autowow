@@ -14,6 +14,7 @@
 #include <algorithm>
 
 #include "AutoWowGuildsPolicy.h"
+#include "ClassQuestPolicy.h"
 #include "ChannelMgr.h"
 #include "CharacterCache.h"
 #include "CharacterPackets.h"
@@ -482,6 +483,9 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
     // AutoWow.Guilds (default 0): house-guild membership; OnBotLogin runs on the world thread.
     if (AutoWowGuilds::Enabled())
         AutoWowGuilds::OnLogin(bot);
+    // AutoWow.ClassQuests (default 0): class-quest rewards the cohort / supply role bot is owed at its level.
+    if (AutoWowClassQuests::Enabled())
+        AutoWowClassQuests::Grant(bot, "login");
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)

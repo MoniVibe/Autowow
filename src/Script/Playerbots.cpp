@@ -38,6 +38,7 @@
 #include "RestGate.h"
 #include "SurvivalRecovery.h"
 #include "SelfCraftPolicy.h"
+#include "ClassQuestPolicy.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -557,6 +558,7 @@ public:
         AutoWowRestGate::LoadConfig();
         AutoWowSurvivalRecovery::LoadConfig();
         AutoWowSelfCraft::LoadConfig();
+        AutoWowClassQuests::LoadConfig();
         AutoWowContracts::LoadConfig();   // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowGuilds::LoadConfig();
         AutoWowSupply::LoadConfig();      // after Guilds (houses, reps, cohort)
@@ -767,6 +769,7 @@ void AddPlayerbotsScripts()
     AutoWowCombatPerformanceTelemetry::AddAutoWowCombatPerformanceTelemetryScript();
     AutoWowDeathLoop::AddScripts();
     AutoWowSurvivalRecovery::AddScripts();
+    AutoWowClassQuests::AddScripts();
     PlayerBotsGuildValidationScript();
     AddSC_MagtheridonBotScripts();
     AddSC_TempestKeepBotScripts();
