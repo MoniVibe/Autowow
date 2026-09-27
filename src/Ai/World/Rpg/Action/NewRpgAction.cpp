@@ -77,6 +77,7 @@
 #include "SelfCraftPolicy.h"
 #include "SharedDefines.h"
 #include "SupplyPolicy.h"
+#include "UnstickPolicy.h"
 #include "SurvivalRecovery.h"
 #include "Timer.h"
 #include "TravelMgr.h"
@@ -489,6 +490,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     // puts the party's group quest first (flag off: never reached).
     if (AutoWowParty::Enabled() && PartyStep())
         return true;
+
+    // AutoWow.Unstick.V2: a clogged quest log sheds stale out-of-zone quests (never consumes the tick).
+    if (AutoWowUnstickV2::Enabled())
+        QuestLogTrimStep();
 
     // AutoWow.ZoneProgression: independent bots graduate to the next zone by normal travel (no teleport).
     if (AutoWowZoneProgression::Enabled() && ZoneProgressionStep())
@@ -3719,6 +3724,9 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     Creature* flightMaster = bot->FindNearestCreature(data.flightMasterEntry, INTERACTION_DISTANCE * 3);
     if (!flightMaster || !flightMaster->IsAlive())
     {
+        if (AutoWowUnstickV2::Enabled())
+            LOG_INFO("playerbots", "[Unstick] bot={} taxi_failed reason=fm_missing fm={} money={}", bot->GetName(),
+                     data.flightMasterEntry, bot->GetMoney());
         info.ChangeToIdle();
         return true;
     }
@@ -3738,6 +3746,15 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     {
         LOG_DEBUG("playerbots", "[New RPG] {} active taxi path {} (from {} to {}) failed", bot->GetName(),
                   flightMaster->GetEntry(), nodes[0], nodes[nodes.size() - 1]);
+        // AutoWow.Unstick.V2: the refusal reason at INFO (soak-s40..s51: 361 of 389 graduation flights gave up).
+        if (AutoWowUnstickV2::Enabled())
+            LOG_INFO("playerbots", "[Unstick] bot={} taxi_failed reason={} fm={} from={} to={} hops={} money={} fare={} "
+                     "src_known={} dst_known={} fm_dist={}", bot->GetName(),
+                     AutoWowUnstickV2::TaxiFailReason(bot, nodes, flightMaster), flightMaster->GetEntry(),
+                     nodes.empty() ? 0 : nodes.front(), nodes.empty() ? 0 : nodes.back(), nodes.size(), bot->GetMoney(),
+                     AutoWowUnstickV2::TaxiFare(nodes), !nodes.empty() && bot->m_taxi.IsTaximaskNodeKnown(nodes.front()),
+                     !nodes.empty() && bot->m_taxi.IsTaximaskNodeKnown(nodes.back()),
+                     std::uint32_t(bot->GetDistance(flightMaster)));
         info.ChangeToIdle();
         return true;
     }

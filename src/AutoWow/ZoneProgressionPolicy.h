@@ -26,7 +26,7 @@
 // stable route order (table order; deterministic spread by guid modulo candidate count).
 namespace AutoWowZoneProgression
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 2;  // 2: BotState.noFlight (AutoWow.Unstick.V2)
 
 // Route team: 0 any, 1 alliance, 2 horde (core TeamId + 1).
 struct Route
@@ -401,7 +401,8 @@ enum class Trigger : std::uint8_t
     None = 0,
     Level = 1,     // level >= zone bracket max - margin
     NoQuests = 2,  // nothing actionable in the quest log for N consecutive checks
-    DeathLoop = 3  // AutoWow.DeathLoop.EscapeViaZoneProgression: escape from an over-level zone
+    DeathLoop = 3, // AutoWow.DeathLoop.EscapeViaZoneProgression: escape from an over-level zone
+    Stuck = 4      // AutoWow.Unstick.V2: no grind spot in reach and no XP for NoXpMs (UnstickPolicy.h)
 };
 
 inline constexpr char const* TriggerName(Trigger t)
@@ -412,6 +413,7 @@ inline constexpr char const* TriggerName(Trigger t)
         case Trigger::Level: return "level";
         case Trigger::NoQuests: return "no_quests";
         case Trigger::DeathLoop: return "death_loop";
+        case Trigger::Stuck: return "unstick";
     }
     return "none";
 }
@@ -597,6 +599,7 @@ struct BotState
     std::uint64_t cooldownUntilMs = 0;
     bool roadJoined = false;  // road index chosen for this travel
     std::uint32_t wp = 0;     // next road point (== road size: the hub)
+    bool noFlight = false;    // AutoWow.Unstick.V2: a flight leg of this trip fell back to idle; walk from now on
 };
 
 // Starts (or restarts) a death_loop trip from `zone` to `hub`. The route leaves the bot's actual zone
