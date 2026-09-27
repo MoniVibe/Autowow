@@ -46,8 +46,8 @@ foreach ($try in 1..4) {
     try { & (Join-Path $PSScriptRoot 'revive-autowow.ps1') -Action Start -Apply -RosterGuids @(101,112,121,123,236,244) 2>&1 | Out-Null; 'scouts ok'; break }
     catch { Start-Sleep -Seconds 20 }
 }
-# reps 69665-69672, Brewers artisans 70577/70582, squad (grouped squads refuse 'independent' once formed: fine)
-$special = @(69665..69672) + @(70577, 70582) + @(70573, 70574, 70575, 70576, 70763, 70578, 70579, 70580, 70581, 70764)
+# reps 69665-69672, Brewers artisans 70577/70582, Tanners artisans 72755/72756, squad (grouped squads refuse 'independent' once formed: fine)
+$special = @(69665..69672) + @(70577, 70582, 72755, 72756) + @(70573, 70574, 70575, 70576, 70763, 70578, 70579, 70580, 70581, 70764)
 $ok = 0
 foreach ($g in $special) {
     $null = @(& $ctl -Action activate -BotGuid $g)
