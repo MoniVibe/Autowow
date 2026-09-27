@@ -3324,6 +3324,18 @@ AutoWow.Dungeon.PortalFallback = 0
 # Read once at first use.
 AutoWow.DungeonNav.ConvoyV2 = 0
 
+# Dungeon navigator scripted progression steps (DungeonGatePolicy.h; default 0 = off, navigator unchanged). A
+# compiled-in step table (gossip, escorts, gongs, fires, altars, statues, kill sets, proxy kills; see
+# docs/DUNGEON_GATES.md) makes an unfinished encounter with rows travel to its first unfinished step instead of the
+# boss; the step runs only out of combat with the party within 38.5 yd, then waits for its done condition or its
+# timeout (optional rows are then skipped, required rows start over). Logs "[DungeonNavigator] gate map= enc= step=
+# kind= entry= result=". On maps with rows the older nearest-button interaction rule is off. Read once at first use.
+AutoWow.DungeonNav.Gates = 0
+
+# Also run step rows that name a key item (the core does not check GO locks on bot use). Default 0: key rows are
+# skipped. Needs AutoWow.DungeonNav.Gates = 1. Read once at first use.
+AutoWow.DungeonNav.Gates.BypassKeys = 0
+
 # Consumable economy for independent bots (ErrandsPolicy.h; default 0; needs AutoWow.Errands.Enable = 1,
 # inert otherwise). Real gold only, no free items. With it on: no food left (no drink, mana users) is an
 # urgent errand need; a restock counts as affordable when money + the vendor value of the grey loot covers
