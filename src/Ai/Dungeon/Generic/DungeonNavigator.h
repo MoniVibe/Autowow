@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <map>
+#include <utility>
 #include <vector>
 
 struct DungeonNavigatorRoutePoint
@@ -21,6 +22,9 @@ struct DungeonNavigatorRoutePoint
     float y = 0.0f;
     float z = 0.0f;
 };
+
+// Encounter index the bot's dungeon navigator last selected in this map instance, or -1. Any thread.
+int32 GetDungeonNavigatorTargetEncounter(uint32 botGuid, uint32 mapId, uint32 instanceId);
 
 class DungeonNavigatorStrategy : public Strategy
 {
@@ -70,6 +74,8 @@ private:
     // Active only while a follower is using backward reanchor recovery on this cached route.
     // The remembered route floor prevents a later failed scan from selecting an older point.
     std::map<uint32, std::size_t> convoyBackwardReanchorFloors;
+    // ConvoyV2: member guid -> (leader frontier, route index) the follower last settled on.
+    std::map<uint32, std::pair<std::size_t, std::size_t>> convoySettledRouteFloors;
 };
 
 #endif

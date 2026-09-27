@@ -9,6 +9,7 @@
 // dungeon navigator (stock "dungeon navigator" instance strategy, party-leader driven) does the actual run.
 
 #include <map>
+#include <set>
 
 #include "AutoWowBridge.h"
 #include "AutoWowGuildsPolicy.h"
@@ -16,6 +17,7 @@
 #include "CharacterCache.h"
 #include "Config.h"
 #include "DBCStores.h"
+#include "DungeonNavigator.h"
 #include "DungeonProbePolicy.h"
 #include "FixtureFactoryControl.h"
 #include "GameTime.h"
@@ -468,10 +470,29 @@ void StepEnter(Probe& p, std::uint64_t now)
             p.entered = true;
             p.enteredMs = now;
             p.run.instance = leader->GetInstanceId();
-            p.run.allMask = 0;
+            std::vector<EncounterRecord> records;
             if (DungeonEncounterList const* list = sObjectMgr->GetDungeonEncounterList(e.map, DUNGEON_DIFFICULTY_NORMAL))
+            {
+                std::set<std::uint32_t> credits;
                 for (DungeonEncounter const* enc : *list)
-                    p.run.allMask |= 1u << enc->dbcEntry->encounterIndex;
+                    if (enc->creditType == ENCOUNTER_CREDIT_KILL_CREATURE)
+                        credits.insert(enc->creditEntry);
+                std::set<std::uint32_t> spawned;
+                for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
+                    if (data.mapid == e.map)
+                        for (std::uint32_t id : {data.id, data.id2, data.id3})
+                            if (id && credits.count(id))
+                                spawned.insert(id);
+                for (DungeonEncounter const* enc : *list)
+                {
+                    bool const kill = enc->creditType == ENCOUNTER_CREDIT_KILL_CREATURE;
+                    records.push_back({enc->dbcEntry->encounterIndex, kill, kill && spawned.count(enc->creditEntry)});
+                    if (kill && !spawned.count(enc->creditEntry))
+                        LOG_INFO("playerbots", "[DProbe] party={} map={} encounter={} boss={} no_static_spawn", p.name,
+                                 e.map, enc->dbcEntry->encounterIndex, enc->creditEntry);
+                }
+            }
+            p.run.allMask = ClearableMask(records);
             InstanceMap* im = leader->GetMap()->ToInstanceMap();
             InstanceScript* script = im ? im->GetInstanceScript() : nullptr;
             p.run.mask = script ? script->GetCompletedEncounterMask() : 0;
@@ -539,8 +560,10 @@ void StepInside(Probe& p, std::uint64_t now)
                      bossKilled || f.anyInCombat, now, gParams.stuckYards, gParams.stuckMs))
     {
         ++p.run.stucks;
+        // Label by the encounter the leader's navigator actually targets; lowest undone index if it has none.
+        std::int32_t const target = GetDungeonNavigatorTargetEncounter(p.leader, e.map, p.run.instance);
         sp = {leader->GetMapId(), Yd(leader->GetPositionX()), Yd(leader->GetPositionY()), Yd(leader->GetPositionZ()),
-              NextEncounter(p.run.mask, p.run.allMask), 0};
+              target >= 0 ? target : NextEncounter(p.run.mask, p.run.allMask), 0};
         if (DungeonEncounterList const* list = sObjectMgr->GetDungeonEncounterList(e.map, DUNGEON_DIFFICULTY_NORMAL))
             for (DungeonEncounter const* enc : *list)
                 if (std::int32_t(enc->dbcEntry->encounterIndex) == sp.next)

@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -398,6 +399,95 @@ TEST(DungeonNavigatorConvoyPolicy, SharedSelectionIsRouteMonotonic)
         candidates, 20, 18, bounds, 18), 1u);
     EXPECT_EQ(DungeonNavigatorConvoy::SelectSharedBackwardReanchor(
         candidates, 20, 18, bounds, 19), DungeonNavigatorConvoy::NoSelection);
+}
+
+namespace
+{
+DungeonNavigatorConvoy::Candidate MakeCandidate(std::size_t routeIndex, bool reached,
+                                                float distance)
+{
+    return {routeIndex, true, reached, reached, distance, distance};
+}
+}
+
+// S52 RFK/BFD/Gnomeregan: slot 9 is unreachable, the follower stands on 8. V1 is not settled
+// (slot 9 is 6 yd away) and SelectTarget rejects 8 (under the 1.5 yd minimum move), so it walks
+// to 7, then back to 8, forever while the leader waits.
+TEST(DungeonNavigatorConvoyPolicy, UnreachableSlotBouncesInV1AndSettlesInV2)
+{
+    std::vector<DungeonNavigatorConvoy::Candidate> const candidates = {
+        MakeCandidate(7, true, 5.0f), MakeCandidate(8, true, 0.8f),
+        MakeCandidate(9, false, 6.0f),
+    };
+
+    EXPECT_FALSE(DungeonNavigatorConvoy::IsSettledAtAssignedPoint(true, 6.0f, 3.0f));
+    EXPECT_EQ(DungeonNavigatorConvoy::SelectTarget(candidates, 10, 1, 1.5f, 45.0f), 0u);
+
+    EXPECT_EQ(DungeonNavigatorConvoy::SettledRouteIndex(candidates, 9, 3.0f, 45.0f), 8u);
+    // Standing on the point settles even when the tiny probe itself is rejected.
+    auto standing = candidates;
+    standing[1].safe = false;
+    EXPECT_EQ(DungeonNavigatorConvoy::SettledRouteIndex(standing, 9, 3.0f, 45.0f), 8u);
+}
+
+TEST(DungeonNavigatorConvoyPolicy, V2SettleOnlyWhenBestReachablePointIsUnderFoot)
+{
+    // The slot itself is reachable: move to it, do not settle short.
+    std::vector<DungeonNavigatorConvoy::Candidate> reachableSlot = {
+        MakeCandidate(8, true, 0.8f), MakeCandidate(9, true, 6.0f),
+    };
+    EXPECT_EQ(DungeonNavigatorConvoy::SettledRouteIndex(reachableSlot, 9, 3.0f, 45.0f),
+        DungeonNavigatorConvoy::NoSelection);
+    EXPECT_EQ(DungeonNavigatorConvoy::SelectTarget(reachableSlot, 10, 1, 1.5f, 45.0f), 1u);
+
+    // Best reachable point is 8 but the follower stands on 6: walk to 8.
+    std::vector<DungeonNavigatorConvoy::Candidate> behind = {
+        MakeCandidate(6, true, 0.5f), MakeCandidate(8, true, 9.0f),
+        MakeCandidate(9, false, 14.0f),
+    };
+    EXPECT_EQ(DungeonNavigatorConvoy::SettledRouteIndex(behind, 9, 3.0f, 45.0f),
+        DungeonNavigatorConvoy::NoSelection);
+
+    // A point beyond the slot never counts.
+    EXPECT_EQ(DungeonNavigatorConvoy::SettledRouteIndex(reachableSlot, 7, 3.0f, 45.0f),
+        DungeonNavigatorConvoy::NoSelection);
+}
+
+TEST(DungeonNavigatorConvoyPolicy, V2RouteFloorBlocksStepBelowSettledPoint)
+{
+    std::vector<DungeonNavigatorConvoy::Candidate> const displaced = {
+        MakeCandidate(7, true, 5.0f), MakeCandidate(8, true, 4.0f),
+        MakeCandidate(9, false, 8.0f),
+    };
+    EXPECT_EQ(DungeonNavigatorConvoy::SelectTarget(displaced, 10, 1, 1.5f, 45.0f), 1u);
+    EXPECT_EQ(DungeonNavigatorConvoy::SelectTarget(displaced, 10, 1, 1.5f, 45.0f, 8), 1u);
+
+    std::vector<DungeonNavigatorConvoy::Candidate> const onSettled = {
+        MakeCandidate(7, true, 5.0f), MakeCandidate(8, true, 0.8f),
+    };
+    EXPECT_EQ(DungeonNavigatorConvoy::SelectTarget(onSettled, 10, 1, 1.5f, 45.0f), 0u);
+    EXPECT_EQ(DungeonNavigatorConvoy::SelectTarget(onSettled, 10, 1, 1.5f, 45.0f, 8),
+        DungeonNavigatorConvoy::NoSelection);
+}
+
+// S52 WC Alliance / DM Horde: slot 0 gives a one-point window, and V1 treats it as exhausted on
+// the first attempt, latching a permanent terminal. V2 spends the real attempt budget.
+TEST(DungeonNavigatorConvoyPolicy, V2SharedRegroupSpendsRealAttemptBudget)
+{
+    EXPECT_TRUE(DungeonNavigatorConvoy::IsSharedRegroupExhausted(false, 1, 3, 1, 1));
+    EXPECT_FALSE(DungeonNavigatorConvoy::IsSharedRegroupExhausted(true, 1, 3, 1, 1));
+    EXPECT_FALSE(DungeonNavigatorConvoy::IsSharedRegroupExhausted(true, 2, 3, 1, 1));
+    EXPECT_TRUE(DungeonNavigatorConvoy::IsSharedRegroupExhausted(true, 3, 3, 1, 1));
+    EXPECT_FALSE(DungeonNavigatorConvoy::IsSharedRegroupExhausted(false, 1, 3, 5, 128));
+}
+
+TEST(DungeonNavigatorConvoyPolicy, V2SharedRegroupTerminalReleasesOnGeometryChange)
+{
+    EXPECT_FALSE(DungeonNavigatorConvoy::ShouldReleaseSharedRegroupTerminal(4, 4, 60.0f, 45.0f));
+    EXPECT_TRUE(DungeonNavigatorConvoy::ShouldReleaseSharedRegroupTerminal(4, 5, 60.0f, 45.0f));
+    EXPECT_TRUE(DungeonNavigatorConvoy::ShouldReleaseSharedRegroupTerminal(4, 4, 45.0f, 45.0f));
+    EXPECT_FALSE(DungeonNavigatorConvoy::ShouldReleaseSharedRegroupTerminal(
+        4, 4, std::numeric_limits<float>::infinity(), 45.0f));
 }
 
 TEST(DungeonNavigatorConvoySourceContract, SharedRegroupIsBoundedAndOrdinaryWalkOnly)
