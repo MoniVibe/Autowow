@@ -15,6 +15,7 @@
 
 #include "AutoWowGuildsPolicy.h"
 #include "AutoWowQuestLedger.h"
+#include "DungeonProbePolicy.h"
 #include "Bag.h"
 #include "CharacterCache.h"
 #include "Config.h"
@@ -323,6 +324,8 @@ void OnLogin(Player* player)
     if (!player || gHouses.empty())
         return;
     std::uint32_t const guid = Low(player);
+    if (AutoWowDungeonProbe::IsProbeBot(guid))
+        return;  // probe instruments never join a house
     std::size_t const team = TeamIndex(player);
     HouseRuntime* house = nullptr;
     for (HouseRuntime& h : gHouses)

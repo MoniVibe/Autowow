@@ -17,6 +17,7 @@
 #include "ContractsPolicy.h"
 #include "DBCStores.h"
 #include "DeathLoopBreaker.h"
+#include "DungeonProbePolicy.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
 #include "Group.h"
@@ -193,8 +194,8 @@ bool NewRpgBaseAction::ContractStep()
     using AutoWowContracts::Phase;
     uint32 const guid = bot->GetGUID().GetCounter();
     if (!bot->IsAlive() || bot->IsInFlight() || !botAI->IsAutoWowIndependentParty() ||
-        AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable() ||
-        bot->GetTransport())
+        AutoWowOracleRuntime::IsManagedBot(guid) || AutoWowDungeonProbe::IsProbeBot(guid) || !bot->GetMap() ||
+        bot->GetMap()->Instanceable() || bot->GetTransport())
         return false;
 
     Params const& p = detail::gParams;

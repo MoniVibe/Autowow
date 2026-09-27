@@ -39,6 +39,7 @@
 #include "SurvivalRecovery.h"
 #include "SelfCraftPolicy.h"
 #include "ClassQuestPolicy.h"
+#include "DungeonProbePolicy.h"
 #include "BattlefieldScript.h"
 #include "Channel.h"
 #include "Config.h"
@@ -563,6 +564,7 @@ public:
         AutoWowGuilds::LoadConfig();
         AutoWowSupply::LoadConfig();      // after Guilds (houses, reps, cohort)
         AutoWowSquad::LoadConfig();       // after Supply and world spawns (source index)
+        AutoWowDungeonProbe::LoadConfig();  // after Guilds / Supply / Squad: refuses their guids
         AutoWowBridge::instance().Start();
 
         LOG_INFO("server.loading", ">> Loaded playerbots config in {} ms", GetMSTimeDiffToNow(oldMSTime));
@@ -597,6 +599,8 @@ public:
             AutoWowSupply::WorldUpdate(diff);  // world thread: overlord, feed, delivery, pay, XP
         if (AutoWowSquad::Enabled())
             AutoWowSquad::WorldUpdate(diff);  // world thread: squad party, demand, stints
+        if (AutoWowDungeonProbe::Enabled())
+            AutoWowDungeonProbe::WorldUpdate(diff);  // world thread: dungeon completability probe parties
         sRandomPlayerbotMgr.UpdateAI(diff);  // World thread only
     }
 };
