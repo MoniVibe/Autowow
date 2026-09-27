@@ -3092,6 +3092,17 @@ AutoWow.SelfCraft.BatchMax = 5
 AutoWow.SelfCraft.CraftMinHpPct = 70
 AutoWow.SelfCraft.CraftMinManaPct = 50
 
+# Automatic class-quest rewards (ClassQuestPolicy.h; default 0; owner ruling 2026-09-27). At login and on every
+# level change a cohort bot (AutoWow.Guilds.CohortGuids, needs AutoWow.Guilds.Enable) or supply role bot learns the
+# spells and gets the class key item (stored once, skipped when owned incl. bank) of each class quest whose MinLevel
+# it has reached (class and race of the quest chain), e.g. warrior stances, hunter Tame Beast / Beast Training,
+# warlock demons, druid Bear / Aquatic Form, shaman Earth / Fire / Water / Air totems (Totem of the Earthen Ring at
+# 30 replaces them). Quest status is never changed. Mounts 1 also grants the class mount quests (paladin, warlock,
+# death knight, druid Swift Flight Form), which teach a riding skill. Ledger `classquest` (event 23): grant;
+# [ClassQuest] log.
+AutoWow.ClassQuests.Enable = 0
+AutoWow.ClassQuests.Mounts = 0
+
 # Cohort parties (PartyPolicy.h). Every CheckIntervalMs (world thread) ungrouped independent bots of one faction,
 # one map, the same zone or within HubYards, levels spanning at most LevelSpread, form parties of MinSize..MaxSize
 # when they have a reason: a dungeon of AutoWow.Dungeon.List brackets every level and the roster has a tank and a
