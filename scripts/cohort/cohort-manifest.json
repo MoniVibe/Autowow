@@ -1,7 +1,7 @@
 {
   "schema": "autowow.cohort.manifest.v2",
   "manifest_version": 2,
-  "notes": "Persistent bot cohort. ids and seq are permanent and never reused; a retired entry keeps its row with status=retired. Names are reserved forever once listed. Accounts are cohort-only (never the rndbot prefix). control_arm: stock = NewRpg + bridge independent, not in AutoWow.OracleRuntime.BotGuids; oracle = same plus listed in the Oracle allowlist. v2: profession_plan + per-entry professions (docs/PROFESSIONS_PLAN.md section 2); rendered to AutoWow.Professions.Assignments by profession-assign.ps1.",
+  "notes": "Persistent bot cohort. ids and seq are permanent and never reused; a retired entry keeps its row with status=retired. Names are reserved forever once listed. Accounts are cohort-only (never the rndbot prefix). control_arm: stock = NewRpg + bridge independent, not in AutoWow.OracleRuntime.BotGuids; oracle = same plus listed in the Oracle allowlist. v2: profession_plan + per-entry professions (docs/PROFESSIONS_PLAN.md section 2); rendered to AutoWow.Professions.Assignments by profession-assign.ps1. plan_version 2 (owner ruling 2026-09-27): adventurers carry only gathering pairs MH/MS/HS (about 1/3 each per faction, kept known gathering lines); crafting lives in the house artisans (Olbrek, Rakazun keep TE).",
   "teams": [
     {
       "team_id": "cohort-alliance",
@@ -15,7 +15,7 @@
     }
   ],
   "profession_plan": {
-    "plan_version": 1,
+    "plan_version": 2,
     "pairs": {
       "MB": [
         186,
@@ -44,6 +44,18 @@
       "TE": [
         197,
         333
+      ],
+      "MH": [
+        186,
+        182
+      ],
+      "MS": [
+        186,
+        393
+      ],
+      "HS": [
+        182,
+        393
       ]
     },
     "secondary_default": [
@@ -75,17 +87,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "MH",
         "primary": [
           186,
-          164
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -106,17 +118,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "ME",
+        "pair": "HS",
         "primary": [
-          186,
-          202
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -137,17 +149,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "MS",
         "primary": [
-          393,
-          165
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -168,17 +180,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "MS",
         "primary": [
-          197,
-          333
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -199,17 +211,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "HS",
         "primary": [
           182,
-          171
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -230,17 +242,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "MS",
         "primary": [
           186,
-          164
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -261,17 +273,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MH",
         "primary": [
-          182,
-          171
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -292,17 +304,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "HS",
         "primary": [
-          393,
-          165
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -323,17 +335,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "ME",
+        "pair": "MS",
         "primary": [
           186,
-          202
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -364,7 +376,7 @@
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -385,17 +397,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "HS",
         "primary": [
-          186,
-          164
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -416,17 +428,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "MH",
         "primary": [
-          393,
-          165
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -447,17 +459,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MH",
         "primary": [
-          182,
-          171
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -478,17 +490,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "HS",
         "primary": [
-          197,
-          333
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -509,17 +521,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HI",
+        "pair": "MS",
         "primary": [
-          182,
-          773
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -540,17 +552,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "ME",
+        "pair": "MS",
         "primary": [
           186,
-          202
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -571,17 +583,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "HS",
         "primary": [
-          393,
-          165
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -602,17 +614,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "HS",
         "primary": [
-          197,
-          333
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -633,17 +645,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MH",
         "primary": [
-          182,
-          171
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -664,17 +676,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "HI",
+        "pair": "MH",
         "primary": [
-          182,
-          773
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -695,17 +707,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "MS",
         "primary": [
           186,
-          164
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -726,17 +738,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "MS",
         "primary": [
-          393,
-          165
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -757,17 +769,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "MH",
         "primary": [
-          197,
-          333
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -788,17 +800,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "HS",
         "primary": [
           182,
-          171
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -819,17 +831,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MJ",
+        "pair": "MH",
         "primary": [
           186,
-          755
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -850,17 +862,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "HS",
         "primary": [
-          186,
-          164
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -881,17 +893,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "MS",
         "primary": [
-          393,
-          165
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -912,17 +924,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MH",
         "primary": [
-          182,
-          171
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -943,17 +955,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "ME",
+        "pair": "MS",
         "primary": [
           186,
-          202
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -974,17 +986,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "MS",
         "primary": [
-          197,
-          333
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1005,17 +1017,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "MH",
         "primary": [
           186,
-          164
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1036,17 +1048,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "MS",
         "primary": [
-          393,
-          165
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1067,17 +1079,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MH",
         "primary": [
-          182,
-          171
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1098,17 +1110,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "MS",
         "primary": [
-          197,
-          333
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1129,17 +1141,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "HI",
+        "pair": "HS",
         "primary": [
           182,
-          773
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1160,17 +1172,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "MS",
         "primary": [
           186,
-          164
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1191,17 +1203,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "HS",
         "primary": [
-          393,
-          165
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1222,17 +1234,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "ME",
+        "pair": "MH",
         "primary": [
           186,
-          202
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1253,17 +1265,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MH",
         "primary": [
-          182,
-          171
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1284,17 +1296,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "HS",
         "primary": [
-          197,
-          333
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1315,17 +1327,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "ME",
+        "pair": "MH",
         "primary": [
           186,
-          202
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1346,17 +1358,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "HS",
         "primary": [
-          393,
-          165
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1387,7 +1399,7 @@
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1408,17 +1420,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "HS",
         "primary": [
           182,
-          171
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1439,17 +1451,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "HI",
+        "pair": "MH",
         "primary": [
-          182,
-          773
+          186,
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1470,17 +1482,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MB",
+        "pair": "MS",
         "primary": [
           186,
-          164
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1501,17 +1513,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "SL",
+        "pair": "HS",
         "primary": [
-          393,
-          165
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1532,17 +1544,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "HA",
+        "pair": "MS",
         "primary": [
-          182,
-          171
+          186,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1563,17 +1575,17 @@
       "control_arm": "oracle",
       "status": "active",
       "professions": {
-        "pair": "TE",
+        "pair": "HS",
         "primary": [
-          197,
-          333
+          182,
+          393
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     },
     {
@@ -1594,17 +1606,17 @@
       "control_arm": "stock",
       "status": "active",
       "professions": {
-        "pair": "MJ",
+        "pair": "MH",
         "primary": [
           186,
-          755
+          182
         ],
         "secondary": [
           129,
           185,
           356
         ],
-        "plan_version": 1
+        "plan_version": 2
       }
     }
   ]
