@@ -15,7 +15,8 @@ auto = the core opens it after the kills (no bot action).
 ## Deadmines (36)
 - Sneed (idx1) has no static spawn: kill Sneed's Shredder 642 (guid 79223, -289,-513,50); on death it ejects Sneed. The S52 `next=1` stall.
 - Doors 13965 (Rhahk'zor), 16400 (Sneed), 16399 (Gilnid) open on boss death: auto.
-- Iron Clad Door 16397 (-101,-669,7) gates idx3-6: use lever 101833 (guid 26206, -97,-671,7), no key. Cannon 16398 needs Defias Gunpowder.
+- Iron Clad Door 16397 (guid 30534, -101,-669,7) gates idx3-6. Correction (lane Z): lever 101833 (guid 26206) is
+  NOT_SELECTABLE and unusable; the door opens only when spell 6250 hits Defias Cannon 16398 (needs Defias Gunpowder).
 - (-60,-860,0) stall = ship-deck pathing, not a gate.
 
 ## Wailing Caverns (43)
@@ -84,3 +85,39 @@ for bosses with no static spawn.
 
 Unverified: whether DM East, BRD and Stratholme gates lie on the main route, and whether plain click-to-open doors
 (Deadmines Heavy Doors, Gnomeregan Final Chamber, Stratholme Bastion) block it. A nav probe settles those.
+
+## Lane Z (dgates) status, 2026-09-27
+Table: `src/Ai/Dungeon/Generic/DungeonGatePolicy.h` (`DungeonGate::Steps`), flag `AutoWow.DungeonNav.Gates` (default 0),
+key rows need `AutoWow.DungeonNav.Gates.BypassKeys` (default 0). Encounter indices checked against DungeonEncounter.dbc;
+guids/positions/scripts against the world DB and core scripts. doneWhen gained two params (`doneData`, `doneValue`)
+and one kind, `escorting` (creature AI `IsEscorted()`), which is what marks a gossip that started an escort.
+
+Shipped (source/DB verified; no in-game run yet):
+- Deadmines Sneed idx1: PROXY_KILL Shredder 642 guid 79223 (dead), then KILL_SET Sneed 643 r40 (encounter done).
+- Wailing Caverns Mutanus idx7: GOSSIP Disciple 3678 guid 18675 menu 201 option 0 (conditions: data 0..3 DONE) until
+  escorting, then ESCORT until encounter done (Mutanus is summoned by the Disciple's SAI).
+- Razorfen Kraul Agathelos idx5: KILL_SET Ward Keeper 4625 r15 at (2066,2012,64); ward 21099 SAI opens after.
+- Blackfathom Aku'mai idx7: fires 21118/21119/21120/21121 (guids 32930/32932/32933/32931, button, no autoclose)
+  each followed by a KILL_SET of its summon group entry (4825/4977/4823/4978, r60 around the fires), then ENTER_AREA
+  at portal 21117 (guid 32682) until it opens. Instance script opens it when all fire data are DONE and every summon died.
+- Razorfen Downs Tuten'kash idx0: Gong 148917 guid 32045 used twice until GetData(148917) >= 2 (gong is unselectable
+  while a wave lives), third use until the gong stays unselectable, then KILL_SET Tuten'kash 7355 r80.
+- Gnomeregan Grubbis idx2: GOSSIP Emi 7998 guid 30136 menu 1080 option 0 until escorting, then ESCORT.
+- Uldaman Archaedas idx7: Altar of Archaedas 133234 guid 40698 (ritual, 1 participant, spell 10340) until
+  GetData(2) >= IN_PROGRESS.
+- Sunken Temple Atal'alarion idx0: statues 148830..148835 (guids 27898/27899/28111/28112/28113/28114), row k waits for
+  GetData(10) >= k+1 (DATA_STATUES; SAI conditions punish a wrong statue). Required rows, not optional: skipping one on
+  timeout would make the next use out of order.
+
+Dropped:
+- Deadmines Iron Clad Door (idx3-6): lever 101833 guid 26206 has GO_FLAG_NOT_SELECTABLE (template_addon flags 16), so
+  `GameObject::Use` returns at once. The door (guid 30534, not 16397) is opened by Defias Cannon 16398 guid 26205 only on
+  SPELL_HIT 6250 (SAI script 1639800); the cannon lock 83 = Defias Gunpowder 5397. A GAMEOBJ_USE does not cast that
+  spell, so even a BypassKeys row would not open it. Needs a "cast 6250 on the cannon with gunpowder" step: TODO.
+- Uldaman Stone Keepers altar 130511 (spell 11568): not asked for; whether Temple Door 124367 blocks the Archaedas route is
+  unverified. TODO.
+- Zul'Farrak, BRD, Stratholme, Dire Maul rows: not attempted (TODO, survey above still applies).
+
+Needs in-game proof: bot ritual use of 133234; gossip select through the stock packet pair; the Emi/Disciple escort
+pacing; BFD summon deaths reaching zero (summons are 300 s out-of-combat despawns: a despawned summon never
+decrements the count, the portal then never opens and the ENTER_AREA row retries until the encounter is abandoned).
