@@ -558,7 +558,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 7u);
+    EXPECT_EQ(kStateVersion, 8u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -595,6 +595,32 @@ TEST(SupplyTiers, SquadDemandFollowsTheArtisansTier)
     EXPECT_EQ(ClothDemandOf(0, 21, kNoTier, kNoTier), ClothDemand::Normal);
     EXPECT_EQ(ClothDemandOf(1, 21, kNoTier, kNoTier), ClothDemand::Done);  // out of reach
     EXPECT_EQ(ClothDemandOf(0, 0, kNoTier, kNoTier), ClothDemand::Normal);  // artisan offline: linen, as before
+}
+
+// soak-s54-full-r1: the Weavers posted cloth_gear orders on wool / linen bolts; the bag line's tier gate starved them.
+TEST(SupplyTiers, GearOrdersKeepTheirClothInDemand)
+{
+    RecipeTable const g{kTailorGear, static_cast<std::uint8_t>(std::size(kTailorGear))};
+    std::uint8_t const gloves = TierOf(g, 4310), bracers = TierOf(g, 4308);  // 3 wool bolts; 3 linen bolts
+    ASSERT_NE(gloves, kNoTier);
+    ASSERT_NE(bracers, kNoTier);
+    std::unordered_map<std::uint32_t, std::uint32_t> held{{2997, 1}, {kWool, 5}};  // 1 wool bolt, 5 wool
+    auto have = [&](std::uint32_t item) { auto const it = held.find(item); return it == held.end() ? 0u : it->second; };
+    // 2 gloves = 6 bolts = 18 wool, less 1 bolt (3) and 5 wool; 1 bracers = 3 bolts = 6 linen; no silk.
+    std::array<std::uint32_t, kTierCount> const s = GearClothShort(g, {{gloves, 2, 0}, {bracers, 1, 0}}, have);
+    EXPECT_EQ(s[0], 6u);
+    EXPECT_EQ(s[1], 10u);
+    EXPECT_EQ(s[2], 0u);
+    EXPECT_EQ(GearClothShort(g, {}, have)[1], 0u);                      // no order: no gear demand
+    EXPECT_EQ(GearClothShort(g, {{gloves, 1, 0}}, have)[1], 1u);        // 9 wool less 8 held
+    // Bags done with wool (silk bag goal at 150): wool Done without the gear order, Normal with it.
+    EXPECT_EQ(ClothDemandOf(1, 150, 2, kNoTier), ClothDemand::Done);
+    EXPECT_EQ(ClothDemandOf(1, 150, 2, kNoTier, s[1]), ClothDemand::Normal);
+    // A wool skill-up with linen bracers on order: linen stays in demand.
+    EXPECT_EQ(ClothDemandOf(0, 112, kNoTier, 1), ClothDemand::Done);
+    EXPECT_EQ(ClothDemandOf(0, 112, kNoTier, 1, s[0]), ClothDemand::Normal);
+    // Out of reach stays Done (the bolt cannot be made).
+    EXPECT_EQ(ClothDemandOf(2, 104, 1, kNoTier, 40), ClothDemand::Done);
 }
 
 // soak-s47-full-r1: the Alliance rep listed wool while its tailor was below 75.

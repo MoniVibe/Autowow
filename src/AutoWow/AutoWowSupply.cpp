@@ -109,6 +109,8 @@ struct TeamState
     std::array<bool, kTierCount> directTier{};
     // DemandOnly (overlord): the members' bag want per tier (a skill-up's consumer).
     std::array<std::uint32_t, kTierCount> wants{};
+    // cloth_gear on the bag house (TierTick): the cloth its open orders still lack per tier (GearClothShort).
+    std::array<std::uint32_t, kTierCount> gearCloth{};
 };
 struct LineState
 {
@@ -769,6 +771,16 @@ void TierTick(bool alliance, bool overlord)
         stock[i] = HeldUnits(rep, kTiers[i].cloth);
     ts.clothRooms = ClothRooms(stock, p.clothCap, RepReady(rep));
     ts.artisanSkill = art ? art->GetSkillValue(SKILL_TAILORING) : 0;
+    ts.gearCloth = {};
+    if (std::size_t const g = static_cast<std::size_t>(Line::ClothGear); LineOn(Line::ClothGear) && gLineHouse[g] == gBagHouse)
+    {
+        std::vector<GearOrder> orders;
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            orders = gLines[g][t].orders;
+        }
+        ts.gearCloth = GearClothShort(GearTable(LineOf(Line::ClothGear)), orders, house);
+    }
 
     // DirectRoutes: artisan -> ranked members first (one hop instead of two); what is left goes to the rep below.
     if (p.directRoutes && art && gid)
@@ -1004,6 +1016,17 @@ void TierTick(bool alliance, bool overlord)
                     want(tier.extra, Short(tier.extraPerBag, house(tier.extra)));
             }
         }
+        // cloth_gear orders: each cloth at least what they lack.
+        // ponytail: max of the bag and gear wants, not their sum; sum them if both lines starve on one cloth.
+        for (std::size_t i = 0; i < kTierCount; ++i)
+        {
+            auto const it = std::find_if(ts.buy.begin(), ts.buy.end(),
+                                         [&](MarketWant const& w) { return w.item == kTiers[i].cloth; });
+            if (it != ts.buy.end())
+                it->units = std::max(it->units, ts.gearCloth[i]);
+            else
+                want(kTiers[i].cloth, ts.gearCloth[i]);
+        }
     }
 
     // Rep -> members: its loose bags, best tier first, each member up to its want for that tier's slots (bags
@@ -1071,6 +1094,7 @@ void TierTick(bool alliance, bool overlord)
     out.skillup = ts.skillup;
     out.skillupBag = ts.skillupBag;
     out.buy = ts.buy;
+    out.gearCloth = ts.gearCloth;
     if (overlord)
     {
         out.product = ts.product;
@@ -2939,9 +2963,10 @@ std::vector<MaterialNeed> MaterialDemand(bool alliance)
         if (p.tiers)
         {
             // Cloth the bag artisan can bolt now (linen always; stock beyond its reach waits, lane C): its goal /
-            // skill-up tier first, a tier below both no more (ClothDemandOf).
+            // skill-up tier first, a tier below both no more unless a cloth_gear order lacks it (ClothDemandOf).
             for (std::size_t i = 0; i < kTierCount; ++i)
-                if (ClothDemand const d = ClothDemandOf(i, ts.artisanSkill, ts.goal, ts.skillup); d != ClothDemand::Done)
+                if (ClothDemand const d = ClothDemandOf(i, ts.artisanSkill, ts.goal, ts.skillup, ts.gearCloth[i]);
+                    d != ClothDemand::Done)
                     out.push_back({kTiers[i].cloth, ts.clothRooms[i], d == ClothDemand::First});
         }
         else
