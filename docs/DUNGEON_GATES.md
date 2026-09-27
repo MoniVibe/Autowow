@@ -17,6 +17,8 @@ auto = the core opens it after the kills (no bot action).
 - Doors 13965 (Rhahk'zor), 16400 (Sneed), 16399 (Gilnid) open on boss death: auto.
 - Iron Clad Door 16397 (guid 30534, -101,-669,7) gates idx3-6. Correction (lane Z): lever 101833 (guid 26206) is
   NOT_SELECTABLE and unusable; the door opens only when spell 6250 hits Defias Cannon 16398 (needs Defias Gunpowder).
+  Lane Z2 (dmcannon) rows: loot chest 17155 (guid 26203, -106,-617,14, loot 2882 = Defias Gunpowder 5397 at 100%),
+  then the gunpowder holder uses 5397 on the cannon (guid 26205, -108,-660,7). See "Lane Z2" below.
 - (-60,-860,0) stall = ship-deck pathing, not a gate.
 
 ## Wailing Caverns (43)
@@ -110,10 +112,7 @@ Shipped (source/DB verified; no in-game run yet):
   timeout would make the next use out of order.
 
 Dropped:
-- Deadmines Iron Clad Door (idx3-6): lever 101833 guid 26206 has GO_FLAG_NOT_SELECTABLE (template_addon flags 16), so
-  `GameObject::Use` returns at once. The door (guid 30534, not 16397) is opened by Defias Cannon 16398 guid 26205 only on
-  SPELL_HIT 6250 (SAI script 1639800); the cannon lock 83 = Defias Gunpowder 5397. A GAMEOBJ_USE does not cast that
-  spell, so even a BypassKeys row would not open it. Needs a "cast 6250 on the cannon with gunpowder" step: TODO.
+- (Deadmines Iron Clad Door: dropped here, shipped by lane Z2 below.)
 - Uldaman Stone Keepers altar 130511 (spell 11568): not asked for; whether Temple Door 124367 blocks the Archaedas route is
   unverified. TODO.
 - Zul'Farrak, BRD, Stratholme, Dire Maul rows: not attempted (TODO, survey above still applies).
@@ -121,3 +120,24 @@ Dropped:
 Needs in-game proof: bot ritual use of 133234; gossip select through the stock packet pair; the Emi/Disciple escort
 pacing; BFD summon deaths reaching zero (summons are 300 s out-of-combat despawns: a despawned summon never
 decrements the count, the portal then never opens and the ENTER_AREA row retries until the encounter is abandoned).
+
+## Lane Z2 (dmcannon) status, 2026-09-27
+Deadmines Iron Clad Door, rows for each of idx3 (Mr. Smite), 4 (Cookie), 5 (Greenskin), 6 (VanCleef); Gilnid idx2 and
+earlier are ungated. Facts: lever 101833 guid 26206 NOT_SELECTABLE. Door 16397 guid 30534 (type door, flags 34 =
+LOCKED|NODESPAWN) opens only through the cannon's SAI 1639800 (SPELL_HIT 6250: set door GO state, instance data 1 = DONE;
+the instance script has no GetData, so the door GO state is the witness). Item 5397 (class 13, max 1) casts 6250 =
+OPEN_LOCK on a GO target, 5 yd range, charges -1 (consumed); cannon lock 83 = key item 5397. Chest 17155 lock 57 =
+ordinary OPEN/TREASURE; looting it runs event 619 (Defias Overseer 634) and SAI (Taskmaster 4417): expect a fight.
+- step 0 LOOT_GO chest 17155 guid 26203: the navigating bot opens it with the NewRpgAction objective-chest path
+  (`Player::SendLoot`, autostore only the slot holding 5397, release). done = a party member holds 5397 or the door is open.
+- step 1 USE_ITEM_ON_GO cannon 16398 guid 26205, keyItem 5397: the holder (leader first, then followers by guid) walks
+  within 4 yd (followers through `AutoWowDungeonWalkAction`) and sends `CMSG_USE_ITEM` with the GO target (UseItemAction
+  layout); the core checks range/lock and consumes the key. done = the door is open.
+- New doneWhen `unlocked`: door GO `doneData` not READY, or missing on its loaded grid (the instance script despawns a
+  door stored open on reload), or (`doneValue` != 0) a party member holds item `doneValue`.
+- Key rule changed: a keyItem row is skipped only while no party member holds the key and BypassKeys = 0. This row
+  therefore runs with BypassKeys = 0.
+
+Needs in-game proof: chest loot lands 5397 in the leader's bags; the use-item packet fires 6250 on the cannon from 4 yd;
+door GO state flips; a follower holder actually walks to the cannon (its AI may re-follow). Risk: if the loot row latched
+done and the holder then leaves the party, the cannon row stays key-gated and idx3 falls back to the closed door.
