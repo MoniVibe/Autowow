@@ -2863,7 +2863,7 @@ AutoWow.Supply.ListFloat = 1000
 # Product catalog (lane D; SupplyPolicy.h kCatalog). Products: ','-separated lines the overlord runs, each
 # TickMs per team: bags (Weavers / tailoring; the chain above, unchanged) and potions (Brewers / alchemy).
 # Default "bags" = exactly the chain above. A bad list logs an error and runs bags only. Every `supply` ledger
-# row carries "line":"bags|potions" (appended field).
+# row carries "line":"bags|potions|cloth_gear|leather_gear" (appended field). Gear lines: see DemandOnly below.
 AutoWow.Supply.Products = "bags"
 # Potions line: tiers Minor Healing Potion 118 (spell 2330, learned with alchemy, grey 95; Peacebloom 2447 +
 # Silverleaf 765 + Empty Vial 3371), Lesser Healing Potion 858 (spell 2337, alchemy 55, grey 125; Minor Healing
@@ -2915,6 +2915,46 @@ AutoWow.Supply.RouteRaw = 0
 AutoWow.Supply.RawCap = 100
 AutoWow.Supply.House.Ore = "Smiths"
 AutoWow.Supply.House.Leather = "Tanners"
+# Need-driven production (lane V; owner 2026-09-27: artisans make only useful things, houses supply gear). Off by default.
+# DemandOnly: the skill-up recipe (bags with Tiers, catalog lines) is the cheapest whose OUTPUT has a consumer (a bag tier
+#   some member wants; a bolt a wanted bag tier or the house's open gear order uses; a potion tier some member is short
+#   of), a consumer-less one only as the last resort; while a gear order is open the bag artisan makes no consumer-less
+#   skill-up. Orders exist only for named consumers (bag slots, potion stock, gear slots). A surplus sale (AH or vendor:
+#   output nobody wanted) is a `waste` row instead of `surplus`; `order` rows name their first consumer and `deliver`
+#   rows their receiver ("consumer":guid; 0 = the rep's stock). The bag want already excludes members holding bags as big
+#   as the product (worn, loose or in the mailbox).
+AutoWow.Supply.DemandOnly = 0
+# Gear lines (Products tokens cloth_gear / leather_gear; mail_gear is a data hook without recipes and turns itself off):
+#   cloth_gear (House.ClothGear, default Weavers = the bag house: the bag artisan also tailors gear) crafts cloth armor
+#   from SupplyPolicy.h kTailorGear (21 trainer-taught recipes, L3-34, from linen / wool / silk bolts + vendor thread /
+#   dye); leather_gear (House.LeatherGear, default Tanners; artisan AutoWow.Supply.Artisan.Tanners.<Team>, leather routed
+#   with RouteRaw) from kLeatherGear (14 recipes, L5-25, Light Leather -> Medium -> Heavy). The tables are checked
+#   against the loaded spells / items at startup (a mismatch turns the line off).
+# Need (overlord, every OverlordMs): recipients = AutoWow.Supply.PriorityGuids, the cohort and the squad roster (online
+#   bots of the team, no working role). Per recipient and equipment slot, the best known recipe (item level, then spell)
+#   whose product the stock "item upgrade" value rates EQUIP / REPLACE at the recipient's level (class / spec weights,
+#   armor type), skipping slots a line product is already on its way to (bags or mailbox) and products not above the
+#   worn piece's item level. Ranked: PriorityGuids first (its order), then the worst geared (lowest summed equipped item
+#   level), ties the lower guid. Order: the top GearMaxOrder needs, per recipe its need count + RepStockPerItem, minus the
+#   finished pieces the house (rep + artisan) holds (never more than demand + stock).
+# Every TickMs (world thread): the artisan's pieces are mailed straight to their named consumers (re-asked: still an
+#   upgrade), the rest to the rep's stock; each piece is paid GearPayPct of its vendor value from the house bank (work
+#   XP per piece); the rep mails its stock to the needs left (deal XP). The artisan works the first order entry the house
+#   can cast (a bolt / Medium Leather first), learns the line's recipes and ranks (Artisan.Learn.<Key> plus the table) at
+#   the line trainer and buys thread / dye at the trade-supplies vendor selling all of them (Stormwind 1347, Orgrimmar
+#   5817 / 3364); the rep mails it the cloth / leather (and routed intermediates) the target lacks. Consumer: the stock
+#   non-combat "equip upgrades packet action" wears a delivered piece. Rows: `supply` with "line":"cloth_gear" and a
+#   consumer field.
+AutoWow.Supply.House.ClothGear = "Weavers"
+AutoWow.Supply.House.LeatherGear = "Tanners"
+AutoWow.Supply.Artisan.Learn.ClothGear = "3911,3912,3913,12181"
+AutoWow.Supply.Artisan.Learn.LeatherGear = "2155,2154,3812,10663"
+# AutoWow.Supply.Artisan.Tanners.Alliance = 0
+# AutoWow.Supply.Artisan.Tanners.Horde = 0
+AutoWow.Supply.PriorityGuids = ""
+AutoWow.Supply.RepStockPerItem = 2
+AutoWow.Supply.GearMaxOrder = 4
+AutoWow.Supply.GearPayPct = 200
 # Outfit (owner ruling 2026-09-26): the house treasury funds its members' starter equipment. No free gold or items:
 # the grant is a real guild bank -> member transfer, the tool is bought at a vendor. Needs AutoWow.Errands.Enable.
 # A cohort bot (AutoWow.Guilds.CohortGuids) that knows Mining (186) / Skinning (393) and holds no pick / knife

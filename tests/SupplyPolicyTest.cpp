@@ -558,7 +558,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 6u);
+    EXPECT_EQ(kStateVersion, 7u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -792,5 +792,252 @@ TEST(SupplyRepStore, OneMailCarriesEveryItemUpTo12Stacks)
     RoutePlan const capped = PlanRoute({ten, five}, {all, all});
     EXPECT_EQ(capped.picks.size(), kMaxMailStacks);
     EXPECT_EQ(capped.units, (std::vector<std::uint32_t>{10, 2}));
+}
+
+// ---- lane V: need-driven production (DemandOnly) and gear lines ----
+
+TEST(SupplyDemand, SkillupPrefersARecipeWithAConsumer)
+{
+    // skill 60: linen bolt grey (50); linen bag (no member wants one) and wool bolt known; the bag is cheaper.
+    std::vector<SkillupOption> opts = {
+        {2963, 0, false, true, 50, true, 26, true},
+        {3755, 0, true, true, 105, true, 90, false},   // nobody wants a Linen Bag: its output would be sold
+        {2964, 1, false, true, 105, true, 99, true},   // a wanted Woolen Bag / wool gear piece uses the bolt
+    };
+    EXPECT_EQ(PickSkillup(60, opts, true), 1);                // flag off: the cheapest (the useless bag)
+    EXPECT_EQ(PickSkillupFor(60, opts, true, false), 1);      // off == PickSkillup
+    EXPECT_EQ(PickSkillupFor(60, opts, true, true), 2);       // on: the recipe with a consumer
+    // A member wants the Linen Bag now: the bag has a consumer and is cheapest.
+    opts[1].consumer = true;
+    EXPECT_EQ(PickSkillupFor(60, opts, true, true), 1);
+    // No output has a consumer: the last resort is the cheapest (sold later as `waste`).
+    for (SkillupOption& o : opts)
+        o.consumer = false;
+    EXPECT_EQ(PickSkillupFor(60, opts, true, true), 1);
+    // A consumer recipe the house holds no cloth for loses to a stocked consumer-less one (needStock).
+    opts[2].consumer = true;
+    opts[2].stocked = false;
+    EXPECT_EQ(PickSkillupFor(60, opts, true, true), 1);
+    EXPECT_EQ(PickSkillupFor(60, opts, false, true), 2);  // the market target ignores stock
+}
+
+TEST(SupplyDemand, WasteAndConsumerWire)
+{
+    EXPECT_STREQ(ReasonName(Reason::Waste), "waste");
+    EXPECT_EQ(static_cast<int>(Reason::Waste), 16);
+    EXPECT_EQ(static_cast<int>(Reason::Cancel), 15);
+    EXPECT_EQ(SaleReason(false), Reason::Surplus);
+    EXPECT_EQ(SaleReason(true), Reason::Waste);
+    EXPECT_EQ(ConsumerField(70001), ",\"consumer\":70001");
+    EXPECT_EQ(ConsumerField(0), ",\"consumer\":0");
+    Params const p;
+    EXPECT_FALSE(p.demandOnly);
+    EXPECT_EQ(p.repStockPerItem, 2u);
+    EXPECT_EQ(p.gearMaxOrder, 4u);
+    EXPECT_EQ(p.gearPayPct, 200u);
+    EXPECT_EQ(p.lines, 1u);  // gear lines are off unless Products names them
+}
+
+TEST(SupplyGear, CatalogLinesAndProducts)
+{
+    EXPECT_EQ(static_cast<int>(Line::ClothGear), 2);
+    EXPECT_EQ(static_cast<int>(Line::MailGear), 3);
+    EXPECT_EQ(static_cast<int>(Line::LeatherGear), 4);
+    ASSERT_EQ(kLineCount, 5u);
+    std::uint8_t mask = 0;
+    EXPECT_TRUE(ParseProducts("bags,cloth_gear", mask));
+    EXPECT_EQ(mask, 5u);
+    EXPECT_TRUE(ParseProducts("leather_gear", mask));
+    EXPECT_EQ(mask, 16u);
+    EXPECT_EQ(LineField(Line::ClothGear), ",\"line\":\"cloth_gear\"");
+    ProductLine const& cloth = LineOf(Line::ClothGear);
+    EXPECT_STREQ(cloth.house, "Weavers");
+    EXPECT_EQ(cloth.skillLine, 197u);
+    EXPECT_EQ(cloth.need, NeedRule::GearSlots);
+    EXPECT_EQ(cloth.consumer, Consumer::EquipGear);
+    EXPECT_EQ(cloth.tierCount, 0u);  // bespoke runtime: never a LineTick line
+    EXPECT_STREQ(LineOf(Line::LeatherGear).house, "Tanners");
+    EXPECT_EQ(LineOf(Line::LeatherGear).skillLine, 165u);
+    EXPECT_EQ(LineOf(Line::MailGear).gearCount, 0u);  // data hook: turns itself off at load
+    EXPECT_STREQ(LineOf(Line::MailGear).house, "Smiths");
+}
+
+TEST(SupplyGear, TablesMatchTheWorldDb)
+{
+    std::vector<std::uint32_t> const vendor = {2320, 2321, 4291, 2604, 2605, 6260, 4340};
+    for (Line const l : {Line::ClothGear, Line::LeatherGear})
+    {
+        RecipeTable const g = GearTable(LineOf(l));
+        ASSERT_GT(g.tierCount, 2u);
+        for (std::size_t i = 0; i < g.tierCount; ++i)
+            for (Reagent const& r : g.tiers[i].reagents)
+            {
+                if (!r.item)
+                    continue;
+                EXPECT_GT(r.count, 0u);
+                if (r.source == Source::Craft)  // every intermediate is a table recipe (a bolt, Medium / Heavy Leather)
+                {
+                    std::uint8_t const sub = TierOf(g, r.item);
+                    ASSERT_NE(sub, kNoTier);
+                    EXPECT_EQ(g.tiers[sub].reqLevel, 0u);
+                }
+                if (r.source == Source::Vendor)  // the trade-supplies vendors near home sell all of them
+                {
+                    EXPECT_NE(std::find(vendor.begin(), vendor.end(), r.item), vendor.end());
+                }
+                EXPECT_NE(r.source, Source::Market);
+            }
+    }
+    RecipeTable const cloth = GearTable(LineOf(Line::ClothGear));
+    ASSERT_EQ(cloth.tierCount, 24u);
+    EXPECT_EQ(cloth.tiers[0].spell, 2963u);  // Bolt of Linen Cloth, learned with the skill
+    EXPECT_EQ(cloth.tiers[0].skill, 1u);
+    EXPECT_EQ(cloth.tiers[1].product, 2997u);  // Bolt of Woolen Cloth
+    EXPECT_EQ(cloth.tiers[2].product, 4305u);  // Bolt of Silk Cloth
+    std::uint8_t const pants = TierOf(cloth, 4343);  // Brown Linen Pants: tailoring 30, RequiredLevel 5
+    ASSERT_NE(pants, kNoTier);
+    EXPECT_EQ(cloth.tiers[pants].spell, 3914u);
+    EXPECT_EQ(cloth.tiers[pants].skill, 30u);
+    EXPECT_EQ(cloth.tiers[pants].grey, 90u);
+    EXPECT_EQ(cloth.tiers[pants].reqLevel, 5u);
+    EXPECT_EQ(cloth.tiers[pants].reagents[0].item, 2996u);
+    EXPECT_EQ(cloth.tiers[pants].reagents[0].count, 2u);
+    std::uint8_t const top = TierOf(cloth, 7062);  // Crimson Silk Pantaloons: tailoring 195, RequiredLevel 34
+    ASSERT_NE(top, kNoTier);
+    EXPECT_EQ(cloth.tiers[top].skill, 195u);
+    EXPECT_EQ(cloth.tiers[top].reqLevel, 34u);
+    RecipeTable const leather = GearTable(LineOf(Line::LeatherGear));
+    ASSERT_EQ(leather.tierCount, 16u);
+    EXPECT_EQ(leather.tiers[TierOf(leather, 3719)].reagents[0].item, 4234u);  // Hillman's Cloak <- Heavy Leather
+    EXPECT_TRUE(LineItem(cloth, 2605));    // Green Dye (vendor): kept by the artisan's make-room
+    EXPECT_TRUE(LineItem(cloth, 7046));    // Azure Silk Pants (product)
+    EXPECT_FALSE(LineItem(cloth, 2318));   // Light Leather is the Tanners'
+    EXPECT_TRUE(LineItem(leather, 2318));
+}
+
+TEST(SupplyGear, CastsAndLacksWalkTheIntermediates)
+{
+    RecipeTable const g = GearTable(LineOf(Line::ClothGear));
+    std::uint8_t const pants = TierOf(g, 4343);  // 2 linen bolts + coarse thread
+    std::unordered_map<std::uint32_t, std::uint32_t> held{{kLinen, 7}, {2996, 1}};
+    auto have = [&](std::uint32_t item)
+    {
+        auto const it = held.find(item);
+        return it == held.end() ? 0u : it->second;
+    };
+    EXPECT_EQ(Casts(g, pants, have), 2u);  // 1 bolt + 3 more from 7 linen = 4 bolts; thread is bought
+    // Three pants: 6 bolts, 1 held, 5 to make = 10 linen, 3 short; 3 thread from the vendor.
+    std::vector<Lack> const lack = Lacks(g, pants, 3, have);
+    ASSERT_EQ(lack.size(), 2u);
+    EXPECT_EQ(lack[0].item, kLinen);
+    EXPECT_EQ(lack[0].units, 3u);
+    EXPECT_EQ(lack[0].source, Source::Route);
+    EXPECT_EQ(lack[1].item, 2320u);
+    EXPECT_EQ(lack[1].units, 3u);
+    EXPECT_EQ(lack[1].source, Source::Vendor);
+    // Next cast toward the pants: a bolt (one held, two needed); with two bolts and thread, the pants.
+    EXPECT_EQ(NextCast(g, pants, have), 0u);
+    held[2996] = 2;
+    EXPECT_EQ(NextCast(g, pants, have), kNoTier);  // no thread yet
+    held[2320] = 1;
+    EXPECT_EQ(NextCast(g, pants, have), pants);
+    // Leather: Hillman's Cloak <- Heavy Leather <- Medium Leather <- Light Leather (three levels).
+    RecipeTable const l = GearTable(LineOf(Line::LeatherGear));
+    std::unordered_map<std::uint32_t, std::uint32_t> skins{{2318, 100}};
+    auto hides = [&](std::uint32_t item)
+    {
+        auto const it = skins.find(item);
+        return it == skins.end() ? 0u : it->second;
+    };
+    EXPECT_EQ(Casts(l, TierOf(l, 3719), hides), 1u);  // 100 light = 25 medium = 5 heavy = 1 cloak
+}
+
+TEST(SupplyGear, NeedsRankPriorityThenWorstGeared)
+{
+    std::vector<GearNeed> const ranked = RankGearNeeds({
+        {30, 3, 7, kNoPriority, 120},
+        {10, 4, 5, kNoPriority, 300},
+        {20, 3, 7, kNoPriority, 120},  // same gear as 30: the lower guid first
+        {90, 5, 9, 1, 900},            // priority list, second place
+        {80, 6, 4, 0, 950},            // priority list, first place: before everyone however well geared
+        {20, 8, 1, kNoPriority, 120},  // 20's head before its legs (slot order)
+    });
+    ASSERT_EQ(ranked.size(), 6u);
+    EXPECT_EQ(ranked[0].guid, 80u);
+    EXPECT_EQ(ranked[1].guid, 90u);
+    EXPECT_EQ(ranked[2].guid, 20u);
+    EXPECT_EQ(ranked[2].slot, 1u);
+    EXPECT_EQ(ranked[3].guid, 20u);
+    EXPECT_EQ(ranked[3].slot, 7u);
+    EXPECT_EQ(ranked[4].guid, 30u);
+    EXPECT_EQ(ranked[5].guid, 10u);
+    std::vector<std::uint32_t> list;
+    EXPECT_TRUE(ParseGuids(" 80, 90 ", list));
+    EXPECT_EQ(list, (std::vector<std::uint32_t>{80, 90}));
+    EXPECT_EQ(PriorityOf(list, 90), 1u);
+    EXPECT_EQ(PriorityOf(list, 20), kNoPriority);
+    EXPECT_FALSE(ParseGuids("80,x", list));
+    EXPECT_EQ(list.size(), 2u);  // untouched
+    EXPECT_TRUE(ParseGuids("", list));
+    EXPECT_TRUE(list.empty());
+}
+
+TEST(SupplyGear, OrdersServeTheTopNeedsPlusStockNeverMore)
+{
+    std::vector<GearNeed> const ranked = {
+        {80, 5, 7, 0, 10}, {81, 5, 7, 1, 10}, {82, 9, 5, kNoPriority, 20}, {83, 5, 7, kNoPriority, 30},
+        {84, 11, 1, kNoPriority, 40},  // beyond the top 4: not ordered this round
+    };
+    std::vector<std::uint32_t> held(24, 0);
+    held[9] = 1;  // the rep holds one finished recipe-9 piece
+    std::vector<GearOrder> const o = PlanGearOrders(ranked, held, 4, 2);
+    ASSERT_EQ(o.size(), 2u);
+    EXPECT_EQ(o[0].recipe, 5u);
+    EXPECT_EQ(o[0].units, 3u + 2u);  // three needs + RepStockPerItem
+    EXPECT_EQ(o[0].consumer, 80u);   // its first ranked need
+    EXPECT_EQ(o[1].recipe, 9u);
+    EXPECT_EQ(o[1].units, 1u + 2u - 1u);
+    EXPECT_EQ(o[1].consumer, 82u);
+    // The house already holds demand + stock: nothing to make.
+    held[5] = 5;
+    EXPECT_EQ(PlanGearOrders(ranked, held, 4, 2).size(), 1u);
+    // No need: no order, whatever the stock target (never stock for a recipe nobody wants).
+    EXPECT_TRUE(PlanGearOrders({}, held, 4, 2).empty());
+    // Stock 0: exactly the demand.
+    EXPECT_EQ(PlanGearOrders(ranked, std::vector<std::uint32_t>(24, 0), 4, 0)[0].units, 3u);
+}
+
+TEST(SupplyGear, TargetIsTheFirstShortEntryTheHouseCanCast)
+{
+    EXPECT_EQ(PickGearTarget({2, 3, 1}, {0, 4, 1}), 1);  // entry 0 short but no materials: 1 can be cast now
+    EXPECT_EQ(PickGearTarget({2, 3}, {0, 0}), 0);        // nothing castable: the first short one
+    EXPECT_EQ(PickGearTarget({0, 3}, {5, 0}), 1);        // entry 0 done
+    EXPECT_EQ(PickGearTarget({0, 0}, {5, 5}), -1);
+    EXPECT_EQ(PickGearTarget({}, {}), -1);
+}
+
+TEST(SupplyGear, DeliveriesGiveOnePiecePerNeedInRankOrder)
+{
+    std::vector<GearNeed> const ranked = {{80, 5, 7}, {81, 9, 5}, {82, 5, 7}, {83, 5, 7}};
+    std::vector<GearDelivery> const d = PlanGearDeliveries(ranked, {{5, 301}, {9, 300}, {5, 299}, {12, 298}});
+    ASSERT_EQ(d.size(), 3u);
+    EXPECT_EQ(d[0].need, 0u);
+    EXPECT_EQ(d[0].item, 299u);  // lowest guid of its recipe
+    EXPECT_EQ(d[1].need, 1u);
+    EXPECT_EQ(d[1].item, 300u);
+    EXPECT_EQ(d[2].need, 2u);
+    EXPECT_EQ(d[2].item, 301u);  // need 3 (83) waits: no piece left; recipe 12 has no need (stays with the sender)
+    EXPECT_TRUE(PlanGearDeliveries({}, {{5, 1}}).empty());
+}
+
+TEST(SupplyGear, RecipesRankByItemLevelLeavingIntermediatesOut)
+{
+    RecipeTable const g = GearTable(LineOf(Line::ClothGear));
+    std::vector<std::uint32_t> ilvl(g.tierCount, 0);
+    ilvl[3] = 8;   // Brown Linen Vest 2385
+    ilvl[4] = 9;   // Linen Belt 8776
+    ilvl[5] = 10;  // Brown Linen Pants 3914
+    ilvl[6] = 10;  // Brown Linen Robe 7623
+    EXPECT_EQ(RankGearRecipes(g, ilvl), (std::vector<std::uint8_t>{5, 6, 4, 3}));  // 10 (spell 3914 < 7623), 9, 8
 }
 }  // namespace

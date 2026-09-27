@@ -475,6 +475,7 @@ void WorldUpdate(std::uint32_t diff)
 }
 
 bool IsMember(std::uint32_t guid) { return detail::gEnabled && gTeamOf.count(guid) != 0; }
+std::vector<std::uint32_t> Roster(bool alliance) { return detail::gEnabled ? gRoster[alliance ? 0 : 1] : std::vector<std::uint32_t>{}; }
 
 TeamState SnapshotOf(std::uint32_t guid)
 {
