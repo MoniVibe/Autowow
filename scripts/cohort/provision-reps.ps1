@@ -10,7 +10,7 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,
-    [ValidateSet('reps','squad')][string]$Set = 'reps',
+    [ValidateSet('reps','squad','probes')][string]$Set = 'reps',
     [string]$WslDistro = 'Ubuntu-24.04',
     [string]$WorldserverBinary = '/root/autowow-advisor-t1-build/src/server/apps/worldserver',
     [string]$WorldserverConfig = '/root/p1runtime/worldserver.conf',
@@ -46,6 +46,19 @@ $sets = @{
         @('Squad','Horde','AWPVP1H02',5,8,0,'Dusmor'),
         @('Squad','Horde','AWPVP1H03',5,9,1,'Yzolde'),
         @('Artisan.Brewers','Horde','AWPVP1H03',6,11,0,'Tahnoka')
+    )
+    # probes: dungeon completability parties (test instruments, not faction members; magic gear allowed)
+    probes = @(
+        @('Probe.Tank','Alliance','AWPVP1A04',1,1,0,'Probeshield'),
+        @('Probe.Heal','Alliance','AWPVP1A04',1,5,1,'Probemend'),
+        @('Probe.Mage','Alliance','AWPVP1A04',1,8,1,'Probefrost'),
+        @('Probe.Rogue','Alliance','AWPVP1A04',1,4,0,'Probeknife'),
+        @('Probe.Hunter','Alliance','AWPVP1A05',3,3,0,'Probeshot'),
+        @('Probe.Tank','Horde','AWPVP1H04',8,1,0,'Probetusk'),
+        @('Probe.Heal','Horde','AWPVP1H04',8,5,1,'Probehex'),
+        @('Probe.Mage','Horde','AWPVP1H04',8,8,1,'Probeflare'),
+        @('Probe.Rogue','Horde','AWPVP1H04',8,4,0,'Probestab'),
+        @('Probe.Hunter','Horde','AWPVP1H05',8,3,1,'Probebow')
     )
 }
 $reps = $sets[$Set]
