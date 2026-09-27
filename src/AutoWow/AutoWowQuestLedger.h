@@ -92,6 +92,15 @@
 //   - `classquest` (event 23; AutoWow.ClassQuests.Enable): one line per class-quest reward granted to a cohort /
 //     supply role bot (ClassQuestPolicy.h). reason = grant; quest = the reward's quest (not rewarded: quest status
 //     is untouched). Trailing: spell (learned, 0 = none), item (stored, 0 = none), level (the quest's MinLevel).
+//   - `dprobe` (event 24; AutoWow.DungeonProbe.Enable): dungeon completability probe parties (test instruments,
+//     DungeonProbePolicy.h). reason = entered|boss_killed|wiped|revived|stuck|run (one `run` row per finished run,
+//     the reducer's unit). bot = the probe leader (else the first online member); quest 0. Trailing: party
+//     (config name), rid (run-scoped probe run id, never reused), dmap, plvl (probe level), q (lowest gear quality
+//     granted), inst, enc (boss_killed: encounter index, else -1), mask / all (completed / all encounter bits),
+//     bosses / total (bit counts), wipes, revives, stucks, deaths (per member, members order), dur_ms (since
+//     prepare), end (run: completed|abandoned|stuck|timeout|wiped_out|enter_failed|prepare_failed, else ""),
+//     members (guids ascending); stuck rows add smap, sx, sy, sz (leader, integer yards), next (next undone
+//     encounter index, -1 = none), boss (its credit entry, 0 = unknown).
 // The formatter below is pure (no world access) so it is unit-testable; Emit() lives in the .cpp.
 
 #include <cstdint>
@@ -135,7 +144,8 @@ enum class Event : std::uint8_t
     Supply = 20,
     SelfCraft = 21,
     Squad = 22,
-    ClassQuest = 23
+    ClassQuest = 23,
+    DungeonProbe = 24
 };
 
 inline constexpr char const* EventName(Event ev)
@@ -166,6 +176,7 @@ inline constexpr char const* EventName(Event ev)
         case Event::SelfCraft: return "selfcraft";
         case Event::Squad: return "squad";
         case Event::ClassQuest: return "classquest";
+        case Event::DungeonProbe: return "dprobe";
     }
     return "unknown";
 }
@@ -438,7 +449,7 @@ inline std::string FormatLine(std::string_view runId, Row const& row)
              row.ev == Event::ZoneMove || row.ev == Event::Errand || row.ev == Event::Trade ||
              row.ev == Event::Party || row.ev == Event::Dungeon || row.ev == Event::Contract ||
              row.ev == Event::Guild || row.ev == Event::Supply || row.ev == Event::SelfCraft ||
-             row.ev == Event::Squad || row.ev == Event::ClassQuest)
+             row.ev == Event::Squad || row.ev == Event::ClassQuest || row.ev == Event::DungeonProbe)
         out += row.extra;
     else if (row.ev == Event::SkillUp)
     {
@@ -518,6 +529,9 @@ void EmitSquad(Player* player, char const* reason, std::string_view fields);
 // `classquest` (no-op unless the player is a recorded bot); reason is a static literal (grant), quest the granted
 // reward's quest, fields from AutoWowClassQuests::LedgerFields.
 void EmitClassQuest(Player* player, char const* reason, std::uint32_t questId, std::string_view fields);
+// `dprobe` (no-op unless the player is a recorded bot); reason is a static literal, fields from
+// AutoWowDungeonProbe::Fields.
+void EmitDungeonProbe(Player* player, char const* reason, std::string_view fields);
 // Per-bot `progress` sampler; call from the bot update. No-op unless AutoWow.Ledger.ProgressSampleMs
 // > 0 and the player is a recorded bot; rate-limited per bot to one diff per sample period.
 void SampleProgress(Player* player);

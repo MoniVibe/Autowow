@@ -17,6 +17,7 @@
 
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
+#include "DungeonProbePolicy.h"
 #include "SupplyPolicy.h"
 #include "Config.h"
 #include "Creature.h"
@@ -307,7 +308,8 @@ bool IsOrphan(Group* g)
     {
         PlayerbotAI* ai = AiOf(ObjectAccessor::FindPlayer(m.guid));
         if (!ai || ai->IsRealPlayer() || ai->HasRealPlayerMaster() ||
-            AutoWowOracleRuntime::IsManagedBot(m.guid.GetCounter()))
+            AutoWowOracleRuntime::IsManagedBot(m.guid.GetCounter()) ||
+            AutoWowDungeonProbe::IsProbeBot(m.guid.GetCounter()))  // the probe runner owns its party
             return false;
         std::lock_guard<std::mutex> guard(gLock);
         if (gOf.count(m.guid.GetCounter()))
@@ -340,7 +342,7 @@ void Form(std::uint64_t now)
             bot->IsBeingTeleported() || bot->InBattleground() || !bot->GetMap() || bot->GetMap()->Instanceable())
             continue;
         std::uint32_t const g = guid.GetCounter();
-        if (AutoWowOracleRuntime::IsManagedBot(g) ||
+        if (AutoWowOracleRuntime::IsManagedBot(g) || AutoWowDungeonProbe::IsProbeBot(g) ||
             (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(g)) ||
             (AutoWowErrands::Enabled() && AutoWowErrands::Active(g)) ||
             // Supply reps and artisans stay home: a party took the Horde artisan from Orgrimmar to Thousand

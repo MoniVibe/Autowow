@@ -3039,6 +3039,41 @@ AutoWow.Squad.MinDropPct = 5
 AutoWow.Squad.CooldownMs = 600000
 AutoWow.Squad.SearchRetryMs = 60000
 
+# Dungeon completability probe (lane P; DungeonProbePolicy.h / DungeonProbeRuntime.cpp). TEST INSTRUMENTS, not
+# faction members (owner ruling 2026-09-27): magic level, gear, spec, teleports and resurrections are allowed for
+# the probe parties and never for cohort / role / squad bots. Parties: ';'-separated "name:guid,guid,..." (1..5
+# guids, name [A-Za-z0-9_-]). Every guid must also be in AutoWow.FixtureGuids and must not be in the cohort range,
+# AutoWow.OracleRuntime.BotGuids, AutoWow.Guilds.CohortGuids, a supply role or a squad roster, else the whole party
+# is refused at world init. Accepted probe guids are excluded from party formation / orphan disband, contracts and
+# guild houses even with Enable = 0. Per party, every TickMs (world thread), the Dungeons queue (map ids) is looped
+# Loops times (0 = forever): Prepare (offline members are logged in; level = recommended max (built-in classic
+# table, Levels = "map:level,..." overrides / extends it) + LevelOver; fixture factory with the fixed spec (warrior
+# prot, priest holy, mage frost, rogue combat, hunter bm) and exact-quality gear from Quality down to uncommon;
+# hunter pet; debuffs removed; a fresh party led by the tank) -> Enter (probe teleport to the entrance trigger's
+# instance-side point, leader first) -> Inside (the dungeon navigator leads; a dead member is resurrected at the
+# leader after ReviveGraceMs without party combat; a wipe resurrects everyone at the entrance and continues the
+# instance, MaxWipes wipes end it as wiped_out; no leader progress for StuckMs (StuckYards) is a stuck event,
+# StuckLimit of them end it; RunTimeoutMs after entry = timeout) -> Exit (homebind, disband, unbind) -> next.
+# Ledger `dprobe` (event 24): entered | boss_killed | wiped | revived | stuck | run (one per run: end =
+# completed|abandoned|stuck|timeout|wiped_out|enter_failed|prepare_failed). Reducer: scripts/dungeon-probe-report.py.
+AutoWow.DungeonProbe.Enable = 0
+AutoWow.DungeonProbe.Parties = ""
+AutoWow.DungeonProbe.Dungeons = "36,43,389,47,48,90,129,70,109,209,230,329,349,429"
+AutoWow.DungeonProbe.Levels = ""
+AutoWow.DungeonProbe.LevelOver = 2
+AutoWow.DungeonProbe.Quality = 4
+AutoWow.DungeonProbe.MaxWipes = 3
+AutoWow.DungeonProbe.RunTimeoutMs = 3600000
+AutoWow.DungeonProbe.StuckMs = 300000
+AutoWow.DungeonProbe.StuckYards = 10
+AutoWow.DungeonProbe.StuckLimit = 2
+AutoWow.DungeonProbe.ReviveGraceMs = 30000
+AutoWow.DungeonProbe.PrepareTimeoutMs = 600000
+AutoWow.DungeonProbe.EnterTimeoutMs = 180000
+AutoWow.DungeonProbe.ExitTimeoutMs = 120000
+AutoWow.DungeonProbe.Loops = 1
+AutoWow.DungeonProbe.TickMs = 1000
+
 # Real crossings for zone progression (needs AutoWow.ZoneProgression.Enable; TransportCrossingPolicy.h).
 # A route across water / a continent with no known flight path runs a chain: walk -> crossing -> walk
 # -> ... -> hub. Travel objects: walk into an areatrigger (Darnassus -> Rut'theran) or use a teleport
