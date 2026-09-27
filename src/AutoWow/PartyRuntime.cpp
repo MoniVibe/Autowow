@@ -19,6 +19,7 @@
 #include "AutoWowQuestLedger.h"
 #include "DungeonProbePolicy.h"
 #include "SupplyPolicy.h"
+#include "UnstickPolicy.h"
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -106,6 +107,9 @@ struct Party
     bool stagePortalDone = false;  // this Stage phase already used its portal fallback
     std::uint64_t missingSinceMs = 0;  // Inside: a member dead or outside since (0 = everyone in)
     std::vector<std::uint32_t> hearthTried;
+    // AutoWow.Unstick.V2: fold of the members' quest logs and since when it held (0 = not looked yet).
+    std::uint64_t questSig = 0;
+    std::uint64_t questSinceMs = 0;
 };
 
 struct QuestOffer
@@ -265,7 +269,9 @@ void Dissolve(std::uint32_t id, Disband why, std::uint64_t now)
         for (Slot const& s : p.slots)
         {
             gOf.erase(s.guid);
-            gLeftMs[s.guid] = now;
+            // AutoWow.Unstick.V2: a stalled party's members stay out of formation for StallMs more, so the same
+            // pinned party does not re-form at the end of the ordinary rejoin cooldown.
+            gLeftMs[s.guid] = why == Disband::Stalled ? now + AutoWowUnstickV2::detail::gParams.partyStallMs : now;
         }
     }
     Group* group = nullptr;
@@ -318,6 +324,61 @@ bool IsOrphan(Group* g)
     return true;
 }
 
+// AutoWow.Unstick.V2: quest-log fold of the party members (quest ids, status, kill / item counters; slot order).
+std::uint64_t QuestSig(std::vector<Player*> const& bots)
+{
+    std::uint64_t h = AutoWowUnstickV2::kFoldSeed;
+    for (Player* bot : bots)
+    {
+        QuestStatusMap const& statusMap = bot->getQuestStatusMap();
+        for (std::uint16_t slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            std::uint32_t const id = bot->GetQuestSlotQuestId(slot);
+            auto const it = id ? statusMap.find(id) : statusMap.end();
+            if (it == statusMap.end())
+                continue;
+            h = AutoWowUnstickV2::Fold(h, (std::uint64_t(id) << 8) | it->second.Status);
+            for (std::size_t k = 0; k < QUEST_OBJECTIVES_COUNT; ++k)
+                h = AutoWowUnstickV2::Fold(h, it->second.CreatureOrGOCount[k]);
+            for (std::size_t k = 0; k < QUEST_ITEM_OBJECTIVES_COUNT; ++k)
+                h = AutoWowUnstickV2::Fold(h, it->second.ItemCount[k]);
+        }
+    }
+    return h;
+}
+
+// AutoWow.Unstick.V2: an unpartied cohort bot alive on an instance map (a society party was inside when the
+// soak stopped; this registry does not survive a restart) goes to its hearthstone bind. The owner ruling
+// allows the portal. Not a dungeon probe (runner registry or the configured guid range), not oracle-managed.
+bool SendStrandeeHome(Player* bot, PlayerbotAI* ai)
+{
+    std::uint32_t const g = bot->GetGUID().GetCounter();
+    AutoWowUnstickV2::Params const& up = AutoWowUnstickV2::detail::gParams;
+    if (!bot->IsInWorld() || !bot->GetMap() || !bot->GetMap()->Instanceable() || bot->InBattleground() ||
+        bot->GetMap()->IsBattlegroundOrArena() || !bot->IsAlive() || bot->IsBeingTeleported() || bot->GetGroup() ||
+        !ai->IsAutoWowIndependentParty() || ai->IsRealPlayer() || ai->HasRealPlayerMaster() ||
+        AutoWowOracleRuntime::IsManagedBot(g) ||
+        AutoWowDungeonProbe::IsProbeBot(g) || (g >= up.strandSkipMin && g <= up.strandSkipMax))
+        return false;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        if (gOf.count(g))
+            return false;
+    }
+    std::uint32_t const fromZone = bot->GetZoneId();
+    std::uint32_t toZone = bot->m_homebindAreaId;
+    if (AreaTableEntry const* area = sAreaTableStore.LookupEntry(bot->m_homebindAreaId); area && area->zone)
+        toZone = area->zone;
+    LOG_INFO("playerbots", "[Unstick] bot={} instance_strand map={} zone={} -> home map={} zone={}", bot->GetName(),
+             bot->GetMapId(), fromZone, bot->m_homebindMapId, toZone);
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::EmitZoneMove(bot, "instance_strand",
+                                         AutoWowZoneProgression::LedgerFields(fromZone, toZone, 0, true,
+                                                                              AutoWowZoneProgression::Mode::Portal));
+    bot->TeleportTo(bot->m_homebindMapId, bot->m_homebindX, bot->m_homebindY, bot->m_homebindZ, bot->GetOrientation());
+    return true;
+}
+
 // ---- formation ------------------------------------------------------------------------------------------
 void Form(std::uint64_t now)
 {
@@ -337,6 +398,8 @@ void Form(std::uint64_t now)
                     mai->SetMaster(nullptr);
             continue;
         }
+        if (AutoWowUnstickV2::Enabled() && ai && SendStrandeeHome(bot, ai))
+            continue;
         if (!ai || !bot->IsInWorld() || !ai->IsAutoWowIndependentParty() || ai->IsRealPlayer() ||
             ai->IsAutoWowPaused() || bot->GetGroup() || !bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() ||
             bot->IsBeingTeleported() || bot->InBattleground() || !bot->GetMap() || bot->GetMap()->Instanceable())
@@ -815,6 +878,14 @@ void Supervise(std::uint32_t id, std::uint64_t now)
             }
         }
         why = ShouldDisband(f, gParams.keep);
+        // AutoWow.Unstick.V2: a group-quest party whose quest logs have not moved for StallMs, or whose leader's
+        // zone graduation gave up after the party formed, lets go (soak-s49..s51: a pinned party kept its
+        // members purposeful while the leader sat in town).
+        if (why == Disband::None && AutoWowUnstickV2::Enabled() && p.why == Reason::GroupQuest &&
+            (AutoWowUnstickV2::PartyStalled(p.questSig, p.questSinceMs, QuestSig(bots), now,
+                                            AutoWowUnstickV2::detail::gParams.partyStallMs) ||
+             AutoWowUnstickV2::GaveUpSince(p.leader, p.formedMs)))
+            why = Disband::Stalled;
     }
     else if (f.online < f.size)
         why = ShouldDisband(f, gParams.keep);

@@ -31,6 +31,7 @@
 #include "ThreatManager.h"
 #include "Unit.h"
 #include "UnitScript.h"
+#include "UnstickPolicy.h"
 
 namespace AutoWowCombatPerformanceTelemetry
 {
@@ -756,6 +757,9 @@ public:
         std::uint32_t botGuid = 0;
         if (IsAttributedPlayerbot(healer, botGuid))
         {
+            // AutoWow.Unstick.V2: healing is combat activity for the stalled-combat watchdog.
+            if (AutoWowUnstickV2::Enabled() && gain)
+                AutoWowUnstickV2::NoteCombatActivity(botGuid, NowMs());
             RecordEffectiveHealing(botGuid, NowMs(), gain);
             if (TelemetryEnabled())
                 WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordHealing(gain); });
@@ -768,6 +772,9 @@ public:
         std::uint64_t const nowMs = NowMs();
         if (IsAttributedPlayerbot(attacker, botGuid))
         {
+            // AutoWow.Unstick.V2: damage dealt (or taken, below) is combat activity for the stalled-combat watchdog.
+            if (AutoWowUnstickV2::Enabled() && damage)
+                AutoWowUnstickV2::NoteCombatActivity(botGuid, nowMs);
             RecordDamageDone(botGuid, nowMs, damage);
             if (TelemetryEnabled() && damage)
                 WithLifetime(botGuid,
@@ -776,6 +783,8 @@ public:
 
         if (IsPlayerbotPlayer(victim, botGuid))
         {
+            if (AutoWowUnstickV2::Enabled() && damage)
+                AutoWowUnstickV2::NoteCombatActivity(botGuid, nowMs);
             RecordDamageTaken(botGuid, nowMs, damage);
             if (TelemetryEnabled() && damage)
                 WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDamageTaken(damage); });
@@ -787,6 +796,10 @@ public:
         std::uint32_t botGuid = 0;
         if (!IsPlayerbotPlayer(unit, botGuid))
             return;
+
+        // AutoWow.Unstick.V2: stalled-combat watchdog (the bot's own map-thread update).
+        if (AutoWowUnstickV2::Enabled())
+            AutoWowUnstickV2::CombatWatch(unit->ToPlayer(), NowMs());
 
         if (TelemetryEnabled())
             UpdateLifetime(unit->ToPlayer(), botGuid, diff);

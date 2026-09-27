@@ -24,6 +24,7 @@
 //       victim, vlvl, honorable (pvp_kill): victim guid-low, victim level, core honor eligibility.
 //       cv, cls, ... (combat): bot-level cumulative combat totals, schema `cv`
 //          (AutoWowCombatPerformanceTelemetry::LifetimeCounters::DrainEmitFields). quest is 0.
+//   - `abandoned`: reason is empty for a stock abandon; log_trim when AutoWow.Unstick.V2 trimmed a clogged log.
 //   - `progress` (AutoWow.Ledger.ProgressSampleMs > 0): a per-bot periodic diff of every quest-log
 //     entry's c/i counters; one line per quest whose counters changed since the previous sample.
 //     A quest's first sample is a silent baseline. reason/phase are empty.
@@ -44,7 +45,8 @@
 //     mana_spent, hp_lost (absolute), casts, wand_ms, cc_n, shield_n, gap_ms, gap_rest_ms, pull_risk.
 //   - `zone_move` (AutoWow.ZoneProgression.Enable): one line per finished or abandoned zone graduation.
 //     reason = trigger (level|no_quests|death_loop: AutoWow.DeathLoop.EscapeViaZoneProgression escape,
-//     from = the zone escaped); quest is 0; lvl/zone/x/y at the end of the move. Trailing:
+//     from = the zone escaped; unstick: AutoWow.Unstick.V2 town-trap graduation; instance_strand: AutoWow.Unstick.V2
+//     strandee sent to its hearthstone bind, arrived true, mode portal, travel_ms 0); quest is 0; lvl/zone/x/y at the end of the move. Trailing:
 //     from, to (zone ids), travel_ms (graduation to hub arrival or give-up), arrived (bool),
 //     mode (walk|flight|chain|portal|none: the last travel mode issued). With AutoWow.Transports.Enable also
 //     legs=[[walk|flight|travel_object|transport|portal, ms], ...] in travel order (same event id).
@@ -67,7 +69,7 @@
 //     mixed). AutoWow.Market.RandomSellers listings are ordinary post rows of random bots.
 //   - `party` (AutoWow.Party.Enable): one line when a cohort party forms (reason `formed`) and one when it
 //     disbands (reason = level_drift|separated|member_offline|dungeon_done|no_purpose|max_age|too_small|
-//     disabled). bot/lvl/zone/x/y = the leader (else the first online member); quest 0. Trailing: pid
+//     disabled|stalled (AutoWow.Unstick.V2)). bot/lvl/zone/x/y = the leader (else the first online member); quest 0. Trailing: pid
 //     (run-scoped party id, never reused), members (guids ascending), roles (tank|healer|dps, same order),
 //     leader, why (dungeon|group_quest), dmap (dungeon map id, 0 = none), age_ms (0 at formation).
 //   - `dungeon` (AutoWow.Dungeon.Enable): one line per run event. reason = entered|boss_killed|completed|
@@ -349,6 +351,9 @@ inline std::string gRunId;
 inline std::uint64_t gBlockedDedupeMs = 0;
 inline std::uint64_t gProgressSampleMs = 0;
 inline bool gSkillUpEnabled = false;
+// Reason of the stock `abandoned` row (OnPlayerQuestAbandon) on this thread: a static literal set around one
+// HandleQuestLogRemoveQuest call by AutoWow code (AutoWow.Unstick.V2: log_trim); "" otherwise.
+inline thread_local char const* tAbandonReason = "";
 
 inline void AppendEscaped(std::string& out, std::string_view text)
 {

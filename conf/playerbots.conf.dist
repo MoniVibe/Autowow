@@ -2681,6 +2681,32 @@ AutoWow.Survival.Unstick.WindowMs = 900000
 AutoWow.Survival.Unstick.CooldownMs = 600000
 AutoWow.Survival.Unstick.MinEscapeYards = 8
 
+# Unstick V2 (UnstickPolicy.h; default 0). Frozen cohort bots (soak-s49..s51: ~20 bots earning ~0 XP):
+# - Town trap: with no AutoWow grind spot within 250 yd the search widens in 250-yd bands up to GrindMaxYards.
+#   A bot with no grind spot in that reach and no XP for NoXpMs graduates by zone progression (trigger
+#   `unstick`; needs AutoWow.ZoneProgression.Enable) to its zone's route, else the nearest hub whose level band
+#   fits (walk, then the AutoWow.Transports portal fallback). A quest log with more than LogTrimAbove entries
+#   (0 = off) abandons incomplete quests of another zone without progress for LogTrimStaleMs (ledger
+#   `abandoned` reason log_trim; logs "[Unstick] ... log_trim").
+# - Flight: a graduation flight the bot cannot pay is not chosen; a flight leg that falls back to idle without
+#   taking off walks the rest of the trip; taxi refusals log "[Unstick] ... taxi_failed reason=..." at INFO.
+# - Combat stall: in combat with no damage dealt / taken / healing for CombatStallMs (0 = off) -> combat
+#   stop + threat reset ("[Unstick] combat_stall"); never in a battleground or an instance encounter.
+# - Pinned party (needs AutoWow.Party.Enable): a group-quest party disbands (reason `stalled`) after
+#   AutoWow.Party.StallMs (0 = off) without quest-log progress, or when its leader's graduation gave up.
+# - Instance strand (needs AutoWow.Party.Enable): an unpartied cohort bot alive on an instance map is sent
+#   to its hearthstone bind (ledger zone_move reason instance_strand, mode portal). Guids
+#   StrandSkipGuidMin..Max (the dungeon probe roster) and running probe parties are left alone.
+AutoWow.Unstick.V2 = 0
+AutoWow.Unstick.GrindMaxYards = 1000
+AutoWow.Unstick.NoXpMs = 1800000
+AutoWow.Unstick.LogTrimAbove = 15
+AutoWow.Unstick.LogTrimStaleMs = 3600000
+AutoWow.Unstick.CombatStallMs = 180000
+AutoWow.Party.StallMs = 1200000
+AutoWow.Unstick.StrandSkipGuidMin = 72385
+AutoWow.Unstick.StrandSkipGuidMax = 72394
+
 # Zone progression for independent AutoWoW bots (Oracle-managed bots and bots with a real master are
 # never moved). Every CheckIntervalMs an idle bot graduates when its level >= its zone's
 # AiPlayerbot.ZoneBracket max - LevelMargin, or when its quest log had nothing actionable for

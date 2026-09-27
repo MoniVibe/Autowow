@@ -21,6 +21,7 @@
 #include "DungeonPathSafety.h"
 #include "DungeonPathWalkAction.h"
 #include "Formulas.h"
+#include "GameTime.h"
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GearUpgradePolicy.h"
@@ -65,6 +66,7 @@
 #include "Timer.h"
 #include "TravelMgr.h"
 #include "TravelNode.h"
+#include "UnstickPolicy.h"
 #include "WalkingV2Policy.h"
 
 namespace
@@ -94,6 +96,9 @@ constexpr size_t maxFailedTravelDestinations = 8;
 // ponytail: one global lock, held only for in-memory bookkeeping (never across world queries).
 std::mutex questSchedLock;
 std::unordered_map<uint32, QuestSchedulerPolicy::BotState> questSchedByBot;
+// AutoWow.Unstick.V2: next quest-log trim look per bot (game-time ms; under questSchedLock).
+std::unordered_map<uint32, uint64> logTrimNextMsByBot;
+constexpr uint64 logTrimCheckMs = 60 * 1000;
 
 // Quest-log counters in slot order (same fields as the ledger `progress` sampler).
 std::vector<QuestSchedulerPolicy::Observation> ObserveQuestLog(Player* bot)
@@ -157,7 +162,7 @@ bool TravelDestinationCoolingDown(uint32 botGuid, WorldPosition const& pos)
 }
 
 WorldPosition SelectReachableAutoWowTravelPos(Player* bot, std::vector<WorldLocation> const& locs,
-                                               float minRange)
+                                               float minRange, float maxRange = 250.0f)
 {
     // A cache location is only a coarse point of interest. Re-ground it, then require a complete
     // local mmap route before committing a long-lived GO_GRIND/GO_CAMP status to it.
@@ -169,7 +174,7 @@ WorldPosition SelectReachableAutoWowTravelPos(Player* bot, std::vector<WorldLoca
     for (WorldLocation const& loc : locs)
     {
         if (loc.GetMapId() != bot->GetMapId() || bot->GetExactDist2d(loc) < minRange ||
-            bot->GetExactDist2d(loc) > 250.0f)
+            bot->GetExactDist2d(loc) > maxRange)
             continue;
         float const ground = std::max(bot->GetMap()->GetHeight(loc.GetPositionX(), loc.GetPositionY(), MAX_HEIGHT),
                                       bot->GetMap()->GetWaterLevel(loc.GetPositionX(), loc.GetPositionY()));
@@ -430,6 +435,45 @@ bool NewRpgBaseAction::ScheduleDoQuest(bool commit)
               QuestSchedulerPolicy::HasMomentum(chosen, nowMs), candidates.size());
     botAI->rpgInfo.ChangeToDoQuest(chosen.questId, quest, AutoWowOracleRuntime::IsManagedBot(botGuid));
     return true;
+}
+
+void NewRpgBaseAction::QuestLogTrimStep()
+{
+    uint32 const botGuid = bot->GetGUID().GetCounter();
+    if (!botAI->IsAutoWowIndependentParty() || AutoWowOracleRuntime::IsManagedBot(botGuid) || !bot->GetMap() ||
+        bot->GetMap()->Instanceable() || botAI->rpgInfo.GetStatus() == RPG_DO_QUEST)
+        return;
+    uint64 const nowMs = static_cast<uint64>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+    {
+        std::lock_guard<std::mutex> guard(questSchedLock);
+        uint64& next = logTrimNextMsByBot[botGuid];
+        if (nowMs < next)
+            return;
+        next = nowMs + logTrimCheckMs;
+    }
+    AutoWowUnstickV2::Params const& p = AutoWowUnstickV2::detail::gParams;
+    std::vector<AutoWowUnstickV2::TrimFact> facts;
+    for (AutoWowUnstickV2::QuestAge const& age : AutoWowUnstickV2::ObserveAges(botGuid, ObserveQuestLog(bot), nowMs))
+        if (Quest const* quest = sObjectMgr->GetQuestTemplate(age.counters.quest))
+            facts.push_back({age.counters.quest, quest->GetZoneOrSort(), age.complete, age.sinceMs});
+    for (uint32 const questId : AutoWowUnstickV2::PickTrims(facts, bot->GetZoneId(), nowMs, p.logTrimAbove,
+                                                            p.logTrimStaleMs))
+        for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            if (bot->GetQuestSlotQuestId(slot) != questId)
+                continue;
+            LOG_INFO("playerbots", "[Unstick] bot={} log_trim quest={} zone={} log={}", bot->GetName(), questId,
+                     bot->GetZoneId(), facts.size());
+            WorldPacket packet(CMSG_QUESTLOG_REMOVE_QUEST);
+            packet << slot;
+            WorldPackets::Quest::QuestLogRemoveQuest removeQuest(std::move(packet));
+            removeQuest.Read();
+            AutoWowQuestLedger::detail::tAbandonReason = "log_trim";
+            bot->GetSession()->HandleQuestLogRemoveQuest(removeQuest);
+            AutoWowQuestLedger::detail::tAbandonReason = "";
+            botAI->rpgStatistic.questDropped++;
+            break;
+        }
 }
 
 bool NewRpgBaseAction::RotateStaleDoQuest()
@@ -2404,7 +2448,18 @@ WorldPosition NewRpgBaseAction::SelectRandomGrindPos(Player* bot)
     const std::vector<WorldLocation>& locs = sTravelMgr.GetLocsPerLevelCache(bot->GetLevel());
     if (IsAutoWowTravelBot())
     {
-        WorldPosition const dest = SelectReachableAutoWowTravelPos(bot, locs, 60.0f);
+        WorldPosition dest = SelectReachableAutoWowTravelPos(bot, locs, 60.0f);
+        // AutoWow.Unstick.V2: nothing within 250 yd (soak-s51 town trap: 0-1 spots near Shadowprey Village)
+        // -> the next 250-yd band out, nearest first, up to GrindMaxYards. A long target is walked in the
+        // selector's grounded partial segments.
+        // ponytail: up to 8 path probes per band per call; a per-bot cache if town bots show up in perf.
+        if (dest == WorldPosition() && AutoWowUnstickV2::Enabled())
+            for (auto const& [lo, hi] : AutoWowUnstickV2::GrindBands(AutoWowUnstickV2::detail::gParams.grindMaxYards))
+            {
+                dest = SelectReachableAutoWowTravelPos(bot, locs, float(lo), float(hi));
+                if (dest != WorldPosition())
+                    break;
+            }
         LOG_DEBUG("playerbots", "[New RPG] AutoWow {} selected grounded grind destination ({},{},{},{})",
                   bot->GetName(), dest.GetMapId(), dest.GetPositionX(), dest.GetPositionY(),
                   dest.GetPositionZ());

@@ -33,7 +33,7 @@ class PlayerbotAI;
 // Value-only (no world access, no floats in decisions, no RNG); stable orders (guid ascending).
 namespace AutoWowParty
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 2;  // 2: Party.questSig / questSinceMs (AutoWow.Unstick.V2)
 
 // Wire-stable (ledger `roles`); append only.
 enum class Role : std::uint8_t
@@ -86,7 +86,8 @@ enum class Disband : std::uint8_t
     NoPurpose,
     MaxAge,
     TooSmall,
-    Disabled
+    Disabled,
+    Stalled  // AutoWow.Unstick.V2: group-quest party without quest progress for StallMs, or its leader gave up
 };
 
 inline constexpr char const* DisbandName(Disband d)
@@ -101,6 +102,7 @@ inline constexpr char const* DisbandName(Disband d)
         case Disband::MaxAge: return "max_age";
         case Disband::TooSmall: return "too_small";
         case Disband::Disabled: return "disabled";
+        case Disband::Stalled: return "stalled";
         case Disband::None: return "none";
     }
     return "none";

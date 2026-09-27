@@ -36,6 +36,7 @@
 #include "TravelMgr.h"
 #include "TravelNode.h"
 #include "SquadPolicy.h"
+#include "UnstickPolicy.h"
 #include "ZoneProgressionPolicy.h"
 
 namespace AutoWowZoneProgression
@@ -306,6 +307,10 @@ static bool FindZoneFlight(Player* bot, std::uint32_t toZone, uint32& fmEntry, W
         if (!bot->m_taxi.IsTaximaskNodeKnown(node))
             continue;
         path = sTravelNodeMap.FindTaxiPath(fm->taxiNodeId, node);
+        // AutoWow.Unstick.V2: a fare the bot cannot pay is no flight (soak-s51: 361 of 389 graduation flights
+        // gave up, ActivateTaxiPathTo refusing bots with 1-424 copper a 530-copper fare, nine re-issues each).
+        if (!path.empty() && AutoWowUnstickV2::Enabled() && bot->GetMoney() < AutoWowUnstickV2::TaxiFare(path))
+            continue;
         if (!path.empty())
         {
             fmEntry = fm->templateEntry;
@@ -348,7 +353,8 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
     uint32 fmEntry = 0;
     WorldPosition fmPos;
     std::vector<uint32> path;
-    bool const flight = bot->GetZoneId() != s.route.to && FindZoneFlight(bot, s.route.to, fmEntry, fmPos, path);
+    bool const flight = !s.noFlight && bot->GetZoneId() != s.route.to &&
+                        FindZoneFlight(bot, s.route.to, fmEntry, fmPos, path);
     std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
     std::vector<AutoWowTransports::Crossing> const chain =
         AutoWowTransports::ChainFor(AutoWowTransports::detail::gCrossings, team, s.route.from, s.route.to);
@@ -544,14 +550,36 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         s.stall = NextStall(s.stall, CheckRpgStatusAvailable(RPG_DO_QUEST));
         auto const bracket = sPlayerbotAIConfig.zoneBrackets.find(zone);
         std::uint32_t const zoneMax = bracket == sPlayerbotAIConfig.zoneBrackets.end() ? 0 : bracket->second.second;
-        Trigger const trigger = Evaluate(p, bot->GetLevel(), zoneMax, s.stall, route != nullptr);
+        Trigger trigger = Evaluate(p, bot->GetLevel(), zoneMax, s.stall, route != nullptr);
+        // AutoWow.Unstick.V2: no trigger fired, but the bot has earned no XP for NoXpMs and no grind spot lies
+        // within GrindMaxYards (soak-s49..s51 town trap) -> graduate: the zone's own route when one fits, else
+        // the nearest hub whose band fits the level, leaving from the bot's zone (no road table, as an escape).
+        Route unstick;
+        if (trigger == Trigger::None && AutoWowUnstickV2::Enabled() && AutoWowUnstickV2::XpStalled(bot, now) &&
+            SelectRandomGrindPos(bot) == WorldPosition())
+        {
+            Route const* hub = route;
+            if (!hub)
+                hub = AutoWowUnstickV2::PickUnstickRoute(
+                    detail::gRoutes, team, bot->GetLevel(), p.levelMargin, zone, bot->GetMapId(),
+                    static_cast<std::int32_t>(std::floor(bot->GetPositionX())),
+                    static_cast<std::int32_t>(std::floor(bot->GetPositionY())));
+            if (hub)
+            {
+                unstick = *hub;
+                if (!route)
+                    unstick.from = zone;
+                route = &unstick;
+                trigger = Trigger::Stuck;
+            }
+        }
         // AutoWow.Contracts: a running hunt contract defers graduation (the stall count keeps counting); the
         // bot graduates at the next check after the contract ends. Death-loop escapes do not wait.
-        bool const huntingContract = (trigger == Trigger::Level || trigger == Trigger::NoQuests) &&
-                                     AutoWowContracts::Enabled() &&
-                                     AutoWowContracts::Snapshot(guid).phase != AutoWowContracts::Phase::None;
+        bool const huntingContract =
+            (trigger == Trigger::Level || trigger == Trigger::NoQuests || trigger == Trigger::Stuck) &&
+            AutoWowContracts::Enabled() && AutoWowContracts::Snapshot(guid).phase != AutoWowContracts::Phase::None;
         // AutoWow.Squad: a squad member holds its tier while its squad has workable material demand.
-        bool const squadHold = (trigger == Trigger::Level || trigger == Trigger::NoQuests) &&
+        bool const squadHold = (trigger == Trigger::Level || trigger == Trigger::NoQuests || trigger == Trigger::Stuck) &&
                                 AutoWowSquad::Enabled() && AutoWowSquad::HoldsTier(bot);
         if (trigger == Trigger::None || huntingContract || squadHold)
         {
@@ -617,6 +645,16 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             StoreState(guid, s);
             return true;
         }
+        // AutoWow.Unstick.V2: the flight leg is back in Idle short of the destination zone without having flown
+        // (refused taxi, master gone, approach given up): walk the rest of this trip (portal fallback applies).
+        if (AutoWowUnstickV2::Enabled() && s.mode == Mode::Flight && !s.noFlight &&
+            info.GetStatus() != RPG_TRAVEL_FLIGHT && !bot->IsInFlight() && bot->GetZoneId() != s.route.to)
+        {
+            LOG_INFO("playerbots", "[Unstick] bot={} flight_failed to={} money={} reissues={} -> walk", bot->GetName(),
+                     s.route.to, bot->GetMoney(), s.reissues);
+            s.noFlight = true;
+            s.mode = Mode::Unreachable;
+        }
         // AutoWow.Transports (mode auto/portal; owner ruling 2026-09-24): a spent walk leg portals to the hub.
         if (transports)
         {
@@ -648,6 +686,8 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         }
         if (TravelExhausted(p, s, now))
         {
+            if (AutoWowUnstickV2::Enabled())
+                AutoWowUnstickV2::NoteGaveUp(guid, now);  // a group-quest party it leads disbands (PartyRuntime)
             finish(false);
             s = BotState{};
             s.cooldownUntilMs = now + p.cooldownMs;
@@ -666,7 +706,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         WorldPosition fmPos;
         std::vector<uint32> path;
         // Flight is looked up only while no walk leg is committed (start, after landing, after a stuck).
-        bool const flight = s.mode != Mode::Walk && bot->GetZoneId() != s.route.to &&
+        bool const flight = !s.noFlight && s.mode != Mode::Walk && bot->GetZoneId() != s.route.to &&
                             FindZoneFlight(bot, s.route.to, fmEntry, fmPos, path);
         Mode const mode = SelectMode(flight, bot->GetMapId() == s.route.map, s.route.crossing && bot->GetZoneId() != s.route.to);
         if (mode == Mode::Flight)

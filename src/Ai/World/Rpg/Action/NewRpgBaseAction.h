@@ -111,6 +111,10 @@ protected:
     // Non-Oracle DO_QUEST whose slice passed without counter progress: cool it down, ledger `deferred`
     // reason sched_rotate, return to Idle. True when it rotated.
     bool RotateStaleDoQuest();
+    // AutoWow.Unstick.V2 (UnstickPolicy.h): every 60 s an independent bot out of DO_QUEST ages its quest log and,
+    // above LogTrimAbove entries, abandons stale out-of-zone quests (ledger `abandoned` reason log_trim). Never
+    // consumes the tick. Caller checks the flag.
+    void QuestLogTrimStep();
     bool SelectRandomFlightTaxiNode(uint32& flightMasterEntry, WorldPosition& flightMasterPos, std::vector<uint32>& path);
     bool RandomChangeStatus(std::vector<NewRpgStatus> candidateStatus);
     bool CheckRpgStatusAvailable(NewRpgStatus status);

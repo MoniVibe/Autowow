@@ -29,6 +29,7 @@
 #include "DeathLoopBreaker.h"
 #include "GatherDetourPolicy.h"
 #include "TransportCrossingPolicy.h"
+#include "UnstickPolicy.h"
 #include "ZoneProgressionPolicy.h"
 #include "ErrandsPolicy.h"
 #include "TradePolicy.h"
@@ -267,7 +268,8 @@ public:
     void OnPlayerQuestAbandon(Player* player, uint32 questId) override
     {
         if (AutoWowQuestLedger::Enabled())
-            AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Abandoned, questId);
+            AutoWowQuestLedger::Emit(player, AutoWowQuestLedger::Event::Abandoned, questId,
+                                     AutoWowQuestLedger::detail::tAbandonReason);
     }
 
     // Death attribution (ledger only). Kill hooks note the killer; JustDied emits `died`.
@@ -549,6 +551,7 @@ public:
         AutoWowCombatPerformanceTelemetry::LoadConfig();
         AutoWowDeathLoop::LoadConfig();
         AutoWowZoneProgression::LoadConfig();
+        AutoWowUnstickV2::LoadConfig();
         AutoWowTransports::LoadConfig();  // after ZoneProgression: appends crossing-only routes
         AutoWowGatherDetour::LoadConfig();
         AutoWowTrade::LoadConfig();       // before Errands: its town catalog adds auctioneers / mailboxes
