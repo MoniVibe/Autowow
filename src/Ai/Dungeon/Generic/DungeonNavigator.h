@@ -7,6 +7,7 @@
 #define PLAYERBOTS_DUNGEONNAVIGATOR_H
 
 #include "AttackAction.h"
+#include "DungeonGatePolicy.h"
 #include "DungeonRouteReconnectPolicy.h"
 #include "Strategy.h"
 
@@ -79,6 +80,10 @@ private:
     // ConvoyV2: route index of the leader's current navmesh-gap direct hop and its attempts.
     std::size_t directHopRouteIndex = DungeonRouteReconnect::NoSelection;
     uint8 directHopAttempts = 0;
+    // AutoWow.DungeonNav.Gates: DungeonGate::Steps row index -> runtime, for gateMapId/gateInstanceId.
+    std::map<std::size_t, DungeonGate::StepRuntime> gateRuntime;
+    uint32 gateMapId = 0;
+    uint32 gateInstanceId = 0;
 };
 
 #endif

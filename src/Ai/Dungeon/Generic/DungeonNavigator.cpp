@@ -20,6 +20,7 @@
 #include "DungeonNavigatorConvoyPolicy.h"
 #include "DungeonNavigatorPacingPolicy.h"
 #include "DungeonProgressionInteractionPolicy.h"
+#include "DungeonPullReadinessPolicy.h"
 #include "DungeonRouteReconnectPolicy.h"
 #include "DungeonSpellCreditBossPolicy.h"
 #include "Group.h"
@@ -41,6 +42,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <list>
 #include <map>
 #include <mutex>
 #include <queue>
@@ -128,6 +130,80 @@ bool ConvoyV2Enabled()
 {
     static bool const enabled = sConfigMgr->GetOption<bool>("AutoWow.DungeonNav.ConvoyV2", false);
     return enabled;
+}
+
+// AutoWow.DungeonNav.Gates (default 0): the DungeonGatePolicy.h step table drives scripted progression
+// (gossip, escorts, gongs, fires, altars, kill sets, proxy kills). Read once.
+bool GatesEnabled()
+{
+    static bool const enabled = sConfigMgr->GetOption<bool>("AutoWow.DungeonNav.Gates", false);
+    return enabled;
+}
+
+// AutoWow.DungeonNav.Gates.BypassKeys (default 0): also run rows that name a key item. Read once.
+bool GateBypassKeys()
+{
+    static bool const enabled = sConfigMgr->GetOption<bool>("AutoWow.DungeonNav.Gates.BypassKeys", false);
+    return enabled;
+}
+
+constexpr uint32 GateHoldMs = 5 * IN_MILLISECONDS;
+constexpr float GateCreatureSearchLimit = 150.0f;
+constexpr float GateEscortDistance = 8.0f;
+constexpr float GateEscortFollowDistance = 4.0f;
+constexpr float GateAttackDistance = 30.0f;
+constexpr float GateAttackApproachDistance = 20.0f;
+
+GameObject* GateObject(Map* map, uint32 spawnGuid)
+{
+    auto const bounds = map->GetGameObjectBySpawnIdStore().equal_range(spawnGuid);
+    return bounds.first != bounds.second ? bounds.first->second : nullptr;
+}
+
+Creature* GateCreature(Map* map, uint32 spawnGuid)
+{
+    auto const bounds = map->GetCreatureBySpawnIdStore().equal_range(spawnGuid);
+    return bounds.first != bounds.second ? bounds.first->second : nullptr;
+}
+
+// Nearest live creature of the row entry to the row position: its exact spawn, or any spawn/summon
+// within the row radius. searched is false when that cannot be known from here (grid not loaded or
+// the bot too far to search).
+Creature* NearestLiveGateCreature(Player* bot, Map* map, DungeonGate::Step const& step, bool& searched)
+{
+    searched = false;
+    if (step.spawnGuid)
+    {
+        Creature* creature = GateCreature(map, step.spawnGuid);
+        searched = creature || map->IsGridLoaded(step.x, step.y);
+        return creature && creature->IsAlive() && creature->IsInWorld() ? creature : nullptr;
+    }
+
+    float const distance = bot->GetExactDist(step.x, step.y, step.z);
+    if (!map->IsGridLoaded(step.x, step.y) || distance - step.radius > GateCreatureSearchLimit)
+        return nullptr;
+
+    searched = true;
+    std::list<Creature*> found;
+    bot->GetCreatureListWithEntryInGrid(found, step.entry, distance + step.radius);
+    Creature* best = nullptr;
+    float bestDistance = step.radius;
+    for (Creature* creature : found)
+    {
+        if (!creature || !creature->IsAlive() || !creature->IsInWorld())
+            continue;
+        float const candidateDistance = creature->GetExactDist(step.x, step.y, step.z);
+        if (candidateDistance > step.radius)
+            continue;
+        if (!best || candidateDistance < bestDistance ||
+            (candidateDistance == bestDistance &&
+                creature->GetGUID().GetCounter() < best->GetGUID().GetCounter()))
+        {
+            best = creature;
+            bestDistance = candidateDistance;
+        }
+    }
+    return best;
 }
 
 struct EncounterGoal
@@ -1990,6 +2066,80 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             encounterGroups[encounter->dbcEntry->encounterIndex].push_back(encounter);
     }
 
+    // AutoWow.DungeonNav.Gates: encounter -> DungeonGate::Steps row whose position replaces the goal.
+    std::map<uint32, std::size_t> gateSteps;
+    if (GatesEnabled() && (gateMapId != map->GetId() || gateInstanceId != map->GetInstanceId()))
+    {
+        gateRuntime.clear();
+        gateMapId = map->GetId();
+        gateInstanceId = map->GetInstanceId();
+    }
+    auto logGate = [&](std::size_t row, char const* result, bool info)
+    {
+        DungeonGate::Step const& step = DungeonGate::Steps[row];
+        if (info)
+            LOG_INFO("playerbots",
+                "[DungeonNavigator] gate map={} enc={} step={} kind={} entry={} result={} bot={}",
+                step.mapId, step.encounterIdx, step.stepOrder, DungeonGate::KindName(step.kind),
+                step.entry, result, bot->GetName());
+        else
+            LOG_DEBUG("playerbots",
+                "[DungeonNavigator] gate map={} enc={} step={} kind={} entry={} result={} bot={}",
+                step.mapId, step.encounterIdx, step.stepOrder, DungeonGate::KindName(step.kind),
+                step.entry, result, bot->GetName());
+    };
+    auto gateStepDone = [&](DungeonGate::Step const& step)
+    {
+        switch (step.doneWhen)
+        {
+            case DungeonGate::DoneWhen::GoUsed:
+            {
+                GameObject* gameObject =
+                    GateObject(map, step.doneData ? step.doneData : step.spawnGuid);
+                return gameObject && (gameObject->GetGoState() != GO_STATE_READY ||
+                    gameObject->HasGameObjectFlag(GO_FLAG_IN_USE) ||
+                    gameObject->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE));
+            }
+            case DungeonGate::DoneWhen::CreaturesDead:
+            {
+                bool searched = false;
+                bool const live = NearestLiveGateCreature(bot, map, step, searched) != nullptr;
+                return searched && !live;
+            }
+            case DungeonGate::DoneWhen::InstanceData:
+                return script->GetData(step.doneData) >= step.doneValue;
+            case DungeonGate::DoneWhen::EncounterDone:
+                return IsEncounterComplete(script, step.encounterIdx);
+            case DungeonGate::DoneWhen::Escorting:
+            {
+                Creature* creature = GateCreature(map, step.spawnGuid);
+                return creature && creature->AI() && creature->AI()->IsEscorted();
+            }
+        }
+        return false;
+    };
+    auto selectGateStep = [&](uint32 encounterIndex)
+    {
+        std::vector<std::size_t> const rowIndices = DungeonGate::StepsFor(map->GetId(), encounterIndex);
+        std::vector<DungeonGate::Step> rows;
+        std::vector<DungeonGate::StepRuntime> runtime;
+        for (std::size_t row : rowIndices)
+        {
+            rows.push_back(DungeonGate::Steps[row]);
+            runtime.push_back(gateRuntime[row]);
+        }
+        std::size_t const selected = DungeonGate::SelectStep(rows, runtime, GateBypassKeys(),
+            [&](std::size_t index)
+            {
+                if (!gateStepDone(rows[index]))
+                    return false;
+                gateRuntime[rowIndices[index]].done = true;
+                logGate(rowIndices[index], "done", true);
+                return true;
+            });
+        return selected == DungeonGate::NoStep ? DungeonGate::NoStep : rowIndices[selected];
+    };
+
     std::vector<DungeonEncounterSelection::CandidateFacts> candidates;
     std::map<uint32, EncounterGoal> goals;
     candidates.reserve(encounterGroups.size());
@@ -2072,6 +2222,30 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             bestGoal = fallbackGoal;
         }
 
+        if (!complete && GatesEnabled())
+        {
+            std::size_t const gateRow = selectGateStep(encounterIndex);
+            if (gateRow != DungeonGate::NoStep)
+            {
+                DungeonGate::Step const& step = DungeonGate::Steps[gateRow];
+                bestGoal = {DungeonGate::GoalId(gateRow), step.x, step.y, step.z};
+                AutoWowDungeonPath::ProbeResult const probe =
+                    AutoWowDungeonPath::Probe(bot, step.x, step.y, step.z);
+                if (probe.mode == "navmesh" && ProbeReachedStoredDestination(probe))
+                {
+                    bestGoal.pathLength = probe.pathLength;
+                }
+                else
+                {
+                    bestGoal.travelNodes = true;
+                    bestGoal.finalX = step.x;
+                    bestGoal.finalY = step.y;
+                    bestGoal.finalZ = step.z;
+                }
+                gateSteps[encounterIndex] = gateRow;
+            }
+        }
+
         if (bestGoal.spawnId)
             goals[encounterIndex] = bestGoal;
 
@@ -2129,6 +2303,151 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {map->GetId(), map->GetInstanceId(), selection.selected.encounterId};
     }
 
+    auto const gateStep = gateSteps.find(selection.selected.encounterId);
+    if (gateStep != gateSteps.end())
+    {
+        std::size_t const row = gateStep->second;
+        DungeonGate::Step const& step = DungeonGate::Steps[row];
+        Creature* escorted = step.kind == DungeonGate::Kind::Escort ?
+            GateCreature(map, step.spawnGuid) : nullptr;
+        bool const escorting = escorted && escorted->IsAlive() && escorted->IsInWorld();
+        if (escorting || bot->GetExactDist(step.x, step.y, step.z) <= step.radius)
+        {
+            DungeonGate::StepRuntime& runtime = gateRuntime[row];
+            uint32 const elapsed = runtime.firstActMs ? getMSTimeDiff(runtime.firstActMs, now) : 0;
+            DungeonGate::Wait const wait = DungeonGate::Evaluate(step, runtime, elapsed);
+            nextScanTime = now + GateHoldMs;
+            if (wait == DungeonGate::Wait::Skip)
+            {
+                runtime.skipped = true;
+                logGate(row, "timeout_skip", true);
+                return false;
+            }
+            if (wait == DungeonGate::Wait::Retry)
+            {
+                runtime = {};
+                logGate(row, "timeout_retry", true);
+                return false;
+            }
+            if (!runtime.firstActMs)
+                runtime.firstActMs = now ? now : 1;
+            if (wait == DungeonGate::Wait::Hold)
+            {
+                logGate(row, "wait", false);
+                return false;
+            }
+
+            if (step.kind != DungeonGate::Kind::Escort)
+            {
+                for (Player* member : followers)
+                {
+                    if (bot->GetExactDist(member) > DungeonPullReadiness::DefaultSupportRadius)
+                    {
+                        nextScanTime = now + PartyCohesionBackoffMs;
+                        logGate(row, "wait_party", false);
+                        return false;
+                    }
+                }
+            }
+
+            auto moveNear = [&](WorldObject* target, float distance)
+            {
+                bool const moved = MoveTo(target, distance, MovementPriority::MOVEMENT_NORMAL);
+                nextScanTime = now + (moved ? SuccessfulMoveRescanDelayMs() : BlockedScanBackoffMs);
+                logGate(row, moved ? "move" : "move_rejected", !moved);
+                return moved;
+            };
+
+            switch (step.kind)
+            {
+                case DungeonGate::Kind::UseGo:
+                {
+                    GameObject* gameObject = GateObject(map, step.spawnGuid);
+                    if (!gameObject || !gameObject->isSpawned() ||
+                        gameObject->GetGoState() != GO_STATE_READY ||
+                        gameObject->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) ||
+                        gameObject->HasGameObjectFlag(GO_FLAG_IN_USE))
+                    {
+                        logGate(row, gameObject ? "go_not_ready" : "go_missing", false);
+                        return false;
+                    }
+                    if (!bot->IsWithinDistInMap(gameObject, gameObject->GetInteractionDistance()))
+                        return moveNear(gameObject,
+                            std::max(0.0f, gameObject->GetInteractionDistance() - 1.0f));
+
+                    WorldPacket use(CMSG_GAMEOBJ_USE, 8);
+                    use << gameObject->GetGUID();
+                    bot->GetSession()->HandleGameObjectUseOpcode(use);
+                    ++runtime.acts;
+                    logGate(row, "use", true);
+                    return true;
+                }
+                case DungeonGate::Kind::Gossip:
+                {
+                    Creature* npc = GateCreature(map, step.spawnGuid);
+                    if (!npc || !npc->IsAlive() || !npc->IsInWorld())
+                    {
+                        logGate(row, "npc_missing", false);
+                        return false;
+                    }
+                    if (!bot->IsWithinDistInMap(npc, INTERACTION_DISTANCE))
+                        return moveNear(npc, INTERACTION_DISTANCE - 1.0f);
+
+                    // Same packet pair as the stock gossip actions (GossipHelloAction, ICC gunship).
+                    bot->SetFacingToObject(npc);
+                    WorldPacket hello(CMSG_GOSSIP_HELLO, 8);
+                    hello << npc->GetGUID();
+                    bot->GetSession()->HandleGossipHelloOpcode(hello);
+                    WorldPacket select(CMSG_GOSSIP_SELECT_OPTION);
+                    select << npc->GetGUID();
+                    select << uint32(bot->PlayerTalkClass->GetGossipMenu().GetMenuId());
+                    select << uint32(step.gossipOption);
+                    bot->GetSession()->HandleGossipSelectOptionOpcode(select);
+                    ++runtime.acts;
+                    logGate(row, "gossip", true);
+                    return true;
+                }
+                case DungeonGate::Kind::Escort:
+                {
+                    if (!escorting)
+                    {
+                        logGate(row, "npc_missing", false);
+                        return false;
+                    }
+                    if (bot->GetExactDist(escorted) <= GateEscortDistance)
+                    {
+                        logGate(row, "wait", false);
+                        return false;
+                    }
+                    return moveNear(escorted, GateEscortFollowDistance);
+                }
+                case DungeonGate::Kind::KillSet:
+                case DungeonGate::Kind::ProxyKill:
+                {
+                    bool searched = false;
+                    Creature* target = NearestLiveGateCreature(bot, map, step, searched);
+                    if (!target)
+                    {
+                        logGate(row, "no_target", false);
+                        return false;
+                    }
+                    if (!bot->IsWithinDistInMap(target, GateAttackDistance))
+                        return moveNear(target, GateAttackApproachDistance);
+
+                    bool const attacked = Attack(target);
+                    nextScanTime = now + (attacked ? SuccessfulMoveRescanDelayMs() :
+                        BlockedScanBackoffMs);
+                    logGate(row, attacked ? "attack" : "attack_rejected", true);
+                    return attacked;
+                }
+                case DungeonGate::Kind::EnterArea:
+                    logGate(row, "wait", false);
+                    return false;
+            }
+            return false;
+        }
+    }
+
     EncounterGoal goal = goalItr->second;
     if (spellCreditFallback.binding.selected &&
         spellCreditFallback.binding.encounterId == selection.selected.encounterId &&
@@ -2173,7 +2492,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 DungeonEncounterActivation::Evaluate(facts);
             if (decision != DungeonEncounterActivation::Decision::Attack)
             {
-                if (decision == DungeonEncounterActivation::Decision::NotTargetable)
+                // With gates on, maps that have table rows never use the nearest-button rule (Sunken
+                // Temple statues must go in order).
+                if (decision == DungeonEncounterActivation::Decision::NotTargetable &&
+                    !(GatesEnabled() && DungeonGate::MapHasSteps(map->GetId())))
                 {
                     DungeonProgressionInteraction::GateFacts const gate = {
                         true,
