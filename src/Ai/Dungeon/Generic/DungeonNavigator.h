@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <map>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -82,6 +83,8 @@ private:
     uint8 directHopAttempts = 0;
     // AutoWow.DungeonNav.Gates: DungeonGate::Steps row index -> runtime, for gateMapId/gateInstanceId.
     std::map<std::size_t, DungeonGate::StepRuntime> gateRuntime;
+    // Last INFO line time per (row, per-scan gate result), DungeonGate::ShouldLog.
+    std::map<std::pair<std::size_t, std::string>, uint32> gateLogLast;
     uint32 gateMapId = 0;
     uint32 gateInstanceId = 0;
 };

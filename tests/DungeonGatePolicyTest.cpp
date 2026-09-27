@@ -184,3 +184,20 @@ TEST(DungeonGatePolicy, DeadminesIronCladDoorGatesSmiteThroughVanCleef)
             NoStep);
     }
 }
+
+TEST(DungeonGatePolicy, SlopeFreeNavmeshPathWalksDirect)
+{
+    // Soak S55: the Gunpowder row was selected but only the slope-free probe reaches the chest from the
+    // foundry exit; travel nodes are the last resort, not the answer to a slope-check artifact.
+    EXPECT_EQ(SelectApproach(true, false), Approach::Direct);
+    EXPECT_EQ(SelectApproach(false, true), Approach::Direct);
+    EXPECT_EQ(SelectApproach(false, false), Approach::TravelNodes);
+}
+
+TEST(DungeonGatePolicy, PerScanGateLogsAreRateLimited)
+{
+    EXPECT_TRUE(ShouldLog(false, 0));
+    EXPECT_FALSE(ShouldLog(true, 0));
+    EXPECT_FALSE(ShouldLog(true, LogRepeatMs - 1));
+    EXPECT_TRUE(ShouldLog(true, LogRepeatMs));
+}

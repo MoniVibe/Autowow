@@ -129,7 +129,7 @@ std::string Validate(ValidationFacts const& facts)
 namespace
 {
 ProbeResult ProbeNavmeshFrom(Player const* player, float sourceX, float sourceY, float sourceZ,
-                             float destinationX, float destinationY, float destinationZ)
+                             float destinationX, float destinationY, float destinationZ, bool slopeCheck)
 {
     ProbeResult result;
     result.sourceX = sourceX;
@@ -155,7 +155,7 @@ ProbeResult ProbeNavmeshFrom(Player const* player, float sourceX, float sourceY,
     PrepareCollisionCorridor(player, sourceX, sourceY, destinationX, destinationY);
 
     PathGenerator generator(player);
-    generator.SetSlopeCheck(true);
+    generator.SetSlopeCheck(slopeCheck);
     bool const calculated = generator.CalculatePath(
         sourceX, sourceY, sourceZ, destinationX, destinationY, destinationZ, false);
     result.pathType = static_cast<uint32>(generator.GetPathType());
@@ -301,10 +301,10 @@ ProbeResult ProbeGroundLineFrom(Player const* player, float sourceX, float sourc
 }
 
 ProbeResult ProbeFrom(Player const* player, float sourceX, float sourceY, float sourceZ,
-                      float destinationX, float destinationY, float destinationZ)
+                      float destinationX, float destinationY, float destinationZ, bool slopeCheck)
 {
     ProbeResult navmesh = ProbeNavmeshFrom(
-        player, sourceX, sourceY, sourceZ, destinationX, destinationY, destinationZ);
+        player, sourceX, sourceY, sourceZ, destinationX, destinationY, destinationZ, slopeCheck);
     if (navmesh.safe)
         return navmesh;
 
@@ -321,12 +321,13 @@ ProbeResult ProbeFrom(Player const* player, float sourceX, float sourceY, float 
     return navmesh;
 }
 
-ProbeResult Probe(Player const* player, float destinationX, float destinationY, float destinationZ)
+ProbeResult Probe(Player const* player, float destinationX, float destinationY, float destinationZ,
+                  bool slopeCheck)
 {
     if (!player)
-        return ProbeFrom(nullptr, 0.0f, 0.0f, 0.0f, destinationX, destinationY, destinationZ);
+        return ProbeFrom(nullptr, 0.0f, 0.0f, 0.0f, destinationX, destinationY, destinationZ, slopeCheck);
     return ProbeFrom(player, player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(),
-                     destinationX, destinationY, destinationZ);
+                     destinationX, destinationY, destinationZ, slopeCheck);
 }
 
 std::string Json(ProbeResult const& result, bool includePoints)
