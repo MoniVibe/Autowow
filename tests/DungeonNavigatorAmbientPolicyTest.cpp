@@ -490,6 +490,37 @@ TEST(DungeonNavigatorConvoyPolicy, V2SharedRegroupTerminalReleasesOnGeometryChan
         4, 4, std::numeric_limits<float>::infinity(), 45.0f));
 }
 
+// S53 WC 143 / RFK enc 4 index 0: the arrival scan advanced the leader past the point underfoot, the
+// backward re-anchor rewound onto it, its zero-length probe was rejected and the leader reported
+// no_reachable_waypoint forever. V2 keeps the cursor; an earlier anchor (drift back) still re-anchors.
+TEST(DungeonNavigatorConvoyPolicy, V2LeaderKeepsArrivedPointInsteadOfReanchoringOntoIt)
+{
+    EXPECT_TRUE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(false, 143, 144));
+    EXPECT_FALSE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(true, 143, 144));
+    EXPECT_FALSE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(true, 0, 1));
+    EXPECT_TRUE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(true, 140, 144));
+    EXPECT_FALSE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(true, 144, 144));
+    EXPECT_FALSE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(false, 144, 144));
+    EXPECT_FALSE(DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(
+        true, DungeonNavigatorConvoy::NoSelection, 144));
+}
+
+// S53 RFK index 59: 13.7 yd hop, 4.2 yd drop, path_type SHORTCUT|NOPATH.
+TEST(DungeonNavigatorConvoyPolicy, V2DirectHopIsBoundedToShortNoPathHopsWithSafeReverse)
+{
+    auto hop = [](bool v2, bool noPath, float h, float v, bool reverse, unsigned attempts)
+    { return DungeonNavigatorConvoy::CanDirectHop(v2, noPath, h, v, reverse, 15.0f, 5.5f, attempts, 2); };
+    EXPECT_TRUE(hop(true, true, 12.9f, -4.2f, true, 0));
+    EXPECT_TRUE(hop(true, true, 12.9f, 4.2f, true, 1));
+    EXPECT_FALSE(hop(false, true, 12.9f, -4.2f, true, 0));
+    EXPECT_FALSE(hop(true, false, 12.9f, -4.2f, true, 0));
+    EXPECT_FALSE(hop(true, true, 12.9f, -4.2f, false, 0));
+    EXPECT_FALSE(hop(true, true, 15.5f, -4.2f, true, 0));
+    EXPECT_FALSE(hop(true, true, 12.9f, -5.6f, true, 0));
+    EXPECT_FALSE(hop(true, true, 12.9f, -4.2f, true, 2));
+    EXPECT_FALSE(hop(true, true, std::numeric_limits<float>::infinity(), 0.0f, true, 0));
+}
+
 TEST(DungeonNavigatorConvoySourceContract, SharedRegroupIsBoundedAndOrdinaryWalkOnly)
 {
     std::string const source = ReadSource(
@@ -518,8 +549,8 @@ TEST(DungeonNavigatorPacingPolicy, NavigatorRoutesEverySuccessfulRescanThroughPo
         ModuleRoot() / "src/Ai/Dungeon/Generic/DungeonNavigator.cpp");
     ASSERT_FALSE(source.empty());
 
-    // The count includes the helper definition plus the eight successful-rescan call sites.
-    EXPECT_EQ(CountOccurrences(source, "SuccessfulMoveRescanDelayMs()"), 9u);
+    // The count includes the helper definition plus the nine successful-rescan call sites.
+    EXPECT_EQ(CountOccurrences(source, "SuccessfulMoveRescanDelayMs()"), 10u);
     EXPECT_EQ(source.find("constexpr uint32 SuccessfulMoveBackoffMs"), std::string::npos);
     EXPECT_NE(source.find("DungeonNavigatorPacing::GetSuccessfulMoveBackoffMs"),
         std::string::npos);

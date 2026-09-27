@@ -95,6 +95,10 @@ TEST(DungeonProbePolicyTest, InsideDecisionOrder)
     EXPECT_EQ(DecideInside(left, p, end), Verdict::Finish);
     EXPECT_EQ(end, End::Abandoned);
 
+    EXPECT_STREQ(AbandonReason(offline), "member_offline");
+    EXPECT_STREQ(AbandonReason(left), "leader_off_map");  // S53 DM: core graveyard repop at 60 s
+    EXPECT_STREQ(AbandonReason(f), "");
+
     InsideFacts done = f;
     done.mask = 0b111;
     done.alive = 0;
@@ -182,6 +186,24 @@ TEST(DungeonProbePolicyTest, LedgerFieldsAreFixedOrder)
               ",\"smap\":36,\"sx\":-5,\"sy\":10,\"sz\":3,\"next\":2,\"boss\":639");
     EXPECT_NE(Fields(r, 500, 1).find(",\"enc\":1,"), std::string::npos);
     EXPECT_NE(Fields(r, 500).find(",\"dur_ms\":0,"), std::string::npos);  // clock before start clamps
+    r.why = "leader_off_map";  // only written when set, after members, before the stuck point
+    EXPECT_NE(Fields(r, 500, 1, &s).find("\"members\":[101,102],\"why\":\"leader_off_map\",\"smap\":36"),
+              std::string::npos);
+}
+
+// S53: the alliance probe could not enter Ragefire Chasm (entrance inside Orgrimmar).
+TEST(DungeonProbePolicyTest, EnemyCapitalEntrancesAreSkippedPerTeam)
+{
+    EXPECT_TRUE(EntranceInEnemyCapital(0, 389));
+    EXPECT_FALSE(EntranceInEnemyCapital(1, 389));
+    EXPECT_TRUE(EntranceInEnemyCapital(1, 34));
+    EXPECT_FALSE(EntranceInEnemyCapital(0, 34));
+    EXPECT_FALSE(EntranceInEnemyCapital(2, 389));  // unknown team never skips
+    for (std::uint32_t map : ParseQueue("36,43,47,48,90,129,70,109,209,230,329,349,429"))
+    {
+        EXPECT_FALSE(EntranceInEnemyCapital(0, map)) << map;
+        EXPECT_FALSE(EntranceInEnemyCapital(1, map)) << map;
+    }
 }
 
 TEST(DungeonProbePolicyTest, LedgerEventIsAppendOnly)

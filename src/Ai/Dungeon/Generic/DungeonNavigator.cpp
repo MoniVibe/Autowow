@@ -102,6 +102,9 @@ constexpr uint32 AmbiguousCombatStateRetentionMs = 5 * MINUTE * IN_MILLISECONDS;
 constexpr float GroundReattachMinimum = 0.1f;
 constexpr float GroundReattachMaximum = 2.0f;
 constexpr float GroundReattachOffset = 0.05f;
+constexpr float DirectHopMaximumHorizontal = 15.0f;  // ConvoyV2 leader navmesh-gap hop bounds
+constexpr float DirectHopMaximumVertical = 5.5f;
+constexpr uint8 DirectHopAttemptLimit = 2;
 constexpr float PartyGroundAnchorRadius = 12.0f;
 constexpr float PartyGroundAnchorVerticalTolerance = 1.5f;
 constexpr float PartyRouteReanchorMinimumDrop = 3.0f;
@@ -992,6 +995,8 @@ void DungeonNavigateNextEncounterAction::ResetTravelRoute()
     walkRevalidationState = {};
     convoyBackwardReanchorFloors.clear();
     convoySettledRouteFloors.clear();
+    directHopRouteIndex = DungeonRouteReconnect::NoSelection;
+    directHopAttempts = 0;
     ClearConvoySharedRegroupAttempts(this);
 }
 
@@ -1014,6 +1019,8 @@ void DungeonNavigateNextEncounterAction::ReplanTravelRoute()
     travelNoProgressRetries = 0;
     convoyBackwardReanchorFloors.clear();
     convoySettledRouteFloors.clear();
+    directHopRouteIndex = DungeonRouteReconnect::NoSelection;
+    directHopAttempts = 0;
     ClearConvoySharedRegroupAttempts(this);
 }
 
@@ -2928,7 +2935,9 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
 
             std::size_t const anchor = DungeonRouteReconnect::SelectBackwardAnchor(
                 storedPoints, travelRouteNextIndex, TravelLookaheadPointLimit, TravelArrivalRadius);
-            if (anchor != DungeonRouteReconnect::NoSelection && anchor < travelRouteNextIndex)
+            if (anchor != DungeonRouteReconnect::NoSelection &&
+                DungeonNavigatorConvoy::AcceptsLeaderBackwardAnchor(ConvoyV2Enabled(), anchor,
+                    travelRouteNextIndex))
             {
                 std::size_t const overshotIndex = travelRouteNextIndex;
                 travelRouteNextIndex = anchor;
@@ -3007,6 +3016,57 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     travelRouteNextIndex, travelRoute.size(), ground - correction,
                     ground + GroundReattachOffset, correction);
                 return true;
+            }
+
+            // ConvoyV2: a short navmesh gap (NOPATH) to the immediate next point is walked along the
+            // reversed safe probe from that point back to the leader. Nothing is skipped; each hop gets
+            // DirectHopAttemptLimit tries before the ordinary block.
+            if (ConvoyV2Enabled() && nextPoint.mapId == map->GetId() && !reconnectProbes.empty())
+            {
+                if (directHopRouteIndex != travelRouteNextIndex)
+                {
+                    directHopRouteIndex = travelRouteNextIndex;
+                    directHopAttempts = 0;
+                }
+                AutoWowDungeonPath::ProbeResult const& forward = reconnectProbes.front();
+                float const hopDx = nextPoint.x - bot->GetPositionX();
+                float const hopDy = nextPoint.y - bot->GetPositionY();
+                float const hopHorizontal = std::sqrt(hopDx * hopDx + hopDy * hopDy);
+                float const hopVertical = nextPoint.z - bot->GetPositionZ();
+                bool const forwardNoPath = !forward.safe && (forward.pathType & PATHFIND_NOPATH) != 0;
+                bool reverseSafe = false;
+                AutoWowDungeonPath::ProbeResult reverse;
+                if (DungeonNavigatorConvoy::CanDirectHop(true, forwardNoPath, hopHorizontal, hopVertical,
+                        true, DirectHopMaximumHorizontal, DirectHopMaximumVertical, directHopAttempts,
+                        DirectHopAttemptLimit))
+                {
+                    reverse = AutoWowDungeonPath::ProbeFrom(bot, nextPoint.x, nextPoint.y, nextPoint.z,
+                        bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+                    reverseSafe = reverse.safe && ProbeReachedStoredDestination(reverse) &&
+                        reverse.path.size() >= 2;
+                }
+                if (DungeonNavigatorConvoy::CanDirectHop(true, forwardNoPath, hopHorizontal, hopVertical,
+                        reverseSafe, DirectHopMaximumHorizontal, DirectHopMaximumVertical,
+                        directHopAttempts, DirectHopAttemptLimit))
+                {
+                    ++directHopAttempts;
+                    std::reverse(reverse.path.begin(), reverse.path.end());
+                    reverse.destinationX = nextPoint.x;
+                    reverse.destinationY = nextPoint.y;
+                    reverse.destinationZ = nextPoint.z;
+                    AutoWowDungeonWalkAction walk(botAI);
+                    bool const moved = walk.WalkPrepared(reverse);
+                    nextScanTime = now + (moved ? SuccessfulMoveRescanDelayMs() : BlockedScanBackoffMs);
+                    LOG_INFO("playerbots",
+                        "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} "
+                        "route_points={} route_source=travel_nodes recovery=direct_hop attempt={} "
+                        "horizontal={} vertical={} reverse_mode={} moved={} probe={}",
+                        bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
+                        travelRouteNextIndex, travelRoute.size(), directHopAttempts, hopHorizontal,
+                        hopVertical, reverse.mode, moved, AutoWowDungeonPath::Json(forward, false));
+                    if (moved)
+                        return true;
+                }
             }
 
             if (!reconnectCandidates.empty())

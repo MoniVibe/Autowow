@@ -247,6 +247,28 @@ inline bool IsSharedRegroupExhausted(bool convoyV2, std::size_t nextAttempt,
     return nextAttempt >= attemptLimit || (!convoyV2 && candidateLimit >= hardCandidateLimit);
 }
 
+// ConvoyV2, leader side: the backward re-anchor must not rewind onto the point directly behind the
+// cursor. The arrival scan has just marked the leader arrived there, so the re-anchored probe of it is a
+// zero-length move (rejected), the real next hop is never probed, and ground reattach targets the point
+// underfoot: S53 blocked=no_reachable_waypoint on a path_length 0 probe (WC 143, RFK enc 4 index 0).
+// An earlier anchor (the leader drifted back past points) still re-anchors.
+inline bool AcceptsLeaderBackwardAnchor(bool convoyV2, std::size_t anchor, std::size_t cursor)
+{
+    return anchor < cursor && !(convoyV2 && anchor + 1 == cursor);
+}
+
+// ConvoyV2, leader side: a short hop to the immediate next stored point that the navmesh cannot build
+// (NOPATH: a mesh gap, S53 RFK 13.7 yd / 4.7 yd drop) may be walked directly when the reverse probe
+// from that point back to the leader is safe. Bounded per hop by the caller's attempt budget.
+inline bool CanDirectHop(bool convoyV2, bool forwardNoPath, float horizontal, float vertical,
+                         bool reverseSafe, float maximumHorizontal, float maximumVertical,
+                         unsigned attempts, unsigned attemptLimit)
+{
+    return convoyV2 && forwardNoPath && reverseSafe && std::isfinite(horizontal) &&
+        std::isfinite(vertical) && horizontal <= maximumHorizontal &&
+        std::fabs(vertical) <= maximumVertical && attempts < attemptLimit;
+}
+
 // Every follower owns a distinct route-ordered ceiling behind the leader. Selection remains on
 // exact stored points and accepts only independently proven, bounded physical movement.
 // routeFloor (ConvoyV2) excludes points below the follower's settled point for this frontier.
