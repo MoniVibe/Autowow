@@ -197,13 +197,65 @@ inline std::size_t SelectSharedBackwardReanchor(
     return selected;
 }
 
+// ConvoyV2: the assigned slot can sit on a route point the follower's probe never reaches. The
+// follower is then settled on the furthest point at or below its slot that it either stands on
+// (within arrivalRadius) or can ordinarily reach, provided it stands on that point. Returns the
+// settled route index, or NoSelection. This stops the slot-1/slot bounce: the leader advances and
+// the slot moves past the unreachable point.
+inline std::size_t SettledRouteIndex(std::vector<Candidate> const& candidates,
+                                     std::size_t maximumRouteIndex,
+                                     float arrivalRadius,
+                                     float maximumPathLength)
+{
+    if (!std::isfinite(arrivalRadius) || arrivalRadius < 0.0f)
+        return NoSelection;
+
+    std::size_t best = NoSelection;
+    for (std::size_t index = 0; index < candidates.size(); ++index)
+    {
+        Candidate const& candidate = candidates[index];
+        bool const standing = candidate.sameMap && std::isfinite(candidate.physicalProgress) &&
+            candidate.physicalProgress <= arrivalRadius;
+        bool const reachable = IsOrdinarilyReachable(candidate, 0.0f) &&
+            candidate.pathLength <= maximumPathLength;
+        if (candidate.routeIndex > maximumRouteIndex || (!standing && !reachable))
+            continue;
+        if (best == NoSelection || candidate.routeIndex > candidates[best].routeIndex)
+            best = index;
+    }
+    return best != NoSelection && candidates[best].physicalProgress <= arrivalRadius ?
+        candidates[best].routeIndex : NoSelection;
+}
+
+// ConvoyV2: a latched shared-regroup terminal is released once the convoy geometry changes: the
+// leader frontier moved, or the member is back inside the cohesion radius of the leader.
+inline bool ShouldReleaseSharedRegroupTerminal(std::size_t terminalLeaderFrontier,
+                                               std::size_t leaderFrontier,
+                                               float leaderDistance, float cohesionRadius)
+{
+    return terminalLeaderFrontier != leaderFrontier ||
+        (std::isfinite(leaderDistance) && leaderDistance <= cohesionRadius);
+}
+
+// V1 treats a candidate window that already spans the whole established route as exhausted, which
+// at slot 0 (one point) latches the terminal on the first attempt. ConvoyV2 spends the real
+// attempt budget before latching.
+inline bool IsSharedRegroupExhausted(bool convoyV2, std::size_t nextAttempt,
+                                     std::size_t attemptLimit, std::size_t candidateLimit,
+                                     std::size_t hardCandidateLimit)
+{
+    return nextAttempt >= attemptLimit || (!convoyV2 && candidateLimit >= hardCandidateLimit);
+}
+
 // Every follower owns a distinct route-ordered ceiling behind the leader. Selection remains on
 // exact stored points and accepts only independently proven, bounded physical movement.
+// routeFloor (ConvoyV2) excludes points below the follower's settled point for this frontier.
 inline std::size_t SelectTarget(std::vector<Candidate> const& candidates,
                                 std::size_t leaderFrontier,
                                 std::size_t followerOrdinal,
                                 float minimumProgress,
-                                float maximumPathLength)
+                                float maximumPathLength,
+                                std::size_t routeFloor = 0)
 {
     if (!followerOrdinal ||
         !std::isfinite(minimumProgress) || minimumProgress < 0.0f ||
@@ -222,7 +274,7 @@ inline std::size_t SelectTarget(std::vector<Candidate> const& candidates,
     for (std::size_t index = 0; index < candidates.size(); ++index)
     {
         Candidate const& candidate = candidates[index];
-        if (candidate.routeIndex > maximumRouteIndex ||
+        if (candidate.routeIndex > maximumRouteIndex || candidate.routeIndex < routeFloor ||
             !IsOrdinarilyReachable(candidate, minimumProgress) ||
             candidate.pathLength > maximumPathLength)
         {

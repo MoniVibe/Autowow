@@ -358,6 +358,26 @@ inline Verdict DecideInside(InsideFacts const& f, InsideParams const& p, End& en
     return Verdict::Continue;
 }
 
+// One DungeonEncounter record of the dungeon. A kill-credit record counts only when that creature has a static
+// spawn on the dungeon map; a boss summoned only by a script event (RFK Grubbis 7361, escort) can never be
+// reached by the navigator, so a full clear could never be scored. Spell / script credit records always count.
+struct EncounterRecord
+{
+    std::uint32_t index = 0;
+    bool killCredit = false;
+    bool staticSpawn = false;
+};
+
+// Full-clear mask: every encounter index with at least one countable record.
+inline std::uint32_t ClearableMask(std::vector<EncounterRecord> const& records)
+{
+    std::uint32_t mask = 0;
+    for (EncounterRecord const& r : records)
+        if (r.index < 32 && (!r.killCredit || r.staticSpawn))
+            mask |= 1u << r.index;
+    return mask;
+}
+
 // Index of the next undone encounter (lowest bit of all & ~mask); -1 = none.
 inline std::int32_t NextEncounter(std::uint32_t mask, std::uint32_t allMask)
 {

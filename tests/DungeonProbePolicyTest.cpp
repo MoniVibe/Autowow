@@ -146,6 +146,15 @@ TEST(DungeonProbePolicyTest, EncounterHelpers)
     EXPECT_EQ(static_cast<int>(End::PrepareFailed), 7);
 }
 
+// S52 RFK: Grubbis (7361) is escort-summoned with no static spawn, so a full clear was impossible.
+TEST(DungeonProbePolicyTest, ClearableMaskSkipsKillCreditWithoutStaticSpawn)
+{
+    EXPECT_EQ(ClearableMask({{0, true, true}, {1, true, false}, {2, false, false}, {3, true, true}}), 0b1101u);
+    // Any countable record of an index keeps it; out-of-range indices are ignored.
+    EXPECT_EQ(ClearableMask({{1, true, false}, {1, true, true}, {40, true, true}}), 0b10u);
+    EXPECT_EQ(ClearableMask({}), 0u);
+}
+
 TEST(DungeonProbePolicyTest, LedgerFieldsAreFixedOrder)
 {
     RunRecord r;

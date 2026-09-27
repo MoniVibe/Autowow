@@ -3287,6 +3287,14 @@ AutoWow.Dungeon.ExitTimeoutMs = 120000
 AutoWow.Dungeon.CooldownMs = 3600000
 AutoWow.Dungeon.PortalFallback = 0
 
+# Dungeon navigator convoy V2 (DungeonNavigatorConvoyPolicy.h; default 0 = V1 unchanged). A follower whose
+# assigned trailing route slot is unreachable settles on the furthest reachable route point at or below it that
+# it already stands on (within 3 yd) instead of bouncing between the points around it, and never steps below that
+# point while the leader frontier is unchanged. The shared-regroup terminal latches only after the full attempt
+# budget (V1 latched on the first attempt at slot 0) and is released when the leader frontier moves or the member
+# is back within 45 yd of the leader. Read once at first use.
+AutoWow.DungeonNav.ConvoyV2 = 0
+
 # Consumable economy for independent bots (ErrandsPolicy.h; default 0; needs AutoWow.Errands.Enable = 1,
 # inert otherwise). Real gold only, no free items. With it on: no food left (no drink, mana users) is an
 # urgent errand need; a restock counts as affordable when money + the vendor value of the grey loot covers

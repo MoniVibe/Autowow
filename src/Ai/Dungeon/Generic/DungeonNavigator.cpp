@@ -9,6 +9,7 @@
 #include "AutoWow/DungeonPathWalkAction.h"
 #include "AutoWowQuestLedger.h"
 #include "CombatManager.h"
+#include "Config.h"
 #include "CreatureData.h"
 #include "Creature.h"
 #include "DBCStores.h"
@@ -36,6 +37,7 @@
 #include "WorldPacket.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -110,6 +112,19 @@ uint32 SuccessfulMoveRescanDelayMs()
 {
     return DungeonNavigatorPacing::GetSuccessfulMoveBackoffMs(
         sPlayerbotAIConfig.maxWaitForMove);
+}
+
+// Leader guid -> {map, instance, encounter index} of its last selected encounter; read by the probe.
+std::map<uint32, std::array<uint32, 3>> navigatorTargetEncounters;
+std::mutex navigatorTargetEncountersMutex;
+
+// AutoWow.DungeonNav.ConvoyV2 (default 0): follower settles on its best reachable point at or
+// below an unreachable slot, and the shared-regroup terminal spends the real attempt budget and
+// is released when the leader frontier moves or the member rejoins cohesion. Read once.
+bool ConvoyV2Enabled()
+{
+    static bool const enabled = sConfigMgr->GetOption<bool>("AutoWow.DungeonNav.ConvoyV2", false);
+    return enabled;
 }
 
 struct EncounterGoal
@@ -191,6 +206,7 @@ struct ConvoySharedRegroupState
     bool active = false;
     std::size_t anchorRouteIndex = 0;
     DungeonRouteReconnect::SharedRegroupTerminalState terminalState;
+    std::size_t terminalLeaderFrontier = 0;  // ConvoyV2 release key
 };
 
 std::map<DungeonNavigateNextEncounterAction const*,
@@ -975,6 +991,7 @@ void DungeonNavigateNextEncounterAction::ResetTravelRoute()
     travelNoProgressReplans = 0;
     walkRevalidationState = {};
     convoyBackwardReanchorFloors.clear();
+    convoySettledRouteFloors.clear();
     ClearConvoySharedRegroupAttempts(this);
 }
 
@@ -996,6 +1013,7 @@ void DungeonNavigateNextEncounterAction::ReplanTravelRoute()
     lastTravelWaypointIndex = priorRoutePointCount;
     travelNoProgressRetries = 0;
     convoyBackwardReanchorFloors.clear();
+    convoySettledRouteFloors.clear();
     ClearConvoySharedRegroupAttempts(this);
 }
 
@@ -1006,7 +1024,16 @@ void DungeonNavigateNextEncounterAction::BlockTravelRoute(char const* reason)
     travelRouteBlocked = true;
     travelRouteBlockedReason = reason;
     convoyBackwardReanchorFloors.clear();
+    convoySettledRouteFloors.clear();
     ClearConvoySharedRegroupAttempts(this);
+}
+
+int32 GetDungeonNavigatorTargetEncounter(uint32 botGuid, uint32 mapId, uint32 instanceId)
+{
+    std::lock_guard<std::mutex> lock(navigatorTargetEncountersMutex);
+    auto const target = navigatorTargetEncounters.find(botGuid);
+    return target != navigatorTargetEncounters.end() && target->second[0] == mapId &&
+        target->second[1] == instanceId ? int32(target->second[2]) : -1;
 }
 
 void DungeonNavigatorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -1326,6 +1353,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     nextScanTime = now + ConvoyBackwardReanchorBackoffMs;
                     if (enteredTerminal)
                     {
+                        state.terminalLeaderFrontier = leaderFrontier;
                         LOG_INFO("playerbots",
                             "[DungeonNavigator] bot={} map={} blocked=convoy_shared_regroup_terminal "
                             "member={} anchor_route_index={} distance={} moving={} attempts={} "
@@ -1389,9 +1417,9 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             nextScanTime = now + PartyCohesionBackoffMs;
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} blocked=convoy_post_combat_no_reachable_leader "
-                "member={} distance={} path_safe={} path_reached={}",
+                "member={} distance={} path_safe={} path_reached={} probe={}",
                 bot->GetName(), map->GetId(), member->GetName(), leaderDistance,
-                leaderProbe.safe, leaderPathReached);
+                leaderProbe.safe, leaderPathReached, AutoWowDungeonPath::Json(leaderProbe, false));
             return false;
         }
 
@@ -1442,9 +1470,40 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 probes.push_back(probe);
             }
 
+            // ConvoyV2: an unreachable slot must not bounce the follower between the points
+            // around it. Settle on the best reachable point it already stands on, and never step
+            // below that point while the leader frontier is unchanged.
+            std::size_t settledFloor = 0;
+            if (ConvoyV2Enabled())
+            {
+                uint32 const settledGuid = member->GetGUID().GetCounter();
+                std::size_t const settledIndex = DungeonNavigatorConvoy::SettledRouteIndex(
+                    candidates, maximumRouteIndex, TravelArrivalRadius, ConvoyMaximumPathLength);
+                if (settledIndex != DungeonNavigatorConvoy::NoSelection)
+                {
+                    convoySettledRouteFloors[settledGuid] = {leaderFrontier, settledIndex};
+                    convoyBackwardReanchorFloors.erase(settledGuid);
+                    EraseConvoySharedRegroupAttempts(this, settledGuid);
+                    LOG_INFO("playerbots",
+                        "[DungeonNavigator] bot={} map={} convoy_member={} route_index={} "
+                        "route_points={} movement=settled_best_reachable slot_index={} "
+                        "leader_frontier={} distance={} slot_distance={}",
+                        bot->GetName(), map->GetId(), member->GetName(), settledIndex,
+                        travelRoute.size(), maximumRouteIndex, leaderFrontier,
+                        candidates[settledIndex - scanBegin].physicalProgress, assignedDistance);
+                    continue;
+                }
+                auto const settled = convoySettledRouteFloors.find(settledGuid);
+                if (settled != convoySettledRouteFloors.end() &&
+                    settled->second.first == leaderFrontier)
+                {
+                    settledFloor = settled->second.second;
+                }
+            }
+
             std::size_t const selection = DungeonNavigatorConvoy::SelectTarget(candidates,
                 leaderFrontier, followerOrdinal, ConvoyMinimumProgress,
-                ConvoyMaximumPathLength);
+                ConvoyMaximumPathLength, settledFloor);
             if (selection == DungeonNavigatorConvoy::NoSelection)
             {
                 // A follower displaced slightly off its trailing route slot by ordinary combat is
@@ -1477,6 +1536,24 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     map->GetId(), map->GetInstanceId(), travelRouteEncounterId,
                     travelRouteSpawnId, memberGuid};
                 EnsureConvoySharedRegroupContext(this, memberGuid, sharedContext);
+                if (ConvoyV2Enabled() &&
+                    IsConvoySharedRegroupTerminal(this, memberGuid, sharedContext))
+                {
+                    ConvoySharedRegroupState& state = GetConvoySharedRegroupState(
+                        this, memberGuid);
+                    if (DungeonNavigatorConvoy::ShouldReleaseSharedRegroupTerminal(
+                            state.terminalLeaderFrontier, leaderFrontier, leaderDistance,
+                            PartyCohesionRadius))
+                    {
+                        LOG_INFO("playerbots",
+                            "[DungeonNavigator] bot={} map={} recovery=convoy_shared_regroup_terminal_released "
+                            "member={} terminal_frontier={} leader_frontier={} distance={}",
+                            bot->GetName(), map->GetId(), member->GetName(),
+                            state.terminalLeaderFrontier, leaderFrontier, leaderDistance);
+                        state = {};
+                        EnsureConvoySharedRegroupContext(this, memberGuid, sharedContext);
+                    }
+                }
                 uint8 const sharedAttempts = GetConvoySharedRegroupAttempts(this, memberGuid);
                 if (IsConvoySharedRegroupTerminal(this, memberGuid, sharedContext))
                 {
@@ -1496,6 +1573,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     if (terminalDecision ==
                         DungeonRouteReconnect::SharedRegroupTerminalDecision::EnterTerminal)
                     {
+                        state.terminalLeaderFrontier = leaderFrontier;
                         LOG_INFO("playerbots",
                             "[DungeonNavigator] bot={} map={} blocked=convoy_shared_regroup_terminal "
                             "member={} leader_frontier={} slot={} attempts={} attempt_limit={} "
@@ -1661,15 +1739,16 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     this, memberGuid);
                 std::size_t const hardCandidateLimit = std::min<std::size_t>(
                     maximumRouteIndex + 1, ConvoyBackwardReanchorPointLimit);
-                bool const fullyExhausted =
-                    nextSharedAttempt >= ConvoySharedRegroupAttemptLimit ||
-                    sharedCandidateLimit >= hardCandidateLimit;
+                bool const fullyExhausted = DungeonNavigatorConvoy::IsSharedRegroupExhausted(
+                    ConvoyV2Enabled(), nextSharedAttempt, ConvoySharedRegroupAttemptLimit,
+                    sharedCandidateLimit, hardCandidateLimit);
                 DungeonRouteReconnect::SharedRegroupTerminalDecision const terminalDecision =
                     DungeonRouteReconnect::ObserveSharedRegroupNoCandidate(
                         state.terminalState, sharedContext, fullyExhausted);
                 if (terminalDecision ==
                     DungeonRouteReconnect::SharedRegroupTerminalDecision::EnterTerminal)
                 {
+                    state.terminalLeaderFrontier = leaderFrontier;
                     nextScanTime = now + ConvoyBackwardReanchorBackoffMs;
                     LOG_INFO("playerbots",
                         "[DungeonNavigator] bot={} map={} blocked=convoy_shared_regroup_terminal "
@@ -1764,9 +1843,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 nextScanTime = now + PartyCohesionBackoffMs;
                 LOG_INFO("playerbots",
                     "[DungeonNavigator] bot={} map={} blocked=convoy_no_reachable_route_point "
-                    "member={} distance={} leader_frontier={} slot={}",
+                    "member={} distance={} leader_frontier={} slot={} slot_probe={}",
                     bot->GetName(), map->GetId(), member->GetName(), leaderDistance,
-                    leaderFrontier, followerOrdinal);
+                    leaderFrontier, followerOrdinal, probes.empty() ? std::string("{}") :
+                        AutoWowDungeonPath::Json(probes.back(), false));
                 return false;
             }
             convoyPlans.push_back(
@@ -2035,6 +2115,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         LOG_DEBUG("playerbots", "[DungeonNavigator] bot={} map={} encounter={} blocked=goal_mismatch",
             bot->GetName(), map->GetId(), selection.selected.encounterId);
         return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(navigatorTargetEncountersMutex);
+        navigatorTargetEncounters[bot->GetGUID().GetCounter()] =
+            {map->GetId(), map->GetInstanceId(), selection.selected.encounterId};
     }
 
     EncounterGoal goal = goalItr->second;
@@ -2481,6 +2566,13 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                             {
                                 invalidReason = skippedTransition ?
                                     "transition_suffix_unreachable" : "walk_prefix_unreachable";
+                                LOG_INFO("playerbots",
+                                    "[DungeonNavigator] bot={} map={} encounter={} spawn={} "
+                                    "route_source={} diagnostic={} first_index={} probe={}",
+                                    bot->GetName(), map->GetId(),
+                                    selection.selected.encounterId, goal.spawnId,
+                                    routeSource ? routeSource : "unknown", invalidReason,
+                                    walkingSuffix, AutoWowDungeonPath::Json(probe, false));
                             }
                         }
                     }
@@ -2930,9 +3022,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             nextScanTime = now + BlockedScanBackoffMs;
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} "
-                "route_points={} route_source=travel_nodes blocked={}",
+                "route_points={} route_source=travel_nodes blocked={} probe={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
-                travelRouteNextIndex, travelRoute.size(), frontierBlockedReason);
+                travelRouteNextIndex, travelRoute.size(), frontierBlockedReason,
+                reconnectProbes.empty() ? std::string("{}") :
+                    AutoWowDungeonPath::Json(reconnectProbes.front(), false));
             return false;
         }
 
@@ -2985,10 +3079,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} "
                 "route_points={} route_source=travel_nodes recovery=no_progress_replan "
-                "retries={} replans={}",
+                "retries={} replans={} probe={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
                 goal.waypointIndex, routePointCount, TravelNoProgressRetryLimit,
-                travelNoProgressReplans);
+                travelNoProgressReplans, hasSelectedPreparedProbe ?
+                    AutoWowDungeonPath::Json(selectedPreparedProbe, false) : std::string("{}"));
             return false;
         }
         if (noProgressDecision == DungeonRouteReconnect::NoProgressDecision::Block)
@@ -2998,10 +3093,13 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} final_x={} final_y={} "
                 "final_z={} route_index={} route_points={} waypoint_x={} waypoint_y={} waypoint_z={} "
-                "remaining_distance={} route_source=travel_nodes blocked=no_progress retries={}",
+                "remaining_distance={} route_source=travel_nodes blocked=no_progress retries={} "
+                "probe={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
                 goal.finalX, goal.finalY, goal.finalZ, goal.waypointIndex, routePointCount,
-                goal.x, goal.y, goal.z, goal.pathLength, travelNoProgressRetries);
+                goal.x, goal.y, goal.z, goal.pathLength, travelNoProgressRetries,
+                hasSelectedPreparedProbe ?
+                    AutoWowDungeonPath::Json(selectedPreparedProbe, false) : std::string("{}"));
             BlockTravelRoute("no_progress");
             return false;
         }
