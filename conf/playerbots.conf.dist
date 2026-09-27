@@ -2981,6 +2981,40 @@ AutoWow.Supply.PriorityGuids = ""
 AutoWow.Supply.RepStockPerItem = 2
 AutoWow.Supply.GearMaxOrder = 4
 AutoWow.Supply.GearPayPct = 200
+# Tinkers (lane AA; owner 2026-09-27: every crafting profession lives in a house per faction, artisans make only useful
+# things). Products token eng (House.Engineering, default Tinkers; off unless Products names it) runs on the gear line
+# runtime above with kEngGear (SupplyPolicy.h): Crafted Light / Heavy / Solid Shot (RequiredLevel 5 / 15 / 30, 200 per
+# cast) from Rough / Coarse / Heavy Blasting Powder (routed stone) and Copper / Bronze Bars the artisan smelts itself
+# (Mining: Smelt Copper, Tin, Bronze). Heavy / Solid Shot need Engineering 75 / 125, beyond the 60 the anvil-free
+# recipes reach: only Light Shot is made until a skill bridge exists. Goggles (RequiredSkill Engineering: no adventurer
+# can wear them), scopes (no stock path applies one), bombs / dynamite (no stock AI throws them) are not made.
+# Setup: add the house (AutoWow.Guilds.Houses "...;Tinkers:202"; listed after Smiths, engineers stay Smiths members,
+#   only the pinned rep / artisan join Tinkers), its reps AutoWow.Guilds.Rep.Tinkers.<Team>, its artisans
+#   AutoWow.Supply.Artisan.Tinkers.<Team> (provision-reps.ps1 -Set tinkers), RouteRaw = 1 with House.Ore = "Tinkers" (no
+#   Smiths line consumes ore) and House.Stone = "Tinkers" (stone kind 2: Rough 2835 / Coarse 2836 / Heavy 2838; a kind
+#   whose house is not a Guilds house is off).
+# Need (overlord): a recipient (as the gear lines: PriorityGuids, cohort, squad) that is a hunter with a gun, holds fewer
+#   than AmmoTarget bullets (bags + mailbox) and has no stronger ammo loaded (damage min + max; ammo it has none of left
+#   counts as none) wants the best known shot usable at its level: one need per recipient per scan, an order unit = one
+#   cast (200 shots), RepStockPerItem casts kept at the rep. Deliveries mail whole stacks.
+# Consumer: every TickMs the world thread loads (Player::SetAmmo) a gun hunter's strongest house shot from its bags when
+#   stronger than its loaded ammo or that ammo is gone ("[Supply] ammo load"); the stock ammo equip never fires
+#   (ItemUsageValue::QueryItemUsageForAmmo answers NONE for every class).
+# Artisan: learns Engineering + Mining ranks (Artisan.Learn.Engineering) and the table recipes at the engineering trainer
+#   (Stormwind 5518, Orgrimmar 11017) and the mining trainer (Stormwind 5513, Orgrimmar 3357; the second trainer: the
+#   one teaching the first learn spell the first does not); both stand beyond the 400-yard station radius, so
+#   StationYards.Engineering widens the search for this line. A smelt (spell focus: forge) is cast on a trip to the forge
+#   nearest home (Stormwind 24746 at 386 yards, Orgrimmar 1685 at 152 yards), where it keeps casting the order while it
+#   can. Pay per piece: GearPayPct of its sell value, shot (sell value 0) of its vendor lot price.
+AutoWow.Supply.House.Engineering = "Tinkers"
+AutoWow.Supply.House.Stone = "Tinkers"
+AutoWow.Supply.Artisan.Learn.Engineering = "4039,4040,4041,12657,2581,2582,3568,10249"
+AutoWow.Supply.StationYards.Engineering = 520
+AutoWow.Supply.AmmoTarget = 1000
+# AutoWow.Guilds.Rep.Tinkers.Alliance = 0
+# AutoWow.Guilds.Rep.Tinkers.Horde = 0
+# AutoWow.Supply.Artisan.Tinkers.Alliance = 0
+# AutoWow.Supply.Artisan.Tinkers.Horde = 0
 # Outfit (owner ruling 2026-09-26): the house treasury funds its members' starter equipment. No free gold or items:
 # the grant is a real guild bank -> member transfer, the tool is bought at a vendor. Needs AutoWow.Errands.Enable.
 # A cohort bot (AutoWow.Guilds.CohortGuids) that knows Mining (186) / Skinning (393) and holds no pick / knife

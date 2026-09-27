@@ -106,12 +106,16 @@ struct Params
                                            // keeps beyond the open demand
     std::uint32_t gearMaxOrder = 4;        // AutoWow.Supply.GearMaxOrder: gear lines, top ranked needs one order serves
     std::uint32_t gearPayPct = 200;        // AutoWow.Supply.GearPayPct: pay per gear piece = vendor sell value * this / 100
+    // Tinkers (lane AA; Products eng, off by default):
+    std::uint32_t ammoTarget = 1000;       // AutoWow.Supply.AmmoTarget: bullets a gun hunter should hold (bags + mailbox)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
-// (AutoWow.Supply.House.Ore, default Smiths; AutoWow.Supply.House.Leather, default Tanners), each under RawCap.
+// (AutoWow.Supply.House.Ore, default Smiths; AutoWow.Supply.House.Leather, default Tanners; AutoWow.Supply.House.Stone,
+// default Tinkers: a kind whose house is not an AutoWow.Guilds.Houses house is off), each under RawCap.
 inline constexpr std::uint32_t kOre[] = {2770, 2771, 2772};      // copper, tin, iron ore
 inline constexpr std::uint32_t kLeather[] = {2934, 2318, 2319};  // ruined leather scraps, light, medium leather
+inline constexpr std::uint32_t kStone[] = {2835, 2836, 2838};    // rough, coarse, heavy stone (blasting powder)
 
 // A material a house wants routed now (AutoWow.Squad reads it): item and units of room (stock target minus the
 // rep's stock, minus donations already queued).
@@ -710,7 +714,8 @@ enum class Line : std::uint8_t
     Potions = 1,
     ClothGear = 2,   // lane V gear lines (bespoke runtime GearTick over ProductLine::gear)
     MailGear = 3,    // data hook: no recipe table yet (a line with none turns itself off at load)
-    LeatherGear = 4
+    LeatherGear = 4,
+    Engineering = 5  // lane AA Tinkers: gun hunters' ammo on the gear runtime (GearTick over ProductLine::gear)
 };
 inline constexpr std::uint8_t kNoLine = 0xFF;
 
@@ -729,14 +734,17 @@ enum class NeedRule : std::uint8_t
 {
     BagSlots = 0,    // empty / smaller equipped bag slots (RankNeeds)
     PotionStock = 1, // member stock of its best usable tier below PotionTarget (RankStock)
-    GearSlots = 2    // equipment slots a known recipe's product upgrades (stock "item upgrade"; RankGearNeeds)
+    GearSlots = 2,   // equipment slots a known recipe's product upgrades (stock "item upgrade"; RankGearNeeds)
+    AmmoStock = 3    // a gun hunter under AmmoTarget bullets, the shot not weaker than its loaded ammo (WantsAmmo)
 };
 
 enum class Consumer : std::uint8_t
 {
     EquipBag = 0,     // the stock equip action wears a delivered bag
     DrinkAtLowHp = 1, // the stock combat "potions" strategy: critical health -> healthstone -> healing potion
-    EquipGear = 2     // the stock "equip upgrades packet action" (non-combat "random" trigger) wears a delivered piece
+    EquipGear = 2,    // the stock "equip upgrades packet action" (non-combat "random" trigger) wears a delivered piece
+    LoadAmmo = 3      // the gear tick loads a gun hunter's house shot (Player::SetAmmo, LoadsAmmo): the stock ammo
+                      // equip never fires (ItemUsageValue::QueryItemUsageForAmmo's class check is always true)
 };
 
 struct Reagent
@@ -848,6 +856,26 @@ inline constexpr LineTier kLeatherGear[] = {
     {3764, 4247, 145, 195, 24, {{{2319, 14, Source::Craft}, {2321, 4, Source::Vendor}, {}}}}, // Hillman's Leather Gloves
     {3760, 3719, 150, 190, 25, {{{4234, 5, Source::Craft}, {2321, 2, Source::Vendor}, {}}}},  // Hillman's Cloak
 };
+// Engineering (lane AA, Tinkers; trainer 92 = Stormwind 5518 / Orgrimmar 11017, 466 / 491 yards from the homes) and its
+// smelting (Mining 186, trainer 80 = Stormwind 5513 / Orgrimmar 3357; spell focus 3: a forge near home): gun hunters'
+// shot (200 per cast) from routed stone (House.Stone) and ore (House.Ore). Only reagents the house gets and a consumer
+// the stock AI has. Dropped: goggles (RequiredSkill Engineering: no adventurer can wear them), scopes (no stock path
+// applies one to a weapon; tubes need an anvil + Blacksmith Hammer), bombs / dynamite (no stock AI throws them), arrows
+// (engineering makes none). Engineering 60 -> 75 (Heavy Shot) has no anvil-free recipe: the Heavy / Solid rows wait for
+// a skill bridge.
+inline constexpr LineTier kEngGear[] = {
+    // intermediates (RequiredLevel 0): blasting powder, then the bars (Mining; skill = mining)
+    {3918, 4357, 1, 40, 0, {{{2835, 1, Source::Route}, {}, {}}}},     // Rough Blasting Powder (learned with the skill)
+    {3929, 4364, 75, 95, 0, {{{2836, 1, Source::Route}, {}, {}}}},    // Coarse Blasting Powder
+    {3945, 4377, 125, 145, 0, {{{2838, 1, Source::Route}, {}, {}}}},  // Heavy Blasting Powder
+    {2657, 2840, 1, 70, 0, {{{2770, 1, Source::Route}, {}, {}}}},     // Smelt Copper (learned with Mining)
+    {3304, 3576, 65, 75, 0, {{{2771, 1, Source::Route}, {}, {}}}},    // Smelt Tin
+    {2659, 2841, 65, 115, 0, {{{2840, 1, Source::Craft}, {3576, 1, Source::Craft}, {}}}},  // Smelt Bronze (2 bars)
+    // shot (bullets): spell, product, skill, grey, RequiredLevel
+    {3920, 8067, 1, 60, 5, {{{4357, 1, Source::Craft}, {2840, 1, Source::Craft}, {}}}},     // Crafted Light Shot
+    {3930, 8068, 75, 95, 15, {{{4364, 1, Source::Craft}, {2840, 1, Source::Craft}, {}}}},   // Crafted Heavy Shot
+    {3947, 8069, 125, 145, 30, {{{4377, 1, Source::Craft}, {2841, 1, Source::Craft}, {}}}}, // Crafted Solid Shot
+};
 // Blacksmithing (MailGear, Smiths): no table yet. Its bars come from smelting (a Mining spell, not blacksmithing): a
 // Smiths line needs a smelting intermediate the artisan can cast (it must also be a miner) or bars routed / bought, and
 // the blacksmith trainers sit 390-565 yards from the homes (kStationYards 400). Add the rows here and its artisan config.
@@ -879,6 +907,10 @@ inline constexpr ProductLine kCatalog[] = {
      nullptr, 0},
     {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear))},
+    // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
+    // 20), Artisan 12657 (200, level 35); Mining ranks (trainer 80): 2581, 2582, 3568, 10249 (same gates).
+    {Line::Engineering, "eng", "Engineering", "Tinkers", "4039,4040,4041,12657,2581,2582,3568,10249", 202,
+     NeedRule::AmmoStock, Consumer::LoadAmmo, {}, 0, kEngGear, static_cast<std::uint8_t>(std::size(kEngGear))},
 };
 inline constexpr std::size_t kLineCount = std::size(kCatalog);
 
@@ -1603,6 +1635,31 @@ struct GearDelivery
     return out;
 }
 
+// ---- ammo (lane AA Tinkers, NeedRule::AmmoStock; a gear line whose products are shot) ----
+
+inline constexpr std::uint8_t kAmmoSlot = 19;  // GearNeed.slot of an ammo need (EQUIPMENT_SLOT_END: no equipment slot)
+
+// A recipient wants this shot: a hunter with a gun, shot (bullets) usable at its level, not weaker than the ammo it has
+// loaded (damage = DamageMin + DamageMax; 0 = none loaded) and fewer than `target` bullets held (bags + mailbox).
+[[nodiscard]] inline bool WantsAmmo(bool hunter, bool gun, bool bullets, std::uint32_t level, std::uint32_t reqLevel,
+                                    std::uint32_t damage, std::uint32_t loadedDamage, std::uint32_t held,
+                                    std::uint32_t target)
+{
+    return hunter && gun && bullets && reqLevel <= level && damage >= loadedDamage && held < target;
+}
+
+// The house shot a gun hunter loads (Player::SetAmmo): stronger than its loaded ammo, or that ammo is gone.
+[[nodiscard]] inline bool LoadsAmmo(std::uint32_t damage, std::uint32_t loadedDamage, std::uint32_t loadedHeld)
+{
+    return !loadedHeld || damage > loadedDamage;
+}
+
+// Finished units of a recipe in order units (casts): a shot cast makes `yield` (200), a gear piece 1.
+[[nodiscard]] inline std::uint32_t CastUnits(std::uint32_t items, std::uint32_t yield)
+{
+    return yield ? items / yield : items;
+}
+
 // ---- runtime (AutoWowSupply.cpp). ----
 namespace detail
 {
@@ -1626,7 +1683,7 @@ struct RoleInfo
     bool bagHouse = false;  // its house makes the V1 product (only that artisan crafts)
     Home home;
     std::uint8_t line = kNoLine;  // the enabled catalog line (tierCount > 0) its house makes, else kNoLine
-    std::uint8_t gear = kNoLine;  // the enabled gear line (Products cloth_gear / leather_gear) its house makes
+    std::uint8_t gear = kNoLine;  // the enabled gear line (Products cloth_gear / leather_gear / eng) its house makes
 };
 
 // ---- artisan upkeep (lane F) ----
@@ -1744,6 +1801,8 @@ struct Stations
 {
     Station mailbox, trainer, threadVendor, auctioneer;
     Station banker;  // RepStore: the rep's bank stash (Stormwind 2455 Olivia Burnside, Orgrimmar 3318 Koma)
+    Station forge;     // a forge (spell focus 3) near home: gear lines' smelting (lane AA)
+    Station trainer2;  // gear lines: the trainer of the learn spells `trainer` does not teach (Engineering: mining)
 };
 
 // Shared per-team state (world thread writes, role bots' map threads read), copied out under the lock.
@@ -1845,11 +1904,13 @@ void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item
 
 // ---- need-driven production (lane V) ----
 inline bool DemandOnly() { return detail::gEnabled && detail::gParams.demandOnly; }
+// Gear line recipe `recipe`: items one cast makes (the spell's create-item count; shot 200, a piece 1). Read-only.
+std::uint32_t GearYield(Line l, std::uint8_t recipe);
 inline Reason SurplusReason() { return SaleReason(DemandOnly()); }
 
 // ---- material demand (lane G, read by AutoWow.Squad) ----
 // The team's routing rooms of materials the houses can use now (any thread): cloth tiers within the bag artisan's
-// reach (RouteCloth), the enabled lines' Route reagents UsableNow (RouteHerbs), raw ore / leather (RouteRaw).
+// reach (RouteCloth), the enabled lines' Route reagents UsableNow (RouteHerbs), raw ore / leather / stone (RouteRaw).
 // Table order; zero rooms included. Flag off: empty.
 std::vector<MaterialNeed> MaterialDemand(bool alliance);
 

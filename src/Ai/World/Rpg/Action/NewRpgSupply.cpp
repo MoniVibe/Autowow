@@ -30,6 +30,8 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "QuestDef.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "SupplyPolicy.h"
 #include "TradePolicy.h"
 #include "Trainer.h"
@@ -43,6 +45,7 @@ namespace
 constexpr std::uint32_t kMaxStuck = 8;             // stuck walk windows before the portal fallback home
 constexpr std::uint64_t kTaskTimeoutMs = 180000;   // a station trip that has not arrived is dropped
 constexpr float kNearYards = 40.0f;                // direct move to a station object this close
+constexpr float kFocusYards = 10.0f;               // a forge's spell focus radius (gameobject_template Data1)
 
 enum class Task : std::uint8_t
 {
@@ -58,7 +61,9 @@ enum class Task : std::uint8_t
     Bag = 9,     // artisan make-room: buy and wear a kPouch (no bag worn)
     Bank = 10,   // RepStore: the rep's bank stash / refill at the banker near home
     GearTrainer = 11,  // gear line artisan: its line's due recipes / ranks at the line trainer
-    GearVendor = 12    // gear line artisan: its target's vendor reagents (thread, dye) at the line vendor
+    GearVendor = 12,   // gear line artisan: its target's vendor reagents (thread, dye) at the line vendor
+    Forge = 13,        // gear line artisan (lane AA): its order's smelting at the forge near home (spell focus)
+    GearTrainer2 = 14  // gear line artisan (lane AA): its line's due spells at the second trainer (Engineering: mining)
 };
 
 constexpr std::uint32_t kHearthstone = 6948;
@@ -157,6 +162,8 @@ Station const* StationFor(Stations const& st, Task task)
         case Task::Auction:
         case Task::Market: return st.auctioneer.entry ? &st.auctioneer : nullptr;
         case Task::Bank: return st.banker.entry ? &st.banker : nullptr;
+        case Task::Forge: return st.forge.entry ? &st.forge : nullptr;
+        case Task::GearTrainer2: return st.trainer2.entry ? &st.trainer2 : nullptr;
         default: return nullptr;
     }
 }
@@ -169,6 +176,13 @@ std::pair<std::uint32_t, std::uint32_t> TierThread(TeamView const& view, bool ca
     if (!view.remaining && view.skillup != kNoTier && view.skillupBag)
         return {kTiers[view.skillup].thread, kSkillupBags * kTiers[view.skillup].recipe.threadPerBag};
     return {ThreadItem(), 0};
+}
+
+// The cast needs a spell focus (a smelt: a forge) the bot is not within reach of (the forge station's object).
+bool FocusMissing(Player* bot, std::uint32_t spell, Station const& forge)
+{
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
+    return info && info->RequiresSpellFocus && (!forge.entry || !bot->FindNearestGameObject(forge.entry, kFocusYards));
 }
 
 bool HouseMaterial(std::uint32_t entry)
@@ -477,6 +491,56 @@ bool NewRpgBaseAction::SupplyStep()
     std::int64_t const dx = std::int64_t(bot->GetPositionX()) - home.x, dy = std::int64_t(bot->GetPositionY()) - home.y;
     bool const atHome = dx * dx + dy * dy <= std::int64_t(p.homeYards) * p.homeYards;
 
+    // The artisan crafts one cast at a time (the core consumes the reagents and rolls the skill-up). The product needs
+    // room first (a free slot or a partial stack), else the next decision makes room (RoomTarget: a slot at least).
+    auto craft = [&](std::uint32_t spell, std::uint32_t item) -> bool
+    {
+        if (!spell || !bot->HasSpell(spell) || !botAI->CanCastSpell(spell, bot, true))
+            return false;
+        ItemPosCountVec dest;
+        bool const room = bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK;
+        if (room == s.craftBlocked)
+        {
+            LOG_INFO("playerbots", "[Supply] bot={} craft item={} {} free={}", bot->GetName(), item,
+                     room ? "has room again" : "blocked: no bag room", bot->GetFreeInventorySpace());
+            s.craftBlocked = !room;
+            if (!room)
+                s.nextMs = std::min(s.nextMs, now);  // make room at once
+        }
+        if (!room)
+            return false;
+        std::uint32_t const before = LooseCount(bot, item);
+        if (!botAI->CastSpell(spell, bot))
+            return false;
+        s.castSpell = spell;
+        s.castItem = item;
+        s.castBefore = before;
+        return true;
+    };
+    // Gear line: the next cast toward the target order entry while the view wants more than the finished units in hand
+    // (casts: a shot cast makes 200); NextCast makes a short intermediate (a bolt, Medium Leather, a bar) first. kNoTier =
+    // none.
+    auto nextGearCast = [&]() -> std::uint8_t
+    {
+        std::uint8_t const r = gview.product;
+        if (!geared || r >= gtab.tierCount ||
+            gview.remaining <= CastUnits(LooseCount(bot, gtab.tiers[r].product), GearYield(gearId, r)) ||
+            !bot->HasSpell(gtab.tiers[r].spell))
+            return kNoTier;
+        return NextCast(gtab, r, [&](std::uint32_t item) { return LooseCount(bot, item); });
+    };
+    // The cast, unless it needs a forge the artisan is away from (lane AA: the Forge trip casts it there). False =
+    // nothing cast.
+    auto gearCraft = [&]() -> bool
+    {
+        std::uint8_t const c = nextGearCast();
+        if (c == kNoTier || FocusMissing(bot, gtab.tiers[c].spell, gst.forge) ||
+            !craft(gtab.tiers[c].spell, gtab.tiers[c].product))
+            return false;
+        s.castLine = static_cast<std::uint8_t>(gearId);
+        return true;
+    };
+
     // Decide the next station trip.
     if (s.task == Task::None && now >= s.nextMs)
     {
@@ -592,9 +656,13 @@ bool NewRpgBaseAction::SupplyStep()
         {
             // Gear line artisan: its line's due trainer spells, the target's vendor reagents below what the view asks
             // it to hold, postage for its pieces; the treasury tops up what its purse lacks (GearTick).
-            bool learnAffordable = false;
+            bool learnAffordable = false, learnAffordable2 = false;
             std::uint64_t const learnCost = gst.trainer.entry
                 ? LearnCost(bot, sObjectMgr->GetTrainer(gst.trainer.entry), learnAffordable, LineLearnSpells(gearId))
+                : 0;
+            // Lane AA: the second trainer's (Engineering: mining ranks and smelting; none for the other lines).
+            std::uint64_t const learnCost2 = gst.trainer2.entry
+                ? LearnCost(bot, sObjectMgr->GetTrainer(gst.trainer2.entry), learnAffordable2, LineLearnSpells(gearId))
                 : 0;
             std::uint64_t buy = 0, cheapest = 0;
             for (MarketWant const& w : gview.vendor)
@@ -605,12 +673,20 @@ bool NewRpgBaseAction::SupplyStep()
                     std::uint64_t const lot = proto ? proto->BuyPrice : 0;
                     cheapest = cheapest ? std::min(cheapest, lot) : lot;
                 }
-            std::uint64_t const want = buy + learnCost + AutoWowGuilds::Postage(gview.remaining ? gview.remaining : 1);
+            std::uint64_t const want =
+                buy + learnCost + learnCost2 + AutoWowGuilds::Postage(gview.remaining ? gview.remaining : 1);
             SetLineArtisanWant(gearId, role.alliance, want > bot->GetMoney() ? want - bot->GetMoney() : 0);
             if (next == Task::None && learnAffordable)
                 next = Task::GearTrainer;
+            if (next == Task::None && learnAffordable2)
+                next = Task::GearTrainer2;
             if (next == Task::None && buy && bot->GetMoney() >= cheapest && gst.threadVendor.entry)
                 next = Task::GearVendor;
+            // Lane AA: the order's next cast is a smelt away from the forge (and castable: known, bag room).
+            std::uint8_t const c = nextGearCast();
+            if (next == Task::None && c != kNoTier && !s.craftBlocked && bot->HasSpell(gtab.tiers[c].spell) &&
+                gst.forge.entry && FocusMissing(bot, gtab.tiers[c].spell, gst.forge))
+                next = Task::Forge;
         }
         std::uint32_t lineSurplus = 0;
         for (std::uint32_t const u : lview.surplus)
@@ -663,6 +739,7 @@ bool NewRpgBaseAction::SupplyStep()
             ? (BagVendorOf(role.alliance).entry ? &BagVendorOf(role.alliance) : nullptr)
             : s.task == Task::GearTrainer ? StationFor(gst, Task::Trainer)
             : s.task == Task::GearVendor  ? StationFor(gst, Task::Thread)
+            : s.task == Task::Forge || s.task == Task::GearTrainer2 ? StationFor(gst, s.task)
                                           : StationFor(lined ? lst : st, s.task);
         if (!station || now - s.taskSinceMs > kTaskTimeoutMs)
         {
@@ -673,7 +750,7 @@ bool NewRpgBaseAction::SupplyStep()
             return true;
         }
         WorldObject* target = nullptr;
-        if (s.task == Task::Mailbox)
+        if (s.task == Task::Mailbox || s.task == Task::Forge)
             target = bot->FindNearestGameObject(station->entry, 60.0f);
         else if (Creature* c = bot->FindNearestCreature(station->entry, 60.0f); c && c->IsAlive())
             target = c;
@@ -771,6 +848,7 @@ bool NewRpgBaseAction::SupplyStep()
                 break;
             }
             case Task::GearTrainer:
+            case Task::GearTrainer2:
             {
                 Creature* npc = target->ToCreature();
                 Trainer::Trainer* trainer = sObjectMgr->GetTrainer(npc->GetEntry());
@@ -787,6 +865,16 @@ bool NewRpgBaseAction::SupplyStep()
                          bot->GetSkillValue(LineOf(gearId).skillLine), bot->GetMaxSkillValue(LineOf(gearId).skillLine));
                 break;
             }
+            case Task::Forge:
+                // Lane AA: the order's casts here one at a time (the smelts first) while any is possible; each cast keeps
+                // the trip alive (its timeout restarts), none ends it.
+                if (gearCraft())
+                {
+                    s.taskSinceMs = now;
+                    StoreRole(guid, s);
+                    return true;
+                }
+                break;
             case Task::GearVendor:
             {
                 // Each Vendor reagent up to what the view asks it to hold (a purchase is one vendor lot of BuyCount
@@ -1022,47 +1110,7 @@ bool NewRpgBaseAction::SupplyStep()
         return true;
     }
 
-    // At home, nothing to fetch: the artisan crafts (one cast at a time; the core consumes the reagents and
-    // rolls the skill-up). The product needs room first (a free slot or a partial stack), else the next decision
-    // makes room (RoomTarget: a slot at least).
-    auto craft = [&](std::uint32_t spell, std::uint32_t item) -> bool
-    {
-        if (!spell || !bot->HasSpell(spell) || !botAI->CanCastSpell(spell, bot, true))
-            return false;
-        ItemPosCountVec dest;
-        bool const room = bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK;
-        if (room == s.craftBlocked)
-        {
-            LOG_INFO("playerbots", "[Supply] bot={} craft item={} {} free={}", bot->GetName(), item,
-                     room ? "has room again" : "blocked: no bag room", bot->GetFreeInventorySpace());
-            s.craftBlocked = !room;
-            if (!room)
-                s.nextMs = std::min(s.nextMs, now);  // make room at once
-        }
-        if (!room)
-            return false;
-        std::uint32_t const before = LooseCount(bot, item);
-        if (!botAI->CastSpell(spell, bot))
-            return false;
-        s.castSpell = spell;
-        s.castItem = item;
-        s.castBefore = before;
-        return true;
-    };
-    // Gear line: the target order entry's piece while the view wants more than the finished ones in hand; NextCast makes
-    // a short intermediate (a bolt, Medium Leather) first. False = nothing cast.
-    auto gearCraft = [&]() -> bool
-    {
-        std::uint8_t const r = gview.product;
-        if (!geared || r >= gtab.tierCount || gview.remaining <= LooseCount(bot, gtab.tiers[r].product) ||
-            !bot->HasSpell(gtab.tiers[r].spell))
-            return false;
-        std::uint8_t const c = NextCast(gtab, r, [&](std::uint32_t item) { return LooseCount(bot, item); });
-        if (c == kNoTier || !craft(gtab.tiers[c].spell, gtab.tiers[c].product))
-            return false;
-        s.castLine = static_cast<std::uint8_t>(gearId);
-        return true;
-    };
+    // At home, nothing to fetch: the artisan crafts (craft / gearCraft above).
     // An open gear order the artisan works (DemandOnly: no consumer-less skill-up eats its reagents meanwhile).
     bool const gearOpen = geared && gview.product != kNoTier && gview.remaining;
     if (artisan && atHome && Tiers())
