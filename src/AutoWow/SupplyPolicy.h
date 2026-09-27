@@ -22,6 +22,7 @@
 #include <iterator>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 #include "AutoWowGuildsPolicy.h"
@@ -30,9 +31,10 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 6;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+inline constexpr std::uint32_t kStateVersion = 7;  // RoleState / TeamState layout; bump on change (2: tiers, market;
                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
-                                                   // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets)
+                                                   // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
+                                                   // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -97,6 +99,13 @@ struct Params
     std::uint32_t mailPickupYards = 40;    // AutoWow.Supply.MailPickupYards
     std::uint32_t mailRunMs = 1800000;     // AutoWow.Supply.MailRunMs: supply mail alone starts a town run this often
     bool mailOrders = false;               // AutoWow.Market.MailOrders: reps' buy orders filled by random bots' COD mail
+    // Need-driven production (lane V; off by default):
+    bool demandOnly = false;               // AutoWow.Supply.DemandOnly: consumer-first skill-ups, `waste` sales, consumer
+                                           // field on order / deliver rows
+    std::uint32_t repStockPerItem = 2;     // AutoWow.Supply.RepStockPerItem: gear lines, units per wanted recipe the rep
+                                           // keeps beyond the open demand
+    std::uint32_t gearMaxOrder = 4;        // AutoWow.Supply.GearMaxOrder: gear lines, top ranked needs one order serves
+    std::uint32_t gearPayPct = 200;        // AutoWow.Supply.GearPayPct: pay per gear piece = vendor sell value * this / 100
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -301,6 +310,7 @@ struct SkillupOption
     std::uint32_t grey = 0;
     bool stocked = false;  // the house (rep + artisan) holds one cast's cloth (and extras)
     std::uint64_t cost = 0;
+    bool consumer = false;  // DemandOnly: its output has a consumer (a member wants it, or a wanted product uses it)
 };
 
 // The skill-up recipe: known, still below grey at `skill`, (needStock) stocked; cheapest, ties the lower spell.
@@ -318,6 +328,22 @@ struct SkillupOption
             best = static_cast<int>(i);
     }
     return best;
+}
+
+// DemandOnly (lane V): a skill-up recipe whose output has a consumer first; a consumer-less one (its output is sold:
+// `waste`) only as the last resort. Off: PickSkillup.
+[[nodiscard]] inline int PickSkillupFor(std::uint32_t skill, std::vector<SkillupOption> const& options, bool needStock,
+                                        bool demandOnly)
+{
+    if (demandOnly)
+    {
+        std::vector<SkillupOption> used = options;
+        for (SkillupOption& o : used)
+            o.known = o.known && o.consumer;
+        if (int const i = PickSkillup(skill, used, needStock); i >= 0)
+            return i;
+    }
+    return PickSkillup(skill, options, needStock);
 }
 
 // Donor room per cloth: each cloth under its own cap, so a full out-of-reach tier cannot starve a usable one.
@@ -681,7 +707,10 @@ struct StashStack
 enum class Line : std::uint8_t
 {
     Bags = 0,
-    Potions = 1
+    Potions = 1,
+    ClothGear = 2,   // lane V gear lines (bespoke runtime GearTick over ProductLine::gear)
+    MailGear = 3,    // data hook: no recipe table yet (a line with none turns itself off at load)
+    LeatherGear = 4
 };
 inline constexpr std::uint8_t kNoLine = 0xFF;
 
@@ -699,13 +728,15 @@ enum class Source : std::uint8_t
 enum class NeedRule : std::uint8_t
 {
     BagSlots = 0,    // empty / smaller equipped bag slots (RankNeeds)
-    PotionStock = 1  // member stock of its best usable tier below PotionTarget (RankStock)
+    PotionStock = 1, // member stock of its best usable tier below PotionTarget (RankStock)
+    GearSlots = 2    // equipment slots a known recipe's product upgrades (stock "item upgrade"; RankGearNeeds)
 };
 
 enum class Consumer : std::uint8_t
 {
     EquipBag = 0,     // the stock equip action wears a delivered bag
-    DrinkAtLowHp = 1  // the stock combat "potions" strategy: critical health -> healthstone -> healing potion
+    DrinkAtLowHp = 1, // the stock combat "potions" strategy: critical health -> healthstone -> healing potion
+    EquipGear = 2     // the stock "equip upgrades packet action" (non-combat "random" trigger) wears a delivered piece
 };
 
 struct Reagent
@@ -740,7 +771,86 @@ struct ProductLine
     Consumer consumer = Consumer::EquipBag;
     std::array<LineTier, kMaxLineTiers> tiers{};
     std::uint8_t tierCount = 0;  // 0 = a bespoke runtime (bags: the bolt -> bag chain over kTiers)
+    LineTier const* gear = nullptr;  // gear lines (NeedRule::GearSlots): recipe table, intermediates (reqLevel 0) first
+    std::uint8_t gearCount = 0;
 };
+
+// A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
+struct RecipeTable
+{
+    LineTier const* tiers = nullptr;
+    std::uint8_t tierCount = 0;
+};
+
+// Gear line recipe tables (lane V), checked against the 3.3.5 world DB (trainer_spell ReqSkillRank, item_template
+// RequiredLevel) and Spell.dbc / SkillLineAbility.dbc (outputs, reagent counts, TrivialSkillLineRankHigh = grey); the
+// runtime re-checks outputs, reagent counts and RequiredLevel against the loaded spells / items and turns a line off on
+// a mismatch. Only trainer-taught recipes (no BoP / world-drop patterns) whose reagents the house gets: routed cloth /
+// leather, the house's own intermediates (Craft) and vendor thread / dye (Vendor: the trade-supplies vendor near home).
+// Tailoring (trainer 74 = Stormwind 1346 / Orgrimmar 3363; vendor Stormwind 1347 / Orgrimmar 5817-3364): cloth armor
+// usable at L3-34. Skipped: boots (Light Leather is routed to the Tanners), leather / pearl / spider silk / elemental /
+// buckle / potion reagents, shirts and dresses (no stats), mageweave (not routed).
+inline constexpr LineTier kTailorGear[] = {
+    // intermediates (RequiredLevel 0, not equipment): the bolts
+    {2963, 2996, 1, 50, 0, {{{kLinen, 2, Source::Route}, {}, {}}}},
+    {2964, 2997, 75, 105, 0, {{{kWool, 3, Source::Route}, {}, {}}}},
+    {3839, 4305, 125, 145, 0, {{{kSilk, 4, Source::Route}, {}, {}}}},
+    // cloth armor: spell, product, skill, grey, RequiredLevel
+    {2385, 2568, 10, 70, 3, {{{2996, 1, Source::Craft}, {2320, 1, Source::Vendor}, {}}}},     // Brown Linen Vest
+    {8776, 7026, 15, 85, 4, {{{2996, 1, Source::Craft}, {2320, 1, Source::Vendor}, {}}}},     // Linen Belt
+    {3914, 4343, 30, 90, 5, {{{2996, 2, Source::Craft}, {2320, 1, Source::Vendor}, {}}}},     // Brown Linen Pants
+    {7623, 6238, 30, 90, 5, {{{2996, 3, Source::Craft}, {2320, 1, Source::Vendor}, {}}}},     // Brown Linen Robe
+    {3840, 4307, 35, 95, 5, {{{2996, 2, Source::Craft}, {2320, 1, Source::Vendor}, {}}}},     // Heavy Linen Gloves
+    {2397, 2580, 60, 120, 7, {{{2996, 2, Source::Craft}, {2320, 3, Source::Vendor}, {}}}},    // Reinforced Linen Cape
+    {3841, 4308, 60, 120, 7,
+     {{{2996, 3, Source::Craft}, {2320, 2, Source::Vendor}, {2605, 1, Source::Vendor}}}},     // Green Linen Bracers
+    {3842, 4309, 70, 130, 9, {{{2996, 4, Source::Craft}, {2321, 2, Source::Vendor}, {}}}},    // Handstitched Linen Britches
+    {12046, 10047, 75, 135, 10, {{{2996, 4, Source::Craft}, {2321, 1, Source::Vendor}, {}}}}, // Simple Kilt
+    {2402, 2584, 75, 135, 11, {{{2997, 1, Source::Craft}, {2321, 1, Source::Vendor}, {}}}},   // Woolen Cape
+    {2399, 2582, 85, 145, 12,
+     {{{2997, 2, Source::Craft}, {2321, 2, Source::Vendor}, {2605, 1, Source::Vendor}}}},     // Green Woolen Vest
+    {3843, 4310, 85, 145, 12, {{{2997, 3, Source::Craft}, {2321, 1, Source::Vendor}, {}}}},   // Heavy Woolen Gloves
+    {3848, 4314, 110, 170, 17, {{{2997, 3, Source::Craft}, {2321, 2, Source::Vendor}, {}}}},  // Double-stitched Woolen Shoulders
+    {3850, 4316, 110, 170, 17, {{{2997, 5, Source::Craft}, {2321, 4, Source::Vendor}, {}}}},  // Heavy Woolen Pants
+    {8758, 7046, 140, 190, 23,
+     {{{4305, 4, Source::Craft}, {6260, 2, Source::Vendor}, {2321, 3, Source::Vendor}}}},     // Azure Silk Pants
+    {8760, 7048, 145, 165, 24,
+     {{{4305, 2, Source::Craft}, {6260, 2, Source::Vendor}, {2321, 1, Source::Vendor}}}},     // Azure Silk Hood
+    {3859, 4324, 150, 200, 25, {{{4305, 5, Source::Craft}, {6260, 4, Source::Vendor}, {}}}},  // Azure Silk Vest
+    {8762, 7050, 160, 180, 27, {{{4305, 3, Source::Craft}, {2321, 2, Source::Vendor}, {}}}},  // Silk Headband
+    {8791, 7058, 185, 225, 30,
+     {{{4305, 4, Source::Craft}, {2604, 2, Source::Vendor}, {2321, 2, Source::Vendor}}}},     // Crimson Silk Vest
+    {8774, 7057, 180, 230, 31, {{{4305, 5, Source::Craft}, {4291, 2, Source::Vendor}, {}}}},  // Green Silken Shoulders
+    {8799, 7062, 195, 235, 34,
+     {{{4305, 4, Source::Craft}, {2604, 2, Source::Vendor}, {4291, 2, Source::Vendor}}}},     // Crimson Silk Pantaloons
+};
+// Leatherworking (trainer 61 = Stormwind 5564 / Orgrimmar 3365; same trade-supplies vendors): leather armor usable at
+// L5-25 from Light Leather (routed to the Tanners by RouteRaw) and its Medium / Heavy Leather. Skipped: cured hides (no
+// hide routing), elixir / spider silk / buckle / oil / elemental reagents, kits, quivers, ammo pouches.
+inline constexpr LineTier kLeatherGear[] = {
+    {20648, 2319, 100, 110, 0, {{{2318, 4, Source::Route}, {}, {}}}},  // Medium Leather
+    {20649, 4234, 150, 160, 0, {{{2319, 5, Source::Craft}, {}, {}}}},  // Heavy Leather
+    {2153, 2303, 15, 75, 5, {{{2318, 4, Source::Route}, {2320, 1, Source::Vendor}, {}}}},    // Handstitched Leather Pants
+    {3753, 4237, 25, 85, 5, {{{2318, 6, Source::Route}, {2320, 1, Source::Vendor}, {}}}},    // Handstitched Leather Belt
+    {2160, 2300, 40, 100, 7, {{{2318, 8, Source::Route}, {2320, 4, Source::Vendor}, {}}}},   // Embossed Leather Vest
+    {3756, 4239, 55, 115, 8, {{{2318, 3, Source::Route}, {2320, 2, Source::Vendor}, {}}}},   // Embossed Leather Gloves
+    {2162, 2310, 60, 120, 8, {{{2318, 5, Source::Route}, {2320, 2, Source::Vendor}, {}}}},   // Embossed Leather Cloak
+    {2161, 2309, 55, 115, 10, {{{2318, 8, Source::Route}, {2320, 5, Source::Vendor}, {}}}},  // Embossed Leather Boots
+    {9065, 7281, 70, 130, 9, {{{2318, 6, Source::Route}, {2320, 4, Source::Vendor}, {}}}},   // Light Leather Bracers
+    {3763, 4246, 80, 140, 11, {{{2318, 6, Source::Route}, {2320, 2, Source::Vendor}, {}}}},  // Fine Leather Belt
+    {2159, 2308, 85, 135, 10, {{{2318, 10, Source::Route}, {2321, 2, Source::Vendor}, {}}}}, // Fine Leather Cloak
+    {2167, 2315, 100, 150, 15,
+     {{{2319, 4, Source::Craft}, {2321, 2, Source::Vendor}, {4340, 1, Source::Vendor}}}},    // Dark Leather Boots
+    {2168, 2316, 110, 160, 17,
+     {{{2319, 8, Source::Craft}, {2321, 1, Source::Vendor}, {4340, 1, Source::Vendor}}}},    // Dark Leather Cloak
+    {7135, 5961, 115, 165, 18,
+     {{{2319, 12, Source::Craft}, {4340, 1, Source::Vendor}, {2321, 1, Source::Vendor}}}},   // Dark Leather Pants
+    {3764, 4247, 145, 195, 24, {{{2319, 14, Source::Craft}, {2321, 4, Source::Vendor}, {}}}}, // Hillman's Leather Gloves
+    {3760, 3719, 150, 190, 25, {{{4234, 5, Source::Craft}, {2321, 2, Source::Vendor}, {}}}},  // Hillman's Cloak
+};
+// Blacksmithing (MailGear, Smiths): no table yet. Its bars come from smelting (a Mining spell, not blacksmithing): a
+// Smiths line needs a smelting intermediate the artisan can cast (it must also be a miner) or bars routed / bought, and
+// the blacksmith trainers sit 390-565 yards from the homes (kStationYards 400). Add the rows here and its artisan config.
 
 // Bags: Weavers / tailoring 197, the lane B/C runtime (TeamTick / TierTick over kTiers), unchanged.
 // Potions (Brewers / alchemy 171), checked against the 3.3.5 world DB (item_template, trainer_spell of trainer
@@ -761,10 +871,19 @@ inline constexpr ProductLine kCatalog[] = {
        {2337, 858, 55, 125, 3, {{{118, 1, Source::Craft}, {2450, 1, Source::Route}, {}}}},
        {3447, 929, 110, 175, 12, {{{2453, 1, Source::Route}, {2450, 1, Source::Route}, {3372, 1, Source::Vendor}}}}}},
      3},
+    // Gear lines (lane V): learn = the profession ranks (Apprentice .. Artisan; for the bag house the bag chain's own
+    // Artisan.Learn already teaches them) plus every trainer-taught table recipe.
+    {Line::ClothGear, "cloth_gear", "ClothGear", "Weavers", "3911,3912,3913,12181", 197, NeedRule::GearSlots,
+     Consumer::EquipGear, {}, 0, kTailorGear, static_cast<std::uint8_t>(std::size(kTailorGear))},
+    {Line::MailGear, "mail_gear", "MailGear", "Smiths", "", 164, NeedRule::GearSlots, Consumer::EquipGear, {}, 0,
+     nullptr, 0},
+    {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
+     Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear))},
 };
 inline constexpr std::size_t kLineCount = std::size(kCatalog);
 
 [[nodiscard]] inline constexpr ProductLine const& LineOf(Line l) { return kCatalog[static_cast<std::size_t>(l)]; }
+[[nodiscard]] inline constexpr RecipeTable GearTable(ProductLine const& l) { return {l.gear, l.gearCount}; }
 
 // ",\"line\":\"bags\"": appended to every `supply` row (append-only schema).
 inline std::string LineField(Line l)
@@ -797,7 +916,8 @@ inline bool ParseProducts(std::string_view text, std::uint8_t& out)
 }
 
 // The tier whose product is `item`, else kNoTier.
-[[nodiscard]] inline std::uint8_t TierOf(ProductLine const& l, std::uint32_t item)
+template <typename L>
+[[nodiscard]] std::uint8_t TierOf(L const& l, std::uint32_t item)
 {
     for (std::uint8_t i = 0; i < l.tierCount; ++i)
         if (l.tiers[i].product == item)
@@ -819,8 +939,8 @@ inline bool ParseProducts(std::string_view text, std::uint8_t& out)
 // Casts of tier `i` the holdings make: every Route / Market / Craft reagent in hand (a Craft reagent also
 // counts the casts its own tier makes from the holdings); Vendor reagents are bought, never a limit.
 // have(item) -> units. Holdings shared by two levels are counted at both (not so in kCatalog).
-template <typename Have>
-[[nodiscard]] std::uint32_t Casts(ProductLine const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
+template <typename L, typename Have>
+[[nodiscard]] std::uint32_t Casts(L const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
 {
     std::uint64_t best = 0xFFFFFFFFu;
     if (i >= l.tierCount || !depth)
@@ -847,8 +967,8 @@ struct Lack
     Source source = Source::Route;
 };
 
-template <typename Have>
-void AddLacks(ProductLine const& l, std::size_t i, std::uint64_t n, Have&& have, std::vector<Lack>& out,
+template <typename L, typename Have>
+void AddLacks(L const& l, std::size_t i, std::uint64_t n, Have&& have, std::vector<Lack>& out,
               std::size_t depth = kMaxLineTiers)
 {
     if (i >= l.tierCount || !depth || !n)
@@ -874,8 +994,8 @@ void AddLacks(ProductLine const& l, std::size_t i, std::uint64_t n, Have&& have,
     }
 }
 
-template <typename Have>
-[[nodiscard]] std::vector<Lack> Lacks(ProductLine const& l, std::size_t i, std::uint64_t n, Have&& have)
+template <typename L, typename Have>
+[[nodiscard]] std::vector<Lack> Lacks(L const& l, std::size_t i, std::uint64_t n, Have&& have)
 {
     std::vector<Lack> out;
     AddLacks(l, i, n, have, out);
@@ -884,8 +1004,8 @@ template <typename Have>
 
 // The next cast toward tier `i`: `i` when every reagent is in hand, else the tier of a short Craft reagent whose
 // own next cast is possible, else kNoTier. have(item) -> units in the artisan's bags.
-template <typename Have>
-[[nodiscard]] std::uint8_t NextCast(ProductLine const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
+template <typename L, typename Have>
+[[nodiscard]] std::uint8_t NextCast(L const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
 {
     if (i >= l.tierCount || !depth)
         return kNoTier;
@@ -1200,7 +1320,8 @@ enum class Reason : std::uint8_t
     Sold = 12,    // Market: a rep's auction sold; its proceeds went to the house bank (copper = proceeds)
     Outfit = 13,  // Outfit: a member bought a gathering tool at a vendor with its own gold (copper = price)
     Junk = 14,    // artisan make-room: op vendor (count = stacks sold, copper = proceeds) | destroy (item, count)
-    Cancel = 15   // Market: rep took back its own listing of a wanted item (copper = its buyout; item by mail)
+    Cancel = 15,  // Market: rep took back its own listing of a wanted item (copper = its buyout; item by mail)
+    Waste = 16    // DemandOnly: a surplus sale (house output nobody wanted), in place of `surplus`
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -1223,6 +1344,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Outfit: return "outfit";
         case Reason::Junk: return "junk";
         case Reason::Cancel: return "cancel";
+        case Reason::Waste: return "waste";
     }
     return "refused";
 }
@@ -1330,6 +1452,157 @@ enum class CodVerdict : std::uint8_t
     return room ? CodVerdict::Accept : CodVerdict::Wait;
 }
 
+// ---- need-driven production (lane V, docs/SUPPLY_CHAIN_PLAN.md; owner 2026-09-27: artisans make only useful things,
+// houses supply gear) ----
+
+// DemandOnly: a sale of house output nobody wanted is `waste`, else `surplus`.
+[[nodiscard]] inline Reason SaleReason(bool demandOnly) { return demandOnly ? Reason::Waste : Reason::Surplus; }
+
+// ",\"consumer\":guid" (DemandOnly order / deliver rows, every gear line row; 0 = none named yet: rep stock).
+inline std::string ConsumerField(std::uint32_t guid) { return ",\"consumer\":" + std::to_string(guid); }
+
+// "1,2, 3" -> guids in config order (AutoWow.Supply.PriorityGuids). Empty text = empty list. False (out untouched) on a
+// bad token.
+inline bool ParseGuids(std::string_view text, std::vector<std::uint32_t>& out)
+{
+    std::vector<std::uint32_t> v;
+    bool ok = true;
+    if (!AutoWowGuilds::detail::Trim(text).empty())
+        AutoWowGuilds::detail::Split(text, ',', [&](std::string_view token) {
+            std::uint32_t g = 0;
+            ok = ok && AutoWowGuilds::detail::ParseU32(AutoWowGuilds::detail::Trim(token), g) && g;
+            v.push_back(g);
+        });
+    if (!ok)
+        return false;
+    out = std::move(v);
+    return true;
+}
+
+inline constexpr std::uint32_t kNoPriority = 0xFFFFFFFFu;
+
+// The recipient's place in AutoWow.Supply.PriorityGuids (the overlord / guild masters' list), else kNoPriority.
+[[nodiscard]] inline std::uint32_t PriorityOf(std::vector<std::uint32_t> const& list, std::uint32_t guid)
+{
+    auto const it = std::find(list.begin(), list.end(), guid);
+    return it == list.end() ? kNoPriority : static_cast<std::uint32_t>(it - list.begin());
+}
+
+// A gear line's equipment recipes, best first: highest product item level, ties the lower spell. ilvl[i] = 0 = not
+// equipment (an intermediate): left out.
+[[nodiscard]] inline std::vector<std::uint8_t> RankGearRecipes(RecipeTable const& g, std::vector<std::uint32_t> const& ilvl)
+{
+    std::vector<std::uint8_t> out;
+    for (std::uint8_t i = 0; i < g.tierCount && i < ilvl.size(); ++i)
+        if (ilvl[i])
+            out.push_back(i);
+    std::sort(out.begin(), out.end(), [&](std::uint8_t a, std::uint8_t b)
+              { return ilvl[a] != ilvl[b] ? ilvl[a] > ilvl[b] : g.tiers[a].spell < g.tiers[b].spell; });
+    return out;
+}
+
+// One equipment slot of a recipient a known recipe's product upgrades (the stock "item upgrade" value: EQUIP into an
+// empty slot or REPLACE the worn piece, class / spec weights, armor type, level). ilvl = the recipient's summed
+// equipped item level (the worst geared rank first).
+struct GearNeed
+{
+    std::uint32_t guid = 0;
+    std::uint8_t recipe = kNoTier;  // gear table index
+    std::uint8_t slot = 0;          // EQUIPMENT_SLOT_*
+    std::uint32_t priority = kNoPriority;
+    std::uint32_t ilvl = 0;
+};
+
+// Priority list first (its order), then the worst geared (lowest summed item level), ties the lower guid, then slot.
+[[nodiscard]] inline std::vector<GearNeed> RankGearNeeds(std::vector<GearNeed> needs)
+{
+    std::sort(needs.begin(), needs.end(), [](GearNeed const& a, GearNeed const& b)
+              { return std::tie(a.priority, a.ilvl, a.guid, a.slot, a.recipe) <
+                       std::tie(b.priority, b.ilvl, b.guid, b.slot, b.recipe); });
+    return needs;
+}
+
+// A gear order entry: units of one recipe still to make and ship; consumer = its first ranked need.
+struct GearOrder
+{
+    std::uint8_t recipe = kNoTier;
+    std::uint32_t units = 0;
+    std::uint32_t consumer = 0;
+};
+
+// The order for the top `maxNeeds` ranked needs: per recipe (first-ranked order) its need count plus `stock` for the
+// rep (RepStockPerItem), minus the finished units the house holds (held[recipe]). Never more than demand + stock.
+[[nodiscard]] inline std::vector<GearOrder> PlanGearOrders(std::vector<GearNeed> const& ranked,
+                                                           std::vector<std::uint32_t> const& held,
+                                                           std::uint32_t maxNeeds, std::uint32_t stock)
+{
+    std::vector<GearOrder> out;
+    for (std::size_t k = 0; k < ranked.size() && k < maxNeeds; ++k)
+    {
+        auto const it = std::find_if(out.begin(), out.end(), [&](GearOrder const& o) { return o.recipe == ranked[k].recipe; });
+        if (it == out.end())
+            out.push_back({ranked[k].recipe, 1, ranked[k].guid});
+        else
+            ++it->units;
+    }
+    for (GearOrder& o : out)
+    {
+        std::uint64_t const target = std::uint64_t(o.units) + stock;
+        std::uint32_t const have = o.recipe < held.size() ? held[o.recipe] : 0;
+        o.units = target > have ? static_cast<std::uint32_t>(std::min<std::uint64_t>(target - have, 0xFFFFFFFFu)) : 0;
+    }
+    out.erase(std::remove_if(out.begin(), out.end(), [](GearOrder const& o) { return !o.units; }), out.end());
+    return out;
+}
+
+// The order entry the artisan works now: the first still short (toMake > 0) the house can cast now (casts > 0), else
+// the first short one (its materials are on the way). -1 = none.
+[[nodiscard]] inline int PickGearTarget(std::vector<std::uint32_t> const& toMake, std::vector<std::uint32_t> const& casts)
+{
+    int first = -1;
+    for (std::size_t i = 0; i < toMake.size(); ++i)
+    {
+        if (!toMake[i])
+            continue;
+        if (i < casts.size() && casts[i])
+            return static_cast<int>(i);
+        if (first < 0)
+            first = static_cast<int>(i);
+    }
+    return first;
+}
+
+// A finished piece a sender holds: its recipe and item guid-low.
+struct GearItem
+{
+    std::uint8_t recipe = kNoTier;
+    std::uint32_t guid = 0;
+};
+
+struct GearDelivery
+{
+    std::size_t need = 0;   // index into the ranked needs
+    std::uint32_t item = 0; // item guid-low
+};
+
+// The sender's pieces (ascending guid) to the ranked needs in order: one piece per need, of its recipe.
+[[nodiscard]] inline std::vector<GearDelivery> PlanGearDeliveries(std::vector<GearNeed> const& ranked,
+                                                                  std::vector<GearItem> items)
+{
+    std::sort(items.begin(), items.end(), [](GearItem const& a, GearItem const& b) { return a.guid < b.guid; });
+    std::vector<bool> used(items.size(), false);
+    std::vector<GearDelivery> out;
+    for (std::size_t k = 0; k < ranked.size(); ++k)
+        for (std::size_t j = 0; j < items.size(); ++j)
+            if (!used[j] && items[j].recipe == ranked[k].recipe)
+            {
+                used[j] = true;
+                out.push_back({k, items[j].guid});
+                break;
+            }
+    return out;
+}
+
 // ---- runtime (AutoWowSupply.cpp). ----
 namespace detail
 {
@@ -1353,6 +1626,7 @@ struct RoleInfo
     bool bagHouse = false;  // its house makes the V1 product (only that artisan crafts)
     Home home;
     std::uint8_t line = kNoLine;  // the enabled catalog line (tierCount > 0) its house makes, else kNoLine
+    std::uint8_t gear = kNoLine;  // the enabled gear line (Products cloth_gear / leather_gear) its house makes
 };
 
 // ---- artisan upkeep (lane F) ----
@@ -1367,7 +1641,8 @@ struct RoleInfo
 }
 
 // A material or product of a catalog line (any tier's product or reagent).
-[[nodiscard]] inline bool LineItem(ProductLine const& l, std::uint32_t item)
+template <typename L>
+[[nodiscard]] bool LineItem(L const& l, std::uint32_t item)
 {
     for (std::size_t i = 0; i < l.tierCount; ++i)
     {
@@ -1530,9 +1805,10 @@ std::vector<std::uint32_t> const& LearnSpells();  // trainer spell ids the artis
 void SetArtisanWant(bool alliance, std::uint64_t copper, bool canBag);
 // Map thread: the rep's surplus listing / sale happened (the world tick recomputes it).
 void ClearSurplus(bool alliance);
-// Emit a `supply` row (any thread; no-op unless the player is a recorded bot) and a [Supply] log line.
+// Emit a `supply` row (any thread; no-op unless the player is a recorded bot) and a [Supply] log line. consumer >= 0
+// appends ConsumerField; DemandOnly names a deliver row's consumer itself (the receiver unless a role bot, else 0).
 void Emit(Player* p, Reason r, std::uint32_t oid, std::uint32_t item, std::uint32_t count, std::uint64_t copper,
-          std::uint32_t from, std::uint32_t to, char const* op = nullptr);
+          std::uint32_t from, std::uint32_t to, char const* op = nullptr, std::int64_t consumer = -1);
 // Errand sell stop (map thread), before any sell: a cohort non-tailor mails its cloth to the bag house rep of
 // its team (queued to the world thread) and the stacks are held back from this stop's sales.
 void RouteCloth(Player* bot);
@@ -1564,7 +1840,12 @@ void SetLineArtisanWant(Line l, bool alliance, std::uint64_t copper);
 void ClearLineSurplus(Line l, bool alliance);
 // Emit a `supply` row of a line (Emit = the bags line).
 void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item, std::uint32_t count,
-              std::uint64_t copper, std::uint32_t from, std::uint32_t to, char const* op = nullptr);
+              std::uint64_t copper, std::uint32_t from, std::uint32_t to, char const* op = nullptr,
+              std::int64_t consumer = -1);
+
+// ---- need-driven production (lane V) ----
+inline bool DemandOnly() { return detail::gEnabled && detail::gParams.demandOnly; }
+inline Reason SurplusReason() { return SaleReason(DemandOnly()); }
 
 // ---- material demand (lane G, read by AutoWow.Squad) ----
 // The team's routing rooms of materials the houses can use now (any thread): cloth tiers within the bag artisan's

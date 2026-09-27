@@ -459,6 +459,8 @@ void LoadConfig();
 // World thread: the squad party, demand, stint start / end, together flag.
 void WorldUpdate(std::uint32_t diff);
 bool IsMember(std::uint32_t guid);
+// The team's configured roster (guid ascending; empty with the flag off). World thread (read-only after LoadConfig).
+std::vector<std::uint32_t> Roster(bool alliance);
 // The member's team state (phase None for a non-member).
 TeamState SnapshotOf(std::uint32_t guid);
 // Zone progression (map thread): true = the member holds its tier (a `hold` row at most every holdLogMs).

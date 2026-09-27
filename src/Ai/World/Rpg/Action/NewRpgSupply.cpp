@@ -56,7 +56,9 @@ enum class Task : std::uint8_t
     Market = 7,  // AutoWow.Supply.Market: the bag-house rep lists house surplus / buys artisan materials
     Junk = 8,    // artisan make-room: sell the sellable junk at the vendor
     Bag = 9,     // artisan make-room: buy and wear a kPouch (no bag worn)
-    Bank = 10    // RepStore: the rep's bank stash / refill at the banker near home
+    Bank = 10,   // RepStore: the rep's bank stash / refill at the banker near home
+    GearTrainer = 11,  // gear line artisan: its line's due recipes / ranks at the line trainer
+    GearVendor = 12    // gear line artisan: its target's vendor reagents (thread, dye) at the line vendor
 };
 
 constexpr std::uint32_t kHearthstone = 6948;
@@ -77,6 +79,7 @@ struct RoleState
     bool apprentice = false;    // last seen below ArtisanMinLevel (logs the switch once each way)
     bool craftBlocked = false;  // the last craft had no room for its product (make-room wants a slot)
     std::uint64_t bagGrantMs = 0;  // next bag grant request (at most one per OutfitCheckMs: a refusal is a row)
+    std::uint8_t castLine = kNoLine;  // the gear line of the cast in flight (its craft row), else kNoLine
 };
 
 // Map threads; only role bots (bounded by the configured roles) are stored.
@@ -98,9 +101,9 @@ void StoreRole(std::uint32_t guid, RoleState const& s)
 
 std::uint32_t LooseCount(Player* bot, std::uint32_t entry)
 {
-    // GetItemCount counts equipped items too; the only equippable entry here is the bag.
+    // GetItemCount counts equipped items too: worn bags, and a gear line piece the artisan wears, are not stock.
     std::uint32_t n = bot->GetItemCount(entry, false);
-    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
         if (Item* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot); worn && worn->GetEntry() == entry)
             --n;
     return n;
@@ -192,8 +195,8 @@ bool QuestNeeds(Player* bot, std::uint32_t entry)
 }
 
 // The make-room view of the artisan's loose stacks (backpack and worn bags): house = its line's items, else the bag
-// tiers' materials.
-std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line)
+// tiers' materials; plus its gear line's reagents, intermediates and pieces.
+std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line, ProductLine const* gear = nullptr)
 {
     std::vector<BagStack> out;
     auto add = [&](Item* item)
@@ -204,7 +207,8 @@ std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line)
         BagStack b;
         b.guid = static_cast<std::uint32_t>(item->GetGUID().GetCounter());
         b.sellPrice = proto->SellPrice;
-        b.house = line ? LineItem(*line, proto->ItemId) : HouseMaterial(proto->ItemId);
+        b.house = (line ? LineItem(*line, proto->ItemId) : HouseMaterial(proto->ItemId)) ||
+                  (gear && LineItem(GearTable(*gear), proto->ItemId));
         b.quest = QuestNeeds(bot, proto->ItemId);
         b.keep = proto->ItemId == kHearthstone || proto->TotemCategory || proto->Class == ITEM_CLASS_CONTAINER ||
                  (proto->Class == ITEM_CLASS_WEAPON && proto->SubClass == ITEM_SUBCLASS_WEAPON_FISHING_POLE) ||
@@ -221,9 +225,9 @@ std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line)
 }
 
 // RepStore: the rep's bank moves (item guid lows). Bags over 75% full: loose trade goods beyond RepKeep per item go
-// to the bank (PlanStash, within its free slots); else the house's materials (the bag tiers' or its line's) under
-// RepKeep come back (PlanUnstash). Empty when nothing is due.
-std::vector<std::uint32_t> BankMoves(Player* bot, ProductLine const* line, bool bagHouse)
+// to the bank (PlanStash, within its free slots); else the house's materials (the bag tiers' or its line's, and its
+// gear line's) under RepKeep come back (PlanUnstash). Empty when nothing is due.
+std::vector<std::uint32_t> BankMoves(Player* bot, ProductLine const* line, bool bagHouse, ProductLine const* gear = nullptr)
 {
     std::vector<StashStack> loose, banked;
     std::uint32_t total = INVENTORY_SLOT_ITEM_END - INVENTORY_SLOT_ITEM_START, bankFree = 0;
@@ -263,7 +267,10 @@ std::vector<std::uint32_t> BankMoves(Player* bot, ProductLine const* line, bool 
     if (StashDue(free, total))
         return PlanStash(std::move(loose), keep, bankFree);
     banked.erase(std::remove_if(banked.begin(), banked.end(), [&](StashStack const& b)
-                                { return line ? !LineItem(*line, b.item) : !(bagHouse && HouseMaterial(b.item)); }),
+                                {
+                                    return (line ? !LineItem(*line, b.item) : !(bagHouse && HouseMaterial(b.item))) &&
+                                           !(gear && LineItem(GearTable(*gear), b.item));
+                                }),
                  banked.end());
     return PlanUnstash(std::move(banked), loose, keep, free, total);
 }
@@ -418,16 +425,27 @@ bool NewRpgBaseAction::SupplyStep()
     ProductLine const& L = LineOf(lineId);
     LineView const lview = lined ? LineViewOf(lineId, role.alliance) : LineView{};
     Stations const& lst = lined ? LineStationsOf(lineId, role.alliance) : st;
+    // A gear line's artisan (lane V, Products cloth_gear / leather_gear): the line's view, stations and table.
+    bool const geared = role.gear != kNoLine && role.role == Role::Artisan;
+    Line const gearId = geared ? static_cast<Line>(role.gear) : Line::Bags;
+    LineView const gview = geared ? LineViewOf(gearId, role.alliance) : LineView{};
+    Stations const& gst = geared ? LineStationsOf(gearId, role.alliance) : st;
+    RecipeTable const gtab = geared ? GearTable(LineOf(gearId)) : RecipeTable{};
+    ProductLine const* const repGear = role.gear != kNoLine ? &LineOf(static_cast<Line>(role.gear)) : nullptr;
 
     // A finished craft cast: count what it made.
     if (s.castSpell)
     {
         std::uint32_t const have = LooseCount(bot, s.castItem);
-        if (have > s.castBefore && lined)
+        if (have > s.castBefore && s.castLine != kNoLine)
+            EmitLine(static_cast<Line>(s.castLine), bot, Reason::Craft, gview.orderId, s.castItem, have - s.castBefore, 0,
+                     guid, guid);
+        else if (have > s.castBefore && lined)
             EmitLine(lineId, bot, Reason::Craft, lview.orderId, s.castItem, have - s.castBefore, 0, guid, guid);
         else if (have > s.castBefore)
             Emit(bot, Reason::Craft, view.orderId, s.castItem, have - s.castBefore, 0, guid, guid);
         s.castSpell = 0;
+        s.castLine = kNoLine;
     }
 
     // Home is on another map: the portal fallback (owner ruling 2026-09-25: portals acceptable, logged).
@@ -454,7 +472,7 @@ bool NewRpgBaseAction::SupplyStep()
         else
             Emit(bot, r, 0, item, count, copper, guid, 0, op);
     };
-    bool const crafter = role.role == Role::Artisan && (artisan || lined);
+    bool const crafter = role.role == Role::Artisan && (artisan || lined || geared);
 
     std::int64_t const dx = std::int64_t(bot->GetPositionX()) - home.x, dy = std::int64_t(bot->GetPositionY()) - home.y;
     bool const atHome = dx * dx + dy * dy <= std::int64_t(p.homeYards) * p.homeYards;
@@ -470,7 +488,8 @@ bool NewRpgBaseAction::SupplyStep()
         std::uint32_t const roomWant = crafter ? RoomTarget(p.artisanFreeSlots, s.craftBlocked) : 0;
         if (roomWant && bot->GetFreeInventorySpace() < roomWant)
         {
-            RoomPlan const plan = PlanRoom(BagStacksOf(bot, lined ? &L : nullptr), bot->GetFreeInventorySpace(), roomWant);
+            RoomPlan const plan = PlanRoom(BagStacksOf(bot, lined ? &L : nullptr, geared ? &LineOf(gearId) : nullptr),
+                                           bot->GetFreeInventorySpace(), roomWant);
             for (std::uint32_t const g : plan.destroy)
                 if (Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g)))
                 {
@@ -501,7 +520,7 @@ bool NewRpgBaseAction::SupplyStep()
         // RepStore: the rep's bank stash (bags over 75% full) or refill (house materials under RepKeep) at the banker
         // near home, before the mailbox (soak-s48-full-r1: the Weavers hub, 16 backpack slots).
         if (next == Task::None && role.role == Role::Rep && RepStore() && (lined ? lst : st).banker.entry &&
-            !BankMoves(bot, lined ? &L : nullptr, role.bagHouse).empty())
+            !BankMoves(bot, lined ? &L : nullptr, role.bagHouse, repGear).empty())
             next = Task::Bank;
         // Only a mail it can take something from (or, DeleteEmptyMail, emptied mail to delete: soak-s48-full-r1, 120
         // of them blocked the rep's box): full bags otherwise re-pick the mailbox every tick.
@@ -569,6 +588,30 @@ bool NewRpgBaseAction::SupplyStep()
             if (next == Task::None && buy && bot->GetMoney() >= cheapest && lst.threadVendor.entry)
                 next = Task::Thread;
         }
+        if (geared)
+        {
+            // Gear line artisan: its line's due trainer spells, the target's vendor reagents below what the view asks
+            // it to hold, postage for its pieces; the treasury tops up what its purse lacks (GearTick).
+            bool learnAffordable = false;
+            std::uint64_t const learnCost = gst.trainer.entry
+                ? LearnCost(bot, sObjectMgr->GetTrainer(gst.trainer.entry), learnAffordable, LineLearnSpells(gearId))
+                : 0;
+            std::uint64_t buy = 0, cheapest = 0;
+            for (MarketWant const& w : gview.vendor)
+                if (std::uint32_t const miss = Short(w.units, LooseCount(bot, w.item)))
+                {
+                    buy += std::uint64_t(miss) * w.sellPrice;  // sellPrice = the vendor price per unit here
+                    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(w.item);
+                    std::uint64_t const lot = proto ? proto->BuyPrice : 0;
+                    cheapest = cheapest ? std::min(cheapest, lot) : lot;
+                }
+            std::uint64_t const want = buy + learnCost + AutoWowGuilds::Postage(gview.remaining ? gview.remaining : 1);
+            SetLineArtisanWant(gearId, role.alliance, want > bot->GetMoney() ? want - bot->GetMoney() : 0);
+            if (next == Task::None && learnAffordable)
+                next = Task::GearTrainer;
+            if (next == Task::None && buy && bot->GetMoney() >= cheapest && gst.threadVendor.entry)
+                next = Task::GearVendor;
+        }
         std::uint32_t lineSurplus = 0;
         for (std::uint32_t const u : lview.surplus)
             lineSurplus += u;
@@ -618,7 +661,9 @@ bool NewRpgBaseAction::SupplyStep()
     {
         Station const* station = s.task == Task::Bag
             ? (BagVendorOf(role.alliance).entry ? &BagVendorOf(role.alliance) : nullptr)
-            : StationFor(lined ? lst : st, s.task);
+            : s.task == Task::GearTrainer ? StationFor(gst, Task::Trainer)
+            : s.task == Task::GearVendor  ? StationFor(gst, Task::Thread)
+                                          : StationFor(lined ? lst : st, s.task);
         if (!station || now - s.taskSinceMs > kTaskTimeoutMs)
         {
             LOG_INFO("playerbots", "[Supply] bot={} drop task={} (station={} timeout)", bot->GetName(), uint32(s.task),
@@ -725,6 +770,47 @@ bool NewRpgBaseAction::SupplyStep()
                          LooseCount(bot, threadItem), m0 - bot->GetMoney());
                 break;
             }
+            case Task::GearTrainer:
+            {
+                Creature* npc = target->ToCreature();
+                Trainer::Trainer* trainer = sObjectMgr->GetTrainer(npc->GetEntry());
+                std::uint64_t const m0 = bot->GetMoney();
+                for (std::uint32_t const id : LineLearnSpells(gearId))
+                    if (trainer)
+                        for (Trainer::Spell const& sp : trainer->GetSpells())
+                            if (sp.SpellId == id && trainer->CanTeachSpell(bot, &sp) && sp.MoneyCost <= bot->GetMoney())
+                                trainer->TeachSpell(npc, bot, id);  // stock path: validity, reputation price, money
+                if (m0 > bot->GetMoney())
+                    AutoWowTrade::NoteFee(bot, AutoWowTrade::FeeKind::Train, m0 - bot->GetMoney());
+                LOG_INFO("playerbots", "[Supply] bot={} trained at={} spent={} line={} skill={}/{}", bot->GetName(),
+                         npc->GetEntry(), m0 - bot->GetMoney(), LineOf(gearId).name,
+                         bot->GetSkillValue(LineOf(gearId).skillLine), bot->GetMaxSkillValue(LineOf(gearId).skillLine));
+                break;
+            }
+            case Task::GearVendor:
+            {
+                // Each Vendor reagent up to what the view asks it to hold (a purchase is one vendor lot of BuyCount
+                // units; at most 60 purchases per item per visit).
+                Creature* npc = target->ToCreature();
+                VendorItemData const* list = npc->GetVendorItems();
+                std::uint64_t const m0 = bot->GetMoney();
+                for (MarketWant const& w : gview.vendor)
+                    for (uint32 i = 0; list && i < list->GetItemCount(); ++i)
+                        if (VendorItem const* vi = list->GetItem(i); vi && vi->item == w.item && !vi->ExtendedCost)
+                        {
+                            for (std::uint32_t k = 0; k < 60 && LooseCount(bot, w.item) < w.units; ++k)
+                            {
+                                std::uint32_t const before = LooseCount(bot, w.item);
+                                bot->BuyItemFromVendorSlot(npc->GetGUID(), i, w.item, 1, NULL_BAG, NULL_SLOT);
+                                if (LooseCount(bot, w.item) <= before)
+                                    break;  // money, bags or stock
+                            }
+                            break;
+                        }
+                LOG_INFO("playerbots", "[Supply] bot={} line={} bought vendor reagents spent={}", bot->GetName(),
+                         LineOf(gearId).name, m0 - bot->GetMoney());
+                break;
+            }
             case Task::Auction:
             {
                 if (lined)
@@ -734,7 +820,7 @@ bool NewRpgBaseAction::SupplyStep()
                     if (!goods.empty())
                         AutoWowTrade::PostStacks(bot, target->ToCreature(), goods, &planned);
                     for (AutoWowTrade::Post const& post : planned)
-                        EmitLine(lineId, bot, Reason::Surplus, lview.orderId, post.entry, post.count, post.buyout, guid,
+                        EmitLine(lineId, bot, SurplusReason(), lview.orderId, post.entry, post.count, post.buyout, guid,
                                  0, "auction");
                     if (!planned.empty())
                     {
@@ -757,7 +843,7 @@ bool NewRpgBaseAction::SupplyStep()
                     if (!bags.empty())
                         AutoWowTrade::PostStacks(bot, target->ToCreature(), bags, &planned);
                     for (AutoWowTrade::Post const& post : planned)
-                        Emit(bot, Reason::Surplus, view.orderId, post.entry, post.count, post.buyout, guid, 0, "auction");
+                        Emit(bot, SurplusReason(), view.orderId, post.entry, post.count, post.buyout, guid, 0, "auction");
                     if (!planned.empty())
                     {
                         ClearSurplus(role.alliance);
@@ -773,7 +859,7 @@ bool NewRpgBaseAction::SupplyStep()
                     bags.empty() ? 0 : AutoWowTrade::PostStacks(bot, target->ToCreature(), bags);
                 if (posted)
                 {
-                    Emit(bot, Reason::Surplus, view.orderId, BagItem(), posted, 0, guid, 0, "auction");
+                    Emit(bot, SurplusReason(), view.orderId, BagItem(), posted, 0, guid, 0, "auction");
                     ClearSurplus(role.alliance);
                     break;
                 }
@@ -800,10 +886,10 @@ bool NewRpgBaseAction::SupplyStep()
                     surplus = LooseGuids(bot, BagItem(), view.surplus);
                 std::uint32_t const sold = SellGuids(bot, npc, surplus);
                 if (sold && lined)
-                    EmitLine(lineId, bot, Reason::Surplus, lview.orderId, 0, sold, bot->GetMoney() - m0, guid, 0,
+                    EmitLine(lineId, bot, SurplusReason(), lview.orderId, 0, sold, bot->GetMoney() - m0, guid, 0,
                              "vendor");  // mixed tiers (item 0; count = stacks)
                 else if (sold)
-                    Emit(bot, Reason::Surplus, view.orderId, Tiers() ? 0 : BagItem(), sold, bot->GetMoney() - m0, guid,
+                    Emit(bot, SurplusReason(), view.orderId, Tiers() ? 0 : BagItem(), sold, bot->GetMoney() - m0, guid,
                          0, "vendor");  // Tiers: mixed bag items (item 0)
                 if (lined)
                     ClearLineSurplus(lineId, role.alliance);
@@ -814,7 +900,8 @@ bool NewRpgBaseAction::SupplyStep()
             case Task::Junk:
             {
                 // Make-room sale: the sellable junk, re-planned here (bags may have changed on the way).
-                std::vector<std::uint32_t> const sell = PlanRoom(BagStacksOf(bot, lined ? &L : nullptr),
+                std::vector<std::uint32_t> const sell = PlanRoom(BagStacksOf(bot, lined ? &L : nullptr,
+                                                                             geared ? &LineOf(gearId) : nullptr),
                                                                  bot->GetFreeInventorySpace(),
                                                                  RoomTarget(p.artisanFreeSlots, s.craftBlocked)).sell;
                 std::uint64_t const m0 = bot->GetMoney();
@@ -856,7 +943,7 @@ bool NewRpgBaseAction::SupplyStep()
                 Creature* npc = target->ToCreature();
                 bot->GetSession()->SendShowBank(npc->GetGUID());
                 std::uint32_t deposited = 0, withdrawn = 0;
-                for (std::uint32_t const g : BankMoves(bot, lined ? &L : nullptr, role.bagHouse))
+                for (std::uint32_t const g : BankMoves(bot, lined ? &L : nullptr, role.bagHouse, repGear))
                 {
                     ObjectGuid const og = ObjectGuid::Create<HighGuid::Item>(g);
                     Item* item = bot->GetItemByGuid(og);
@@ -938,10 +1025,10 @@ bool NewRpgBaseAction::SupplyStep()
     // At home, nothing to fetch: the artisan crafts (one cast at a time; the core consumes the reagents and
     // rolls the skill-up). The product needs room first (a free slot or a partial stack), else the next decision
     // makes room (RoomTarget: a slot at least).
-    auto craft = [&](std::uint32_t spell, std::uint32_t item)
+    auto craft = [&](std::uint32_t spell, std::uint32_t item) -> bool
     {
         if (!spell || !bot->HasSpell(spell) || !botAI->CanCastSpell(spell, bot, true))
-            return;
+            return false;
         ItemPosCountVec dest;
         bool const room = bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK;
         if (room == s.craftBlocked)
@@ -953,15 +1040,31 @@ bool NewRpgBaseAction::SupplyStep()
                 s.nextMs = std::min(s.nextMs, now);  // make room at once
         }
         if (!room)
-            return;
+            return false;
         std::uint32_t const before = LooseCount(bot, item);
-        if (botAI->CastSpell(spell, bot))
-        {
-            s.castSpell = spell;
-            s.castItem = item;
-            s.castBefore = before;
-        }
+        if (!botAI->CastSpell(spell, bot))
+            return false;
+        s.castSpell = spell;
+        s.castItem = item;
+        s.castBefore = before;
+        return true;
     };
+    // Gear line: the target order entry's piece while the view wants more than the finished ones in hand; NextCast makes
+    // a short intermediate (a bolt, Medium Leather) first. False = nothing cast.
+    auto gearCraft = [&]() -> bool
+    {
+        std::uint8_t const r = gview.product;
+        if (!geared || r >= gtab.tierCount || gview.remaining <= LooseCount(bot, gtab.tiers[r].product) ||
+            !bot->HasSpell(gtab.tiers[r].spell))
+            return false;
+        std::uint8_t const c = NextCast(gtab, r, [&](std::uint32_t item) { return LooseCount(bot, item); });
+        if (c == kNoTier || !craft(gtab.tiers[c].spell, gtab.tiers[c].product))
+            return false;
+        s.castLine = static_cast<std::uint8_t>(gearId);
+        return true;
+    };
+    // An open gear order the artisan works (DemandOnly: no consumer-less skill-up eats its reagents meanwhile).
+    bool const gearOpen = geared && gview.product != kNoTier && gview.remaining;
     if (artisan && atHome && Tiers())
     {
         // Tiers: the product order first, else the skill-up recipe.
@@ -980,7 +1083,10 @@ bool NewRpgBaseAction::SupplyStep()
         Tier const* tier = remaining ? product : skillup;
         std::uint32_t const spell = !tier ? 0 : c == Craft::Bag ? tier->bagSpell : c == Craft::Bolt ? tier->boltSpell : 0;
         std::uint32_t const item = !tier ? 0 : c == Craft::Bag ? tier->bag : tier->bolt;
-        craft(spell, item);
+        // The bag order first, then the gear order, then the skill-up (DemandOnly: none while a gear order is open).
+        if ((remaining && c != Craft::None) || !gearCraft())
+            if (remaining || !gearOpen || !DemandOnly())
+                craft(spell, item);
     }
     else if (lined && role.role == Role::Artisan && atHome)
     {
@@ -1003,8 +1109,11 @@ bool NewRpgBaseAction::SupplyStep()
                                   LooseCount(bot, BoltItem()), LooseCount(bot, ThreadItem()), LooseCount(bot, BagItem()));
         std::uint32_t const spell = c == Craft::Bag ? BagSpell() : c == Craft::Bolt ? BoltSpell() : 0;
         std::uint32_t const item = c == Craft::Bag ? BagItem() : BoltItem();
-        craft(spell, item);
+        if (c == Craft::Bag || !gearCraft())  // a bag order's cast first, the gear order before a bolt
+            craft(spell, item);
     }
+    else if (geared && atHome)
+        gearCraft();
     StoreRole(guid, s);
     return true;
 }
