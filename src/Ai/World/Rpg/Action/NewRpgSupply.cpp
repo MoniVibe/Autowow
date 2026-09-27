@@ -173,14 +173,18 @@ bool HouseMaterial(std::uint32_t entry)
     return false;
 }
 
-// A quest in the log wants the item (an objective, a source drop, or the item it handed out).
+// A quest in the log (not yet rewarded) wants the item: an objective, a source drop, or the item it handed out
+// (QuestWantsItem).
 bool QuestNeeds(Player* bot, std::uint32_t entry)
 {
-    if (bot->HasQuestForItem(entry, 0, true))
-        return true;
     for (uint8 i = 0; i < MAX_QUEST_LOG_SIZE; ++i)
-        if (Quest const* q = sObjectMgr->GetQuestTemplate(bot->GetQuestSlotQuestId(i)); q && q->GetSrcItemId() == entry)
+    {
+        Quest const* q = sObjectMgr->GetQuestTemplate(bot->GetQuestSlotQuestId(i));
+        QuestStatus const status = q ? bot->GetQuestStatus(q->GetQuestId()) : QUEST_STATUS_NONE;
+        if ((status == QUEST_STATUS_INCOMPLETE || status == QUEST_STATUS_COMPLETE) &&
+            QuestWantsItem(entry, q->GetSrcItemId(), q->RequiredItemId, q->ItemDrop))
             return true;
+    }
     return false;
 }
 
@@ -255,16 +259,18 @@ std::uint32_t SellGuids(Player* bot, Creature* npc, std::vector<std::uint32_t> c
     return sold;
 }
 
-// Market: whole stacks the rep lists (ascending guid, at most kMaxMailStacks): each cloth tier out of the
-// artisan's reach above SellKeep, and every non-house trade good. Nothing while the artisan's skill is unknown.
+// Market: whole stacks the rep lists (ascending guid, at most kMaxMailStacks): each cloth tier beyond the next one
+// above the artisan's reach (Listable) above SellKeep, and every non-house trade good. Nothing while the artisan's
+// skill is unknown.
 std::vector<std::uint32_t> MarketSellable(Player* bot, TeamView const& view)
 {
     std::vector<std::uint32_t> out;
     if (!view.artisanSkill)
         return out;
-    for (Tier const& t : kTiers)
+    for (std::size_t i = 0; i < kTierCount; ++i)
     {
-        if (!OutOfReach(t, view.artisanSkill))
+        Tier const& t = kTiers[i];
+        if (!Listable(i, view.artisanSkill))
             continue;
         std::vector<Stack> stacks;
         for (std::uint32_t const g : LooseGuids(bot, t.cloth, 0xFFFFFFFFu))
@@ -799,25 +805,32 @@ bool NewRpgBaseAction::SupplyStep()
                              bot->GetName(), npc->GetEntry());
                     break;
                 }
-                // A line rep only buys (its surplus goes through the Auction / Sell trips).
-                std::vector<MarketWant> const& wants = lined ? lview.buy : view.buy;
+                // A line rep only buys (its surplus goes through the Auction / Sell trips). Its own listings of a
+                // wanted item come back first (PlanMarketCancels; the buyouts skip them).
+                std::vector<MarketWant> wants = lined ? lview.buy : view.buy;
                 std::vector<AutoWowTrade::Post> planned;
                 if (std::vector<std::uint32_t> const sell = lined ? std::vector<std::uint32_t>{} : MarketSellable(bot, view);
                     !sell.empty())
                     AutoWowTrade::PostStacks(bot, npc, sell, &planned);
                 for (AutoWowTrade::Post const& post : planned)
                     Emit(bot, Reason::List, 0, post.entry, post.count, post.buyout, guid, 0);
-                std::vector<MarketListing> listings;
+                std::vector<MarketListing> listings, own;
                 if (!wants.empty())
                     for (auto const& [id, a] : ah->GetAuctions())
-                        if (a && a->owner != bot->GetGUID() && a->buyout && a->itemCount &&
-                            std::any_of(wants.begin(), wants.end(),
-                                        [&](MarketWant const& w) { return w.item == a->item_template; }))
-                            listings.push_back({id, a->item_template, a->itemCount, a->buyout});
+                        if (a && a->itemCount && std::any_of(wants.begin(), wants.end(), [&](MarketWant const& w)
+                                                             { return w.item == a->item_template; }))
+                        {
+                            if (a->owner != bot->GetGUID() && a->buyout)
+                                listings.push_back({id, a->item_template, a->itemCount, a->buyout});
+                            else if (a->owner == bot->GetGUID() && !a->bidder)
+                                own.push_back({id, a->item_template, a->itemCount, a->buyout});
+                        }
+                std::vector<MarketListing> cancels = PlanMarketCancels(std::move(own), wants);
                 std::vector<MarketListing> buys = PlanMarketBuys(std::move(listings), wants,
                                                                  detail::gParams.buyMaxPct, detail::gParams.buyBudget);
-                LOG_INFO("playerbots", "[Supply] bot={} market ah={} listed={} wants={} buys={}", bot->GetName(),
-                         house->houseId, planned.size(), wants.size(), buys.size());
+                LOG_INFO("playerbots", "[Supply] bot={} market ah={} listed={} wants={} buys={} cancels={}",
+                         bot->GetName(), house->houseId, planned.size(), wants.size(), buys.size(), cancels.size());
+                QueueMarketCancels(bot, npc->GetGUID().GetRawValue(), std::move(cancels));
                 QueueMarketBuys(bot, npc->GetGUID().GetRawValue(), std::move(buys));
                 break;
             }

@@ -120,10 +120,12 @@ struct Want
     std::uint32_t item = 0;
     std::uint32_t count = 0;
     Kind kind = Kind::Cloth;
+    bool first = false;  // MaterialNeed.first: the bag artisan's current tier
 };
 
 // The supply needs the squad can source (items in kMaterials, at least MinDemand units; an item listed twice keeps
-// its larger count), largest first, ties by material table order (linen before wool, copper before tin).
+// its larger count and either first flag): first ones, then largest, ties by material table order (linen before
+// wool, copper before tin).
 [[nodiscard]] inline std::vector<Want> RankDemand(std::vector<AutoWowSupply::MaterialNeed> const& needs,
                                                   std::uint32_t minDemand)
 {
@@ -135,12 +137,19 @@ struct Want
             continue;
         auto it = std::find_if(out.begin(), out.end(), [&](Want const& w) { return w.item == n.item; });
         if (it == out.end())
-            out.push_back({n.item, n.count, kMaterials[m].kind});
+            out.push_back({n.item, n.count, kMaterials[m].kind, n.first});
         else
+        {
             it->count = std::max(it->count, n.count);
+            it->first = it->first || n.first;
+        }
     }
     std::sort(out.begin(), out.end(), [](Want const& a, Want const& b)
-              { return a.count != b.count ? a.count > b.count : MaterialIndex(a.item) < MaterialIndex(b.item); });
+              {
+                  if (a.first != b.first)
+                      return a.first;
+                  return a.count != b.count ? a.count > b.count : MaterialIndex(a.item) < MaterialIndex(b.item);
+              });
     return out;
 }
 
