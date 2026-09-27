@@ -23,6 +23,7 @@
 #include "DungeonPullReadinessPolicy.h"
 #include "DungeonRouteReconnectPolicy.h"
 #include "DungeonSpellCreditBossPolicy.h"
+#include "GameObjectLockPolicy.h"
 #include "Group.h"
 #include "GameObject.h"
 #include "InstanceScript.h"
@@ -153,6 +154,8 @@ constexpr float GateEscortDistance = 8.0f;
 constexpr float GateEscortFollowDistance = 4.0f;
 constexpr float GateAttackDistance = 30.0f;
 constexpr float GateAttackApproachDistance = 20.0f;
+constexpr float GateItemUseDistance = 4.0f;  // key item spells (Defias Gunpowder 6250) reach 5 yd
+constexpr float GateItemUseApproachDistance = 3.0f;
 
 GameObject* GateObject(Map* map, uint32 spawnGuid)
 {
@@ -2088,6 +2091,16 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 step.mapId, step.encounterIdx, step.stepOrder, DungeonGate::KindName(step.kind),
                 step.entry, result, bot->GetName());
     };
+    // First party member holding the item: the navigating bot, then followers in guid order.
+    auto gateItemHolder = [&](uint32 itemId) -> Player*
+    {
+        if (bot->HasItemCount(itemId, 1))
+            return bot;
+        for (Player* member : followers)
+            if (member->HasItemCount(itemId, 1))
+                return member;
+        return nullptr;
+    };
     auto gateStepDone = [&](DungeonGate::Step const& step)
     {
         switch (step.doneWhen)
@@ -2115,6 +2128,14 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 Creature* creature = GateCreature(map, step.spawnGuid);
                 return creature && creature->AI() && creature->AI()->IsEscorted();
             }
+            case DungeonGate::DoneWhen::Unlocked:
+            {
+                if (step.doneValue && gateItemHolder(step.doneValue))
+                    return true;
+                // An instance reloaded with the Iron Clad Door stored open despawns the door.
+                GameObject* door = GateObject(map, step.doneData);
+                return door ? door->GetGoState() != GO_STATE_READY : map->IsGridLoaded(step.x, step.y);
+            }
         }
         return false;
     };
@@ -2129,6 +2150,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             runtime.push_back(gateRuntime[row]);
         }
         std::size_t const selected = DungeonGate::SelectStep(rows, runtime, GateBypassKeys(),
+            [&](uint32 itemId) { return gateItemHolder(itemId) != nullptr; },
             [&](std::size_t index)
             {
                 if (!gateStepDone(rows[index]))
@@ -2443,6 +2465,105 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 case DungeonGate::Kind::EnterArea:
                     logGate(row, "wait", false);
                     return false;
+                case DungeonGate::Kind::LootGo:
+                {
+                    GameObject* chest = GateObject(map, step.spawnGuid);
+                    if (!chest || !chest->isSpawned() || chest->GetGoState() != GO_STATE_READY ||
+                        chest->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE) ||
+                        chest->HasGameObjectFlag(GO_FLAG_IN_USE))
+                    {
+                        logGate(row, chest ? "go_not_ready" : "go_missing", false);
+                        return false;
+                    }
+                    uint32 const lockId = chest->GetGOInfo()->GetLockId();
+                    if (!GameObjectLockPolicy::HasOrdinaryOpenAlternative(
+                            lockId ? sLockStore.LookupEntry(lockId) : nullptr))
+                    {
+                        logGate(row, "go_locked", true);
+                        return false;
+                    }
+                    if (!bot->IsWithinDistInMap(chest, INTERACTION_DISTANCE - 1.0f))
+                        return moveNear(chest, INTERACTION_DISTANCE - 2.0f);
+
+                    // Same exact-GO loot path as the NewRpgAction objective chest: the core
+                    // SendLoot/LootItemInSlot/StoreLootItem pipeline generates and stores the item.
+                    if (bot->isMoving())
+                        bot->StopMoving();
+                    bot->SetFacingToObject(chest);
+                    bot->SendLoot(chest->GetGUID(), LOOT_SKINNING);
+                    uint32 const maxSlot = chest->loot.GetMaxSlotInLootFor(bot);
+                    for (uint32 slot = 0; slot < maxSlot; ++slot)
+                    {
+                        LootItem* item = chest->loot.LootItemInSlot(slot, bot);
+                        if (!item || item->itemid != step.doneValue)
+                            continue;
+                        WorldPacket autostore(CMSG_AUTOSTORE_LOOT_ITEM, 1);
+                        autostore << static_cast<uint8>(slot);
+                        bot->GetSession()->HandleAutostoreLootItemOpcode(autostore);
+                        break;
+                    }
+                    WorldPacket release(CMSG_LOOT_RELEASE, 8);
+                    release << chest->GetGUID();
+                    bot->GetSession()->HandleLootReleaseOpcode(release);
+                    ++runtime.acts;
+                    logGate(row, "loot", true);
+                    return true;
+                }
+                case DungeonGate::Kind::UseItemOnGo:
+                {
+                    GameObject* gameObject = GateObject(map, step.spawnGuid);
+                    if (!gameObject || !gameObject->isSpawned() ||
+                        gameObject->GetGoState() != GO_STATE_READY)
+                    {
+                        logGate(row, gameObject ? "go_not_ready" : "go_missing", false);
+                        return false;
+                    }
+                    Player* holder = gateItemHolder(step.keyItem);
+                    Item* key = holder ? holder->GetItemByEntry(step.keyItem) : nullptr;
+                    if (!key)
+                    {
+                        logGate(row, "no_key", false);
+                        return false;
+                    }
+                    if (!holder->IsWithinDistInMap(gameObject, GateItemUseDistance))
+                    {
+                        if (holder == bot)
+                            return moveNear(gameObject, GateItemUseApproachDistance);
+                        PlayerbotAI* holderAI = PlayerbotsMgr::instance().GetPlayerbotAI(holder);
+                        bool const moved = holderAI && AutoWowDungeonWalkAction(holderAI).Walk(
+                            map->GetId(), gameObject->GetPositionX(), gameObject->GetPositionY(),
+                            gameObject->GetPositionZ());
+                        nextScanTime = now + (moved ? SuccessfulMoveRescanDelayMs() : BlockedScanBackoffMs);
+                        logGate(row, moved ? "holder_move" : "holder_move_rejected", !moved);
+                        return moved;
+                    }
+                    if (holder->isMoving())
+                    {
+                        holder->StopMoving();
+                        logGate(row, "holder_stop", false);
+                        return false;
+                    }
+
+                    // Same CMSG_USE_ITEM layout as UseItemAction::UseItem with a GO target; the core
+                    // item/spell/lock path checks range and the key and consumes it.
+                    uint32 spellId = 0;
+                    for (auto const& spell : key->GetTemplate()->Spells)
+                    {
+                        if (spell.SpellId > 0)
+                        {
+                            spellId = uint32(spell.SpellId);
+                            break;
+                        }
+                    }
+                    WorldPacket use(CMSG_USE_ITEM);
+                    use << key->GetBagSlot() << key->GetSlot() << uint8(1) << spellId << key->GetGUID()
+                        << uint32(0) << uint8(0);
+                    use << uint32(TARGET_FLAG_GAMEOBJECT) << gameObject->GetGUID().WriteAsPacked();
+                    holder->GetSession()->HandleUseItemOpcode(use);
+                    ++runtime.acts;
+                    logGate(row, "use_item", true);
+                    return true;
+                }
             }
             return false;
         }
