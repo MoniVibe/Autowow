@@ -26,6 +26,8 @@ enum class Kind : std::uint8_t
     KillSet,    // attack live creatures of entry within radius of the row position
     EnterArea,  // stand at the row position
     ProxyKill,  // KillSet whose target stands in for a boss with no static spawn
+    LootGo,     // open the chest GO and autostore item doneValue into the navigating bot's bags
+    UseItemOnGo,  // the party member holding keyItem uses it on the GO (CMSG_USE_ITEM)
 };
 
 enum class DoneWhen : std::uint8_t
@@ -35,6 +37,8 @@ enum class DoneWhen : std::uint8_t
     InstanceData,   // InstanceScript::GetData(doneData) >= doneValue
     EncounterDone,  // the row's encounter is complete
     Escorting,      // the row creature's AI reports an escort in progress
+    Unlocked,       // door GO doneData not READY or gone from its loaded grid, or (doneValue != 0) a
+                    // party member holds item doneValue
 };
 
 struct Step
@@ -54,7 +58,8 @@ struct Step
     DoneWhen doneWhen;
     std::uint32_t doneData;
     std::uint32_t doneValue;
-    std::uint32_t keyItem;  // != 0: skipped unless AutoWow.DungeonNav.Gates.BypassKeys = 1
+    std::uint32_t keyItem;  // != 0: skipped while no party member holds it, unless
+                            // AutoWow.DungeonNav.Gates.BypassKeys = 1
     bool optional;          // skipped for the instance once it times out
     std::uint32_t timeoutMs;
 };
@@ -66,6 +71,25 @@ inline constexpr Step Steps[] = {
         DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
     {36, 1, 1, Kind::KillSet, 643, 0, -289.453f, -513.009f, 49.6785f, 40.0f, 0, 1,
         DoneWhen::EncounterDone, 0, 0, 0, false, 120000},
+    // Deadmines: the Iron Clad Door (30534) holds Mr. Smite..VanCleef (idx3-6). Chest 17155 (loot 2882)
+    // drops Defias Gunpowder 5397; its use casts 6250 (open lock 83, key 5397) on the Defias Cannon, whose
+    // SAI 1639800 sets the door's GO state. The lever 101833 is not selectable.
+    {36, 3, 0, Kind::LootGo, 17155, 26203, -106.409f, -617.284f, 13.8495f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 5397, 0, false, 120000},
+    {36, 3, 1, Kind::UseItemOnGo, 16398, 26205, -107.562f, -659.674f, 7.21211f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 0, 5397, false, 120000},
+    {36, 4, 0, Kind::LootGo, 17155, 26203, -106.409f, -617.284f, 13.8495f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 5397, 0, false, 120000},
+    {36, 4, 1, Kind::UseItemOnGo, 16398, 26205, -107.562f, -659.674f, 7.21211f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 0, 5397, false, 120000},
+    {36, 5, 0, Kind::LootGo, 17155, 26203, -106.409f, -617.284f, 13.8495f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 5397, 0, false, 120000},
+    {36, 5, 1, Kind::UseItemOnGo, 16398, 26205, -107.562f, -659.674f, 7.21211f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 0, 5397, false, 120000},
+    {36, 6, 0, Kind::LootGo, 17155, 26203, -106.409f, -617.284f, 13.8495f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 5397, 0, false, 120000},
+    {36, 6, 1, Kind::UseItemOnGo, 16398, 26205, -107.562f, -659.674f, 7.21211f, 10.0f, 0, 1,
+        DoneWhen::Unlocked, 30534, 0, 5397, false, 120000},
     // Wailing Caverns: Mutanus (idx7) is summoned by the Disciple of Naralex escort (SAI 3678, gossip
     // menu 201 option 0, shown once instance data 0..3 are DONE).
     {43, 7, 0, Kind::Gossip, 3678, 18675, -134.965f, 125.402f, -78.0945f, 10.0f, 0, 1,
@@ -167,13 +191,16 @@ inline char const* KindName(Kind kind)
         case Kind::KillSet: return "kill_set";
         case Kind::EnterArea: return "enter_area";
         case Kind::ProxyKill: return "proxy_kill";
+        case Kind::LootGo: return "loot_go";
+        case Kind::UseItemOnGo: return "use_item_on_go";
     }
     return "unknown";
 }
 
 inline bool CountsUses(Kind kind)
 {
-    return kind == Kind::UseGo || kind == Kind::Gossip;
+    return kind == Kind::UseGo || kind == Kind::Gossip || kind == Kind::LootGo ||
+        kind == Kind::UseItemOnGo;
 }
 
 // Per-instance runtime of one row.
@@ -185,15 +212,17 @@ struct StepRuntime
     bool skipped = false;          // optional row that timed out
 };
 
-// First row, in order, that is not key-gated, not skipped and not done. isDone(i) is evaluated lazily
-// and never past the returned row, so a later row can never run before an earlier unfinished one.
-template <typename IsDone>
+// First row, in order, that is not key-gated, not skipped and not done. A row is key-gated while its
+// keyItem is set, no party member holds it (holdsKey(item) false) and bypassKeys is off. isDone(i) is
+// evaluated lazily and never past the returned row, so a later row can never run before an earlier
+// unfinished one.
+template <typename HoldsKey, typename IsDone>
 std::size_t SelectStep(std::vector<Step> const& rows, std::vector<StepRuntime> const& runtime,
-    bool bypassKeys, IsDone&& isDone)
+    bool bypassKeys, HoldsKey&& holdsKey, IsDone&& isDone)
 {
     for (std::size_t index = 0; index < rows.size(); ++index)
     {
-        if (rows[index].keyItem && !bypassKeys)
+        if (rows[index].keyItem && !bypassKeys && !holdsKey(rows[index].keyItem))
             continue;
         if (index < runtime.size() && (runtime[index].done || runtime[index].skipped))
             continue;
