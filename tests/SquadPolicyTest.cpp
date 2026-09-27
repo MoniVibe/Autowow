@@ -63,6 +63,13 @@ TEST(Squad, DemandRanksLargestFirstTiesByTierAndDropsSmallOrUnknown)
     EXPECT_TRUE(Demanded(r, 2592));
     EXPECT_FALSE(Demanded(r, 765));  // below MinDemand
     EXPECT_TRUE(RankDemand({}, 5).empty());
+    // The bag artisan's current tier (first) outranks bigger needs (soak-s47-full-r1: wool for a Woolen Bag tailor).
+    std::vector<Want> const f = RankDemand({{2770, 90}, {2592, 40, true}, {2592, 60}}, 5);
+    ASSERT_EQ(f.size(), 2u);
+    EXPECT_EQ(f[0].item, 2592u);
+    EXPECT_EQ(f[0].count, 60u);
+    EXPECT_TRUE(f[0].first);
+    EXPECT_EQ(f[1].item, 2770u);
 }
 
 TEST(Squad, SkinningRequirementAndWorkability)

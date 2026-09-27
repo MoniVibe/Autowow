@@ -30,9 +30,9 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 4;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+inline constexpr std::uint32_t kStateVersion = 5;  // RoleState / TeamState layout; bump on change (2: tiers, market;
                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
-                                                   // craftBlocked)
+                                                   // craftBlocked; 5: TeamState goal)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -100,6 +100,7 @@ struct MaterialNeed
 {
     std::uint32_t item = 0;
     std::uint32_t count = 0;
+    bool first = false;  // the bag artisan's current tier (ClothDemand First): ranked before every other need
 };
 
 // ---- bag need (overlord) ----
@@ -267,6 +268,16 @@ struct ProductOption
     return kNoTier;
 }
 
+// The tier the artisan works toward: the highest known tier members want, craftable now or not (PickProduct's
+// fallback). Its cloth is what the house should gather, even while spare lower cloth makes a lower product craftable.
+[[nodiscard]] inline std::uint8_t PickGoal(std::vector<ProductOption> const& tiers)
+{
+    for (std::size_t i = tiers.size(); i-- > 0;)
+        if (tiers[i].known && tiers[i].want)
+            return static_cast<std::uint8_t>(i);
+    return kNoTier;
+}
+
 // A skill-up candidate: one recipe (a tier's bolt or bag). cost = vendor value of one cast's materials (copper).
 struct SkillupOption
 {
@@ -318,6 +329,43 @@ template <std::size_t N>
 // A cloth tier is out of the artisan's reach below its bolt recipe's skill.
 [[nodiscard]] inline bool OutOfReach(Tier const& t, std::uint32_t skill) { return skill < t.boltSkill; }
 
+// The highest cloth tier within the artisan's reach (linen always).
+[[nodiscard]] inline std::size_t ReachTier(std::uint32_t skill)
+{
+    std::size_t out = 0;
+    for (std::size_t i = 1; i < kTierCount; ++i)
+        if (!OutOfReach(kTiers[i], skill))
+            out = i;
+    return out;
+}
+
+// Market: a cloth tier the rep may list (above SellKeep). The next tier above the artisan's reach is a reserve,
+// not surplus (soak-s47-full-r1: the Alliance rep listed its wool while its tailor was below 75; at 104 on Woolen
+// Bags the house had none).
+[[nodiscard]] inline bool Listable(std::size_t tier, std::uint32_t skill) { return tier > ReachTier(skill) + 1; }
+
+// Squad demand for cloth tier `i`: the tiers the artisan works now (goal = PickGoal, skill-up; kNoTier = none) come
+// First; a reachable tier above them stays Normal; a tier below every worked one is Done (its use ended:
+// soak-s47-full-r1, a 104-skill tailor on Woolen Bags had its squad farming linen). Nothing worked: every reachable
+// tier Normal.
+enum class ClothDemand : std::uint8_t
+{
+    Done = 0,
+    Normal = 1,
+    First = 2
+};
+
+[[nodiscard]] inline ClothDemand ClothDemandOf(std::size_t i, std::uint32_t skill, std::uint8_t goal,
+                                               std::uint8_t skillup)
+{
+    if (i && OutOfReach(kTiers[i], skill))
+        return ClothDemand::Done;
+    if (i == goal || i == skillup)
+        return ClothDemand::First;
+    std::uint8_t const floor = std::min(goal, skillup);  // kNoTier = 0xFF: none
+    return floor == kNoTier || i > floor ? ClothDemand::Normal : ClothDemand::Done;
+}
+
 // Whole stacks (ascending guid) to list while at least `keep` units stay; at most kMaxMailStacks.
 [[nodiscard]] inline std::vector<std::uint32_t> SellStacks(std::vector<Stack> stacks, std::uint32_t keep)
 {
@@ -352,6 +400,27 @@ struct MarketListing
     std::uint32_t count = 0;
     std::uint32_t buyout = 0;  // 0 = bid only (never bought)
 };
+
+// The rep's own listings to take back for one visit (its buyouts skip them): per want (in order), its listings of
+// that item by auction id while the want is open (the last may overshoot); each want shrinks by what they cover
+// (soak-s47-full-r1: the only wool on the Alliance house was the rep's own, so its wool want never bought).
+[[nodiscard]] inline std::vector<MarketListing> PlanMarketCancels(std::vector<MarketListing> own,
+                                                                  std::vector<MarketWant>& wants)
+{
+    std::sort(own.begin(), own.end(), [](MarketListing const& a, MarketListing const& b) { return a.id < b.id; });
+    std::vector<MarketListing> out;
+    for (MarketWant& w : wants)
+        for (MarketListing const& l : own)
+        {
+            if (!w.units)
+                break;
+            if (l.item != w.item || !l.count)
+                continue;
+            w.units -= std::min(w.units, l.count);
+            out.push_back(l);
+        }
+    return out;
+}
 
 // Buyouts for one visit: per want (in order), the cheapest listings per unit (then auction id) while the want
 // is open (the last one may overshoot it), each unit at most sellPrice * maxPct / 100, all within `budget`.
@@ -1019,7 +1088,8 @@ enum class Reason : std::uint8_t
     Buy = 11,     // Market: rep bought out a listing with treasury copper (copper = price)
     Sold = 12,    // Market: a rep's auction sold; its proceeds went to the house bank (copper = proceeds)
     Outfit = 13,  // Outfit: a member bought a gathering tool at a vendor with its own gold (copper = price)
-    Junk = 14     // artisan make-room: op vendor (count = stacks sold, copper = proceeds) | destroy (item, count)
+    Junk = 14,    // artisan make-room: op vendor (count = stacks sold, copper = proceeds) | destroy (item, count)
+    Cancel = 15   // Market: rep took back its own listing of a wanted item (copper = its buyout; item by mail)
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -1041,6 +1111,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Sold: return "sold";
         case Reason::Outfit: return "outfit";
         case Reason::Junk: return "junk";
+        case Reason::Cancel: return "cancel";
     }
     return "refused";
 }
@@ -1123,6 +1194,21 @@ struct BagStack
     bool quest = false;           // needed by a quest in its log
     bool keep = false;            // hearthstone, profession tool, container, not user-destroyable
 };
+
+// BagStack.quest for one quest in the log (incomplete or complete, not yet rewarded): `item` is its source item, an
+// item objective (collected ones too: they are turned in) or a source drop. Unused (0) slots never match. Not
+// Player::HasQuestForItem(item, 0, true): its turn-in branch answers true for ANY item once some objective slot of a
+// logged quest is met, an unused one (0 >= 0) included (soak-s47-full-r1: every stack of the Horde tailor read as
+// quest, make-room found nothing to free and it never crafted again).
+template <std::size_t R, std::size_t D>
+[[nodiscard]] bool QuestWantsItem(std::uint32_t item, std::uint32_t src, std::uint32_t const (&required)[R],
+                                  std::uint32_t const (&drops)[D])
+{
+    if (!item)
+        return false;
+    return item == src || std::find(std::begin(required), std::end(required), item) != std::end(required) ||
+           std::find(std::begin(drops), std::end(drops), item) != std::end(drops);
+}
 
 enum class Junk : std::uint8_t
 {
@@ -1263,6 +1349,9 @@ std::uint32_t SellPriceOf(std::uint32_t item);  // vendor sell value per unit, 0
 // Market, map thread (the rep at its faction auctioneer): queue these buyouts; the world thread pays the rep
 // their total from the house bank, bids, and deposits whatever a rejected bid did not spend back.
 void QueueMarketBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<MarketListing> buys);
+// Market, map thread: cancel these own listings (PlanMarketCancels) on the world thread; the items come back by mail
+// (the deposit stays spent), a `cancel` row each.
+void QueueMarketCancels(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<MarketListing> cancels);
 // World thread (AutoWowTrade mail collection): a rep took an auction-sale mail; with Market on its proceeds
 // (`gold` copper) go to its house bank and a `sold` row is written. No-op for anyone else.
 void OnAuctionSold(Player* bot, std::uint32_t item, std::uint32_t count, std::int64_t gold);

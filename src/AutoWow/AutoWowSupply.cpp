@@ -18,10 +18,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "AuctionHouseMgr.h"
 #include "AutoWowGuildsPolicy.h"
 #include "AutoWowQuestLedger.h"
 #include "Bag.h"
 #include "Config.h"
+#include "Creature.h"
 #include "DBCStores.h"
 #include "GameObject.h"
 #include "GameTime.h"
@@ -87,6 +89,7 @@ struct TeamState
     std::array<std::uint32_t, kTierCount> clothRooms{};
     std::uint8_t product = kNoTier;
     std::uint32_t productWant = 0;  // members' want for the product tier (overlord)
+    std::uint8_t goal = kNoTier;    // PickGoal (overlord): the tier whose cloth the squad gathers first
     std::uint8_t skillup = kNoTier;
     bool skillupBag = false;
     std::uint32_t artisanSkill = 0;
@@ -605,6 +608,7 @@ void TierTick(bool alliance, bool overlord)
             ts.surplusBags[i] = Surplus(wants[i], Loose(rep, tier.bag), p.surplusKeep);
         }
         std::uint8_t const product = PickProduct(opts);
+        ts.goal = PickGoal(opts);
         std::uint32_t n = 0;
         if (product != kNoTier)
         {
@@ -791,6 +795,7 @@ void TierTick(bool alliance, bool overlord)
     {
         out.product = ts.product;
         out.productWant = ts.productWant;
+        out.goal = ts.goal;
         out.surplus = ts.surplus;
         out.surplusBags = ts.surplusBags;
     }
@@ -1099,6 +1104,50 @@ private:
     ObjectGuid bot_;
     ObjectGuid auctioneer_;
     std::vector<MarketListing> buys_;
+};
+
+// World thread: the rep cancels its own listings of wanted items (stock cancel handler: the item comes back by mail,
+// the deposit stays spent). One sold or bid on since the visit is left alone.
+class MarketCancelOperation : public PlayerbotOperation
+{
+public:
+    MarketCancelOperation(ObjectGuid bot, ObjectGuid auctioneer, std::vector<MarketListing> cancels)
+        : bot_(bot), auctioneer_(auctioneer), cancels_(std::move(cancels))
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
+        if (!bot || !bot->IsInWorld() || !bot->GetSession())
+            return false;
+        Creature* npc = bot->GetNPCIfCanInteractWith(auctioneer_, UNIT_NPC_FLAG_AUCTIONEER);
+        AuctionHouseObject* ah = npc ? sAuctionMgr->GetAuctionsMap(npc->GetFaction()) : nullptr;
+        if (!ah)
+            return false;
+        bool any = false;
+        for (MarketListing const& c : cancels_)
+        {
+            AuctionEntry const* a = ah->GetAuction(c.id);
+            if (!a || a->owner != bot->GetGUID() || a->bidder)
+                continue;
+            WorldPacket packet(CMSG_AUCTION_REMOVE_ITEM, 8 + 4);
+            packet << auctioneer_ << uint32(c.id);
+            bot->GetSession()->HandleAuctionRemoveItem(packet);
+            bool const gone = !ah->GetAuction(c.id);
+            Emit(bot, gone ? Reason::Cancel : Reason::Refused, 0, c.item, c.count, c.buyout, Low(bot), Low(bot),
+                 gone ? nullptr : "cancel");
+            any = any || gone;
+        }
+        return any;
+    }
+    ObjectGuid GetBotGuid() const override { return bot_; }
+    std::string GetName() const override { return "AutoWowSupplyMarketCancel"; }
+
+private:
+    ObjectGuid bot_;
+    ObjectGuid auctioneer_;
+    std::vector<MarketListing> cancels_;
 };
 
 // The stations near `home`: the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no extended
@@ -1819,6 +1868,14 @@ void QueueMarketBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<M
         std::make_unique<MarketBuyOperation>(rep->GetGUID(), ObjectGuid(auctioneerRawGuid), std::move(buys)));
 }
 
+void QueueMarketCancels(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<MarketListing> cancels)
+{
+    if (!Market() || !rep || cancels.empty())
+        return;
+    PlayerbotWorldThreadProcessor::instance().QueueOperation(
+        std::make_unique<MarketCancelOperation>(rep->GetGUID(), ObjectGuid(auctioneerRawGuid), std::move(cancels)));
+}
+
 void OnAuctionSold(Player* bot, std::uint32_t item, std::uint32_t count, std::int64_t gold)
 {
     if (!Market() || !bot || gold <= 0 || RoleOf(Low(bot)).role != Role::Rep)
@@ -1862,10 +1919,11 @@ std::vector<MaterialNeed> MaterialDemand(bool alliance)
     {
         if (p.tiers)
         {
-            // Cloth the bag artisan can bolt now (linen always); stock beyond its reach waits (lane C).
+            // Cloth the bag artisan can bolt now (linen always; stock beyond its reach waits, lane C): its goal /
+            // skill-up tier first, a tier below both no more (ClothDemandOf).
             for (std::size_t i = 0; i < kTierCount; ++i)
-                if (i == 0 || !OutOfReach(kTiers[i], ts.artisanSkill))
-                    out.push_back({kTiers[i].cloth, ts.clothRooms[i]});
+                if (ClothDemand const d = ClothDemandOf(i, ts.artisanSkill, ts.goal, ts.skillup); d != ClothDemand::Done)
+                    out.push_back({kTiers[i].cloth, ts.clothRooms[i], d == ClothDemand::First});
         }
         else
             out.push_back({kLinen, ts.clothRoom});

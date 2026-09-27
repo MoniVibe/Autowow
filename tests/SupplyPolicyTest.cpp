@@ -558,8 +558,71 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 4u);
+    EXPECT_EQ(kStateVersion, 5u);
     EXPECT_EQ(kPouch, 4496u);
+}
+
+// soak-s47-full-r1: Player::HasQuestForItem(item, 0, true) said yes for every stack of the Horde tailor (an unused
+// objective slot of any logged quest reads as met), so make-room kept its whole backpack and it stalled.
+TEST(SupplyArtisanUpkeep, QuestItemsAreOnlyTheQuestsOwn)
+{
+    std::uint32_t const required[6] = {5481, 0, 0, 0, 0, 0};  // Satyr Horns, five unused slots
+    std::uint32_t const drops[4] = {0, 0, 0, 0};
+    EXPECT_TRUE(QuestWantsItem(5481, 0, required, drops));
+    EXPECT_FALSE(QuestWantsItem(9779, 0, required, drops));  // Bandit Cloak: sellable junk, not the quest's
+    EXPECT_FALSE(QuestWantsItem(0, 0, required, drops));     // no item never matches an unused slot
+    EXPECT_TRUE(QuestWantsItem(16205, 16205, required, drops));  // the item the quest handed out
+    std::uint32_t const drop[4] = {0, 5059, 0, 0};
+    EXPECT_TRUE(QuestWantsItem(5059, 0, required, drop));  // a source drop
+}
+
+// soak-s47-full-r1: the Alliance tailor (skill 104) works toward Woolen Bags; its squad still farmed linen.
+TEST(SupplyTiers, SquadDemandFollowsTheArtisansTier)
+{
+    // Goal = the highest known wanted bag tier, craftable or not.
+    EXPECT_EQ(PickGoal({{true, 5, 2}, {true, 5, 0}, {false, 5, 0}}), 1);
+    EXPECT_EQ(PickGoal({{true, 0, 2}, {true, 0, 0}, {false, 0, 0}}), kNoTier);
+    // 104 on Woolen Bags, no skill-up stocked: wool first, linen done, silk out of reach.
+    EXPECT_EQ(ClothDemandOf(0, 104, 1, kNoTier), ClothDemand::Done);
+    EXPECT_EQ(ClothDemandOf(1, 104, 1, kNoTier), ClothDemand::First);
+    EXPECT_EQ(ClothDemandOf(2, 104, 1, kNoTier), ClothDemand::Done);
+    // 130 on Woolen Bags, silk reachable: silk stays normal (stock for the next tier).
+    EXPECT_EQ(ClothDemandOf(2, 130, 1, kNoTier), ClothDemand::Normal);
+    // Linen goal, wool bolts the skill-up: both first.
+    EXPECT_EQ(ClothDemandOf(0, 78, 0, 1), ClothDemand::First);
+    EXPECT_EQ(ClothDemandOf(1, 78, 0, 1), ClothDemand::First);
+    // Nothing worked (no want, nothing stocked): every reachable tier normal, as before.
+    EXPECT_EQ(ClothDemandOf(0, 21, kNoTier, kNoTier), ClothDemand::Normal);
+    EXPECT_EQ(ClothDemandOf(1, 21, kNoTier, kNoTier), ClothDemand::Done);  // out of reach
+    EXPECT_EQ(ClothDemandOf(0, 0, kNoTier, kNoTier), ClothDemand::Normal);  // artisan offline: linen, as before
+}
+
+// soak-s47-full-r1: the Alliance rep listed wool while its tailor was below 75.
+TEST(SupplyMarket, NextTierIsAReserveNotSurplus)
+{
+    EXPECT_EQ(ReachTier(1), 0u);
+    EXPECT_EQ(ReachTier(75), 1u);
+    EXPECT_EQ(ReachTier(125), 2u);
+    EXPECT_FALSE(Listable(1, 60));  // wool: the next tier
+    EXPECT_TRUE(Listable(2, 60));   // silk: two above
+    EXPECT_FALSE(Listable(2, 104));
+    EXPECT_FALSE(Listable(0, 60));
+}
+
+// soak-s47-full-r1: the only wool on the Alliance house was the rep's own listings, which its buyouts skip.
+TEST(SupplyMarket, OwnListingsOfAWantedItemComeBackFirst)
+{
+    std::vector<MarketWant> wants = {{kWool, 5, 33}, {kSilk, 10, 38}};
+    std::vector<MarketListing> const cancels =
+        PlanMarketCancels({{9, kWool, 2, 198}, {4, kWool, 4, 396}, {6, kLinen, 20, 400}, {7, kWool, 5, 495}}, wants);
+    ASSERT_EQ(cancels.size(), 2u);
+    EXPECT_EQ(cancels[0].id, 4u);  // ascending id; 4 + 2 = 6 >= 5: the last overshoots
+    EXPECT_EQ(cancels[1].id, 7u);
+    EXPECT_EQ(wants[0].units, 0u);  // covered: its buyouts plan nothing
+    EXPECT_EQ(wants[1].units, 10u);
+    EXPECT_TRUE(PlanMarketBuys({{11, kWool, 5, 100}}, wants, 400, 1000).empty());
+    EXPECT_STREQ(ReasonName(Reason::Cancel), "cancel");
+    EXPECT_EQ(static_cast<int>(Reason::Cancel), 15);
 }
 
 TEST(SupplyOutfit, LedgerWireIsStable)
