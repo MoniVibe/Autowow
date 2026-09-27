@@ -307,8 +307,9 @@ std::uint32_t RepFreeSlots(Player* rep);
 // Mail from an online sender to any same-team character. Items move out of the sender's inventory (whole
 // stacks, at most 12). Postage is the sender's, except the rep of a house pays it from the guild bank.
 bool SendMoney(std::uint32_t fromGuid, std::uint32_t toGuid, std::uint32_t copper, std::string const& subject);
+// `refusal` (optional): the logged refusal of a mail not sent (e.g. "receiver_mailbox_full"), else untouched.
 bool SendItems(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
-               std::string const& subject);
+               std::string const& subject, char const** refusal = nullptr);
 // Read-only after LoadConfig (any thread): the houses in config order, a house's configured rep (0 = none
 // configured) and the cohort guid ranges.
 std::vector<House> const& Houses();

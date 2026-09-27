@@ -180,4 +180,15 @@ TEST(Trade, LedgerFieldsWireFormat)
     EXPECT_STREQ(FeeKindName(FeeKind::Repair), "repair");
     EXPECT_STREQ(FeeKindName(FeeKind::Train), "train");
 }
+
+// soak-s48-full-r1: 120 emptied mails held the Weavers rep's box at the core cap.
+TEST(TradeMail, EmptiedDeliveredMailIsDeleted)
+{
+    EXPECT_TRUE(EmptyMail(true, false, 0, false));
+    EXPECT_FALSE(EmptyMail(false, false, 0, false));  // in transit
+    EXPECT_FALSE(EmptyMail(true, true, 0, false));    // COD
+    EXPECT_FALSE(EmptyMail(true, false, 5, false));   // money left
+    EXPECT_FALSE(EmptyMail(true, false, 0, true));    // items left (bags full)
+    EXPECT_TRUE(Params{}.deleteEmptyMail);
+}
 }  // namespace

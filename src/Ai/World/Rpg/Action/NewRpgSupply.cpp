@@ -17,6 +17,7 @@
 #include "AuctionHouseMgr.h"
 #include "AutoWowOracleRuntime.h"
 #include "Bag.h"
+#include "BankPackets.h"
 #include "Creature.h"
 #include "GameObject.h"
 #include "GameTime.h"
@@ -54,7 +55,8 @@ enum class Task : std::uint8_t
     Sell = 6,
     Market = 7,  // AutoWow.Supply.Market: the bag-house rep lists house surplus / buys artisan materials
     Junk = 8,    // artisan make-room: sell the sellable junk at the vendor
-    Bag = 9      // artisan make-room: buy and wear a kPouch (no bag worn)
+    Bag = 9,     // artisan make-room: buy and wear a kPouch (no bag worn)
+    Bank = 10    // RepStore: the rep's bank stash / refill at the banker near home
 };
 
 constexpr std::uint32_t kHearthstone = 6948;
@@ -151,6 +153,7 @@ Station const* StationFor(Stations const& st, Task task)
         case Task::Junk: return st.threadVendor.entry ? &st.threadVendor : nullptr;
         case Task::Auction:
         case Task::Market: return st.auctioneer.entry ? &st.auctioneer : nullptr;
+        case Task::Bank: return st.banker.entry ? &st.banker : nullptr;
         default: return nullptr;
     }
 }
@@ -215,6 +218,54 @@ std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line)
             for (uint32 slot = 0; slot < b->GetBagSize(); ++slot)
                 add(b->GetItemByPos(slot));
     return out;
+}
+
+// RepStore: the rep's bank moves (item guid lows). Bags over 75% full: loose trade goods beyond RepKeep per item go
+// to the bank (PlanStash, within its free slots); else the house's materials (the bag tiers' or its line's) under
+// RepKeep come back (PlanUnstash). Empty when nothing is due.
+std::vector<std::uint32_t> BankMoves(Player* bot, ProductLine const* line, bool bagHouse)
+{
+    std::vector<StashStack> loose, banked;
+    std::uint32_t total = INVENTORY_SLOT_ITEM_END - INVENTORY_SLOT_ITEM_START, bankFree = 0;
+    auto stack = [](Item* item)
+    { return StashStack{static_cast<std::uint32_t>(item->GetGUID().GetCounter()), item->GetEntry(), item->GetCount()}; };
+    auto material = [&](Item* item)
+    {
+        if (item && item->GetTemplate()->Class == ITEM_CLASS_TRADE_GOODS && !item->IsSoulBound())
+            loose.push_back(stack(item));
+    };
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        material(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        if (Bag* b = bot->GetBagByPos(bag))
+        {
+            total += b->GetBagSize();
+            for (uint32 slot = 0; slot < b->GetBagSize(); ++slot)
+                material(b->GetItemByPos(slot));
+        }
+    for (uint8 slot = BANK_SLOT_ITEM_START; slot < BANK_SLOT_ITEM_END; ++slot)
+    {
+        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            banked.push_back(stack(item));
+        else
+            ++bankFree;
+    }
+    for (uint8 bag = BANK_SLOT_BAG_START; bag < BANK_SLOT_BAG_END; ++bag)
+        if (Bag* b = bot->GetBagByPos(bag))
+            for (uint32 slot = 0; slot < b->GetBagSize(); ++slot)
+            {
+                if (Item* item = b->GetItemByPos(slot))
+                    banked.push_back(stack(item));
+                else
+                    ++bankFree;
+            }
+    std::uint32_t const keep = detail::gParams.repKeep, free = bot->GetFreeInventorySpace();
+    if (StashDue(free, total))
+        return PlanStash(std::move(loose), keep, bankFree);
+    banked.erase(std::remove_if(banked.begin(), banked.end(), [&](StashStack const& b)
+                                { return line ? !LineItem(*line, b.item) : !(bagHouse && HouseMaterial(b.item)); }),
+                 banked.end());
+    return PlanUnstash(std::move(banked), loose, keep, free, total);
 }
 
 bool BagWorn(Player* bot)
@@ -447,8 +498,15 @@ bool NewRpgBaseAction::SupplyStep()
                 }
             }
         }
-        // Only a mail it can take something from: full bags otherwise re-pick the mailbox every tick.
-        if (next == Task::None && AutoWowTrade::HasCollectableMailWithRoom(bot) && st.mailbox.entry)
+        // RepStore: the rep's bank stash (bags over 75% full) or refill (house materials under RepKeep) at the banker
+        // near home, before the mailbox (soak-s48-full-r1: the Weavers hub, 16 backpack slots).
+        if (next == Task::None && role.role == Role::Rep && RepStore() && (lined ? lst : st).banker.entry &&
+            !BankMoves(bot, lined ? &L : nullptr, role.bagHouse).empty())
+            next = Task::Bank;
+        // Only a mail it can take something from (or, DeleteEmptyMail, emptied mail to delete: soak-s48-full-r1, 120
+        // of them blocked the rep's box): full bags otherwise re-pick the mailbox every tick.
+        if (next == Task::None && (AutoWowTrade::HasCollectableMailWithRoom(bot) || AutoWowTrade::HasEmptyMail(bot)) &&
+            st.mailbox.entry)
             next = Task::Mailbox;
         if (artisan && Tiers())
         {
@@ -789,6 +847,40 @@ bool NewRpgBaseAction::SupplyStep()
                     EmitOutfit(bot, Reason::Refused, kPouch, PriceOf(kPouch), "outfit");
                 LOG_INFO("playerbots", "[Supply] bot={} bag item={} worn={} free={} money={}", bot->GetName(), kPouch,
                          BagWorn(bot), bot->GetFreeInventorySpace(), bot->GetMoney());
+                break;
+            }
+            case Task::Bank:
+            {
+                // The bank window: the stock auto-store handler moves each stack between bags and bank (CanUseBank
+                // checks this banker; CanBankItem / CanStoreItem the room). A stack merged into another is gone.
+                Creature* npc = target->ToCreature();
+                bot->GetSession()->SendShowBank(npc->GetGUID());
+                std::uint32_t deposited = 0, withdrawn = 0;
+                for (std::uint32_t const g : BankMoves(bot, lined ? &L : nullptr, role.bagHouse))
+                {
+                    ObjectGuid const og = ObjectGuid::Create<HighGuid::Item>(g);
+                    Item* item = bot->GetItemByGuid(og);
+                    if (!item)
+                        continue;
+                    bool const fromBank = Player::IsBankPos(item->GetPos());
+                    std::uint32_t const entry = item->GetEntry(), count = item->GetCount();
+                    WorldPacket packet(CMSG_AUTOSTORE_BANK_ITEM, 2);
+                    packet << uint8(item->GetBagSlot()) << uint8(item->GetSlot());
+                    WorldPackets::Bank::AutoStoreBankItem store(std::move(packet));
+                    store.Read();
+                    bot->GetSession()->HandleAutoStoreBankItemOpcode(store);
+                    Item const* after = bot->GetItemByGuid(og);
+                    if (after && Player::IsBankPos(after->GetPos()) == fromBank)
+                        break;  // no room on the other side
+                    if (fromBank)
+                        ++withdrawn;
+                    else
+                        ++deposited;
+                    LOG_INFO("playerbots", "[Supply] bank bot={} op={} item={} count={}", bot->GetName(),
+                             fromBank ? "withdraw" : "deposit", entry, count);
+                }
+                LOG_INFO("playerbots", "[Supply] bank bot={} deposited={} withdrawn={} free={}", bot->GetName(), deposited,
+                         withdrawn, bot->GetFreeInventorySpace());
                 break;
             }
             case Task::Market:

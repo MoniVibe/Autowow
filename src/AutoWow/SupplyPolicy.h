@@ -87,6 +87,10 @@ struct Params
                                          // free bag slots (0 = off; a blocked craft still makes one)
     std::uint32_t artisanMinLevel = 10;  // AutoWow.Supply.ArtisanMinLevel: below it a configured artisan is an
                                          // apprentice, an ordinary cohort adventurer (0 = off)
+    // Rep storage (lane T, soak-s48-full-r1; a bug fix, on by default):
+    bool repStore = true;           // AutoWow.Supply.RepStore: rep bags, bank stash, mail cap, batched mails
+    std::uint32_t repMailCap = 80;  // AutoWow.Supply.RepMailCap: donors skip a rep holding this many mails
+    std::uint32_t repKeep = 60;     // AutoWow.Supply.RepKeep: units per material the rep keeps in its bags
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -114,6 +118,7 @@ struct Member
     std::uint32_t empty = 0;
     std::uint32_t smaller = 0;
     std::uint32_t incoming = 0;
+    bool rep = false;  // a house rep (RepStore): the hubs' storage ranks before every member
 };
 
 [[nodiscard]] inline std::uint32_t Wants(Member const& m)
@@ -122,13 +127,15 @@ struct Member
     return want > m.incoming ? want - m.incoming : 0;
 }
 
-// Members that want a bag, most empty slots first, then most smaller bags, ties the lower guid.
+// Members that want a bag, reps first, then most empty slots, then most smaller bags, ties the lower guid.
 [[nodiscard]] inline std::vector<Member> RankNeeds(std::vector<Member> members)
 {
     members.erase(std::remove_if(members.begin(), members.end(), [](Member const& m) { return !Wants(m); }),
                   members.end());
     std::sort(members.begin(), members.end(), [](Member const& a, Member const& b)
               {
+                  if (a.rep != b.rep)
+                      return a.rep;
                   if (a.empty != b.empty)
                       return a.empty > b.empty;
                   if (a.smaller != b.smaller)
@@ -561,6 +568,104 @@ inline constexpr std::uint32_t kXpDivisor = 20;  // auto work XP: about one leve
 [[nodiscard]] inline std::uint32_t Surplus(std::uint32_t openWant, std::uint32_t repBags, std::uint32_t keep)
 {
     return !openWant && repBags > keep ? repBags - keep : 0;
+}
+
+// ---- rep storage (AutoWow.Supply.RepStore) ----
+// soak-s48-full-r1: the Alliance Weavers rep (level 3, 16 backpack slots, no bag) is the house hub; with Tiers its
+// ClothCap alone is 600 units (30 stacks). It wears bags, stashes materials in its character bank and donors stop
+// at RepMailCap mails (the core refuses a mail at 100).
+
+// A loose general bag the rep holds.
+struct LooseBag
+{
+    std::uint32_t guid = 0;  // item guid low
+    std::uint32_t slots = 0;
+};
+
+// The rep's own bags to wear in its `empty` bag slots: the biggest first, ties the lower guid.
+[[nodiscard]] inline std::vector<std::uint32_t> BagsToWear(std::vector<LooseBag> bags, std::uint32_t empty)
+{
+    std::sort(bags.begin(), bags.end(), [](LooseBag const& a, LooseBag const& b)
+              { return a.slots != b.slots ? a.slots > b.slots : a.guid < b.guid; });
+    std::vector<std::uint32_t> out;
+    for (LooseBag const& b : bags)
+        if (out.size() < empty && b.slots)
+            out.push_back(b.guid);
+    return out;
+}
+
+// Donors route to a rep only while its mailbox holds fewer than `cap` mails.
+[[nodiscard]] inline bool MailRoom(std::uint32_t mails, std::uint32_t cap) { return mails < cap; }
+
+// The rep's bags (backpack + worn bags: `total` slots, `free` empty) are more than 75% full.
+[[nodiscard]] inline bool StashDue(std::uint32_t free, std::uint32_t total)
+{
+    std::uint64_t const used = total > free ? total - free : 0;
+    return used * 4 > std::uint64_t(total) * 3;
+}
+
+struct StashStack
+{
+    std::uint32_t guid = 0;  // item guid low
+    std::uint32_t item = 0;
+    std::uint32_t count = 0;
+};
+
+[[nodiscard]] inline std::uint64_t UnitsOf(std::vector<StashStack> const& stacks, std::uint32_t item)
+{
+    std::uint64_t n = 0;
+    for (StashStack const& s : stacks)
+        if (s.item == item)
+            n += s.count;
+    return n;
+}
+
+// Bank deposit (bags over 75% full): whole loose material stacks, ascending guid, while that item's loose units left
+// stay at least `keep`; at most `bankFree` stacks.
+[[nodiscard]] inline std::vector<std::uint32_t> PlanStash(std::vector<StashStack> loose, std::uint32_t keep,
+                                                          std::uint32_t bankFree)
+{
+    std::sort(loose.begin(), loose.end(), [](StashStack const& a, StashStack const& b) { return a.guid < b.guid; });
+    std::vector<std::pair<std::uint32_t, std::uint64_t>> left;  // item -> loose units left (bounded by the bags)
+    std::vector<std::uint32_t> out;
+    for (StashStack const& s : loose)
+    {
+        if (out.size() >= bankFree)
+            break;
+        auto it = std::find_if(left.begin(), left.end(), [&](auto const& l) { return l.first == s.item; });
+        if (it == left.end())
+            it = left.insert(left.end(), {s.item, UnitsOf(loose, s.item)});
+        if (it->second < std::uint64_t(keep) + s.count)
+            continue;
+        out.push_back(s.guid);
+        it->second -= s.count;
+    }
+    return out;
+}
+
+// Bank withdrawal: banked stacks (ascending guid) of an item whose loose units are under `keep` (the last may
+// overshoot), one free slot each, never leaving the bags over 75% full (no stash / refill loop).
+[[nodiscard]] inline std::vector<std::uint32_t> PlanUnstash(std::vector<StashStack> banked,
+                                                            std::vector<StashStack> const& loose, std::uint32_t keep,
+                                                            std::uint32_t free, std::uint32_t total)
+{
+    std::sort(banked.begin(), banked.end(), [](StashStack const& a, StashStack const& b) { return a.guid < b.guid; });
+    std::vector<std::pair<std::uint32_t, std::uint64_t>> have;
+    std::vector<std::uint32_t> out;
+    for (StashStack const& s : banked)
+    {
+        if (!free || StashDue(free - 1, total))
+            break;
+        auto it = std::find_if(have.begin(), have.end(), [&](auto const& h) { return h.first == s.item; });
+        if (it == have.end())
+            it = have.insert(have.end(), {s.item, UnitsOf(loose, s.item)});
+        if (it->second >= keep)
+            continue;
+        out.push_back(s.guid);
+        it->second += s.count;
+        --free;
+    }
+    return out;
 }
 
 // ---- product catalog (AutoWow.Supply.Products) ----
@@ -1273,6 +1378,7 @@ struct Station
 struct Stations
 {
     Station mailbox, trainer, threadVendor, auctioneer;
+    Station banker;  // RepStore: the rep's bank stash (Stormwind 2455 Olivia Burnside, Orgrimmar 3318 Koma)
 };
 
 // Shared per-team state (world thread writes, role bots' map threads read), copied out under the lock.
@@ -1344,6 +1450,7 @@ void RouteCloth(Player* bot);
 bool HeldForDonation(std::uint32_t itemGuid);
 inline bool Tiers() { return detail::gEnabled && detail::gParams.tiers; }
 inline bool Market() { return Tiers() && detail::gParams.market; }
+inline bool RepStore() { return detail::gEnabled && detail::gParams.repStore; }
 std::uint32_t PriceOf(std::uint32_t item);      // vendor buy price per unit (thread), 0 = unknown
 std::uint32_t SellPriceOf(std::uint32_t item);  // vendor sell value per unit, 0 = unknown
 // Market, map thread (the rep at its faction auctioneer): queue these buyouts; the world thread pays the rep

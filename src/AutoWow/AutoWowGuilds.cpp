@@ -150,7 +150,7 @@ void SyncLeader(Guild* g)
 }
 
 bool SendMail(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
-              std::uint32_t money, std::string const& subject)
+              std::uint32_t money, std::string const& subject, char const** refusalOut = nullptr)
 {
     Player* from = ObjectAccessor::FindConnectedPlayer(PlayerGuid(fromGuid));
     CharacterCacheEntry const* to = sCharacterCache->GetCharacterCacheByGuid(PlayerGuid(toGuid));
@@ -164,11 +164,21 @@ bool SendMail(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uin
     if (refusal)
     {
         LOG_INFO("playerbots", "[Guilds] mail {} -> {} refused: {}", fromGuid, toGuid, refusal);
+        if (refusalOut)
+            *refusalOut = refusal;
         return false;
     }
     Player* receiver = ObjectAccessor::FindConnectedPlayer(PlayerGuid(toGuid));
     std::uint32_t const receiverAccount = receiver ? receiver->GetSession()->GetAccountId() : to->AccountId;
-    if ((receiver ? receiver->GetMailSize() : to->MailCount) > 100)
+    std::uint32_t mails = to->MailCount;
+    if (receiver)
+    {
+        mails = 0;
+        for (Mail const* m : receiver->GetMails())  // a deleted mail leaves the box at the receiver's next save
+            if (m && m->state != MAIL_STATE_DELETED)
+                ++mails;
+    }
+    if (mails > 100)
         refusal = "receiver_mailbox_full";
 
     // Same checks as the stock send-mail handler; any bad attachment refuses the whole mail.
@@ -199,6 +209,8 @@ bool SendMail(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uin
     if (refusal)
     {
         LOG_INFO("playerbots", "[Guilds] mail {} -> {} refused: {}", fromGuid, toGuid, refusal);
+        if (refusalOut)
+            *refusalOut = refusal;
         if (bank && std::string_view(refusal) == "bank_postage")
             if (HouseRuntime* h = HouseOfGuild(houseGuild))
                 Emit(from, Reason::Refused, *h, houseGuild, postage, ReasonName(Reason::Postage));
@@ -481,9 +493,9 @@ bool SendMoney(std::uint32_t fromGuid, std::uint32_t toGuid, std::uint32_t coppe
 }
 
 bool SendItems(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
-               std::string const& subject)
+               std::string const& subject, char const** refusal)
 {
-    return SendMail(fromGuid, toGuid, itemGuids, 0, subject);
+    return SendMail(fromGuid, toGuid, itemGuids, 0, subject, refusal);
 }
 
 std::vector<House> const& Houses() { return gDefs; }
