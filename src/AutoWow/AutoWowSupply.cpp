@@ -15,6 +15,7 @@
 #include <iterator>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -180,7 +181,53 @@ std::uint32_t InMail(Player* p, std::uint32_t entry)
     return n;
 }
 
-std::uint32_t HeldUnits(Player* p, std::uint32_t entry) { return Loose(p, entry) + InMail(p, entry); }
+// RepStore: units of `entry` in the player's character bank (bank slots and bank bags); 0 with RepStore off.
+std::uint32_t Banked(Player* p, std::uint32_t entry)
+{
+    std::uint32_t n = 0;
+    if (!p || !detail::gParams.repStore)
+        return 0;
+    for (uint8 slot = BANK_SLOT_ITEM_START; slot < BANK_SLOT_ITEM_END; ++slot)
+        if (Item* item = p->GetItemByPos(INVENTORY_SLOT_BAG_0, slot); item && item->GetEntry() == entry)
+            n += item->GetCount();
+    for (uint8 bag = BANK_SLOT_BAG_START; bag < BANK_SLOT_BAG_END; ++bag)
+        if (Bag* b = p->GetBagByPos(bag))
+            for (uint32 slot = 0; slot < b->GetBagSize(); ++slot)
+                if (Item* item = b->GetItemByPos(slot); item && item->GetEntry() == entry)
+                    n += item->GetCount();
+    return n;
+}
+
+// Bags, bank (RepStore: the rep's stash counts toward the house caps) and mailbox.
+std::uint32_t HeldUnits(Player* p, std::uint32_t entry) { return Loose(p, entry) + Banked(p, entry) + InMail(p, entry); }
+
+// Mails in the player's box, the deleted ones (gone at its next save) not counted.
+std::uint32_t LiveMails(Player* p)
+{
+    std::uint32_t n = 0;
+    for (Mail const* m : p->GetMails())
+        if (m && m->state != MAIL_STATE_DELETED)
+            ++n;
+    return n;
+}
+
+// Donor room at a rep: online with bag / bank room and (RepStore) fewer than RepMailCap mails (soak-s48-full-r1).
+bool RepReady(Player* rep)
+{
+    return rep && AutoWowGuilds::RepFreeSlots(rep) > 0 &&
+           (!detail::gParams.repStore || MailRoom(LiveMails(rep), detail::gParams.repMailCap));
+}
+
+// SendItems: nullptr = sent, else the refused row's op: "mailbox_full" (RepStore) when the receiver's box was at the
+// core cap, else `op`.
+char const* Send(std::uint32_t from, std::uint32_t to, std::vector<std::uint32_t> const& items,
+                 std::string const& subject, char const* op)
+{
+    char const* why = nullptr;
+    if (AutoWowGuilds::SendItems(from, to, items, subject, &why))
+        return nullptr;
+    return detail::gParams.repStore && why && std::string_view(why) == "receiver_mailbox_full" ? "mailbox_full" : op;
+}
 
 bool GeneralBag(ItemTemplate const* proto)
 {
@@ -219,7 +266,16 @@ bool IsRole(Player* p) { return ActiveRoleOf(p).role != Role::None; }
 // treats it as offline: no feed, pay or deliveries while it adventures).
 Player* Working(Player* art) { return art && art->IsInWorld() && IsRole(art) ? art : nullptr; }
 
-// The online cohort members of the team (roles excluded), unranked.
+// The online configured rep of house `i` (a role bot), else nullptr.
+Player* RoleRep(std::size_t i, bool alliance)
+{
+    std::uint32_t const gid = AutoWowGuilds::HouseGuildId(i, alliance);
+    Player* rep = Online(gid ? AutoWowGuilds::RepOf(gid) : 0);
+    return rep && rep->IsInWorld() && IsRole(rep) ? rep : nullptr;
+}
+
+// The online cohort members of the team (roles excluded), unranked. RepStore: plus every configured house rep of the
+// team (Member.rep, ranked first; the bag-house rep keeps its own share and wears it, EquipOwnBags).
 std::vector<Member> Members(bool alliance, std::uint32_t slots)
 {
     std::vector<Member> members;
@@ -230,7 +286,43 @@ std::vector<Member> Members(bool alliance, std::uint32_t slots)
             if (m && m->IsInWorld() && (m->GetTeamId() == TEAM_ALLIANCE) == alliance && !IsRole(m))
                 members.push_back(MemberOf(m, slots));
         }
+    for (std::size_t i = 0; detail::gParams.repStore && i < AutoWowGuilds::Houses().size(); ++i)
+        if (Player* rep = RoleRep(i, alliance))
+        {
+            members.push_back(MemberOf(rep, slots));
+            members.back().rep = true;
+        }
     return members;
+}
+
+// RepStore (world thread): a rep wears its own loose general bags in its empty bag slots (BagsToWear), with the stock
+// swap the equip action uses. The bags are house output it holds (delivered by mail or kept), never created.
+void EquipOwnBags(Player* rep)
+{
+    std::vector<uint8> empty;
+    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+        if (!rep->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            empty.push_back(slot);
+    if (empty.empty())
+        return;
+    std::vector<LooseBag> bags;
+    ForEachLoose(rep, [&](Item* item) {
+        if (GeneralBag(item->GetTemplate()) && !item->IsNotEmptyBag())
+            bags.push_back({static_cast<std::uint32_t>(item->GetGUID().GetCounter()), item->GetTemplate()->ContainerSlots});
+    });
+    std::size_t k = 0;
+    for (std::uint32_t const g : BagsToWear(std::move(bags), static_cast<std::uint32_t>(empty.size())))
+    {
+        Item* bag = rep->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g));
+        if (!bag || k >= empty.size())
+            continue;
+        uint8 const slot = empty[k++];
+        std::uint32_t const entry = bag->GetEntry();
+        rep->SwapItem(static_cast<uint16>((bag->GetBagSlot() << 8) | bag->GetSlot()),
+                      static_cast<uint16>((INVENTORY_SLOT_BAG_0 << 8) | slot));
+        LOG_INFO("playerbots", "[Supply] rep bag bot={} item={} slot={} worn={} free={}", rep->GetName(), entry, slot,
+                 rep->GetItemByPos(INVENTORY_SLOT_BAG_0, slot) != nullptr, rep->GetFreeInventorySpace());
+    }
 }
 
 // The same, ranked by want.
@@ -282,12 +374,13 @@ public:
                     for (std::size_t k = 0; k < units.size(); ++k)
                         if (item->GetEntry() == entries[k])
                             units[k] += item->GetCount();
-            ok = rep && rep != Low(bot) &&
-                 AutoWowGuilds::SendItems(Low(bot), rep, guids_, bags ? "AutoWoW cloth" : "AutoWoW materials");
+            char const* const why = rep && rep != Low(bot)
+                ? Send(Low(bot), rep, guids_, bags ? "AutoWoW cloth" : "AutoWoW materials", "donate") : "donate";
+            ok = !why;
             for (std::size_t k = 0; k < units.size(); ++k)
                 if (units[k])
                     EmitLine(line_, bot, ok ? Reason::Donate : Reason::Refused, 0, entries[k], units[k], 0, Low(bot),
-                             rep, ok ? nullptr : "donate");
+                             rep, why);
             // AutoWow.Squad: a squad member's delivery (`squad` deliver row).
             for (std::size_t k = 0; ok && AutoWowSquad::Enabled() && k < units.size(); ++k)
                 if (units[k])
@@ -332,19 +425,21 @@ public:
                     for (std::size_t k = 0; k < kRawItems; ++k)
                         if (item->GetEntry() == kRawLists[kind_][k])
                             units[k] += item->GetCount();
-            ok = rep && rep != Low(bot) && AutoWowGuilds::SendItems(Low(bot), rep, guids_, "AutoWoW materials");
+            char const* const why = rep && rep != Low(bot) ? Send(Low(bot), rep, guids_, "AutoWoW materials", "donate")
+                                                           : "donate";
+            ok = !why;
             for (std::size_t k = 0; k < kRawItems; ++k)
             {
                 if (!units[k])
                     continue;
                 Reason const r = ok ? Reason::Donate : Reason::Refused;
-                LOG_INFO("playerbots", "[Supply] player={} {} house={} item={} count={} from={} to={}{}", bot->GetName(),
-                         ReasonName(r), gRawHouseName[kind_], kRawLists[kind_][k], units[k], Low(bot), rep,
-                         ok ? "" : " op=donate");
+                LOG_INFO("playerbots", "[Supply] player={} {} house={} item={} count={} from={} to={}{}{}",
+                         bot->GetName(), ReasonName(r), gRawHouseName[kind_], kRawLists[kind_][k], units[k], Low(bot),
+                         rep, ok ? "" : " op=", ok ? "" : why);
                 if (AutoWowQuestLedger::Enabled())
                     AutoWowQuestLedger::EmitSupply(bot, ReasonName(r),
                                                    LedgerFields(gRawHouseName[kind_], 0, kRawLists[kind_][k], units[k], 0,
-                                                                Low(bot), rep, ok ? nullptr : "donate") +
+                                                                Low(bot), rep, why) +
                                                        ",\"line\":\"raw\"");
                 if (ok && AutoWowSquad::Enabled())
                     AutoWowSquad::NoteDelivered(bot, kRawLists[kind_][k], units[k], rep);
@@ -377,7 +472,7 @@ void RawTick(bool alliance)
         Player* rep = Online(gid ? AutoWowGuilds::RepOf(gid) : 0);
         if (rep && !rep->IsInWorld())
             rep = nullptr;
-        bool const repReady = rep && AutoWowGuilds::RepFreeSlots(rep) > 0;
+        bool const repReady = RepReady(rep);
         for (std::size_t i = 0; i < kRawItems; ++i)
             rooms[k][i] = ClothRoom(HeldUnits(rep, kRawLists[k][i]), p.rawCap, repReady);
     }
@@ -420,14 +515,15 @@ void TeamTick(bool alliance, bool overlord)
     std::uint32_t stock = 0;
     for (std::uint32_t const c : kCloth)
         stock += HeldUnits(rep, c);
-    ts.clothRoom = ClothRoom(stock, p.clothCap, rep && AutoWowGuilds::RepFreeSlots(rep) > 0);
+    ts.clothRoom = ClothRoom(stock, p.clothCap, RepReady(rep));
 
     // Artisan -> rep: finished bags, paid per bag from the treasury, work XP per bag.
     if (art && rep && art != rep)
         if (std::vector<std::uint32_t> const bags = Guids(LooseStacks(art, gBagItem), kMaxMailStacks); !bags.empty())
         {
             std::uint32_t const n = static_cast<std::uint32_t>(bags.size());
-            if (AutoWowGuilds::SendItems(Low(art), repGuid, bags, "AutoWoW bags"))
+            char const* const why = Send(Low(art), repGuid, bags, "AutoWoW bags", "deliver");
+            if (!why)
             {
                 Emit(art, Reason::Deliver, ts.orderId, gBagItem, n, 0, Low(art), repGuid);
                 ts.remaining -= std::min(ts.remaining, n);
@@ -438,7 +534,7 @@ void TeamTick(bool alliance, bool overlord)
                 GrantXp(art, XpFor(p.workXpPerItem, art) * n, ts.orderId, gBagItem, n);
             }
             else
-                Emit(art, Reason::Refused, ts.orderId, gBagItem, n, 0, Low(art), repGuid, "deliver");
+                Emit(art, Reason::Refused, ts.orderId, gBagItem, n, 0, Low(art), repGuid, why);
         }
 
     std::uint32_t const artLinen = HeldUnits(art, kLinen), artBolts = HeldUnits(art, gBoltItem), artBags = HeldUnits(art, gBagItem);
@@ -455,9 +551,8 @@ void TeamTick(bool alliance, bool overlord)
             for (Stack const& s : LooseStacks(rep, kLinen))
                 if (std::find(stacks.begin(), stacks.end(), s.guid) != stacks.end())
                     units += s.count;
-            bool const ok = AutoWowGuilds::SendItems(repGuid, Low(art), stacks, "AutoWoW linen");
-            Emit(rep, ok ? Reason::Feed : Reason::Refused, ts.orderId, kLinen, units, 0, repGuid, Low(art),
-                 ok ? nullptr : "feed");
+            char const* const why = Send(repGuid, Low(art), stacks, "AutoWoW linen", "feed");
+            Emit(rep, why ? Reason::Refused : Reason::Feed, ts.orderId, kLinen, units, 0, repGuid, Low(art), why);
         }
     }
     if (art && ts.artisanWant)
@@ -508,10 +603,12 @@ void TeamTick(bool alliance, bool overlord)
                 give.push_back(bags[next].guid);
             if (give.empty())
                 break;
-            if (!AutoWowGuilds::SendItems(repGuid, d.guid, give, "AutoWoW bag"))
+            if (d.guid == repGuid)
+                continue;  // RepStore: the rep's own share stays with it (worn at the next tick, EquipOwnBags)
+            if (char const* const why = Send(repGuid, d.guid, give, "AutoWoW bag", "deliver"))
             {
                 Emit(rep, Reason::Refused, ts.orderId, gBagItem, static_cast<std::uint32_t>(give.size()), 0, repGuid,
-                     d.guid, "deliver");
+                     d.guid, why);
                 continue;
             }
             Emit(rep, Reason::Deliver, ts.orderId, gBagItem, static_cast<std::uint32_t>(give.size()), 0, repGuid,
@@ -565,32 +662,55 @@ void TierTick(bool alliance, bool overlord)
     std::array<std::uint32_t, kTierCount> stock{};
     for (std::size_t i = 0; i < kTierCount; ++i)
         stock[i] = HeldUnits(rep, kTiers[i].cloth);
-    ts.clothRooms = ClothRooms(stock, p.clothCap, rep && AutoWowGuilds::RepFreeSlots(rep) > 0);
+    ts.clothRooms = ClothRooms(stock, p.clothCap, RepReady(rep));
     ts.artisanSkill = art ? art->GetSkillValue(SKILL_TAILORING) : 0;
 
     // Artisan -> rep: finished bags of every tier, paid per bag, work XP per bag; product bags count down the order.
+    // RepStore: every tier in one mail (at most kMaxMailStacks bags); off: one mail per tier.
     if (art && rep && art != rep)
+    {
+        std::array<std::vector<std::uint32_t>, kTierCount> picks;
+        auto ship = [&]()
+        {
+            std::vector<std::uint32_t> all;
+            for (std::vector<std::uint32_t> const& g : picks)
+                all.insert(all.end(), g.begin(), g.end());
+            if (all.empty())
+                return;
+            char const* const why = Send(Low(art), repGuid, all, "AutoWoW bags", "deliver");
+            for (std::size_t i = 0; i < kTierCount; ++i)
+            {
+                Tier const& tier = kTiers[i];
+                std::uint32_t const n = static_cast<std::uint32_t>(picks[i].size());
+                picks[i].clear();
+                if (!n)
+                    continue;
+                if (why)
+                {
+                    Emit(art, Reason::Refused, ts.orderId, tier.bag, n, 0, Low(art), repGuid, why);
+                    continue;
+                }
+                Emit(art, Reason::Deliver, ts.orderId, tier.bag, n, 0, Low(art), repGuid);
+                if (i == ts.product)
+                    ts.remaining -= std::min(ts.remaining, n);
+                std::uint64_t const pay = BagPay(SellOf(tier.bag), p.bagPayPct, n);
+                bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
+                Emit(art, paid ? Reason::Pay : Reason::Refused, ts.orderId, tier.bag, n, pay, 0, Low(art),
+                     paid ? nullptr : "pay");
+                GrantXp(art, XpFor(p.workXpPerItem, art) * n, ts.orderId, tier.bag, n);
+            }
+        };
+        std::size_t used = 0;
         for (std::size_t i = 0; i < kTierCount; ++i)
         {
-            Tier const& tier = kTiers[i];
-            std::vector<std::uint32_t> const bags = Guids(LooseStacks(art, tier.bag), kMaxMailStacks);
-            if (bags.empty())
-                continue;
-            std::uint32_t const n = static_cast<std::uint32_t>(bags.size());
-            if (!AutoWowGuilds::SendItems(Low(art), repGuid, bags, "AutoWoW bags"))
-            {
-                Emit(art, Reason::Refused, ts.orderId, tier.bag, n, 0, Low(art), repGuid, "deliver");
-                continue;
-            }
-            Emit(art, Reason::Deliver, ts.orderId, tier.bag, n, 0, Low(art), repGuid);
-            if (i == ts.product)
-                ts.remaining -= std::min(ts.remaining, n);
-            std::uint64_t const pay = BagPay(SellOf(tier.bag), p.bagPayPct, n);
-            bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
-            Emit(art, paid ? Reason::Pay : Reason::Refused, ts.orderId, tier.bag, n, pay, 0, Low(art),
-                 paid ? nullptr : "pay");
-            GrantXp(art, XpFor(p.workXpPerItem, art) * n, ts.orderId, tier.bag, n);
+            picks[i] = Guids(LooseStacks(art, kTiers[i].bag), static_cast<std::uint32_t>(kMaxMailStacks - used));
+            if (p.repStore)
+                used += picks[i].size();
+            else
+                ship();
         }
+        ship();
+    }
 
     // Overlord: per-tier want and craftable, the product, the order and the per-tier surplus.
     std::array<std::uint32_t, kTierCount> wants{};
@@ -661,19 +781,34 @@ void TierTick(bool alliance, bool overlord)
     ts.skillup = pick < 0 ? kNoTier : skillups[pick].tier;
     ts.skillupBag = pick >= 0 && skillups[pick].bag;
 
-    // Rep -> artisan: the product order's cloth and extras, else one skill-up stock (SkillupCloth).
+    // Rep -> artisan: the product order's cloth and extras, else one skill-up stock (SkillupCloth). RepStore: all in
+    // one mail (at most kMaxMailStacks stacks); off: one mail per item.
+    std::vector<std::uint32_t> feedStacks;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> fed;  // (item, units) of feedStacks
+    auto flushFeed = [&]()
+    {
+        if (feedStacks.empty())
+            return;
+        char const* const why = Send(repGuid, Low(art), feedStacks, "AutoWoW materials", "feed");
+        for (auto const& [item, sent] : fed)
+            Emit(rep, why ? Reason::Refused : Reason::Feed, ts.orderId, item, sent, 0, repGuid, Low(art), why);
+        feedStacks.clear();
+        fed.clear();
+    };
     auto feed = [&](std::uint32_t item, std::uint32_t units)
     {
-        std::vector<std::uint32_t> const stacks = PickStacks(LooseStacks(rep, item), units);
+        std::vector<std::uint32_t> stacks = PickStacks(LooseStacks(rep, item), units);
+        stacks.resize(std::min<std::size_t>(stacks.size(), kMaxMailStacks - feedStacks.size()));
         if (stacks.empty())
             return;
         std::uint32_t sent = 0;
         for (Stack const& s : LooseStacks(rep, item))
             if (std::find(stacks.begin(), stacks.end(), s.guid) != stacks.end())
                 sent += s.count;
-        bool const ok = AutoWowGuilds::SendItems(repGuid, Low(art), stacks, "AutoWoW materials");
-        Emit(rep, ok ? Reason::Feed : Reason::Refused, ts.orderId, item, sent, 0, repGuid, Low(art),
-             ok ? nullptr : "feed");
+        feedStacks.insert(feedStacks.end(), stacks.begin(), stacks.end());
+        fed.push_back({item, sent});
+        if (!p.repStore)
+            flushFeed();
     };
     if (art && rep && art != rep)
     {
@@ -694,6 +829,7 @@ void TierTick(bool alliance, bool overlord)
             if (ts.skillupBag && tier.extra)
                 feed(tier.extra, Short(tier.extraPerBag, HeldUnits(art, tier.extra)));
         }
+        flushFeed();
     }
     if (art && ts.artisanWant)
     {
@@ -770,9 +906,11 @@ void TierTick(bool alliance, bool overlord)
                 if (give.empty())
                     break;
                 std::uint32_t const n = static_cast<std::uint32_t>(give.size());
-                if (!AutoWowGuilds::SendItems(repGuid, d.guid, give, "AutoWoW bag"))
+                if (d.guid == repGuid)
+                    continue;  // RepStore: the rep's own share stays with it (worn at the next tick, EquipOwnBags)
+                if (char const* const why = Send(repGuid, d.guid, give, "AutoWoW bag", "deliver"))
                 {
-                    Emit(rep, Reason::Refused, ts.orderId, tier.bag, n, 0, repGuid, d.guid, "deliver");
+                    Emit(rep, Reason::Refused, ts.orderId, tier.bag, n, 0, repGuid, d.guid, why);
                     continue;
                 }
                 given[d.guid] += n;
@@ -862,7 +1000,7 @@ void LineTick(Line line, bool alliance, bool overlord)
 
     // Donor room per routed reagent, each under HerbCap.
     std::vector<std::uint32_t> const& route = gLineRoute[li];
-    bool const repReady = rep && AutoWowGuilds::RepFreeSlots(rep) > 0;
+    bool const repReady = RepReady(rep);
     v.rooms.assign(route.size(), 0);
     for (std::size_t i = 0; i < route.size(); ++i)
         v.rooms[i] = ClothRoom(HeldUnits(rep, route[i]), p.herbCap, repReady);
@@ -877,34 +1015,60 @@ void LineTick(Line line, bool alliance, bool overlord)
     std::uint32_t const targetCasts = v.remaining && v.product != kNoTier ? v.remaining : p.skillupCasts;
 
     // Artisan -> rep: finished products of every tier, paid per unit, work XP per unit; product units count
-    // down the order.
+    // down the order. RepStore: every tier in one mail (at most kMaxMailStacks stacks); off: one mail per tier.
     if (art && rep && art != rep)
+    {
+        std::array<std::vector<std::uint32_t>, kMaxLineTiers> picks;
+        std::array<std::uint32_t, kMaxLineTiers> units{};
+        auto ship = [&]()
+        {
+            std::vector<std::uint32_t> all;
+            for (std::vector<std::uint32_t> const& g : picks)
+                all.insert(all.end(), g.begin(), g.end());
+            if (all.empty())
+                return;
+            char const* const why = Send(Low(art), repGuid, all, "AutoWoW goods", "deliver");
+            for (std::size_t i = 0; i < L.tierCount; ++i)
+            {
+                LineTier const& tier = L.tiers[i];
+                std::uint32_t const n = units[i];
+                bool const any = !picks[i].empty();
+                picks[i].clear();
+                units[i] = 0;
+                if (!any)
+                    continue;
+                if (why)
+                {
+                    EmitLine(line, art, Reason::Refused, v.orderId, tier.product, n, 0, Low(art), repGuid, why);
+                    continue;
+                }
+                EmitLine(line, art, Reason::Deliver, v.orderId, tier.product, n, 0, Low(art), repGuid);
+                if (i == v.product)
+                    v.remaining -= std::min(v.remaining, n);
+                std::uint64_t const pay = BagPay(SellOf(tier.product), p.potionPayPct, n);
+                bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
+                EmitLine(line, art, paid ? Reason::Pay : Reason::Refused, v.orderId, tier.product, n, pay, 0,
+                         Low(art), paid ? nullptr : "pay");
+                GrantXp(art, XpFor(p.workXpPerItem, art) * n, v.orderId, tier.product, n, line);
+            }
+        };
+        std::size_t used = 0;
         for (std::size_t i = 0; i < L.tierCount; ++i)
         {
             LineTier const& tier = L.tiers[i];
             std::vector<Stack> const stacks = LooseStacks(art, tier.product);
-            std::vector<std::uint32_t> const ship =
-                SellStacks(stacks, CraftReserve(L, target, targetCasts, tier.product));
-            if (ship.empty())
-                continue;
-            std::uint32_t n = 0;
+            picks[i] = SellStacks(stacks, CraftReserve(L, target, targetCasts, tier.product));
+            picks[i].resize(std::min<std::size_t>(picks[i].size(), kMaxMailStacks - used));
             for (Stack const& s : stacks)
-                if (std::find(ship.begin(), ship.end(), s.guid) != ship.end())
-                    n += s.count;
-            if (!AutoWowGuilds::SendItems(Low(art), repGuid, ship, "AutoWoW goods"))
-            {
-                EmitLine(line, art, Reason::Refused, v.orderId, tier.product, n, 0, Low(art), repGuid, "deliver");
-                continue;
-            }
-            EmitLine(line, art, Reason::Deliver, v.orderId, tier.product, n, 0, Low(art), repGuid);
-            if (i == v.product)
-                v.remaining -= std::min(v.remaining, n);
-            std::uint64_t const pay = BagPay(SellOf(tier.product), p.potionPayPct, n);
-            bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
-            EmitLine(line, art, paid ? Reason::Pay : Reason::Refused, v.orderId, tier.product, n, pay, 0, Low(art),
-                     paid ? nullptr : "pay");
-            GrantXp(art, XpFor(p.workXpPerItem, art) * n, v.orderId, tier.product, n, line);
+                if (std::find(picks[i].begin(), picks[i].end(), s.guid) != picks[i].end())
+                    units[i] += s.count;
+            if (p.repStore)
+                used += picks[i].size();
+            else
+                ship();
         }
+        ship();
+    }
 
     // Need scan (the overlord's order; every tick for the rep's deliveries).
     std::vector<StockNeed> ranked;
@@ -967,22 +1131,41 @@ void LineTick(Line line, bool alliance, bool overlord)
     for (Lack const& k : lacks)
         if (k.source == Source::Vendor)
             v.vendor.push_back({k.item, k.units + HeldUnits(art, k.item), BuyOf(k.item)});
+    // RepStore: every lack in one mail (at most kMaxMailStacks stacks); off: one mail per item.
     if (art && rep && art != rep)
+    {
+        std::vector<std::uint32_t> feedStacks;
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> fed;  // (item, units) of feedStacks
+        auto flushFeed = [&]()
+        {
+            if (feedStacks.empty())
+                return;
+            char const* const why = Send(repGuid, Low(art), feedStacks, "AutoWoW materials", "feed");
+            for (auto const& [item, sent] : fed)
+                EmitLine(line, rep, why ? Reason::Refused : Reason::Feed, v.orderId, item, sent, 0, repGuid, Low(art),
+                         why);
+            feedStacks.clear();
+            fed.clear();
+        };
         for (Lack const& k : lacks)
         {
             if (k.source == Source::Vendor)
                 continue;
-            std::vector<std::uint32_t> const stacks = PickStacks(LooseStacks(rep, k.item), k.units);
+            std::vector<std::uint32_t> stacks = PickStacks(LooseStacks(rep, k.item), k.units);
+            stacks.resize(std::min<std::size_t>(stacks.size(), kMaxMailStacks - feedStacks.size()));
             if (stacks.empty())
                 continue;
             std::uint32_t sent = 0;
             for (Stack const& s : LooseStacks(rep, k.item))
                 if (std::find(stacks.begin(), stacks.end(), s.guid) != stacks.end())
                     sent += s.count;
-            bool const ok = AutoWowGuilds::SendItems(repGuid, Low(art), stacks, "AutoWoW materials");
-            EmitLine(line, rep, ok ? Reason::Feed : Reason::Refused, v.orderId, k.item, sent, 0, repGuid, Low(art),
-                     ok ? nullptr : "feed");
+            feedStacks.insert(feedStacks.end(), stacks.begin(), stacks.end());
+            fed.push_back({k.item, sent});
+            if (!p.repStore)
+                flushFeed();
         }
+        flushFeed();
+    }
     if (art && ts.artisanWant)
     {
         bool const paid = gid && AutoWowGuilds::Pay(gid, art, ts.artisanWant);
@@ -1024,10 +1207,9 @@ void LineTick(Line line, bool alliance, bool overlord)
                 continue;
             for (StackDelivery const& d : PlanStackDeliveries(ranked, static_cast<std::uint8_t>(i), stacks))
             {
-                if (!AutoWowGuilds::SendItems(repGuid, d.guid, d.stacks, "AutoWoW supplies"))
+                if (char const* const why = Send(repGuid, d.guid, d.stacks, "AutoWoW supplies", "deliver"))
                 {
-                    EmitLine(line, rep, Reason::Refused, v.orderId, tier.product, d.units, 0, repGuid, d.guid,
-                             "deliver");
+                    EmitLine(line, rep, Reason::Refused, v.orderId, tier.product, d.units, 0, repGuid, d.guid, why);
                     continue;
                 }
                 EmitLine(line, rep, Reason::Deliver, v.orderId, tier.product, d.units, 0, repGuid, d.guid);
@@ -1151,12 +1333,12 @@ private:
 };
 
 // The stations near `home`: the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no extended
-// cost), the auctioneer and the mailbox, each the nearest (ties the lower spawn id).
+// cost), the auctioneer, the banker and the mailbox, each the nearest (ties the lower spawn id).
 void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t trainerSpell, std::uint32_t vendorItem)
 {
     st = Stations{};
-    std::array<std::int64_t, 4> best{};
-    std::array<std::uint64_t, 4> bestSpawn{};
+    std::array<std::int64_t, 5> best{};
+    std::array<std::uint64_t, 5> bestSpawn{};
     std::int64_t const r2 = std::int64_t(kStationYards) * kStationYards;
     auto consider = [&](std::size_t k, Station& s, std::uint64_t spawn, std::uint32_t entry, float x, float y, float z)
     {
@@ -1196,6 +1378,8 @@ void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t t
                     }
         if (npcflag & UNIT_NPC_FLAG_AUCTIONEER)
             consider(2, st.auctioneer, spawn, data.id, data.posX, data.posY, data.posZ);
+        if (npcflag & UNIT_NPC_FLAG_BANKER)
+            consider(4, st.banker, spawn, data.id, data.posX, data.posY, data.posZ);
     }
     for (auto const& [spawn, data] : sObjectMgr->GetAllGOData())
     {
@@ -1213,9 +1397,9 @@ void BuildStations(bool alliance, Home const& home)
     FindStations(bags, alliance, home, 0, kPouch);
     gBagVendor[T(alliance)] = bags.threadVendor;
     LOG_INFO("server.loading", "[Supply] {} home map={} ({},{}) stations: mailbox={} trainer={} thread_vendor={} "
-             "auctioneer={} bag_vendor={} (item {})", alliance ? "alliance" : "horde", home.map, home.x, home.y,
-             st.mailbox.entry, st.trainer.entry, st.threadVendor.entry, st.auctioneer.entry, gBagVendor[T(alliance)].entry,
-             kPouch);
+             "auctioneer={} bag_vendor={} (item {}) banker={}", alliance ? "alliance" : "horde", home.map, home.x,
+             home.y, st.mailbox.entry, st.trainer.entry, st.threadVendor.entry, st.auctioneer.entry,
+             gBagVendor[T(alliance)].entry, kPouch, st.banker.entry);
 }
 
 // Reagent count of `item` in `spell` (0 = not a reagent).
@@ -1311,6 +1495,9 @@ void LoadConfig()
     p.outfitBudgetPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitBudgetPerHour", 5000);
     p.artisanFreeSlots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanFreeSlots", 4);
     p.artisanMinLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanMinLevel", 10);
+    p.repStore = sConfigMgr->GetOption<bool>("AutoWow.Supply.RepStore", true);
+    p.repMailCap = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RepMailCap", 80));
+    p.repKeep = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RepKeep", 60);
     p.lines = 1;
     std::string const products = sConfigMgr->GetOption<std::string>("AutoWow.Supply.Products", "bags");
     if (!ParseProducts(products, p.lines))
@@ -1550,6 +1737,7 @@ void LoadConfig()
              gThreadPrice, gRoles.size(), gArtisan[0], gArtisan[1], gLearn.size());
     LOG_INFO("server.loading", "[Supply] artisan upkeep: free_slots={} min_level={} bag={} outfit={}",
              p.artisanFreeSlots, p.artisanMinLevel, kPouch, p.outfit);
+    LOG_INFO("server.loading", "[Supply] rep store: {} mail_cap={} keep={}", p.repStore, p.repMailCap, p.repKeep);
     if (p.tiers)
         LOG_INFO("server.loading", "[Supply] tiers on: {} tiers, cloth cap {} per cloth; market={} buy_max_pct={} "
                  "buy_budget={} sell_keep={} list_float={}", kTierCount, p.clothCap, p.market, p.buyMaxPct, p.buyBudget,
@@ -1579,6 +1767,11 @@ void WorldUpdate(std::uint32_t diff)
         gOverlordAcc = 0;
         gFirstOverlord = false;
     }
+    // RepStore: every configured rep wears its own loose bags before the chains count and deliver.
+    for (std::size_t i = 0; p.repStore && i < AutoWowGuilds::Houses().size(); ++i)
+        for (bool const alliance : {true, false})
+            if (Player* rep = RoleRep(i, alliance))
+                EquipOwnBags(rep);
     // The overlord walks every enabled catalog line per team: bags on its bespoke chain, the rest on LineTick.
     if (LineOn(Line::Bags))
     {

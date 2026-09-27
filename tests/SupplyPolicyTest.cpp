@@ -635,4 +635,104 @@ TEST(SupplyOutfit, LedgerWireIsStable)
     EXPECT_EQ(p.outfitMaxCopper, 500u);
     EXPECT_EQ(p.outfitBudgetPerHour, 5000u);
 }
+
+// ---- rep storage (AutoWow.Supply.RepStore; soak-s48-full-r1) ----
+
+TEST(SupplyRepStore, DefaultsOn)
+{
+    Params const p;
+    EXPECT_TRUE(p.repStore);
+    EXPECT_EQ(p.repMailCap, 80u);
+    EXPECT_EQ(p.repKeep, 60u);
+}
+
+TEST(SupplyRepStore, RepsRankBeforeEveryMember)
+{
+    Member rep{90, 1, 0, 0};
+    rep.rep = true;
+    Member full{95, 4, 0, 4};  // a rep with its want covered is still dropped
+    full.rep = true;
+    std::vector<Member> const ranked = RankNeeds({{10, 4, 0, 0}, rep, full, {5, 4, 0, 0}});
+    ASSERT_EQ(ranked.size(), 3u);
+    EXPECT_EQ(ranked[0].guid, 90u);
+    EXPECT_EQ(ranked[1].guid, 5u);
+    EXPECT_EQ(ranked[2].guid, 10u);
+    // Its share of the delivery comes first.
+    std::vector<Delivery> const d = PlanDeliveries(ranked, 2);
+    ASSERT_EQ(d.size(), 2u);
+    EXPECT_EQ(d[0].guid, 90u);
+    EXPECT_EQ(d[0].bags, 1u);
+}
+
+TEST(SupplyRepStore, WearsTheBiggestBagsFirst)
+{
+    // Woolen 8, linen 6, silk pack 10: the two biggest into two empty slots; ties the lower guid.
+    EXPECT_EQ(BagsToWear({{7, 6}, {3, 8}, {9, 10}, {2, 8}}, 2), (std::vector<std::uint32_t>{9, 2}));
+    EXPECT_EQ(BagsToWear({{7, 6}}, 4), (std::vector<std::uint32_t>{7}));
+    EXPECT_TRUE(BagsToWear({{7, 6}}, 0).empty());
+    EXPECT_TRUE(BagsToWear({{7, 0}}, 4).empty());
+}
+
+TEST(SupplyRepStore, DonorsStopBelowTheCoreMailCap)
+{
+    EXPECT_TRUE(MailRoom(79, 80));
+    EXPECT_FALSE(MailRoom(80, 80));
+    EXPECT_FALSE(MailRoom(120, 80));  // soak-s48-full-r1: 120 mails at the Weavers rep
+}
+
+TEST(SupplyRepStore, StashIsDueOverThreeQuartersFull)
+{
+    EXPECT_FALSE(StashDue(4, 16));  // 12 of 16 used: exactly 75%
+    EXPECT_TRUE(StashDue(3, 16));
+    EXPECT_FALSE(StashDue(12, 16));  // soak-s48-full-r1: the rep used 4 of 16
+    EXPECT_TRUE(StashDue(0, 16));
+    EXPECT_FALSE(StashDue(0, 0));
+}
+
+TEST(SupplyRepStore, StashKeepsRepKeepLoosePerItem)
+{
+    // Wool 4 x 20 (keep 60: one stack goes), silk 20 + 20 (40 < keep + 20: none), linen 5 x 20 (two go).
+    std::vector<StashStack> const loose = {{1, kWool, 20}, {2, kWool, 20}, {3, kWool, 20}, {4, kWool, 20},
+                                           {5, kSilk, 20}, {6, kSilk, 20}, {11, kLinen, 20}, {12, kLinen, 20},
+                                           {13, kLinen, 20}, {14, kLinen, 20}, {15, kLinen, 20}};
+    EXPECT_EQ(PlanStash(loose, 60, 28), (std::vector<std::uint32_t>{1, 11, 12}));
+    EXPECT_EQ(PlanStash(loose, 60, 2), (std::vector<std::uint32_t>{1, 11}));  // bank room
+    EXPECT_TRUE(PlanStash(loose, 60, 0).empty());
+    EXPECT_EQ(PlanStash(loose, 0, 28).size(), loose.size());
+}
+
+TEST(SupplyRepStore, RefillUnderRepKeepWithoutRefillingPastThreeQuarters)
+{
+    std::vector<StashStack> const loose = {{1, kWool, 20}, {2, kLinen, 20}, {3, kLinen, 20}, {4, kLinen, 20}};
+    std::vector<StashStack> const banked = {{30, kWool, 20}, {31, kWool, 20}, {32, kWool, 20}, {40, kLinen, 20},
+                                            {50, kSilk, 5}};
+    // Wool 20 -> 40 -> 60 (two stacks), linen at keep, silk 0 -> 5 (the last may stay short: nothing more banked).
+    EXPECT_EQ(PlanUnstash(banked, loose, 60, 10, 16), (std::vector<std::uint32_t>{30, 31, 50}));
+    // 6 free of 16: one stack leaves 5 free (11 used, under 75%); a second would leave 4 (exactly 75%, allowed);
+    // a third 3 (over): stop.
+    EXPECT_EQ(PlanUnstash(banked, loose, 60, 6, 16), (std::vector<std::uint32_t>{30, 31}));
+    EXPECT_EQ(PlanUnstash(banked, loose, 60, 5, 16), (std::vector<std::uint32_t>{30}));
+    EXPECT_TRUE(PlanUnstash(banked, loose, 60, 4, 16).empty());
+    EXPECT_TRUE(PlanUnstash(banked, loose, 60, 0, 16).empty());
+    // A withdrawal never makes a deposit due (no stash / refill loop).
+    EXPECT_FALSE(StashDue(4, 16));
+}
+
+// soak-s48-full-r1: the rep -> artisan feed and the artisan -> rep delivery carry every item in one mail (the
+// runtime packs its picks in item order the way PlanRoute does with unlimited rooms), at most MAX_MAIL_ITEMS stacks.
+TEST(SupplyRepStore, OneMailCarriesEveryItemUpTo12Stacks)
+{
+    std::uint32_t const all = 0xFFFFFFFFu;
+    RoutePlan const two = PlanRoute({{{1, 20}, {2, 20}}, {{7, 2}}}, {all, all});
+    EXPECT_EQ(two.picks, (std::vector<std::uint32_t>{1, 2, 7}));
+    EXPECT_EQ(two.units, (std::vector<std::uint32_t>{40, 2}));
+    std::vector<Stack> ten, five;
+    for (std::uint32_t g = 1; g <= 10; ++g)
+        ten.push_back({g, 1});
+    for (std::uint32_t g = 21; g <= 25; ++g)
+        five.push_back({g, 1});
+    RoutePlan const capped = PlanRoute({ten, five}, {all, all});
+    EXPECT_EQ(capped.picks.size(), kMaxMailStacks);
+    EXPECT_EQ(capped.units, (std::vector<std::uint32_t>{10, 2}));
+}
 }  // namespace

@@ -2951,6 +2951,19 @@ AutoWow.Supply.OutfitBudgetPerHour = 5000
 # in another of our house guilds (not its leader) is moved (`guild` moved row); other guilds are never touched.
 AutoWow.Supply.ArtisanFreeSlots = 4
 AutoWow.Supply.ArtisanMinLevel = 10
+# Rep storage (lane T; soak-s48-full-r1: the Alliance Weavers rep, level 3 with 16 backpack slots, refused every
+# cloth donation and bag delivery; its box held 120 emptied mails, see AutoWow.Trade.DeleteEmptyMail). RepStore (a
+# bug fix, on by default; 0 = the previous chain): every configured rep wears its own loose general bags in its empty
+# bag slots each tick, biggest first ("[Supply] rep bag"); the bag house ranks the reps before every member wanting
+# bags (the bag-house rep keeps its share and wears it); a rep whose bags are over 75% full walks to the banker near
+# home (Stormwind 2455, Orgrimmar 3318) and banks its trade goods beyond RepKeep units per item; a rep under RepKeep
+# of a house material (the bag tiers' or its line's) takes it back from its bank while its bags stay at most 75% full
+# ("[Supply] bank"); banked units count toward ClothCap / HerbCap / RawCap. Donors skip a rep holding RepMailCap mails
+# or more (the core refuses a mail at 100); a mail refused for a full box is a `supply` refused row op mailbox_full.
+# The artisan -> rep delivery and the rep -> artisan feed carry every tier / item in one mail (at most 12 stacks).
+AutoWow.Supply.RepStore = 1
+AutoWow.Supply.RepMailCap = 80
+AutoWow.Supply.RepKeep = 60
 
 # Gatherer squad (lane G; SquadPolicy.h; docs/SUPPLY_CHAIN_PLAN.md "Gatherer squad"). Enable: a per-team roster
 # (Alliance / Horde: ','-separated guids or lo-hi ranges, at most 10 per team, sorted; the guids must also be in
@@ -3191,6 +3204,10 @@ AutoWow.Trade.FloorPct = 150
 AutoWow.Trade.MaxPosts = 6
 AutoWow.Trade.BuyBudgetPct = 50
 AutoWow.Trade.MatUnitMaxPct = 400
+# DeleteEmptyMail: the mail collector deletes every delivered mail left with no money and no items (not COD), as the
+# client does ("[Trade] ... deleted empty mails"); an AutoWow.Supply role bot also visits its mailbox for them.
+# soak-s48-full-r1: emptied mails are never deleted otherwise and filled the Weavers rep's box to the core cap of 100.
+AutoWow.Trade.DeleteEmptyMail = 1
 
 # Faction treasury counter, stage 1 (default 0; needs AutoWow.Ledger.Enable = 1): ledger `trade` action
 # `fee` lines (kind flight|repair|train) for copper independent bots pay to the world: the New RPG flight

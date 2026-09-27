@@ -95,7 +95,16 @@ struct Params
     std::uint32_t matUnitMaxPct = 400;   // AutoWow.Trade.MatUnitMaxPct: a mat unit costs <= vendor price * this
     std::uint32_t matCountMax = 20;      // units of one mat bought per visit
     std::uint32_t durationMin = 720;     // listing time (minutes; the core accepts 720 / 1440 / 2880)
+    bool deleteEmptyMail = true;         // AutoWow.Trade.DeleteEmptyMail: the collector deletes emptied mails
 };
+
+// A delivered mail with nothing left to take (no money, no items, not COD) is deleted after collection, as the
+// client does: soak-s48-full-r1, the Alliance Weavers rep held 120 emptied mails (the core refuses a mail at 100)
+// and every cloth donation and bag delivery to it was refused.
+[[nodiscard]] inline bool EmptyMail(bool delivered, bool cod, std::uint32_t money, bool items)
+{
+    return delivered && !cod && !money && !items;
+}
 
 // ---- posting ----------------------------------------------------------------------------------------
 // A bag stack the bot may list. usageAh = stock item usage says `ah` (tradeable and not needed).
@@ -386,6 +395,8 @@ bool HasCollectableMail(Player* bot);
 // collectable and the plain check re-picked the mailbox every tick (soak-s45-full-r1: 3602 task=2 loops, no craft).
 // The errand mail stop keeps HasCollectableMail (one visit per errand run, not a loop).
 bool HasCollectableMailWithRoom(Player* bot);
+// DeleteEmptyMail: the bot has a delivered mail with nothing left to take (EmptyMail); a mailbox visit deletes it.
+bool HasEmptyMail(Player* bot);
 // At the auctioneer (map thread): plan posts and buys (ErrandsPolicy reserve: `reserve` copper kept),
 // queue them for the world thread.
 void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve);

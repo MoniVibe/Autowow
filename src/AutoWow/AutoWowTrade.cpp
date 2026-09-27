@@ -56,6 +56,12 @@ bool Collectable(Mail const* m, time_t now)
     return m && m->state != MAIL_STATE_DELETED && m->deliver_time <= now && !m->COD && (m->money || m->HasItems());
 }
 
+bool Empty(Mail const* m, time_t now)
+{
+    return detail::gParams.deleteEmptyMail && m && m->state != MAIL_STATE_DELETED &&
+           EmptyMail(m->deliver_time <= now, m->COD != 0, m->money, m->HasItems());
+}
+
 template <typename F>
 void ForEachBagItem(Player* bot, F&& fn)
 {
@@ -197,6 +203,21 @@ public:
                 // A rep's sale proceeds (bid - cut) -> its house bank; the refunded deposit stays its listing float.
                 AutoWowSupply::OnAuctionSold(bot, am.entry, am.count, gold - int64(saleDeposit));
         }
+        // DeleteEmptyMail: the emptied mails go (stock delete handler, as the client does), oldest id first.
+        std::vector<uint32> empty;
+        for (Mail const* m : bot->GetMails())
+            if (Empty(m, now))
+                empty.push_back(m->messageID);
+        std::sort(empty.begin(), empty.end());
+        for (uint32 id : empty)
+        {
+            WorldPacket packet(CMSG_MAIL_DELETE, 8 + 4 + 4);
+            packet << mailbox_ << id << uint32(0);  // mailTemplateId
+            session->HandleMailDelete(packet);
+        }
+        if (!empty.empty())
+            LOG_INFO("playerbots", "[Trade] bot={} deleted empty mails={} left={}", bot->GetName(), empty.size(),
+                     bot->GetMailSize());
         return true;
     }
 
@@ -219,6 +240,7 @@ void LoadConfig()
     p.maxPosts = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Trade.MaxPosts", 6);
     p.buyBudgetPct = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Trade.BuyBudgetPct", 50));
     p.matUnitMaxPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Trade.MatUnitMaxPct", 400);
+    p.deleteEmptyMail = sConfigMgr->GetOption<bool>("AutoWow.Trade.DeleteEmptyMail", true);
 }
 
 bool HasCollectableMail(Player* bot)
@@ -248,6 +270,15 @@ bool HasCollectableMailWithRoom(Player* bot)
                 return true;
         }
     }
+    return false;
+}
+
+bool HasEmptyMail(Player* bot)
+{
+    time_t const now = GameTime::GetGameTime().count();
+    for (Mail const* m : bot->GetMails())
+        if (Empty(m, now))
+            return true;
     return false;
 }
 
@@ -360,7 +391,7 @@ std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uin
 
 void VisitMailbox(Player* bot, GameObject* mailbox)
 {
-    if (!HasCollectableMail(bot))
+    if (!HasCollectableMail(bot) && !HasEmptyMail(bot))
         return;
     PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::make_unique<MailOperation>(bot->GetGUID(), mailbox->GetGUID()));
