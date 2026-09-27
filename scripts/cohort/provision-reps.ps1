@@ -10,7 +10,7 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,
-    [ValidateSet('reps','squad','probes')][string]$Set = 'reps',
+    [ValidateSet('reps','squad','probes','tanners')][string]$Set = 'reps',
     [string]$WslDistro = 'Ubuntu-24.04',
     [string]$WorldserverBinary = '/root/autowow-advisor-t1-build/src/server/apps/worldserver',
     [string]$WorldserverConfig = '/root/p1runtime/worldserver.conf',
@@ -46,6 +46,11 @@ $sets = @{
         @('Squad','Horde','AWPVP1H02',5,8,0,'Dusmor'),
         @('Squad','Horde','AWPVP1H03',5,9,1,'Yzolde'),
         @('Artisan.Brewers','Horde','AWPVP1H03',6,11,0,'Tahnoka')
+    )
+    # tanners: 1 Tanners-house leatherworking artisan per faction (apprentice phase until L10)
+    tanners = @(
+        @('Artisan.Tanners','Alliance','AWPVP1A05',4,11,0,'Tanwyll'),
+        @('Artisan.Tanners','Horde','AWPVP1H05',6,11,1,'Hidenara')
     )
     # probes: dungeon completability parties (test instruments, not faction members; magic gear allowed)
     probes = @(
