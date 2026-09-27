@@ -9,7 +9,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$RunId,
-    [Parameter(Mandatory = $true)][string]$SnapshotName
+    [Parameter(Mandatory = $true)][string]$SnapshotName,
+    [switch]$SkipWorld
 )
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
@@ -17,12 +18,15 @@ $sd = Join-Path $PSScriptRoot 'start-detached.ps1'
 $lg = Join-Path $root 'logs\phase1-runtime'
 $ctl = Join-Path $PSScriptRoot 'autowow-control.ps1'
 
+if (-not $SkipWorld) {
 if (-not (Get-Process authserver -ErrorAction SilentlyContinue)) {
     & $sd -Script (Join-Path $PSScriptRoot 'start-server.ps1') -Arguments '-AuthOnly' -Log "$lg\detached-auth.log"
     Start-Sleep -Seconds 20
 }
-Remove-Item "$lg\detached-start.log" -ErrorAction SilentlyContinue
-& $sd -Script (Join-Path $PSScriptRoot 'start-phase1-wsl-worldserver.ps1') -Arguments '-WorldserverBinary /root/autowow-advisor-t1-build/src/server/apps/worldserver' -Log "$lg\detached-start.log"
+# A fresh log name per start: reusing one log file once left the launch silently not started.
+$startLog = Join-Path $lg ("detached-start-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+& $sd -Script (Join-Path $PSScriptRoot 'start-phase1-wsl-worldserver.ps1') -Arguments '-WorldserverBinary /root/autowow-advisor-t1-build/src/server/apps/worldserver' -Log $startLog
+}
 $ready = $false
 foreach ($i in 1..120) {
     Start-Sleep -Seconds 5
