@@ -45,6 +45,7 @@ namespace
 constexpr std::uint32_t kMaxStuck = 8;             // stuck walk windows before the portal fallback home
 constexpr std::uint64_t kTaskTimeoutMs = 180000;   // a station trip that has not arrived is dropped
 constexpr float kNearYards = 40.0f;                // direct move to a station object this close
+constexpr std::int64_t kTownYards = 600;           // past every station (StationYards 400, Engineering 491)
 constexpr float kFocusYards = 10.0f;               // a forge's spell focus radius (gameobject_template Data1)
 
 enum class Task : std::uint8_t
@@ -490,6 +491,10 @@ bool NewRpgBaseAction::SupplyStep()
 
     std::int64_t const dx = std::int64_t(bot->GetPositionX()) - home.x, dy = std::int64_t(bot->GetPositionY()) - home.y;
     bool const atHome = dx * dx + dy * dy <= std::int64_t(p.homeYards) * p.homeYards;
+    // Farther out than any station (an artisan graduating in the field) the bot walks home first: Home owns the
+    // stuck -> portal fallback, a station trip only times out (soak S55: Boltrin graduated ~1,370 yd from
+    // Stormwind and re-picked the Junk trip to Edna Mullby, 1286, every kTaskTimeoutMs).
+    bool const inTown = dx * dx + dy * dy <= kTownYards * kTownYards;
 
     // The artisan crafts one cast at a time (the core consumes the reagents and rolls the skill-up). The product needs
     // room first (a free slot or a partial stack), else the next decision makes room (RoomTarget: a slot at least).
@@ -707,7 +712,7 @@ bool NewRpgBaseAction::SupplyStep()
             next = Task::Market;
             s.marketMs = now + p.tickMs;  // one visit (one BuyBudget) per tick
         }
-        if (next == Task::None && !atHome)
+        if ((next == Task::None || !inTown) && !atHome)
             next = Task::Home;
         if (next != Task::None)
         {

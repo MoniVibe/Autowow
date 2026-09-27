@@ -2069,27 +2069,35 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             encounterGroups[encounter->dbcEntry->encounterIndex].push_back(encounter);
     }
 
-    // AutoWow.DungeonNav.Gates: encounter -> DungeonGate::Steps row whose position replaces the goal.
+    // AutoWow.DungeonNav.Gates: encounter -> DungeonGate::Steps row whose position replaces the goal, and
+    // how the leader walks there (the per-scan "approach_*" gate line).
     std::map<uint32, std::size_t> gateSteps;
+    std::map<uint32, char const*> gateApproaches;
     if (GatesEnabled() && (gateMapId != map->GetId() || gateInstanceId != map->GetInstanceId()))
     {
         gateRuntime.clear();
+        gateLogLast.clear();
         gateMapId = map->GetId();
         gateInstanceId = map->GetInstanceId();
     }
+    // info = false: a per-scan decision, rate-limited per (row, result) by DungeonGate::ShouldLog.
     auto logGate = [&](std::size_t row, char const* result, bool info)
     {
+        if (!info)
+        {
+            auto const inserted = gateLogLast.try_emplace({row, result}, now);
+            if (!inserted.second)
+            {
+                if (!DungeonGate::ShouldLog(true, getMSTimeDiff(inserted.first->second, now)))
+                    return;
+                inserted.first->second = now;
+            }
+        }
         DungeonGate::Step const& step = DungeonGate::Steps[row];
-        if (info)
-            LOG_INFO("playerbots",
-                "[DungeonNavigator] gate map={} enc={} step={} kind={} entry={} result={} bot={}",
-                step.mapId, step.encounterIdx, step.stepOrder, DungeonGate::KindName(step.kind),
-                step.entry, result, bot->GetName());
-        else
-            LOG_DEBUG("playerbots",
-                "[DungeonNavigator] gate map={} enc={} step={} kind={} entry={} result={} bot={}",
-                step.mapId, step.encounterIdx, step.stepOrder, DungeonGate::KindName(step.kind),
-                step.entry, result, bot->GetName());
+        LOG_INFO("playerbots",
+            "[DungeonNavigator] gate map={} enc={} step={} kind={} entry={} result={} bot={}",
+            step.mapId, step.encounterIdx, step.stepOrder, DungeonGate::KindName(step.kind),
+            step.entry, result, bot->GetName());
     };
     // First party member holding the item: the navigating bot, then followers in guid order.
     auto gateItemHolder = [&](uint32 itemId) -> Player*
@@ -2251,11 +2259,19 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {
                 DungeonGate::Step const& step = DungeonGate::Steps[gateRow];
                 bestGoal = {DungeonGate::GoalId(gateRow), step.x, step.y, step.z};
-                AutoWowDungeonPath::ProbeResult const probe =
+                AutoWowDungeonPath::ProbeResult probe =
                     AutoWowDungeonPath::Probe(bot, step.x, step.y, step.z);
-                if (probe.mode == "navmesh" && ProbeReachedStoredDestination(probe))
+                bool const reached = probe.mode == "navmesh" && ProbeReachedStoredDestination(probe);
+                bool slopeFreeReached = false;
+                if (!reached)
+                {
+                    probe = AutoWowDungeonPath::Probe(bot, step.x, step.y, step.z, false);
+                    slopeFreeReached = probe.mode == "navmesh" && ProbeReachedStoredDestination(probe);
+                }
+                if (DungeonGate::SelectApproach(reached, slopeFreeReached) == DungeonGate::Approach::Direct)
                 {
                     bestGoal.pathLength = probe.pathLength;
+                    gateApproaches[encounterIndex] = reached ? "approach_direct" : "approach_slope_free";
                 }
                 else
                 {
@@ -2263,6 +2279,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     bestGoal.finalX = step.x;
                     bestGoal.finalY = step.y;
                     bestGoal.finalZ = step.z;
+                    gateApproaches[encounterIndex] = "approach_travel_nodes";
                 }
                 gateSteps[encounterIndex] = gateRow;
             }
@@ -2333,7 +2350,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         Creature* escorted = step.kind == DungeonGate::Kind::Escort ?
             GateCreature(map, step.spawnGuid) : nullptr;
         bool const escorting = escorted && escorted->IsAlive() && escorted->IsInWorld();
-        if (escorting || bot->GetExactDist(step.x, step.y, step.z) <= step.radius)
+        bool const arrived = escorting || bot->GetExactDist(step.x, step.y, step.z) <= step.radius;
+        if (!arrived)
+            logGate(row, gateApproaches[selection.selected.encounterId], false);
+        if (arrived)
         {
             DungeonGate::StepRuntime& runtime = gateRuntime[row];
             uint32 const elapsed = runtime.firstActMs ? getMSTimeDiff(runtime.firstActMs, now) : 0;

@@ -67,13 +67,16 @@ std::string Validate(ValidationFacts const& facts);
 std::string ValidateGroundLine(GroundLineFacts const& facts);
 
 // Navmesh/vmap probe. It prepares only the required terrain collision cache and never changes
-// player position, object data, or MotionMaster state.
-ProbeResult Probe(Player const* player, float destinationX, float destinationY, float destinationZ);
+// player position, object data, or MotionMaster state. slopeCheck = false computes the Detour path
+// without PathGenerator's per-step slope check (NavmeshSnap.h: it fails navmesh-walkable humps); every
+// other validation still applies.
+ProbeResult Probe(Player const* player, float destinationX, float destinationY, float destinationZ,
+                  bool slopeCheck = true);
 
 // Same read-only probe with an explicit virtual source. The player supplies map, phase, and
 // movement capabilities only; its live position and MotionMaster remain untouched.
 ProbeResult ProbeFrom(Player const* player, float sourceX, float sourceY, float sourceZ,
-                      float destinationX, float destinationY, float destinationZ);
+                      float destinationX, float destinationY, float destinationZ, bool slopeCheck = true);
 
 std::string Json(ProbeResult const& result, bool includePoints = true);
 }

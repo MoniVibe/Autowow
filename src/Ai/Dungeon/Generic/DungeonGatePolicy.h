@@ -249,6 +249,33 @@ inline Wait Evaluate(Step const& step, StepRuntime const& runtime, std::uint32_t
         return Wait::Hold;
     return Wait::Act;
 }
+
+// How the navigator walks to a selected row's position. Soak S55: both Deadmines probe parties stalled at the
+// foundry exit (-153,-590) with the Gunpowder row (enc 3) selected and no gate line, 54 yd short of the chest.
+// The slope-checked probe fails the navmesh-walkable hump at (-143.5,-585.9) (FindSmoothPath checks each step
+// against a steer point held at the previous height, NavmeshSnap.h), the stored travel nodes end at the same
+// hump, so the travel route ran out and was rebuilt forever. Detour connects the foundry, the chest and the
+// cannon (offline replay over the 036 mmaps: complete corridors, 18 / 16 smoothed points without the slope
+// check, a failed step with it). A row the slope-free path reaches is walked directly.
+enum class Approach : std::uint8_t
+{
+    Direct,       // MoveTo the row position; the core mover paths without the slope check
+    TravelNodes,  // stored travel-node route toward the row position
+};
+
+inline Approach SelectApproach(bool slopeCheckedReached, bool slopeFreeReached)
+{
+    return slopeCheckedReached || slopeFreeReached ? Approach::Direct : Approach::TravelNodes;
+}
+
+// The per-scan gate decision logs (approach, wait, wait_party, no_key, ...) are INFO: a (row, result) pair logs
+// the first time and again LogRepeatMs after its last line.
+constexpr std::uint32_t LogRepeatMs = 30000;
+
+inline bool ShouldLog(bool logged, std::uint32_t sinceLastMs)
+{
+    return !logged || sinceLastMs >= LogRepeatMs;
+}
 }
 
 #endif
