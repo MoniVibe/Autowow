@@ -31,10 +31,11 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 7;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+inline constexpr std::uint32_t kStateVersion = 8;  // RoleState / TeamState layout; bump on change (2: tiers, market;
                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
                                                    // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
-                                                   // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants)
+                                                   // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
+                                                   // 8: TeamState gearCloth)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -390,7 +391,8 @@ template <std::size_t N>
 // Squad demand for cloth tier `i`: the tiers the artisan works now (goal = PickGoal, skill-up; kNoTier = none) come
 // First; a reachable tier above them stays Normal; a tier below every worked one is Done (its use ended:
 // soak-s47-full-r1, a 104-skill tailor on Woolen Bags had its squad farming linen). Nothing worked: every reachable
-// tier Normal.
+// tier Normal. A reachable tier the house's cloth_gear orders still lack (gearShort, GearClothShort) is never Done
+// (soak-s54-full-r1: the Weavers posted gear orders on bolts the bag line had no use for).
 enum class ClothDemand : std::uint8_t
 {
     Done = 0,
@@ -399,14 +401,14 @@ enum class ClothDemand : std::uint8_t
 };
 
 [[nodiscard]] inline ClothDemand ClothDemandOf(std::size_t i, std::uint32_t skill, std::uint8_t goal,
-                                               std::uint8_t skillup)
+                                               std::uint8_t skillup, std::uint32_t gearShort = 0)
 {
     if (i && OutOfReach(kTiers[i], skill))
         return ClothDemand::Done;
     if (i == goal || i == skillup)
         return ClothDemand::First;
     std::uint8_t const floor = std::min(goal, skillup);  // kNoTier = 0xFF: none
-    return floor == kNoTier || i > floor ? ClothDemand::Normal : ClothDemand::Done;
+    return floor == kNoTier || i > floor || gearShort ? ClothDemand::Normal : ClothDemand::Done;
 }
 
 // Whole stacks (ascending guid) to list while at least `keep` units stay; at most kMaxMailStacks.
@@ -1584,6 +1586,29 @@ struct GearOrder
         o.units = target > have ? static_cast<std::uint32_t>(std::min<std::uint64_t>(target - have, 0xFFFFFFFFu)) : 0;
     }
     out.erase(std::remove_if(out.begin(), out.end(), [](GearOrder const& o) { return !o.units; }), out.end());
+    return out;
+}
+
+// cloth_gear on the bag house: raw cloth per kTiers tier the open orders' bolts still lack beyond the house holdings
+// (have(item) -> units; a held bolt counts as its cloth). Feeds the squad demand (ClothDemandOf) and the rep's market
+// wants when the bag line has no use for that tier.
+template <typename Have>
+[[nodiscard]] std::array<std::uint32_t, kTierCount> GearClothShort(RecipeTable const& g,
+                                                                   std::vector<GearOrder> const& orders, Have&& have)
+{
+    std::array<std::uint64_t, kTierCount> bolts{};
+    for (GearOrder const& o : orders)
+        if (o.recipe < g.tierCount)
+            for (Reagent const& r : g.tiers[o.recipe].reagents)
+                for (std::size_t i = 0; i < kTierCount; ++i)
+                    if (r.item && r.item == kTiers[i].bolt)
+                        bolts[i] += std::uint64_t(o.units) * r.count;
+    std::array<std::uint32_t, kTierCount> out{};
+    for (std::size_t i = 0; i < kTierCount; ++i)
+    {
+        std::uint64_t const per = kTiers[i].recipe.clothPerBolt;
+        out[i] = Short(bolts[i] * per, std::uint64_t(have(kTiers[i].bolt)) * per + have(kTiers[i].cloth));
+    }
     return out;
 }
 
