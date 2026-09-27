@@ -61,6 +61,7 @@ namespace
 constexpr std::uint32_t kBagSpell = 3755, kBoltSpell = 2963, kThreadItem = 2320;
 constexpr std::size_t kMaxHeld = 4096;      // cloth stacks held back from sale at once
 constexpr std::uint32_t kStationYards = 400;  // stations are searched this far from home
+constexpr std::uint32_t kForgeFocus = 3;      // SpellFocusObject.dbc: Forge (smelting)
 
 // Read-only after LoadConfig.
 std::size_t gBagHouse = 0;
@@ -83,6 +84,7 @@ std::array<std::vector<std::uint32_t>, kLineCount> gLineRoute;
 // AutoWow.Supply.PriorityGuids list.
 std::array<std::vector<std::uint8_t>, kLineCount> gGearRank;
 std::vector<std::uint32_t> gPriority;
+std::array<std::vector<std::uint32_t>, kLineCount> gGearYield;  // per recipe: items per cast (GearYield)
 
 // Shared: the world thread writes, role bots' map threads and donors read / take.
 struct TeamState
@@ -132,12 +134,13 @@ std::array<std::vector<MailOrder>, 2> gOrders;
 std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>, CodPending> gCodPending;
 constexpr std::size_t kMaxCodPending = 4096;
 
-// Raw materials (RouteRaw, lane G): kind 0 = ore -> AutoWow.Supply.House.Ore, 1 = leather -> .House.Leather.
-constexpr std::size_t kRawKinds = 2, kRawItems = 3;
-static_assert(std::size(kOre) == kRawItems && std::size(kLeather) == kRawItems);
-constexpr std::uint32_t const* kRawLists[kRawKinds] = {kOre, kLeather};
-constexpr char const* kRawKeys[kRawKinds] = {"Ore", "Leather"};
-constexpr char const* kRawDefaultHouse[kRawKinds] = {"Smiths", "Tanners"};
+// Raw materials (RouteRaw, lane G): kind 0 = ore -> AutoWow.Supply.House.Ore, 1 = leather -> .House.Leather, 2 = stone
+// -> .House.Stone (lane AA; default Tinkers, not a default house: off unless AutoWow.Guilds.Houses names it).
+constexpr std::size_t kRawKinds = 3, kRawItems = 3;
+static_assert(std::size(kOre) == kRawItems && std::size(kLeather) == kRawItems && std::size(kStone) == kRawItems);
+constexpr std::uint32_t const* kRawLists[kRawKinds] = {kOre, kLeather, kStone};
+constexpr char const* kRawKeys[kRawKinds] = {"Ore", "Leather", "Stone"};
+constexpr char const* kRawDefaultHouse[kRawKinds] = {"Smiths", "Tanners", "Tinkers"};
 std::array<std::size_t, kRawKinds> gRawHouse{};  // read-only after LoadConfig; houses.size() = kind off
 std::array<std::string, kRawKinds> gRawHouseName;
 std::array<std::array<std::array<std::uint32_t, kRawItems>, kRawKinds>, 2> gRawRooms{};  // [team][kind][item], gLock
@@ -1507,6 +1510,86 @@ bool GearUpgrade(PlayerbotAI* ai, Player* m, ItemTemplate const* proto)
     return u == ITEM_USAGE_EQUIP || u == ITEM_USAGE_REPLACE;
 }
 
+// ---- ammo (lane AA Tinkers: Products eng, NeedRule::AmmoStock / Consumer::LoadAmmo) ----
+
+std::uint32_t AmmoDamage(ItemTemplate const* proto)
+{
+    return proto ? static_cast<std::uint32_t>(proto->Damage[0].DamageMin + proto->Damage[0].DamageMax) : 0;
+}
+
+bool Bullet(ItemTemplate const* proto)
+{
+    return proto && proto->Class == ITEM_CLASS_PROJECTILE && proto->SubClass == ITEM_SUBCLASS_BULLET;
+}
+
+bool GunHunter(Player* m)
+{
+    Item const* ranged = m->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED);
+    return m->getClass() == CLASS_HUNTER && ranged && ranged->GetTemplate()->Class == ITEM_CLASS_WEAPON &&
+           ranged->GetTemplate()->SubClass == ITEM_SUBCLASS_WEAPON_GUN;
+}
+
+// WantsAmmo for the recipient: its bullets in bags and mailbox, its loaded ammo (0 when none of it is left).
+bool AmmoWanted(Player* m, ItemTemplate const* proto)
+{
+    std::uint32_t held = 0;
+    ForEachLoose(m, [&](Item* item) {
+        if (Bullet(item->GetTemplate()))
+            held += item->GetCount();
+    });
+    for (Mail const* mail : m->GetMails())
+        if (mail && mail->state != MAIL_STATE_DELETED)
+            for (MailItemInfo const& mi : mail->items)
+                if (Bullet(sObjectMgr->GetItemTemplate(mi.item_template)))
+                    if (Item* item = m->GetMItem(mi.item_guid))
+                        held += item->GetCount();
+    std::uint32_t const loaded = m->GetUInt32Value(PLAYER_AMMO_ID);
+    std::uint32_t const loadedDamage =
+        loaded && m->GetItemCount(loaded, false) ? AmmoDamage(sObjectMgr->GetItemTemplate(loaded)) : 0;
+    return WantsAmmo(m->getClass() == CLASS_HUNTER, GunHunter(m), Bullet(proto), m->GetLevel(), proto->RequiredLevel,
+                     AmmoDamage(proto), loadedDamage, held, detail::gParams.ammoTarget);
+}
+
+// The recipient still wants the product: shot (AmmoWanted) or an equipment upgrade (GearUpgrade).
+bool Consumes(PlayerbotAI* ai, Player* m, ItemTemplate const* proto)
+{
+    if (proto && proto->InventoryType == INVTYPE_AMMO)
+        return AmmoWanted(m, proto);
+    return GearUpgrade(ai, m, proto);
+}
+
+// Consumer::LoadAmmo (world thread, maps idle): a gun hunter loads the strongest house shot in its bags usable at its
+// level (LoadsAmmo). The stock ammo equip never fires (ItemUsageValue::QueryItemUsageForAmmo returns NONE for every
+// class), so a delivery would otherwise sit in the bags.
+void LoadAmmo(Player* m, RecipeTable const& G)
+{
+    if (!GunHunter(m))
+        return;
+    ItemTemplate const* best = nullptr;
+    for (std::size_t i = 0; i < G.tierCount; ++i)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(G.tiers[i].product);
+        if (Bullet(proto) && proto->RequiredLevel <= m->GetLevel() && m->GetItemCount(proto->ItemId, false) &&
+            (!best || AmmoDamage(proto) > AmmoDamage(best)))
+            best = proto;
+    }
+    std::uint32_t const loaded = m->GetUInt32Value(PLAYER_AMMO_ID);
+    if (!best || best->ItemId == loaded ||
+        !LoadsAmmo(AmmoDamage(best), AmmoDamage(sObjectMgr->GetItemTemplate(loaded)),
+                   loaded ? m->GetItemCount(loaded, false) : 0))
+        return;
+    m->SetAmmo(best->ItemId);
+    LOG_INFO("playerbots", "[Supply] ammo load bot={} item={} was={} loaded={}", m->GetName(), best->ItemId, loaded,
+             m->GetUInt32Value(PLAYER_AMMO_ID) == best->ItemId);
+}
+
+// Vendor value of a gear line piece: its sell value; shot sells for 0: its vendor lot price (one cast's 200) instead.
+std::uint32_t PieceValue(std::uint32_t item)
+{
+    ItemTemplate const* t = sObjectMgr->GetItemTemplate(item);
+    return !t ? 0 : t->SellPrice ? t->SellPrice : t->BuyPrice;
+}
+
 // Overlord (world thread, maps idle): each recipient's equipment slots the best known product of the line upgrades
 // (recipes best first, gGearRank), skipping slots a line product is already on its way to (loose or in the mailbox).
 // ponytail: a product whose item level is not above the worn piece's is never asked about (each stock value call
@@ -1524,7 +1607,8 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
         auto incoming = [&](std::uint32_t entry)
         {
             ItemTemplate const* proto = TierOf(G, entry) != kNoTier ? sObjectMgr->GetItemTemplate(entry) : nullptr;
-            if (proto && proto->InventoryType != INVTYPE_NON_EQUIP)
+            // Shot on its way counts in AmmoWanted's bullets instead.
+            if (proto && proto->InventoryType != INVTYPE_NON_EQUIP && proto->InventoryType != INVTYPE_AMMO)
                 if (uint8 const slot = ai->FindEquipSlot(proto, NULL_SLOT, true); slot < EQUIPMENT_SLOT_END)
                     done |= 1u << slot;
         };
@@ -1540,6 +1624,16 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
                                                                      : nullptr;
             if (!proto || proto->RequiredLevel > m->GetLevel() || m->CanUseItem(proto) != EQUIP_ERR_OK)
                 continue;
+            if (proto->InventoryType == INVTYPE_AMMO)
+            {
+                // Shot (lane AA): one need per recipient, the best known shot it wants (kAmmoSlot).
+                if (!(done >> kAmmoSlot & 1u) && AmmoWanted(m, proto))
+                {
+                    done |= 1u << kAmmoSlot;
+                    out.push_back({Low(m), r, kAmmoSlot, prio, ilvl});
+                }
+                continue;
+            }
             uint8 const slot = ai->FindEquipSlot(proto, NULL_SLOT, true);
             if (slot >= EQUIPMENT_SLOT_END || (done >> slot & 1u))
                 continue;
@@ -1578,6 +1672,8 @@ void GearTick(Line line, bool alliance, bool overlord)
     LineView& v = ts.v;
     auto house = [&](std::uint32_t item) { return HeldUnits(rep, item) + HeldUnits(art, item); };
     auto artHeld = [&](std::uint32_t item) { return HeldUnits(art, item); };
+    // Finished units of recipe r in order units (casts: a shot cast makes 200; a piece is one).
+    auto castUnits = [&](std::uint8_t r, std::uint32_t items) { return CastUnits(items, GearYield(line, r)); };
     v.artisanSkill = art ? art->GetSkillValue(L.skillLine) : 0;
     std::vector<GearNeed>& needs = gGearNeeds[li][t];
 
@@ -1588,7 +1684,7 @@ void GearTick(Line line, bool alliance, bool overlord)
         for (std::size_t i = 0; i < G.tierCount; ++i)
         {
             known[i] = art && art->HasSpell(G.tiers[i].spell);
-            held[i] = house(G.tiers[i].product);
+            held[i] = castUnits(static_cast<std::uint8_t>(i), house(G.tiers[i].product));
         }
         needs = RankGearNeeds(ScanGearNeeds(li, alliance, known));
         std::vector<GearOrder> const orders = PlanGearOrders(needs, held, p.gearMaxOrder, p.repStockPerItem);
@@ -1615,7 +1711,7 @@ void GearTick(Line line, bool alliance, bool overlord)
     auto paid = [&](std::uint8_t r, std::uint32_t n)
     {
         std::uint32_t const product = G.tiers[r].product;
-        std::uint64_t const pay = BagPay(SellOf(product), p.gearPayPct, n);
+        std::uint64_t const pay = BagPay(PieceValue(product), p.gearPayPct, n);
         bool const ok = pay && gid && AutoWowGuilds::Pay(gid, art, pay);
         EmitLine(line, art, ok ? Reason::Pay : Reason::Refused, v.orderId, product, n, pay, 0, Low(art),
                  ok ? nullptr : "pay");
@@ -1649,7 +1745,7 @@ void GearTick(Line line, bool alliance, bool overlord)
             planned[d.need] = true;
             Player* m = Online(n.guid);
             if (!m || !m->IsInWorld() ||
-                !GearUpgrade(PlayerbotsMgr::instance().GetPlayerbotAI(m), m, sObjectMgr->GetItemTemplate(product)))
+                !Consumes(PlayerbotsMgr::instance().GetPlayerbotAI(m), m, sObjectMgr->GetItemTemplate(product)))
                 continue;
             if (char const* const why = Send(Low(from), n.guid, {d.item}, "AutoWoW gear", "deliver"))
             {
@@ -1691,12 +1787,16 @@ void GearTick(Line line, bool alliance, bool overlord)
         }
     }
     deliver(rep, false);
+    // Consumer::LoadAmmo (lane AA): the team's gun hunters load delivered house shot.
+    if (L.consumer == Consumer::LoadAmmo)
+        for (Player* m : GearRecipients(alliance))
+            LoadAmmo(m, G);
 
     // The artisan's target: the first order entry still short that the house can cast now, else the first short one.
     std::vector<std::uint32_t> toMake(ts.orders.size(), 0), casts(ts.orders.size(), 0);
     for (std::size_t i = 0; i < ts.orders.size(); ++i)
     {
-        std::uint32_t const finished = artHeld(G.tiers[ts.orders[i].recipe].product);
+        std::uint32_t const finished = castUnits(ts.orders[i].recipe, artHeld(G.tiers[ts.orders[i].recipe].product));
         toMake[i] = ts.orders[i].units > finished ? ts.orders[i].units - finished : 0;
         casts[i] = Casts(G, ts.orders[i].recipe, house);
     }
@@ -2007,16 +2107,16 @@ private:
     std::vector<MarketListing> cancels_;
 };
 
-// The stations near `home`: the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no extended
-// cost; `vendorAll`: every item listed), the auctioneer, the banker and the mailbox, each the nearest (ties the lower
-// spawn id).
+// The stations near `home` (within `yards`): the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no
+// extended cost; `vendorAll`: every item listed), the auctioneer, the banker, the mailbox and a forge, each the nearest
+// (ties the lower spawn id).
 void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t trainerSpell, std::uint32_t vendorItem,
-                  std::vector<std::uint32_t> const* vendorAll = nullptr)
+                  std::vector<std::uint32_t> const* vendorAll = nullptr, std::uint32_t yards = kStationYards)
 {
     st = Stations{};
-    std::array<std::int64_t, 5> best{};
-    std::array<std::uint64_t, 5> bestSpawn{};
-    std::int64_t const r2 = std::int64_t(kStationYards) * kStationYards;
+    std::array<std::int64_t, 6> best{};
+    std::array<std::uint64_t, 6> bestSpawn{};
+    std::int64_t const r2 = std::int64_t(yards) * yards;
     auto consider = [&](std::size_t k, Station& s, std::uint64_t spawn, std::uint32_t entry, float x, float y, float z)
     {
         std::int64_t const dx = std::int64_t(x) - home.x, dy = std::int64_t(y) - home.y, d2 = dx * dx + dy * dy;
@@ -2073,6 +2173,8 @@ void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t t
         GameObjectTemplate const* gt = data.mapid == home.map ? sObjectMgr->GetGameObjectTemplate(data.id) : nullptr;
         if (gt && gt->type == GAMEOBJECT_TYPE_MAILBOX)
             consider(3, st.mailbox, spawn, data.id, data.posX, data.posY, data.posZ);
+        if (gt && gt->type == GAMEOBJECT_TYPE_SPELL_FOCUS && gt->spellFocus.focusId == kForgeFocus)
+            consider(5, st.forge, spawn, data.id, data.posX, data.posY, data.posZ);
     }
 }
 
@@ -2144,6 +2246,16 @@ std::uint32_t Output(SpellInfo const* s)
             return s->Effects[i].ItemType;
     return 0;
 }
+
+// Items one cast of `s` creates (BasePoints + DieSides: 3.3.5 create-item spells roll a single die side), at least 1.
+std::uint32_t Yield(SpellInfo const* s)
+{
+    for (std::size_t i = 0; s && i < MAX_SPELL_EFFECTS; ++i)
+        if (s->Effects[i].Effect == SPELL_EFFECT_CREATE_ITEM)
+            return static_cast<std::uint32_t>(
+                std::max<std::int32_t>(1, s->Effects[i].BasePoints + s->Effects[i].DieSides));
+    return 1;
+}
 }  // namespace
 
 void LoadConfig()
@@ -2194,6 +2306,7 @@ void LoadConfig()
     p.repStockPerItem = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RepStockPerItem", 2);
     p.gearMaxOrder = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.GearMaxOrder", 4));
     p.gearPayPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.GearPayPct", 200);
+    p.ammoTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.AmmoTarget", 1000);
     gPriority.clear();
     std::string const priority = sConfigMgr->GetOption<std::string>("AutoWow.Supply.PriorityGuids", "");
     if (!ParseGuids(priority, gPriority))
@@ -2214,6 +2327,7 @@ void LoadConfig()
         gLineLearn[i].clear();
         gLineRoute[i].clear();
         gGearRank[i].clear();
+        gGearYield[i].clear();
         gGearNeeds[i] = {};
     }
     {
@@ -2379,7 +2493,7 @@ void LoadConfig()
     for (std::size_t li = 0; li < kLineCount; ++li)
     {
         ProductLine const& L = kCatalog[li];
-        if (L.need != NeedRule::GearSlots || !LineOn(L.id))
+        if ((L.need != NeedRule::GearSlots && L.need != NeedRule::AmmoStock) || !LineOn(L.id))
             continue;
         auto off = [&](std::string const& why)
         {
@@ -2418,6 +2532,7 @@ void LoadConfig()
                           "loaded spells / items", L.name, i, tier.spell, tier.product);
             ok = ok && t;
             ilvl[i] = proto && proto->InventoryType != INVTYPE_NON_EQUIP ? proto->ItemLevel : 0;
+            gGearYield[li].push_back(Yield(sp));
         }
         if (!ok)
         {
@@ -2493,10 +2608,31 @@ void LoadConfig()
                         vendorAll.push_back(r.item);
             }
             Stations& st = gLineStations[li][T(alliance)];
-            FindStations(st, alliance, home, trainerSpell, 0, &vendorAll);
+            // AutoWow.Supply.StationYards.<Key> (lane AA): the Engineering trainers stand 466 / 491 yards from the homes.
+            std::uint32_t const yards = sConfigMgr->GetOption<std::uint32_t>(
+                std::string("AutoWow.Supply.StationYards.") + L.key, kStationYards, false);
+            FindStations(st, alliance, home, trainerSpell, 0, &vendorAll, yards);
             LOG_INFO("server.loading", "[Supply] line {} {} stations: mailbox={} trainer={} vendor={} ({} items)",
                      L.name, alliance ? "alliance" : "horde", st.mailbox.entry, st.trainer.entry, st.threadVendor.entry,
                      vendorAll.size());
+            if (L.id != Line::Engineering)
+                continue;
+            // Engineering (lane AA): trainer2 = the trainer of the first learn spell `trainer` does not teach (the mining
+            // ranks and smelting).
+            Trainer::Trainer* tr = st.trainer.entry ? sObjectMgr->GetTrainer(st.trainer.entry) : nullptr;
+            std::uint32_t spell2 = 0;
+            for (std::uint32_t const id : gLineLearn[li])
+                if (!spell2 && tr && std::none_of(tr->GetSpells().begin(), tr->GetSpells().end(),
+                                                  [&](Trainer::Spell const& sp) { return sp.SpellId == id; }))
+                    spell2 = id;
+            if (spell2)
+            {
+                Stations other;
+                FindStations(other, alliance, home, spell2, 0, nullptr, yards);
+                st.trainer2 = other.trainer;
+            }
+            LOG_INFO("server.loading", "[Supply] line {} {} stations: trainer2={} (spell {}) forge={} yards={}", L.name,
+                     alliance ? "alliance" : "horde", st.trainer2.entry, spell2, st.forge.entry, yards);
         }
         for (std::size_t i = 0; i < houses.size(); ++i)
         {
@@ -2550,6 +2686,9 @@ void LoadConfig()
                      "max_order={} rep_stock={} pay_pct={} priority={}", kCatalog[li].name, gLineHouseName[li],
                      gLineArtisan[li][0], gLineArtisan[li][1], gLineLearn[li].size(), kCatalog[li].gearCount,
                      gGearRank[li].size(), p.gearMaxOrder, p.repStockPerItem, p.gearPayPct, gPriority.size());
+    if (LineOn(Line::Engineering))
+        LOG_INFO("server.loading", "[Supply] line eng: ammo target={} (gun hunters), consumer=load ammo",
+                 p.ammoTarget);
     if (p.demandOnly)
         LOG_INFO("server.loading", "[Supply] demand only: consumer-first skill-ups, surplus sales are `waste`, "
                  "order / deliver rows name their consumer");
@@ -2911,6 +3050,12 @@ LineView LineViewOf(Line l, bool alliance)
 }
 
 Stations const& LineStationsOf(Line l, bool alliance) { return gLineStations[static_cast<std::size_t>(l)][T(alliance)]; }
+
+std::uint32_t GearYield(Line l, std::uint8_t recipe)
+{
+    std::vector<std::uint32_t> const& y = gGearYield[static_cast<std::size_t>(l)];
+    return recipe < y.size() ? y[recipe] : 1;
+}
 std::vector<std::uint32_t> const& LineLearnSpells(Line l) { return gLineLearn[static_cast<std::size_t>(l)]; }
 
 void SetLineArtisanWant(Line l, bool alliance, std::uint64_t copper)

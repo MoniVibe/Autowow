@@ -843,7 +843,7 @@ TEST(SupplyGear, CatalogLinesAndProducts)
     EXPECT_EQ(static_cast<int>(Line::ClothGear), 2);
     EXPECT_EQ(static_cast<int>(Line::MailGear), 3);
     EXPECT_EQ(static_cast<int>(Line::LeatherGear), 4);
-    ASSERT_EQ(kLineCount, 5u);
+    ASSERT_EQ(kLineCount, 6u);
     std::uint8_t mask = 0;
     EXPECT_TRUE(ParseProducts("bags,cloth_gear", mask));
     EXPECT_EQ(mask, 5u);
@@ -1039,5 +1039,162 @@ TEST(SupplyGear, RecipesRankByItemLevelLeavingIntermediatesOut)
     ilvl[5] = 10;  // Brown Linen Pants 3914
     ilvl[6] = 10;  // Brown Linen Robe 7623
     EXPECT_EQ(RankGearRecipes(g, ilvl), (std::vector<std::uint8_t>{5, 6, 4, 3}));  // 10 (spell 3914 < 7623), 9, 8
+}
+
+// ---- lane AA Tinkers (Products eng) ----
+
+TEST(SupplyEng, CatalogLineAndStone)
+{
+    EXPECT_EQ(static_cast<int>(Line::Engineering), 5);
+    std::uint8_t mask = 0;
+    EXPECT_TRUE(ParseProducts("eng", mask));
+    EXPECT_EQ(mask, 32u);
+    EXPECT_TRUE(ParseProducts("bags,leather_gear,eng", mask));
+    EXPECT_EQ(mask, 1u + 16u + 32u);
+    EXPECT_EQ(LineField(Line::Engineering), ",\"line\":\"eng\"");
+    ProductLine const& e = LineOf(Line::Engineering);
+    EXPECT_STREQ(e.house, "Tinkers");
+    EXPECT_STREQ(e.key, "Engineering");
+    EXPECT_EQ(e.skillLine, 202u);
+    EXPECT_EQ(e.need, NeedRule::AmmoStock);
+    EXPECT_EQ(e.consumer, Consumer::LoadAmmo);
+    EXPECT_EQ(e.tierCount, 0u);  // gear runtime: never a LineTick line
+    EXPECT_EQ(e.gearCount, 9u);
+    EXPECT_STREQ(e.learn, "4039,4040,4041,12657,2581,2582,3568,10249");  // engineering + mining ranks
+    EXPECT_EQ(kStone[0], 2835u);
+    EXPECT_EQ(kStone[1], 2836u);
+    EXPECT_EQ(kStone[2], 2838u);
+    EXPECT_EQ(Params{}.ammoTarget, 1000u);
+    EXPECT_EQ(kAmmoSlot, 19u);  // past every equipment slot (EQUIPMENT_SLOT_END)
+}
+
+TEST(SupplyEng, TableIntegrity)
+{
+    RecipeTable const g = GearTable(LineOf(Line::Engineering));
+    std::vector<std::uint32_t> const shots = {8067, 8068, 8069};  // Crafted Light / Heavy / Solid Shot
+    std::vector<std::uint32_t> spells;
+    for (std::size_t i = 0; i < g.tierCount; ++i)
+    {
+        LineTier const& t = g.tiers[i];
+        EXPECT_EQ(std::find(spells.begin(), spells.end(), t.spell), spells.end());
+        spells.push_back(t.spell);
+        EXPECT_GE(t.skill, 1u);
+        EXPECT_LT(t.skill, t.grey);  // a skill-up at the learning skill
+        bool const shot = std::find(shots.begin(), shots.end(), t.product) != shots.end();
+        EXPECT_EQ(shot, t.reqLevel > 0);  // intermediates (RequiredLevel 0) and shot only: no unconsumed product
+        for (Reagent const& r : t.reagents)
+        {
+            if (!r.item)
+                continue;
+            EXPECT_EQ(r.count, 1u);
+            if (r.source == Source::Craft)  // every intermediate is a table recipe, listed before its user
+            {
+                std::uint8_t const sub = TierOf(g, r.item);
+                ASSERT_NE(sub, kNoTier);
+                EXPECT_EQ(g.tiers[sub].reqLevel, 0u);
+                EXPECT_LT(sub, i);
+            }
+            else  // routed raw: ore (House.Ore) or stone (House.Stone); nothing bought
+            {
+                EXPECT_EQ(r.source, Source::Route);
+                bool const raw = std::find(std::begin(kOre), std::end(kOre), r.item) != std::end(kOre) ||
+                                 std::find(std::begin(kStone), std::end(kStone), r.item) != std::end(kStone);
+                EXPECT_TRUE(raw) << r.item;
+            }
+        }
+    }
+    // Checked against the 3.3.5 world DB / Spell.dbc: Crafted Light Shot 3920 = Rough Blasting Powder + Copper Bar,
+    // learned with the skill, grey 60, RequiredLevel 5.
+    std::uint8_t const light = TierOf(g, 8067);
+    ASSERT_NE(light, kNoTier);
+    EXPECT_EQ(g.tiers[light].spell, 3920u);
+    EXPECT_EQ(g.tiers[light].skill, 1u);
+    EXPECT_EQ(g.tiers[light].grey, 60u);
+    EXPECT_EQ(g.tiers[light].reqLevel, 5u);
+    EXPECT_EQ(g.tiers[light].reagents[0].item, 4357u);
+    EXPECT_EQ(g.tiers[light].reagents[1].item, 2840u);
+    std::uint8_t const solid = TierOf(g, 8069);  // Crafted Solid Shot 3947: Heavy Blasting Powder + Bronze Bar
+    ASSERT_NE(solid, kNoTier);
+    EXPECT_EQ(g.tiers[solid].skill, 125u);
+    EXPECT_EQ(g.tiers[solid].reqLevel, 30u);
+    EXPECT_EQ(g.tiers[solid].reagents[1].item, 2841u);
+    EXPECT_EQ(g.tiers[TierOf(g, 2840)].spell, 2657u);  // Smelt Copper, learned with Mining
+    EXPECT_TRUE(LineItem(g, 2770));   // Copper Ore: kept by the artisan's make-room
+    EXPECT_TRUE(LineItem(g, 2835));   // Rough Stone
+    EXPECT_FALSE(LineItem(g, 2318));  // no leather: goggles dropped
+}
+
+TEST(SupplyEng, RecipeSelectionAndCasts)
+{
+    RecipeTable const g = GearTable(LineOf(Line::Engineering));
+    std::vector<std::uint32_t> ilvl(g.tierCount, 0);  // item levels as the load reads them: shot 10 / 20 / 35
+    ilvl[TierOf(g, 8067)] = 10;
+    ilvl[TierOf(g, 8068)] = 20;
+    ilvl[TierOf(g, 8069)] = 35;
+    std::vector<std::uint8_t> const rank = RankGearRecipes(g, ilvl);
+    ASSERT_EQ(rank.size(), 3u);  // intermediates left out
+    EXPECT_EQ(g.tiers[rank[0]].product, 8069u);
+    EXPECT_EQ(g.tiers[rank[2]].product, 8067u);
+    std::unordered_map<std::uint32_t, std::uint32_t> held{{2770, 3}, {2835, 5}};
+    auto have = [&](std::uint32_t item)
+    {
+        auto const it = held.find(item);
+        return it == held.end() ? 0u : it->second;
+    };
+    std::uint8_t const light = TierOf(g, 8067);
+    EXPECT_EQ(Casts(g, light, have), 3u);  // 5 powder from stone, 3 bars from ore
+    // Four casts lack one ore; powder and bars are made, nothing bought.
+    std::vector<Lack> const lack = Lacks(g, light, 4, have);
+    ASSERT_EQ(lack.size(), 1u);
+    EXPECT_EQ(lack[0].item, 2770u);
+    EXPECT_EQ(lack[0].units, 1u);
+    EXPECT_EQ(lack[0].source, Source::Route);
+    // Next cast: the powder (first reagent), then the smelt (the forge trip), then the shot.
+    EXPECT_EQ(NextCast(g, light, have), TierOf(g, 4357));
+    held[4357] = 1;
+    EXPECT_EQ(NextCast(g, light, have), TierOf(g, 2840));
+    held[2840] = 1;
+    EXPECT_EQ(NextCast(g, light, have), light);
+    // Solid Shot walks three levels: ore -> copper / tin bar -> bronze bar.
+    std::unordered_map<std::uint32_t, std::uint32_t> ores{{2770, 4}, {2771, 4}, {2838, 3}};
+    auto rock = [&](std::uint32_t item)
+    {
+        auto const it = ores.find(item);
+        return it == ores.end() ? 0u : it->second;
+    };
+    EXPECT_EQ(Casts(g, TierOf(g, 8069), rock), 3u);  // heavy stone limits (bronze counted one per cast: conservative)
+    EXPECT_EQ(NextCast(g, TierOf(g, 8069), rock), TierOf(g, 4377));
+}
+
+TEST(SupplyEng, AmmoNeedAndLoad)
+{
+    // hunter, gun, bullets, level, reqLevel, damage, loaded damage, held, target
+    EXPECT_TRUE(WantsAmmo(true, true, true, 10, 5, 4, 3, 400, 1000));    // Crafted Light Shot over vendor Light Shot
+    EXPECT_TRUE(WantsAmmo(true, true, true, 10, 5, 4, 0, 0, 1000));      // nothing loaded / left
+    EXPECT_TRUE(WantsAmmo(true, true, true, 10, 5, 4, 4, 999, 1000));    // as strong: still wanted when short
+    EXPECT_FALSE(WantsAmmo(true, true, true, 10, 5, 4, 3, 1000, 1000));  // stocked
+    EXPECT_FALSE(WantsAmmo(true, true, true, 16, 5, 4, 7, 0, 1000));     // Heavy Shot loaded: a weaker shot never
+    EXPECT_FALSE(WantsAmmo(true, true, true, 4, 5, 4, 0, 0, 1000));      // below RequiredLevel
+    EXPECT_FALSE(WantsAmmo(true, false, true, 10, 5, 4, 0, 0, 1000));    // a bow: arrows, engineering makes none
+    EXPECT_FALSE(WantsAmmo(false, true, true, 10, 5, 4, 0, 0, 1000));    // not a hunter
+    EXPECT_FALSE(WantsAmmo(true, true, false, 10, 5, 4, 0, 0, 1000));    // not bullets
+    EXPECT_TRUE(LoadsAmmo(4, 3, 200));   // stronger than the loaded ammo
+    EXPECT_FALSE(LoadsAmmo(4, 4, 200));  // as strong, loaded ammo left: keep it
+    EXPECT_TRUE(LoadsAmmo(4, 7, 0));     // the loaded ammo is gone: anything beats nothing
+    EXPECT_FALSE(LoadsAmmo(4, 7, 1));
+    EXPECT_EQ(CastUnits(600, 200), 3u);  // shot counts in casts
+    EXPECT_EQ(CastUnits(199, 200), 0u);
+    EXPECT_EQ(CastUnits(2, 1), 2u);      // a piece is a unit
+    EXPECT_EQ(CastUnits(5, 0), 5u);
+    // An ammo need is an ordinary gear need on kAmmoSlot: the order counts casts, the delivery one stack per need.
+    std::vector<GearNeed> const ranked =
+        RankGearNeeds({{71, 6, kAmmoSlot, kNoPriority, 90}, {70, 6, kAmmoSlot, kNoPriority, 40}});
+    EXPECT_EQ(ranked[0].guid, 70u);  // the worse geared hunter first
+    std::vector<std::uint32_t> held(9, 0);
+    held[6] = CastUnits(250, 200);  // one cast's worth held
+    std::vector<GearOrder> const o = PlanGearOrders(ranked, held, 4, 2);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].units, 2u + 2u - 1u);
+    EXPECT_EQ(o[0].consumer, 70u);
 }
 }  // namespace
