@@ -30,9 +30,9 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 5;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+inline constexpr std::uint32_t kStateVersion = 6;  // RoleState / TeamState layout; bump on change (2: tiers, market;
                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
-                                                   // craftBlocked; 5: TeamState goal)
+                                                   // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -91,6 +91,12 @@ struct Params
     bool repStore = true;           // AutoWow.Supply.RepStore: rep bags, bank stash, mail cap, batched mails
     std::uint32_t repMailCap = 80;  // AutoWow.Supply.RepMailCap: donors skip a rep holding this many mails
     std::uint32_t repKeep = 60;     // AutoWow.Supply.RepKeep: units per material the rep keeps in its bags
+    // Throughput (lane U; all off by default):
+    bool directRoutes = false;             // AutoWow.Supply.DirectRoutes: donor -> artisan, artisan -> member mails
+    bool mailPickup = false;               // AutoWow.Supply.MailPickup: members take mail at mailboxes they pass
+    std::uint32_t mailPickupYards = 40;    // AutoWow.Supply.MailPickupYards
+    std::uint32_t mailRunMs = 1800000;     // AutoWow.Supply.MailRunMs: supply mail alone starts a town run this often
+    bool mailOrders = false;               // AutoWow.Market.MailOrders: reps' buy orders filled by random bots' COD mail
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -1240,6 +1246,90 @@ inline std::string LedgerFields(std::string_view house, std::uint32_t oid, std::
     return out;
 }
 
+// ---- throughput (lane U, docs/SUPPLY_CHAIN_PLAN.md; soak-s49-full-r1: 187 crafts in 2 h once fed, a handful of bags
+// delivered) ----
+
+// DirectRoutes: donors mail a house material straight to the artisan (one hop instead of donor -> rep -> artisan)
+// while it works at home with more free bag slots than its make-room target and mailbox room; else the rep.
+[[nodiscard]] inline bool ArtisanTakes(bool working, bool atHome, std::uint32_t freeSlots, std::uint32_t roomTarget,
+                                       bool mailRoom)
+{
+    return working && atHome && freeSlots > roomTarget && mailRoom;
+}
+
+// MailOrders: a rep's standing buy order, filled by random bots' cash-on-delivery mail (the item at the order price).
+struct MailOrder
+{
+    std::uint32_t rep = 0;        // guid-low of the house rep the goods go to
+    std::uint32_t item = 0;
+    std::uint32_t units = 0;      // still open (sellers reserve units as they mail)
+    std::uint32_t unitPrice = 0;  // copper per unit = vendor sell value * BuyMaxPct / 100
+};
+
+// A house's orders from its market wants (ascending item): each priced at BuyMaxPct of the vendor value, and only as
+// many units as the house bank's `budget` covers (earlier items first). Items with no vendor value never order.
+[[nodiscard]] inline std::vector<MailOrder> PlanOrders(std::uint32_t rep, std::vector<MarketWant> wants,
+                                                       std::uint32_t buyMaxPct, std::uint64_t budget)
+{
+    std::sort(wants.begin(), wants.end(), [](MarketWant const& a, MarketWant const& b) { return a.item < b.item; });
+    std::vector<MailOrder> out;
+    for (MarketWant const& w : wants)
+    {
+        std::uint64_t const unit = std::uint64_t(w.sellPrice) * buyMaxPct / 100;
+        if (!unit || !w.units || unit > 0xFFFFFFFFull)
+            continue;
+        std::uint32_t const units = static_cast<std::uint32_t>(std::min<std::uint64_t>(w.units, budget / unit));
+        if (!units)
+            continue;
+        budget -= units * unit;
+        out.push_back({rep, w.item, units, static_cast<std::uint32_t>(unit)});
+    }
+    return out;
+}
+
+// Whole stacks (ascending guid) whose total stays within `units` (never over: an order is not overfilled), at most
+// kMaxMailStacks. ponytail: no split, a stack larger than the rest of the order stays with the seller.
+[[nodiscard]] inline std::vector<std::uint32_t> PickWithin(std::vector<Stack> stacks, std::uint32_t units)
+{
+    std::sort(stacks.begin(), stacks.end(), [](Stack const& a, Stack const& b) { return a.guid < b.guid; });
+    std::vector<std::uint32_t> out;
+    for (Stack const& s : stacks)
+    {
+        if (out.size() >= kMaxMailStacks)
+            break;
+        if (!s.count || s.count > units)
+            continue;
+        out.push_back(s.guid);
+        units -= s.count;
+    }
+    return out;
+}
+
+// The COD a rep expects from one seller for one item (units mailed, copper asked): recorded when the seller's mail
+// goes, taken when the rep accepts it.
+struct CodPending
+{
+    std::uint32_t units = 0;
+    std::uint64_t cod = 0;
+};
+
+enum class CodVerdict : std::uint8_t
+{
+    Accept = 0,
+    Return = 1,  // not an order fill of this seller / over its price / over the budget: back to the seller
+    Wait = 2     // no bag room: the mail stays for the next visit
+};
+
+// A COD mail at the rep: it must match what the seller mailed for the order (units and COD within the pending
+// fill), the house must afford it (bank + the rep's purse) and the rep must have room.
+[[nodiscard]] inline CodVerdict DecideCod(CodPending const& pending, std::uint32_t units, std::uint64_t cod,
+                                          std::uint64_t funds, bool room)
+{
+    if (!units || units > pending.units || cod > pending.cod || cod > funds)
+        return CodVerdict::Return;
+    return room ? CodVerdict::Accept : CodVerdict::Wait;
+}
+
 // ---- runtime (AutoWowSupply.cpp). ----
 namespace detail
 {
@@ -1493,6 +1583,24 @@ bool GrantPending(std::uint32_t guid);
 // Any thread: a `supply` row of the bot's house with line "outfit": a tool bought (item, from = the bot, to 0 =
 // the vendor) or a refusal (op; a grant refusal has item 0, from 0 = the treasury, to = the bot).
 void EmitOutfit(Player* bot, Reason r, std::uint32_t item, std::uint64_t copper, char const* op = nullptr);
+
+// ---- throughput (lane U) ----
+inline bool DirectRoutes() { return detail::gEnabled && detail::gParams.directRoutes; }
+inline bool MailPickup() { return detail::gEnabled && detail::gParams.mailPickup; }
+inline bool MailOrders() { return detail::gEnabled && detail::gParams.mailOrders; }
+// MailPickup (any thread for the bot itself): it holds a delivered, non-COD mail with items from a house rep or artisan
+// (the only mail role bots send a member: its bags / potions; decided on the sender's role, not the subject).
+bool HasSupplyMail(Player* bot);
+// MailOrders (map thread, a random seller): it holds a loose stack that fits an open order of its team.
+bool HoldsOrderedItem(Player* bot);
+// MailOrders (map thread, a random seller at a mailbox): fill its team's open orders from its own loose stacks, at
+// most `maxMails` COD mails (one per order; units reserved at once), sent on the world thread. Returns the mails.
+std::uint32_t FillOrders(Player* bot, std::uint32_t maxMails);
+// MailOrders (world thread, the rep taking its mail): the verdict on a delivered COD mail of one item from `seller`
+// (DecideCod against the pending fill); Accept has topped the rep's purse up to the COD from its house bank. `why`
+// names a Return (unordered | budget). The pending fill is settled on Accept and Return.
+CodVerdict CodAtRep(Player* rep, std::uint32_t seller, std::uint32_t item, std::uint32_t units, std::uint64_t cod,
+                    bool room, char const** why);
 }  // namespace AutoWowSupply
 
 #endif

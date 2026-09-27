@@ -310,6 +310,10 @@ bool SendMoney(std::uint32_t fromGuid, std::uint32_t toGuid, std::uint32_t coppe
 // `refusal` (optional): the logged refusal of a mail not sent (e.g. "receiver_mailbox_full"), else untouched.
 bool SendItems(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
                std::string const& subject, char const** refusal = nullptr);
+// AutoWow.Market.MailOrders: the same items as cash on delivery (the core charges `cod` copper to the receiver when it
+// takes them and mails it to the sender).
+bool SendItemsCod(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
+                  std::uint32_t cod, std::string const& subject, char const** refusal = nullptr);
 // Read-only after LoadConfig (any thread): the houses in config order, a house's configured rep (0 = none
 // configured) and the cohort guid ranges.
 std::vector<House> const& Houses();

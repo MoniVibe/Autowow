@@ -150,6 +150,11 @@ protected:
     // hunting member (within LeashYards/2 of the anchor); true when it moved. Callers check the flag.
     bool SquadStep();
     bool SquadWander();
+    // AutoWow.Supply.MailPickup (NewRpgMarket.cpp): a cohort member takes its mail at a mailbox within MailPickupYards.
+    // AutoWow.Market.RandomSellers / MailOrders: a random bot lists its loot at a nearby faction auctioneer, fills
+    // rep mail orders at a nearby mailbox. True when it consumed the tick. Callers check the flags.
+    bool MailPickupStep();
+    bool MarketSellerStep();
 
 protected:
     /* FOR MOVE FAR */

@@ -494,6 +494,14 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     if (AutoWowZoneProgression::Enabled() && ZoneProgressionStep())
         return true;
 
+    // AutoWow.Supply.MailPickup: a cohort member takes its mail at a mailbox it passes (flag off: never reached).
+    if (AutoWowSupply::MailPickup() && MailPickupStep())
+        return true;
+
+    // AutoWow.Market: a random bot sells its loot on the faction AH / fills rep mail orders (flags off: never reached).
+    if ((AutoWowTrade::RandomSellers() || AutoWowSupply::MailOrders()) && MarketSellerStep())
+        return true;
+
     // AutoWow.Errands: independent bots keep themselves supplied by town runs (no cheats, real gold).
     if (AutoWowErrands::Enabled() && ErrandsStep())
         return true;

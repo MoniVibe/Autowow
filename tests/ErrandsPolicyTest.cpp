@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 5U);
+    EXPECT_EQ(s.version, 6U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -732,9 +732,42 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 5u);
+    EXPECT_EQ(kStateVersion, 6u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
+}
+
+// Lane U (AutoWow.Supply.MailPickup): a bag / potions mail from the house is a soft need, alone a run once per
+// MailRunMs, served by any town with a mailbox; the window survives runs.
+TEST(MailPickup, SupplyMailIsSoftAndAloneStartsARunOncePerWindow)
+{
+    EXPECT_TRUE(MailRunDue(true, 1000, 1000));
+    EXPECT_FALSE(MailRunDue(true, 999, 1000));
+    EXPECT_FALSE(MailRunDue(false, 5000, 0));
+
+    Params const p;
+    Obs o = Healthy(kClassWarrior, 12);
+    o.supplyMail = true;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.needs, std::uint32_t(NeedMail));
+    EXPECT_EQ(a.urgent, 0U);
+    EXPECT_FALSE(ShouldRun(a.needs, a.urgent));
+    o.mailRunDue = true;
+    a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedMail));
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+    o.supplyMail = false;  // flag off: all zero
+    EXPECT_EQ(Assess(p, o).needs, 0U);
+
+    TownFacts f;
+    EXPECT_EQ(Serves(f) & NeedMail, 0U);
+    f.mailbox = true;
+    EXPECT_EQ(Serves(f) & NeedMail, std::uint32_t(NeedMail));
+    EXPECT_EQ(std::uint32_t(NeedMail), 1u << 12);  // wire-stable ledger bit
+
+    BotState s;
+    s.nextMailMs = 900000;
+    EXPECT_EQ(AfterRun(p, s, 1000).nextMailMs, 900000U);
 }
 
 TEST(Outfit, ToolStopsFollowTrainingAtTheFirstVendorSellingEach)

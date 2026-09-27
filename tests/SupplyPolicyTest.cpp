@@ -558,7 +558,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 5u);
+    EXPECT_EQ(kStateVersion, 6u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -716,6 +716,64 @@ TEST(SupplyRepStore, RefillUnderRepKeepWithoutRefillingPastThreeQuarters)
     EXPECT_TRUE(PlanUnstash(banked, loose, 60, 0, 16).empty());
     // A withdrawal never makes a deposit due (no stash / refill loop).
     EXPECT_FALSE(StashDue(4, 16));
+}
+
+// ---- throughput (lane U) ----
+
+TEST(SupplyThroughput, ArtisanTakesDirectOnlyAtHomeWithRoom)
+{
+    EXPECT_TRUE(ArtisanTakes(true, true, 5, 4, true));
+    EXPECT_FALSE(ArtisanTakes(false, true, 5, 4, true));  // apprentice / offline
+    EXPECT_FALSE(ArtisanTakes(true, false, 5, 4, true));  // away from home
+    EXPECT_FALSE(ArtisanTakes(true, true, 4, 4, true));   // at its make-room target: full
+    EXPECT_FALSE(ArtisanTakes(true, true, 9, 4, false));  // mailbox at RepMailCap
+    Params const p;
+    EXPECT_FALSE(p.directRoutes);
+    EXPECT_FALSE(p.mailPickup);
+    EXPECT_FALSE(p.mailOrders);
+    EXPECT_EQ(p.mailPickupYards, 40u);
+}
+
+TEST(SupplyThroughput, OrdersPriceAtBuyMaxPctWithinTheBank)
+{
+    // wool (sell 33) 30 units, linen (sell 13) 50 units; BuyMaxPct 400: linen 52/unit, wool 132/unit.
+    std::vector<MailOrder> o = PlanOrders(7, {{kWool, 30, 33}, {kLinen, 50, 13}}, 400, 100000);
+    ASSERT_EQ(o.size(), 2u);
+    EXPECT_EQ(o[0].item, kLinen);  // ascending item
+    EXPECT_EQ(o[0].units, 50u);
+    EXPECT_EQ(o[0].unitPrice, 52u);
+    EXPECT_EQ(o[0].rep, 7u);
+    EXPECT_EQ(o[1].unitPrice, 132u);
+    // Bank 2000: linen takes 38 units (1976), wool none left.
+    o = PlanOrders(7, {{kWool, 30, 33}, {kLinen, 50, 13}}, 400, 2000);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].units, 38u);
+    EXPECT_TRUE(PlanOrders(7, {{kLinen, 10, 0}}, 400, 100000).empty());  // no vendor value
+    EXPECT_TRUE(PlanOrders(7, {{kLinen, 0, 13}}, 400, 100000).empty());
+}
+
+TEST(SupplyThroughput, FillsNeverOverfillAnOrder)
+{
+    EXPECT_EQ(PickWithin({{9, 20}, {3, 5}, {4, 20}}, 30), (std::vector<std::uint32_t>{3, 4}));  // 25 of 30
+    EXPECT_TRUE(PickWithin({{1, 20}}, 19).empty());
+    EXPECT_EQ(PickWithin({{1, 20}}, 20), (std::vector<std::uint32_t>{1}));
+    std::vector<Stack> many;
+    for (std::uint32_t g = 1; g <= 20; ++g)
+        many.push_back({g, 1});
+    EXPECT_EQ(PickWithin(many, 100).size(), kMaxMailStacks);
+}
+
+TEST(SupplyThroughput, CodIsAcceptedOnlyAsThePendingFill)
+{
+    CodPending const pending{20, 1040};
+    EXPECT_EQ(DecideCod(pending, 20, 1040, 5000, true), CodVerdict::Accept);
+    EXPECT_EQ(DecideCod(pending, 10, 520, 5000, true), CodVerdict::Accept);   // part of it
+    EXPECT_EQ(DecideCod(pending, 20, 1040, 5000, false), CodVerdict::Wait);   // no bag room
+    EXPECT_EQ(DecideCod(pending, 21, 1040, 5000, true), CodVerdict::Return);  // more than mailed
+    EXPECT_EQ(DecideCod(pending, 20, 1041, 5000, true), CodVerdict::Return);  // over the price
+    EXPECT_EQ(DecideCod(pending, 20, 1040, 1039, true), CodVerdict::Return);  // over the budget
+    EXPECT_EQ(DecideCod(CodPending{}, 1, 1, 5000, true), CodVerdict::Return);  // unordered
+    EXPECT_EQ(DecideCod(pending, 0, 0, 5000, true), CodVerdict::Return);
 }
 
 // soak-s48-full-r1: the rep -> artisan feed and the artisan -> rep delivery carry every item in one mail (the

@@ -513,6 +513,8 @@ TownFacts FactsOf(Player* bot, Town const& t, std::uint8_t team)
             for (Npc const& n : t.npcs)
                 if ((n.teams & team) && (n.roles & RoleVendor))
                     f.tools |= static_cast<std::uint8_t>(n.tools & missing);
+    if (AutoWowSupply::MailPickup())
+        f.mailbox = std::any_of(t.npcs.begin(), t.npcs.end(), [](Npc const& n) { return (n.roles & RoleMailbox) != 0; });
     return f;
 }
 
@@ -758,6 +760,11 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
         o.missingTools = BotMissingTools(bot);
         o.toolRunDue = OutfitRunDue(o.missingTools, nowMs, s.nextOutfitMs);
     }
+    if (AutoWowSupply::MailPickup())
+    {
+        o.supplyMail = AutoWowSupply::HasSupplyMail(bot);
+        o.mailRunDue = MailRunDue(o.supplyMail, nowMs, s.nextMailMs);
+    }
     return Assess(p, o);
 }
 
@@ -952,6 +959,12 @@ bool NewRpgBaseAction::ErrandsStep()
         {
             // AutoWow.Supply.Outfit only: a tool-due check spends the OutfitCheckMs window, run or not.
             s.nextOutfitMs = now + AutoWowSupply::detail::gParams.outfitCheckMs;
+            StoreState(guid, s);
+        }
+        if (a.urgent & NeedMail)
+        {
+            // AutoWow.Supply.MailPickup only: a mail-due check spends the MailRunMs window, run or not.
+            s.nextMailMs = now + AutoWowSupply::detail::gParams.mailRunMs;
             StoreState(guid, s);
         }
         if (!ShouldRun(a.needs, a.urgent))
