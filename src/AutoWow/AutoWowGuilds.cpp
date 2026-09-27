@@ -150,7 +150,7 @@ void SyncLeader(Guild* g)
 }
 
 bool SendMail(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
-              std::uint32_t money, std::string const& subject, char const** refusalOut = nullptr)
+              std::uint32_t money, std::string const& subject, char const** refusalOut = nullptr, std::uint32_t cod = 0)
 {
     Player* from = ObjectAccessor::FindConnectedPlayer(PlayerGuid(fromGuid));
     CharacterCacheEntry const* to = sCharacterCache->GetCharacterCacheByGuid(PlayerGuid(toGuid));
@@ -236,7 +236,7 @@ bool SendMail(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uin
     }
     std::uint32_t const delay = !items.empty() && from->GetSession()->GetAccountId() != receiverAccount ?
         sWorld->getIntConfig(CONFIG_MAIL_DELIVERY_DELAY) : 0;
-    draft.AddMoney(money).SendMailTo(trans, MailReceiver(receiver, toGuid), MailSender(from), MAIL_CHECK_MASK_COPIED,
+    draft.AddMoney(money).AddCOD(cod).SendMailTo(trans, MailReceiver(receiver, toGuid), MailSender(from), MAIL_CHECK_MASK_COPIED,
                                      delay);
     from->SaveInventoryAndGoldToDB(trans);
     CharacterDatabase.CommitTransaction(trans);
@@ -496,6 +496,14 @@ bool SendItems(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::ui
                std::string const& subject, char const** refusal)
 {
     return SendMail(fromGuid, toGuid, itemGuids, 0, subject, refusal);
+}
+
+bool SendItemsCod(std::uint32_t fromGuid, std::uint32_t toGuid, std::vector<std::uint32_t> const& itemGuids,
+                  std::uint32_t cod, std::string const& subject, char const** refusal)
+{
+    if (itemGuids.empty())
+        return false;  // a COD mail carries items (the core client rule)
+    return SendMail(fromGuid, toGuid, itemGuids, 0, subject, refusal, cod);
 }
 
 std::vector<House> const& Houses() { return gDefs; }

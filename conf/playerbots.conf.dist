@@ -2965,6 +2965,41 @@ AutoWow.Supply.RepStore = 1
 AutoWow.Supply.RepMailCap = 80
 AutoWow.Supply.RepKeep = 60
 
+# Supply-chain throughput (lane U; soak-s49-full-r1: the Horde tailor made 187 crafts in 2 h once fed, but the chain
+# delivered a handful of bags: material trickle, an empty faction AH and 4-5 mail hops). All off by default.
+# DirectRoutes: donors (cohort adventurers and the squad) mail a house material straight to the house ARTISAN while it
+#   works at home with more free bag slots than ArtisanFreeSlots and fewer than RepMailCap mails, for the materials it
+#   uses now (the bag product / skill-up tier's cloth; a line's routed reagents it can use at its skill); the room is
+#   the house stock (rep + artisan) under ClothCap / HerbCap. Everything else, and every material while the artisan is
+#   away, full or an apprentice, goes to the rep as before. The artisan mails finished bags / potions straight to the
+#   ranked members (the rep's own RepStore share and the rest still ship to the rep); each is paid from the house bank
+#   and XP'd as before, and the rep earns its deal XP. `supply` donate / deliver rows name the receiver in `to`.
+# MailPickup: a cohort member with mail it can take walks to a mailbox within MailPickupYards and collects it (not
+#   only on errand runs, "[Market] pickup"); a delivered bag / potions mail from its house is an errand need (bit
+#   4096 `mail`, soft; alone it starts a town run at most once per MailRunMs ms; towns list mailboxes with
+#   AutoWow.Trade.Enable on).
+AutoWow.Supply.DirectRoutes = 0
+AutoWow.Supply.MailPickup = 0
+AutoWow.Supply.MailPickupYards = 40
+AutoWow.Supply.MailRunMs = 1800000
+
+# Market (lane U). RandomSellers: a random bot (not cohort, not a role) that is idle / wandering within SellerYards of
+#   a faction auctioneer (every SellerScanMs) walks there and lists its own `ah`-usage loot (trade goods, reagents,
+#   gems, greens; not soulbound) with the AutoWow.Trade pricing (undercut the lowest buyout, floor FloorPct of vendor,
+#   else PriceMultPct; deposits from its own money; ledger `trade` post rows); near a mailbox it takes its mail (sale
+#   money, expired listings, COD payments). MailOrders: every AutoWow.Supply tick each house rep publishes buy orders
+#   for what its lines lack now (its Market wants; item, units, AutoWow.Supply.BuyMaxPct of the vendor value per unit)
+#   within its house bank less the COD it already owes; a random seller at a mailbox mails its own matching stacks to
+#   the rep as cash on delivery at the order price (whole stacks, never over the order; `trade` cod_sell); the rep
+#   takes them at its mailbox, the house bank topping its purse up to the COD (a guild pay row; `trade` cod_buy), or
+#   returns what it does not expect from that seller or cannot afford (`trade` cod_return). SellerCapPerHour bounds
+#   each random bot's listings + COD mails per game hour. Needs AutoWow.Supply.Enable (and Tiers for the bag house).
+AutoWow.Market.RandomSellers = 0
+AutoWow.Market.MailOrders = 0
+AutoWow.Market.SellerCapPerHour = 6
+AutoWow.Market.SellerScanMs = 60000
+AutoWow.Market.SellerYards = 120
+
 # Gatherer squad (lane G; SquadPolicy.h; docs/SUPPLY_CHAIN_PLAN.md "Gatherer squad"). Enable: a per-team roster
 # (Alliance / Horde: ','-separated guids or lo-hi ranges, at most 10 per team, sorted; the guids must also be in
 # AutoWow.Guilds.CohortGuids for routing) puts material demand before levelling. Needs AutoWow.Supply.Enable for

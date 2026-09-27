@@ -61,7 +61,10 @@
 //     action (post|buy|sold|expired|mail|fee|tax), item (entry, 0 = none), count, price (copper: listing
 //     buyout, purchase price, sale's winning bid, fee), gold (signed copper change of the bot's money),
 //     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train). `tax` (AutoWow.Guilds.TaxPct): the
-//     vendor-income tax paid into the bot's house guild bank (also a `guild` row, reason tax).
+//     vendor-income tax paid into the bot's house guild bank (also a `guild` row, reason tax). AutoWow.Market.MailOrders
+//     (lane U): cod_sell (a random seller mailed an order fill to a rep; price = COD, gold = -postage), cod_buy (the
+//     rep took it; price = COD, gold = its purse change), cod_return (the rep returned it; kind = unordered|budget|
+//     mixed). AutoWow.Market.RandomSellers listings are ordinary post rows of random bots.
 //   - `party` (AutoWow.Party.Enable): one line when a cohort party forms (reason `formed`) and one when it
 //     disbands (reason = level_drift|separated|member_offline|dungeon_done|no_purpose|max_age|too_small|
 //     disabled). bot/lvl/zone/x/y = the leader (else the first online member); quest 0. Trailing: pid

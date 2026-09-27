@@ -80,6 +80,96 @@ std::string UsageKey(uint32 entry, int32 randomPropertyId)
     return std::to_string(entry) + "," + std::to_string(randomPropertyId);
 }
 
+// The bag stacks the bot may list at `house` (Postable with its stock item usage `ah`), each with the lowest
+// competing buyout and its deposit.
+std::vector<Holding> Holdings(PlayerbotAI* botAI, Player* bot, AuctionHouseEntry const* house,
+                              std::map<uint32, uint32> const& lowest)
+{
+    Params const& p = detail::gParams;
+    AiObjectContext* context = botAI->GetAiObjectContext();
+    std::vector<Holding> holdings;
+    ForEachBagItem(bot, [&](Item* item)
+                   {
+                       ItemTemplate const* proto = item->GetTemplate();
+                       Holding h;
+                       h.entry = proto->ItemId;
+                       h.guid = item->GetGUID().GetCounter();
+                       h.count = item->GetCount();
+                       h.quality = proto->Quality;
+                       h.itemClass = proto->Class;
+                       h.sellPrice = proto->SellPrice;
+                       Holding probe = h;
+                       probe.usageAh = true;
+                       if (!Postable(probe))
+                           return;  // skip the usage lookup for what could never be listed
+                       h.usageAh = context->GetValue<ItemUsage>("item usage",
+                                                                UsageKey(h.entry, item->GetItemRandomPropertyId()))
+                                       ->Get() == ITEM_USAGE_AH;
+                       auto const low = lowest.find(h.entry);
+                       h.lowestOther = low == lowest.end() ? 0 : low->second;
+                       h.deposit = AuctionHouseMgr::GetAuctionDeposit(house, p.durationMin * MINUTE, item, h.count);
+                       holdings.push_back(h);
+                   });
+    return holdings;
+}
+
+// AutoWow.Market.MailOrders (world thread, a house rep at its mailbox): each delivered COD mail, oldest id first, is
+// accepted as an order fill (the house bank tops the rep's purse up to the COD; the core charges it and mails it to
+// the seller), returned to the seller, or left for a visit with bag room (AutoWowSupply::CodAtRep decides).
+void TakeCod(Player* bot, WorldSession* session, ObjectGuid mailbox, time_t now)
+{
+    std::vector<uint32> ids;
+    for (Mail const* m : bot->GetMails())
+        if (m && m->state != MAIL_STATE_DELETED && m->deliver_time <= now && m->COD && m->HasItems())
+            ids.push_back(m->messageID);
+    std::sort(ids.begin(), ids.end());
+    for (uint32 id : ids)
+    {
+        Mail* m = bot->GetMail(id);
+        if (!m || !m->COD || !m->HasItems())
+            continue;
+        uint32 entry = 0, units = 0;
+        bool mixed = false, room = true;
+        for (MailItemInfo const& mi : m->items)
+        {
+            Item* it = bot->GetMItem(mi.item_guid);
+            mixed = mixed || (entry && mi.item_template != entry);
+            entry = mi.item_template;
+            units += it ? it->GetCount() : 0;
+            ItemPosCountVec dest;
+            room = room && it && bot->CanStoreItem(NULL_BAG, NULL_SLOT, dest, it, false) == EQUIP_ERR_OK;
+        }
+        uint32 const cod = m->COD;
+        uint32 const seller = static_cast<uint32>(m->sender);
+        char const* why = "mixed";
+        AutoWowSupply::CodVerdict const v =
+            mixed ? AutoWowSupply::CodVerdict::Return : AutoWowSupply::CodAtRep(bot, seller, entry, units, cod, room, &why);
+        if (v == AutoWowSupply::CodVerdict::Wait)
+            continue;
+        if (v == AutoWowSupply::CodVerdict::Accept)
+        {
+            uint64 const m0 = bot->GetMoney();
+            std::vector<MailItemInfo> const items = m->items;  // the handler erases taken items
+            for (MailItemInfo const& mi : items)
+            {
+                WorldPacket packet(CMSG_MAIL_TAKE_ITEM, 8 + 4 + 4);
+                packet << mailbox << id << mi.item_guid;
+                session->HandleMailTakeItem(packet);
+            }
+            Emit(bot, Action::CodBuy, entry, units, cod, int64(bot->GetMoney()) - int64(m0), 0);
+            continue;
+        }
+        WorldPacket packet(CMSG_MAIL_RETURN_TO_SENDER, 8 + 4 + 8);
+        packet << mailbox << id << ObjectGuid::Create<HighGuid::Player>(seller);
+        session->HandleMailReturnToSender(packet);
+        LOG_INFO("playerbots", "[Trade] bot={} cod_return mail={} seller={} item={} count={} cod={} why={}",
+                 bot->GetName(), id, seller, entry, units, cod, why);
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::EmitTrade(bot, ActionName(Action::CodReturn),
+                                          LedgerFields(Action::CodReturn, entry, units, cod, 0, 0, why));
+    }
+}
+
 // World thread: the listings and purchases planned at the auctioneer.
 class AuctionOperation : public PlayerbotOperation
 {
@@ -154,6 +244,9 @@ public:
             return false;
         WorldSession* session = bot->GetSession();
         time_t const now = GameTime::GetGameTime().count();
+        if (AutoWowSupply::MailOrders() &&
+            AutoWowSupply::RoleOf(static_cast<std::uint32_t>(bot->GetGUID().GetCounter())).role == AutoWowSupply::Role::Rep)
+            TakeCod(bot, session, mailbox_, now);
         std::vector<uint32> ids;
         for (Mail const* m : bot->GetMails())
             if (Collectable(m, now))
@@ -241,6 +334,13 @@ void LoadConfig()
     p.buyBudgetPct = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Trade.BuyBudgetPct", 50));
     p.matUnitMaxPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Trade.MatUnitMaxPct", 400);
     p.deleteEmptyMail = sConfigMgr->GetOption<bool>("AutoWow.Trade.DeleteEmptyMail", true);
+    p.randomSellers = sConfigMgr->GetOption<bool>("AutoWow.Market.RandomSellers", false);
+    p.sellerCapPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Market.SellerCapPerHour", 6);
+    p.sellerScanMs = std::max<std::uint32_t>(1000, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Market.SellerScanMs", 60000));
+    p.sellerYards = std::max<std::uint32_t>(10, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Market.SellerYards", 120));
+    if (p.randomSellers)
+        LOG_INFO("server.loading", "[Trade] market random sellers on: cap={}/h scan_ms={} yards={}", p.sellerCapPerHour,
+                 p.sellerScanMs, p.sellerYards);
 }
 
 bool HasCollectableMail(Player* bot)
@@ -255,8 +355,13 @@ bool HasCollectableMail(Player* bot)
 bool HasCollectableMailWithRoom(Player* bot)
 {
     time_t const now = GameTime::GetGameTime().count();
+    bool const codRep = AutoWowSupply::MailOrders() && bot->GetFreeInventorySpace() > 0 &&
+                        AutoWowSupply::RoleOf(static_cast<std::uint32_t>(bot->GetGUID().GetCounter())).role ==
+                            AutoWowSupply::Role::Rep;
     for (Mail const* m : bot->GetMails())
     {
+        if (codRep && m && m->state != MAIL_STATE_DELETED && m->deliver_time <= now && m->COD && m->HasItems())
+            return true;  // MailOrders: an order fill to accept or return
         if (!Collectable(m, now))
             continue;
         if (m->money)
@@ -315,29 +420,7 @@ void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
         if (want != Want::None)
             listings.push_back({id, a->item_template, a->itemCount, a->buyout, proto->SellPrice, want});
     }
-    std::vector<Holding> holdings;
-    ForEachBagItem(bot, [&](Item* item)
-                   {
-                       ItemTemplate const* proto = item->GetTemplate();
-                       Holding h;
-                       h.entry = proto->ItemId;
-                       h.guid = item->GetGUID().GetCounter();
-                       h.count = item->GetCount();
-                       h.quality = proto->Quality;
-                       h.itemClass = proto->Class;
-                       h.sellPrice = proto->SellPrice;
-                       Holding probe = h;
-                       probe.usageAh = true;
-                       if (!Postable(probe))
-                           return;  // skip the usage lookup for what could never be listed
-                       h.usageAh = context->GetValue<ItemUsage>("item usage",
-                                                                UsageKey(h.entry, item->GetItemRandomPropertyId()))
-                                       ->Get() == ITEM_USAGE_AH;
-                       auto const low = lowest.find(h.entry);
-                       h.lowestOther = low == lowest.end() ? 0 : low->second;
-                       h.deposit = AuctionHouseMgr::GetAuctionDeposit(house, p.durationMin * MINUTE, item, h.count);
-                       holdings.push_back(h);
-                   });
+    std::vector<Holding> holdings = Holdings(botAI, bot, house, lowest);
     uint64 const money = bot->GetMoney();
     std::vector<Post> posts = PlanPosts(p, std::move(holdings), money);
     uint64 deposits = 0;
@@ -395,6 +478,42 @@ void VisitMailbox(Player* bot, GameObject* mailbox)
         return;
     PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::make_unique<MailOperation>(bot->GetGUID(), mailbox->GetGUID()));
+}
+
+std::uint32_t PostLoot(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint32_t maxPosts)
+{
+    AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
+    AuctionHouseObject* ah = sAuctionMgr->GetAuctionsMap(auctioneer->GetFaction());
+    if (!maxPosts || !house || !ah || house->houseId == uint32(AuctionHouseId::Neutral))
+        return 0;  // faction houses only (the goblin houses are the future cross-faction channel)
+    std::map<uint32, uint32> lowest;
+    for (auto const& [id, a] : ah->GetAuctions())
+        if (a && a->owner != bot->GetGUID() && a->buyout && a->itemCount)
+        {
+            uint32 const unit = a->buyout / a->itemCount;
+            auto const [it, fresh] = lowest.emplace(a->item_template, unit);
+            if (!fresh)
+                it->second = std::min(it->second, unit);
+        }
+    Params p = detail::gParams;
+    p.maxPosts = std::min(p.maxPosts, maxPosts);
+    std::vector<Post> posts = PlanPosts(p, Holdings(botAI, bot, house, lowest), bot->GetMoney());
+    LOG_INFO("playerbots", "[Trade] seller bot={} auctioneer={} posts={} money={}", bot->GetName(),
+             auctioneer->GetEntry(), posts.size(), bot->GetMoney());
+    std::uint32_t const n = static_cast<std::uint32_t>(posts.size());
+    if (n)
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::make_unique<AuctionOperation>(
+            bot->GetGUID(), auctioneer->GetGUID(), std::move(posts), std::vector<Buy>{}));
+    return n;
+}
+
+void EmitRow(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price, std::int64_t gold,
+             char const* kind)
+{
+    LOG_INFO("playerbots", "[Trade] bot={} {} item={} count={} price={} gold={}{}{}", bot->GetName(), ActionName(a),
+             item, count, price, gold, kind ? " kind=" : "", kind ? kind : "");
+    if (AutoWowQuestLedger::Enabled())
+        AutoWowQuestLedger::EmitTrade(bot, ActionName(a), LedgerFields(a, item, count, price, gold, 0, kind));
 }
 
 void NoteFee(Player* bot, FeeKind kind, std::uint64_t copper)

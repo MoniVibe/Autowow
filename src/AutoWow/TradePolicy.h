@@ -43,7 +43,10 @@ enum class Action : std::uint8_t
     Expired = 3,  // took back an expired / cancelled listing's item
     Mail = 4,     // took any other mail (won auction item, outbid refund, ...)
     Fee = 5,      // AutoWow.Ledger.Treasury: copper paid to the world (kind)
-    Tax = 6       // AutoWow.Guilds: vendor-income tax paid into the house guild bank; price = copper, gold = -copper
+    Tax = 6,      // AutoWow.Guilds: vendor-income tax paid into the house guild bank; price = copper, gold = -copper
+    CodSell = 7,  // AutoWow.Market.MailOrders: a seller mailed an order's goods to a rep as COD; price = COD, gold = -postage
+    CodBuy = 8,   // the rep took a COD order fill; price = COD, gold = its purse change (the treasury top-up is a guild row)
+    CodReturn = 9 // the rep returned a COD mail (not a pending fill / over budget); price = COD, kind = why
 };
 
 inline constexpr char const* ActionName(Action a)
@@ -57,6 +60,9 @@ inline constexpr char const* ActionName(Action a)
         case Action::Mail: return "mail";
         case Action::Fee: return "fee";
         case Action::Tax: return "tax";
+        case Action::CodSell: return "cod_sell";
+        case Action::CodBuy: return "cod_buy";
+        case Action::CodReturn: return "cod_return";
     }
     return "mail";
 }
@@ -96,7 +102,40 @@ struct Params
     std::uint32_t matCountMax = 20;      // units of one mat bought per visit
     std::uint32_t durationMin = 720;     // listing time (minutes; the core accepts 720 / 1440 / 2880)
     bool deleteEmptyMail = true;         // AutoWow.Trade.DeleteEmptyMail: the collector deletes emptied mails
+    // Random-bot market sellers (lane U; off by default):
+    bool randomSellers = false;          // AutoWow.Market.RandomSellers
+    std::uint32_t sellerCapPerHour = 6;  // AutoWow.Market.SellerCapPerHour: AH listings + COD mails per bot per hour
+    std::uint32_t sellerScanMs = 60000;  // AutoWow.Market.SellerScanMs: an idle random bot looks this often
+    std::uint32_t sellerYards = 120;     // AutoWow.Market.SellerYards: auctioneer / mailbox search radius
 };
+
+// ---- random-bot market sellers (AutoWow.Market.RandomSellers / MailOrders) ----------------------------
+// soak-s49-full-r1: only the reps listed on the faction AH, so their Market buys found nothing; the ~100 random bots
+// loot trade goods all day and never post. A random bot (not cohort, not a role) near a faction auctioneer lists its
+// own `ah`-usage loot through PlanPosts (undercut, floor, deposits from its own money); near a mailbox it fills
+// reps' mail orders (AutoWowSupply MailOrders) and takes its mail (COD payments, expired listings). Both count
+// against SellerCapPerHour per game hour.
+inline constexpr std::uint64_t kSellerHourMs = 3600000;
+
+struct SellerWindow
+{
+    std::uint64_t hour = 0;  // game-time hour index of `used`
+    std::uint32_t used = 0;
+};
+
+// Listings / mails the bot may still make this hour.
+[[nodiscard]] inline std::uint32_t SellerRoom(SellerWindow const& w, std::uint64_t hour, std::uint32_t cap)
+{
+    std::uint32_t const used = w.hour == hour ? w.used : 0;
+    return cap > used ? cap - used : 0;
+}
+
+inline void NoteSeller(SellerWindow& w, std::uint64_t hour, std::uint32_t n)
+{
+    if (w.hour != hour)
+        w = {hour, 0};
+    w.used += n;
+}
 
 // A delivered mail with nothing left to take (no money, no items, not COD) is deleted after collection, as the
 // client does: soak-s48-full-r1, the Alliance Weavers rep held 120 emptied mails (the core refuses a mail at 100)
@@ -410,6 +449,13 @@ std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uin
                          std::vector<Post>* planned = nullptr);
 // AutoWow.Ledger.Treasury: `fee` line for copper the bot just paid (no-op when off or copper is 0).
 void NoteFee(Player* bot, FeeKind kind, std::uint64_t copper);
+// AutoWow.Market.RandomSellers (map thread, at a faction auctioneer): list up to `maxPosts` of the bot's own `ah`
+// loot as VisitAuctioneer plans it, no purchases. Returns the listings queued.
+std::uint32_t PostLoot(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint32_t maxPosts);
+inline bool RandomSellers() { return detail::gParams.randomSellers; }
+// Any thread: a `trade` row + [Trade] log line (e.g. the COD rows of AutoWowSupply).
+void EmitRow(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price, std::int64_t gold,
+             char const* kind = nullptr);
 }  // namespace AutoWowTrade
 
 #endif  // AUTOWOW_TRADE_POLICY_H

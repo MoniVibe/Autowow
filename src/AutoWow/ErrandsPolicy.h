@@ -31,9 +31,9 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 5;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 6;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
-                                                  // 5: nextOutfitMs (Supply.Outfit)
+                                                  // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -50,7 +50,8 @@ enum Need : std::uint32_t
     NeedHearth = 1u << 8,      // hearthstone bound outside the current zone
     NeedFlightPath = 1u << 9,  // current zone's flight master node unknown
     NeedGear = 1u << 10,       // AutoWow.Gear.Upgrades: vendor weapon / armor shopping due (AutoWowGear::GearDue)
-    NeedTool = 1u << 11        // AutoWow.Supply.Outfit: a known Mining / Skinning without its gathering tool
+    NeedTool = 1u << 11,       // AutoWow.Supply.Outfit: a known Mining / Skinning without its gathering tool
+    NeedMail = 1u << 12        // AutoWow.Supply.MailPickup: a supply mail (bag / potions from its house) waits
 };
 inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
 
@@ -187,6 +188,13 @@ inline constexpr std::uint32_t kToolSkills[kTools] = {186, 393};  // Mining, Ski
     return missingTools && nowMs >= nextOutfitMs;
 }
 
+// A waiting supply mail alone starts a run once per AutoWow.Supply.MailRunMs (nextMailMs = run check + it); else it
+// rides along as a soft need (low priority: the bot mostly takes it at a mailbox it passes, MailPickup).
+[[nodiscard]] inline bool MailRunDue(bool supplyMail, std::uint64_t nowMs, std::uint64_t nextMailMs)
+{
+    return supplyMail && nowMs >= nextMailMs;
+}
+
 struct Params
 {
     std::uint32_t checkIntervalMs = 60000;     // AutoWow.Errands.CheckIntervalMs
@@ -314,6 +322,8 @@ struct Obs
     AutoWowGear::Due gear;                     // AutoWow.Gear.Upgrades only (all false with the flag off)
     std::uint8_t missingTools = 0;             // AutoWow.Supply.Outfit only: Tool bits (MissingTools)
     bool toolRunDue = false;                   // AutoWow.Supply.Outfit only: OutfitRunDue
+    bool supplyMail = false;                   // AutoWow.Supply.MailPickup only: HasSupplyMail
+    bool mailRunDue = false;                   // AutoWow.Supply.MailPickup only: MailRunDue
 };
 
 struct Assessment
@@ -411,6 +421,11 @@ struct Assessment
         a.needs |= NeedTool;
     if (o.missingTools && o.toolRunDue)
         a.urgent |= NeedTool;
+    // AutoWow.Supply.MailPickup: a waiting supply mail is soft, and alone starts a run once per MailRunMs.
+    if (o.supplyMail)
+        a.needs |= NeedMail;
+    if (o.supplyMail && o.mailRunDue)
+        a.urgent |= NeedMail;
     a.needs |= a.urgent;
     return a;
 }
@@ -633,6 +648,7 @@ struct TownFacts
     bool unknownFlightMaster = false;  // town has a flight master whose node the bot lacks
     bool gearVendor = false;           // AutoWow.Gear.Upgrades: a usable vendor sells weapons / armor
     std::uint8_t tools = 0;            // AutoWow.Supply.Outfit: missing Tool bits a usable vendor sells
+    bool mailbox = false;              // AutoWow.Supply.MailPickup: the town has a mailbox (catalogued with Trade on)
 };
 
 [[nodiscard]] inline std::uint32_t Serves(TownFacts const& f)
@@ -658,6 +674,8 @@ struct TownFacts
         m |= NeedGear;
     if (f.tools)
         m |= NeedTool;
+    if (f.mailbox)
+        m |= NeedMail;
     return m;
 }
 
@@ -954,6 +972,8 @@ struct BotState
     std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearNpcs{};
     // AutoWow.Supply.Outfit: no tool-triggered run before this (survives runs, not restarts).
     std::uint64_t nextOutfitMs = 0;
+    // AutoWow.Supply.MailPickup: no mail-triggered run before this (survives runs, not restarts).
+    std::uint64_t nextMailMs = 0;
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
@@ -985,6 +1005,7 @@ struct BotState
     next.lastClassTrainLevel = s.lastClassTrainLevel;
     next.lastGearLevel = s.lastGearLevel;
     next.nextOutfitMs = s.nextOutfitMs;
+    next.nextMailMs = s.nextMailMs;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;

@@ -13,9 +13,11 @@
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -43,6 +45,7 @@
 #include "SelfCraftPolicy.h"
 #include "SquadPolicy.h"
 #include "SupplyPolicy.h"
+#include "TradePolicy.h"
 #include "Trainer.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
@@ -96,17 +99,29 @@ struct TeamState
     std::uint32_t artisanSkill = 0;
     std::array<std::uint32_t, kTierCount> surplusBags{};
     std::vector<MarketWant> buy;
+    // DirectRoutes (TierTick): the artisan donors mail directly (0 = the rep) and the tiers whose cloth it takes.
+    std::uint32_t direct = 0;
+    std::array<bool, kTierCount> directTier{};
 };
 struct LineState
 {
     LineView v;
     std::uint64_t artisanWant = 0;
+    // DirectRoutes (LineTick): the artisan donors mail directly (0 = the rep) and, per RouteItems, what it takes.
+    std::uint32_t direct = 0;
+    std::vector<bool> directItem;
 };
 std::mutex gLock;
 std::array<TeamState, 2> gTeams;
 std::array<std::array<LineState, 2>, kLineCount> gLines;  // [line][team]
 std::uint32_t gNextOrderId = 0;  // run-scoped, never reused (both teams)
 std::unordered_set<std::uint32_t> gHeld;
+// MailOrders: the teams' open orders (gLock: the world tick rebuilds them, random sellers reserve units), and the COD
+// fills in flight, (rep, seller, item) -> units / copper (world thread only; bounded, in memory: a fill pending at a
+// restart is returned to its seller).
+std::array<std::vector<MailOrder>, 2> gOrders;
+std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>, CodPending> gCodPending;
+constexpr std::size_t kMaxCodPending = 4096;
 
 // Raw materials (RouteRaw, lane G): kind 0 = ore -> AutoWow.Supply.House.Ore, 1 = leather -> .House.Leather.
 constexpr std::size_t kRawKinds = 2, kRawItems = 3;
@@ -266,6 +281,21 @@ bool IsRole(Player* p) { return ActiveRoleOf(p).role != Role::None; }
 // treats it as offline: no feed, pay or deliveries while it adventures).
 Player* Working(Player* art) { return art && art->IsInWorld() && IsRole(art) ? art : nullptr; }
 
+// DirectRoutes (world thread): the artisan works at home with bag room above its make-room target and mailbox room
+// (ArtisanTakes): donors and its own deliveries skip the rep hop.
+bool TakesDirect(Player* art)
+{
+    Params const& p = detail::gParams;
+    Player* a = Working(art);
+    if (!a)
+        return false;
+    Home const& home = RoleOf(Low(a)).home;
+    std::int64_t const dx = std::int64_t(a->GetPositionX()) - home.x, dy = std::int64_t(a->GetPositionY()) - home.y;
+    bool const atHome = home.set && a->GetMapId() == home.map && dx * dx + dy * dy <= std::int64_t(p.homeYards) * p.homeYards;
+    return ArtisanTakes(true, atHome, a->GetFreeInventorySpace(), p.artisanFreeSlots,
+                        MailRoom(LiveMails(a), p.repMailCap));
+}
+
 // The online configured rep of house `i` (a role bot), else nullptr.
 Player* RoleRep(std::size_t i, bool alliance)
 {
@@ -358,7 +388,9 @@ public:
     {
         Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
         bool ok = false;
-        if (bot)
+        if (bot && detail::gParams.directRoutes)
+            ok = ExecuteDirect(bot);
+        else if (bot)
         {
             bool const bags = line_ == Line::Bags;
             std::size_t const house = bags ? gBagHouse : gLineHouse[static_cast<std::size_t>(line_)];
@@ -395,6 +427,65 @@ public:
     std::string GetName() const override { return "AutoWowSupplyDonate"; }
 
 private:
+    // DirectRoutes: the stacks the house artisan takes now (TeamState / LineState direct) go to it, the rest to the
+    // rep; one mail each, a donate row per entry with its receiver (the donation credit), squad deliveries noted.
+    bool ExecuteDirect(Player* bot)
+    {
+        bool const bags = line_ == Line::Bags;
+        std::size_t const li = static_cast<std::size_t>(line_), t = T(alliance_);
+        std::uint32_t const gid = AutoWowGuilds::HouseGuildId(bags ? gBagHouse : gLineHouse[li], alliance_);
+        std::uint32_t const rep = gid ? AutoWowGuilds::RepOf(gid) : 0;
+        std::vector<std::uint32_t> const entries = bags ? std::vector<std::uint32_t>(std::begin(kTierCloth),
+                                                                                     std::end(kTierCloth))
+                                                        : gLineRoute[li];
+        std::vector<bool> takes(entries.size(), false);
+        std::uint32_t art = 0;
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            art = bags ? gTeams[t].direct : gLines[li][t].direct;
+            for (std::size_t k = 0; art && k < entries.size(); ++k)
+                takes[k] = bags ? k < kTierCount && gTeams[t].directTier[k]
+                                : k < gLines[li][t].directItem.size() && gLines[li][t].directItem[k];
+        }
+        if (art && !TakesDirect(Online(art)))
+            art = 0;  // left home / filled up since the tick: the rep takes it all
+        std::vector<std::uint32_t> toArt, toRep;
+        for (std::uint32_t const g : guids_)
+        {
+            Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g));
+            std::size_t k = 0;
+            while (item && k < entries.size() && item->GetEntry() != entries[k])
+                ++k;
+            (art && item && k < entries.size() && takes[k] ? toArt : toRep).push_back(g);
+        }
+        bool ok = false;
+        auto mail = [&](std::uint32_t to, std::vector<std::uint32_t> const& guids)
+        {
+            if (guids.empty())
+                return;
+            std::vector<std::uint32_t> units(entries.size(), 0);
+            for (std::uint32_t const g : guids)
+                if (Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g)))
+                    for (std::size_t k = 0; k < units.size(); ++k)
+                        if (item->GetEntry() == entries[k])
+                            units[k] += item->GetCount();
+            char const* const why = to && to != Low(bot)
+                ? Send(Low(bot), to, guids, bags ? "AutoWoW cloth" : "AutoWoW materials", "donate") : "donate";
+            ok = ok || !why;
+            for (std::size_t k = 0; k < units.size(); ++k)
+            {
+                if (!units[k])
+                    continue;
+                EmitLine(line_, bot, why ? Reason::Refused : Reason::Donate, 0, entries[k], units[k], 0, Low(bot), to, why);
+                if (!why && AutoWowSquad::Enabled())
+                    AutoWowSquad::NoteDelivered(bot, entries[k], units[k], to);
+            }
+        };
+        mail(art, toArt);
+        mail(rep, toRep);
+        return ok;
+    }
+
     ObjectGuid bot_;
     bool alliance_;
     std::vector<std::uint32_t> guids_;
@@ -491,6 +582,7 @@ std::vector<std::uint32_t> Guids(std::vector<Stack> const& stacks, std::uint32_t
 }
 
 void TierTick(bool alliance, bool overlord);
+void DirectBags(bool alliance, Player* art, Player* rep, std::uint32_t repGuid, std::uint32_t gid, TeamState& ts);
 
 // One world tick of a team's chain.
 void TeamTick(bool alliance, bool overlord)
@@ -664,6 +756,10 @@ void TierTick(bool alliance, bool overlord)
         stock[i] = HeldUnits(rep, kTiers[i].cloth);
     ts.clothRooms = ClothRooms(stock, p.clothCap, RepReady(rep));
     ts.artisanSkill = art ? art->GetSkillValue(SKILL_TAILORING) : 0;
+
+    // DirectRoutes: artisan -> ranked members first (one hop instead of two); what is left goes to the rep below.
+    if (p.directRoutes && art && gid)
+        DirectBags(alliance, art, rep, repGuid, gid, ts);
 
     // Artisan -> rep: finished bags of every tier, paid per bag, work XP per bag; product bags count down the order.
     // RepStore: every tier in one mail (at most kMaxMailStacks bags); off: one mail per tier.
@@ -850,7 +946,7 @@ void TierTick(bool alliance, bool overlord)
     // Market: what the house lacks for the product it wants (members' open want, even when nothing is craftable
     // yet), else for the skill-up recipe (the stock-free pick when the house holds none).
     ts.buy.clear();
-    if (p.market && art)
+    if ((p.market || p.mailOrders) && art)
     {
         auto want = [&](std::uint32_t item, std::uint32_t units)
         {
@@ -920,11 +1016,28 @@ void TierTick(bool alliance, bool overlord)
         }
     }
 
+    // DirectRoutes: the artisan takes its product / skill-up tier's cloth itself while TakesDirect, under ClothCap of
+    // the house stock (rep + artisan).
+    if (p.directRoutes)
+    {
+        bool const takes = TakesDirect(art);
+        ts.direct = takes ? Low(art) : 0;
+        for (std::size_t i = 0; i < kTierCount; ++i)
+        {
+            ts.directTier[i] = takes && ((i == ts.product && ts.remaining) || i == ts.skillup);
+            if (ts.directTier[i])
+                ts.clothRooms[i] =
+                    ClothRoom(HeldUnits(rep, kTiers[i].cloth) + HeldUnits(art, kTiers[i].cloth), p.clothCap, true);
+        }
+    }
+
     std::lock_guard<std::mutex> guard(gLock);
     TeamState& out = gTeams[t];
     out.orderId = ts.orderId;
     out.remaining = ts.remaining;
     out.clothRooms = ts.clothRooms;
+    out.direct = ts.direct;
+    out.directTier = ts.directTier;
     out.artisanSkill = ts.artisanSkill;
     out.skillup = ts.skillup;
     out.skillupBag = ts.skillupBag;
@@ -1013,6 +1126,40 @@ void LineTick(Line line, bool alliance, bool overlord)
     // stays with the artisan.
     std::uint8_t const target = v.remaining && v.product != kNoTier ? v.product : v.skillup;
     std::uint32_t const targetCasts = v.remaining && v.product != kNoTier ? v.remaining : p.skillupCasts;
+
+    // DirectRoutes: artisan -> members below PotionTarget first (one hop instead of two), from the stacks it may ship.
+    if (p.directRoutes && art && gid)
+    {
+        std::vector<StockNeed> const need = RankStock(L, StockMembers(alliance, L), known, p.potionTarget);
+        for (std::size_t i = L.tierCount; i-- > 0;)
+        {
+            LineTier const& tier = L.tiers[i];
+            std::vector<Stack> const stacks = LooseStacks(art, tier.product);
+            std::vector<std::uint32_t> const free = SellStacks(stacks, CraftReserve(L, target, targetCasts, tier.product));
+            std::vector<Stack> avail;
+            for (Stack const& st : stacks)
+                if (std::find(free.begin(), free.end(), st.guid) != free.end())
+                    avail.push_back(st);
+            for (StackDelivery const& d : PlanStackDeliveries(need, static_cast<std::uint8_t>(i), std::move(avail)))
+            {
+                if (char const* const why = Send(Low(art), d.guid, d.stacks, "AutoWoW supplies", "deliver"))
+                {
+                    EmitLine(line, art, Reason::Refused, v.orderId, tier.product, d.units, 0, Low(art), d.guid, why);
+                    continue;
+                }
+                EmitLine(line, art, Reason::Deliver, v.orderId, tier.product, d.units, 0, Low(art), d.guid);
+                if (i == v.product)
+                    v.remaining -= std::min(v.remaining, d.units);
+                std::uint64_t const pay = BagPay(SellOf(tier.product), p.potionPayPct, d.units);
+                bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
+                EmitLine(line, art, paid ? Reason::Pay : Reason::Refused, v.orderId, tier.product, d.units, pay, 0,
+                         Low(art), paid ? nullptr : "pay");
+                GrantXp(art, XpFor(p.workXpPerItem, art) * d.units, v.orderId, tier.product, d.units, line);
+                if (rep)
+                    GrantXp(rep, XpFor(p.repXpPerDeal, rep), v.orderId, tier.product, d.units, line);
+            }
+        }
+    }
 
     // Artisan -> rep: finished products of every tier, paid per unit, work XP per unit; product units count
     // down the order. RepStore: every tier in one mail (at most kMaxMailStacks stacks); off: one mail per tier.
@@ -1177,7 +1324,7 @@ void LineTick(Line line, bool alliance, bool overlord)
     // Market: what the house (rep + artisan) lacks for the product members want (even when nothing is
     // craftable yet), else for the skill-up recipe (the stock-free pick when the house holds none).
     v.buy.clear();
-    if (p.market && art)
+    if ((p.market || p.mailOrders) && art)
     {
         std::vector<Lack> short_;
         if (v.product != kNoTier && v.productWant)
@@ -1217,7 +1364,24 @@ void LineTick(Line line, bool alliance, bool overlord)
             }
         }
 
+    // DirectRoutes: the artisan takes the routed reagents it can use now itself while TakesDirect, under HerbCap of the
+    // house stock (rep + artisan).
+    if (p.directRoutes)
+    {
+        bool const takes = TakesDirect(art);
+        ts.direct = takes ? Low(art) : 0;
+        ts.directItem.assign(route.size(), false);
+        for (std::size_t k = 0; k < route.size() && k < v.rooms.size(); ++k)
+        {
+            ts.directItem[k] = takes && UsableNow(L, route[k], v.artisanSkill);
+            if (ts.directItem[k])
+                v.rooms[k] = ClothRoom(HeldUnits(rep, route[k]) + HeldUnits(art, route[k]), p.herbCap, true);
+        }
+    }
+
     std::lock_guard<std::mutex> guard(gLock);
+    gLines[li][t].direct = ts.direct;
+    gLines[li][t].directItem = ts.directItem;
     LineView& out = gLines[li][t].v;
     out.orderId = v.orderId;
     out.remaining = v.remaining;
@@ -1234,6 +1398,140 @@ void LineTick(Line line, bool alliance, bool overlord)
     }
     gLines[li][t].artisanWant = ts.artisanWant;  // no map update runs during the world tick
 }
+
+// DirectRoutes (TierTick): the artisan's finished bags go straight to the ranked members, best tier first (the rep's
+// own RepStore share stays for the shipment to it), each paid from the treasury and XP'd as a delivery to the rep;
+// the rep earns its deal XP (it brokers and pays). Product bags count down the order.
+void DirectBags(bool alliance, Player* art, Player* rep, std::uint32_t repGuid, std::uint32_t gid, TeamState& ts)
+{
+    Params const& p = detail::gParams;
+    for (std::size_t i = kTierCount; i-- > 0;)
+    {
+        Tier const& tier = kTiers[i];
+        std::vector<Stack> bags = LooseStacks(art, tier.bag);
+        if (bags.empty())
+            continue;
+        std::sort(bags.begin(), bags.end(), [](Stack const& a, Stack const& b) { return a.guid < b.guid; });
+        std::size_t next = 0;
+        for (Delivery const& d :
+             PlanDeliveries(RankNeeds(Members(alliance, tier.bagSlots)), static_cast<std::uint32_t>(bags.size())))
+        {
+            std::vector<std::uint32_t> give;
+            for (; next < bags.size() && give.size() < d.bags; ++next)
+                give.push_back(bags[next].guid);
+            if (give.empty())
+                break;
+            if (d.guid == repGuid)
+                continue;  // RepStore: the rep's own share rides with the artisan's shipment to it
+            std::uint32_t const n = static_cast<std::uint32_t>(give.size());
+            if (char const* const why = Send(Low(art), d.guid, give, "AutoWoW bag", "deliver"))
+            {
+                Emit(art, Reason::Refused, ts.orderId, tier.bag, n, 0, Low(art), d.guid, why);
+                continue;
+            }
+            Emit(art, Reason::Deliver, ts.orderId, tier.bag, n, 0, Low(art), d.guid);
+            if (i == ts.product)
+                ts.remaining -= std::min(ts.remaining, n);
+            std::uint64_t const pay = BagPay(SellOf(tier.bag), p.bagPayPct, n);
+            bool const paid = pay && AutoWowGuilds::Pay(gid, art, pay);
+            Emit(art, paid ? Reason::Pay : Reason::Refused, ts.orderId, tier.bag, n, pay, 0, Low(art),
+                 paid ? nullptr : "pay");
+            GrantXp(art, XpFor(p.workXpPerItem, art) * n, ts.orderId, tier.bag, n);
+            if (rep)
+                GrantXp(rep, XpFor(p.repXpPerDeal, rep), ts.orderId, tier.bag, n);
+        }
+    }
+}
+
+// MailOrders (world thread): the team's open orders, rebuilt every tick from the reps' market wants (what each house
+// lacks now; units in its mailbox, COD fills included, already count as held), within each house bank less the COD
+// its rep already owes on pending fills.
+void OrderTick(bool alliance, bool overlord)
+{
+    Params const& p = detail::gParams;
+    std::size_t const t = T(alliance);
+    std::vector<std::pair<std::size_t, std::vector<MarketWant>>> wants;  // (house, wants)
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        if (LineOn(Line::Bags) && p.tiers)
+            wants.push_back({gBagHouse, gTeams[t].buy});
+        for (ProductLine const& L : kCatalog)
+            if (L.tierCount && LineOn(L.id))
+                wants.push_back({gLineHouse[static_cast<std::size_t>(L.id)], gLines[static_cast<std::size_t>(L.id)][t].v.buy});
+    }
+    std::vector<MailOrder> orders;
+    for (auto const& [house, w] : wants)
+    {
+        std::uint32_t const gid = AutoWowGuilds::HouseGuildId(house, alliance);
+        std::uint32_t const rep = gid ? AutoWowGuilds::RepOf(gid) : 0;
+        if (!rep || w.empty())
+            continue;
+        std::uint64_t owed = 0;
+        for (auto const& [key, c] : gCodPending)
+            if (std::get<0>(key) == rep)
+                owed += c.cod;
+        std::uint64_t const bank = AutoWowGuilds::Balance(gid);
+        for (MailOrder const& o : PlanOrders(rep, w, p.buyMaxPct, bank > owed ? bank - owed : 0))
+        {
+            orders.push_back(o);
+            if (overlord)
+                LOG_INFO("playerbots", "[Supply] order team={} rep={} item={} units={} unit_price={} bank={} owed={}",
+                         alliance ? "alliance" : "horde", rep, o.item, o.units, o.unitPrice, bank, owed);
+        }
+    }
+    std::lock_guard<std::mutex> guard(gLock);
+    gOrders[t] = std::move(orders);
+}
+
+// World thread (MailOrders): a random seller's order fill, mailed to the rep as cash on delivery at the order price
+// (its own postage); the fill is recorded pending for the rep's acceptance. A `trade` cod_sell row.
+class CodSellOperation : public PlayerbotOperation
+{
+public:
+    CodSellOperation(ObjectGuid bot, std::uint32_t rep, std::uint32_t item, std::vector<std::uint32_t> guids,
+                     std::uint32_t units, std::uint64_t cod)
+        : bot_(bot), rep_(rep), item_(item), guids_(std::move(guids)), units_(units), cod_(cod)
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
+        if (!bot || !cod_ || cod_ > AutoWowTrade::kMaxMoney)
+            return false;
+        auto const key = std::make_tuple(rep_, Low(bot), item_);
+        if (!gCodPending.count(key) && gCodPending.size() >= kMaxCodPending)
+        {
+            LOG_INFO("playerbots", "[Supply] cod_sell bot={} item={} refused: {} fills pending", bot->GetName(), item_,
+                     gCodPending.size());
+            return false;
+        }
+        std::uint64_t const m0 = bot->GetMoney();
+        char const* why = nullptr;
+        if (!AutoWowGuilds::SendItemsCod(Low(bot), rep_, guids_, static_cast<std::uint32_t>(cod_), "AutoWoW order", &why))
+        {
+            LOG_INFO("playerbots", "[Supply] cod_sell bot={} rep={} item={} count={} refused: {}", bot->GetName(), rep_,
+                     item_, units_, why ? why : "send");
+            return false;
+        }
+        CodPending& c = gCodPending[key];
+        c.units += units_;
+        c.cod += cod_;
+        AutoWowTrade::EmitRow(bot, AutoWowTrade::Action::CodSell, item_, units_, cod_,
+                              std::int64_t(bot->GetMoney()) - std::int64_t(m0));
+        return true;
+    }
+    ObjectGuid GetBotGuid() const override { return bot_; }
+    std::string GetName() const override { return "AutoWowSupplyCodSell"; }
+
+private:
+    ObjectGuid bot_;
+    std::uint32_t rep_;
+    std::uint32_t item_;
+    std::vector<std::uint32_t> guids_;
+    std::uint32_t units_;
+    std::uint64_t cod_;
+};
 
 // World thread: the rep's market buyouts, funded by its house bank (bank -> rep -> AH seller); the copper a
 // rejected bid did not spend goes back to the bank. The auction house is the faction house the rep stands at.
@@ -1498,6 +1796,11 @@ void LoadConfig()
     p.repStore = sConfigMgr->GetOption<bool>("AutoWow.Supply.RepStore", true);
     p.repMailCap = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RepMailCap", 80));
     p.repKeep = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RepKeep", 60);
+    p.directRoutes = sConfigMgr->GetOption<bool>("AutoWow.Supply.DirectRoutes", false);
+    p.mailPickup = sConfigMgr->GetOption<bool>("AutoWow.Supply.MailPickup", false);
+    p.mailPickupYards = std::max<std::uint32_t>(5, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MailPickupYards", 40));
+    p.mailRunMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MailRunMs", 1800000);
+    p.mailOrders = sConfigMgr->GetOption<bool>("AutoWow.Market.MailOrders", false);
     p.lines = 1;
     std::string const products = sConfigMgr->GetOption<std::string>("AutoWow.Supply.Products", "bags");
     if (!ParseProducts(products, p.lines))
@@ -1521,7 +1824,9 @@ void LoadConfig()
         gHeld.clear();
         gRawRooms = {};
         gGrantRequests.clear();
+        gOrders = {};
     }
+    gCodPending.clear();
     gGrantWindows.clear();
     gGrantBudgets = {};
     if (!detail::gEnabled)
@@ -1738,6 +2043,8 @@ void LoadConfig()
     LOG_INFO("server.loading", "[Supply] artisan upkeep: free_slots={} min_level={} bag={} outfit={}",
              p.artisanFreeSlots, p.artisanMinLevel, kPouch, p.outfit);
     LOG_INFO("server.loading", "[Supply] rep store: {} mail_cap={} keep={}", p.repStore, p.repMailCap, p.repKeep);
+    LOG_INFO("server.loading", "[Supply] throughput: direct_routes={} mail_pickup={} (yards {}, run_ms {}) mail_orders={} "
+             "(buy_max_pct {})", p.directRoutes, p.mailPickup, p.mailPickupYards, p.mailRunMs, p.mailOrders, p.buyMaxPct);
     if (p.tiers)
         LOG_INFO("server.loading", "[Supply] tiers on: {} tiers, cloth cap {} per cloth; market={} buy_max_pct={} "
                  "buy_budget={} sell_keep={} list_float={}", kTierCount, p.clothCap, p.market, p.buyMaxPct, p.buyBudget,
@@ -1791,6 +2098,11 @@ void WorldUpdate(std::uint32_t diff)
     }
     if (p.outfit)
         OutfitTick();
+    if (p.mailOrders)
+    {
+        OrderTick(true, overlord);
+        OrderTick(false, overlord);
+    }
 }
 
 RoleInfo RoleOf(std::uint32_t guid)
@@ -2152,6 +2464,109 @@ bool GrantPending(std::uint32_t guid)
 {
     std::lock_guard<std::mutex> guard(gLock);
     return gGrantRequests.count(guid) != 0;
+}
+
+bool HasSupplyMail(Player* bot)
+{
+    time_t const now = GameTime::GetGameTime().count();
+    for (Mail const* m : bot->GetMails())
+        if (m && m->state != MAIL_STATE_DELETED && m->deliver_time <= now && !m->COD && m->HasItems() &&
+            m->messageType == MAIL_NORMAL && RoleOf(static_cast<std::uint32_t>(m->sender)).role != Role::None)
+            return true;
+    return false;
+}
+
+// The seller's tradeable loose stacks of `item` (whole stacks; the mail helper refuses bound items).
+static std::vector<Stack> TradeableStacks(Player* bot, std::uint32_t item)
+{
+    std::vector<Stack> out;
+    ForEachLoose(bot, [&](Item* it) {
+        if (it->GetEntry() == item && it->CanBeTraded(true))
+            out.push_back({static_cast<std::uint32_t>(it->GetGUID().GetCounter()), it->GetCount()});
+    });
+    return out;
+}
+
+bool HoldsOrderedItem(Player* bot)
+{
+    if (!MailOrders() || !bot)
+        return false;
+    std::vector<MailOrder> orders;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        orders = gOrders[T(bot->GetTeamId() == TEAM_ALLIANCE)];
+    }
+    for (MailOrder const& o : orders)
+        if (o.units && o.rep != Low(bot) && !PickWithin(TradeableStacks(bot, o.item), o.units).empty())
+            return true;
+    return false;
+}
+
+std::uint32_t FillOrders(Player* bot, std::uint32_t maxMails)
+{
+    if (!MailOrders() || !bot || !maxMails)
+        return 0;
+    std::size_t const t = T(bot->GetTeamId() == TEAM_ALLIANCE);
+    std::vector<MailOrder> orders;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        orders = gOrders[t];
+    }
+    std::uint32_t mails = 0;
+    for (MailOrder const& o : orders)
+    {
+        if (mails >= maxMails)
+            break;
+        if (!o.units || o.rep == Low(bot))
+            continue;
+        std::vector<Stack> const stacks = TradeableStacks(bot, o.item);
+        std::vector<std::uint32_t> pick = PickWithin(stacks, o.units);
+        std::uint32_t units = 0;
+        for (Stack const& st : stacks)
+            if (std::find(pick.begin(), pick.end(), st.guid) != pick.end())
+                units += st.count;
+        if (!units)
+            continue;
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            auto const it = std::find_if(gOrders[t].begin(), gOrders[t].end(), [&](MailOrder const& x)
+                                         { return x.rep == o.rep && x.item == o.item; });
+            if (it == gOrders[t].end() || it->units < units)
+                continue;  // another seller took the order since the copy
+            it->units -= units;
+        }
+        LOG_INFO("playerbots", "[Supply] order fill bot={} rep={} item={} units={} unit_price={}", bot->GetName(), o.rep,
+                 o.item, units, o.unitPrice);
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(std::make_unique<CodSellOperation>(
+            bot->GetGUID(), o.rep, o.item, std::move(pick), units, std::uint64_t(units) * o.unitPrice));
+        ++mails;
+    }
+    return mails;
+}
+
+CodVerdict CodAtRep(Player* rep, std::uint32_t seller, std::uint32_t item, std::uint32_t units, std::uint64_t cod,
+                    bool room, char const** why)
+{
+    auto const it = gCodPending.find(std::make_tuple(Low(rep), seller, item));
+    CodPending const pending = it == gCodPending.end() ? CodPending{} : it->second;
+    std::uint32_t const gid = AutoWowGuilds::HouseGuildOf(rep);
+    std::uint64_t const funds = rep->GetMoney() + (gid ? AutoWowGuilds::Balance(gid) : 0);
+    CodVerdict v = DecideCod(pending, units, cod, funds, room);
+    if (v == CodVerdict::Wait)
+        return v;
+    // The house bank tops the rep's purse up to the COD (a guild `pay` row); a refused top-up returns the mail.
+    if (v == CodVerdict::Accept && rep->GetMoney() < cod && !(gid && AutoWowGuilds::Pay(gid, rep, cod - rep->GetMoney())))
+        v = CodVerdict::Return;
+    if (why && v == CodVerdict::Return)
+        *why = !units || units > pending.units || cod > pending.cod ? "unordered" : "budget";
+    if (it != gCodPending.end())
+    {
+        it->second.units -= std::min(it->second.units, units);
+        it->second.cod -= std::min(it->second.cod, cod);
+        if (!it->second.units)
+            gCodPending.erase(it);
+    }
+    return v;
 }
 
 void EmitOutfit(Player* bot, Reason r, std::uint32_t item, std::uint64_t copper, char const* op)

@@ -181,6 +181,29 @@ TEST(Trade, LedgerFieldsWireFormat)
     EXPECT_STREQ(FeeKindName(FeeKind::Train), "train");
 }
 
+// Lane U: random sellers' listings + COD mails per game hour; the window resets on a new hour.
+TEST(TradeMarket, SellerCapPerHour)
+{
+    SellerWindow w;
+    EXPECT_EQ(SellerRoom(w, 5, 6), 6u);
+    NoteSeller(w, 5, 4);
+    EXPECT_EQ(SellerRoom(w, 5, 6), 2u);
+    NoteSeller(w, 5, 3);
+    EXPECT_EQ(SellerRoom(w, 5, 6), 0u);  // over the cap: none left, never negative
+    EXPECT_EQ(SellerRoom(w, 6, 6), 6u);  // the next hour
+    NoteSeller(w, 6, 1);
+    EXPECT_EQ(w.hour, 6u);
+    EXPECT_EQ(w.used, 1u);
+    EXPECT_EQ(SellerRoom(w, 6, 0), 0u);
+    Params const p;
+    EXPECT_FALSE(p.randomSellers);
+    EXPECT_EQ(p.sellerCapPerHour, 6u);
+    EXPECT_STREQ(ActionName(Action::CodSell), "cod_sell");
+    EXPECT_STREQ(ActionName(Action::CodBuy), "cod_buy");
+    EXPECT_STREQ(ActionName(Action::CodReturn), "cod_return");
+    EXPECT_EQ(static_cast<int>(Action::CodSell), 7);
+}
+
 // soak-s48-full-r1: 120 emptied mails held the Weavers rep's box at the core cap.
 TEST(TradeMail, EmptiedDeliveredMailIsDeleted)
 {
