@@ -10,7 +10,7 @@
 [CmdletBinding()]
 param(
     [switch]$Apply,
-    [ValidateSet('reps','squad','probes','tanners')][string]$Set = 'reps',
+    [ValidateSet('reps','squad','probes','tanners','tinkers')][string]$Set = 'reps',
     [string]$WslDistro = 'Ubuntu-24.04',
     [string]$WorldserverBinary = '/root/autowow-advisor-t1-build/src/server/apps/worldserver',
     [string]$WorldserverConfig = '/root/p1runtime/worldserver.conf',
@@ -51,6 +51,15 @@ $sets = @{
     tanners = @(
         @('Artisan.Tanners','Alliance','AWPVP1A05',4,11,0,'Tanwyll'),
         @('Artisan.Tanners','Horde','AWPVP1H05',6,11,1,'Hidenara')
+    )
+    # tinkers: the Tinkers house (engineering + smelting, lane AA) per faction: a level-1 rep (warrior, capital hub) and
+    # an artisan (apprentice phase until L10); Alliance gnome / dwarf, Horde troll / orc (no goblins in 3.3.5).
+    # Slots: the last 2 free on AWPVP1A03 / AWPVP1H03.
+    tinkers = @(
+        @('Tinkers','Alliance','AWPVP1A03',7,1,0,'Tinkrel'),
+        @('Artisan.Tinkers','Alliance','AWPVP1A03',3,1,0,'Boltrin'),
+        @('Tinkers','Horde','AWPVP1H03',8,1,1,'Zagsprok'),
+        @('Artisan.Tinkers','Horde','AWPVP1H03',2,1,0,'Gorgrind')
     )
     # probes: dungeon completability parties (test instruments, not faction members; magic gear allowed)
     probes = @(
