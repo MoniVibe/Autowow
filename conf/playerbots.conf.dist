@@ -3318,7 +3318,10 @@ AutoWow.Dungeon.PortalFallback = 0
 # it already stands on (within 3 yd) instead of bouncing between the points around it, and never steps below that
 # point while the leader frontier is unchanged. The shared-regroup terminal latches only after the full attempt
 # budget (V1 latched on the first attempt at slot 0) and is released when the leader frontier moves or the member
-# is back within 45 yd of the leader. Read once at first use.
+# is back within 45 yd of the leader. Leader side: the backward re-anchor no longer rewinds onto the point the
+# leader was just marked arrived at, and a navmesh gap (NOPATH) to the immediate next route point within 15 yd
+# horizontal / 5.5 yd vertical is walked along the reversed safe probe from that point (2 tries per hop).
+# Read once at first use.
 AutoWow.DungeonNav.ConvoyV2 = 0
 
 # Consumable economy for independent bots (ErrandsPolicy.h; default 0; needs AutoWow.Errands.Enable = 1,

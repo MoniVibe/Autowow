@@ -92,6 +92,7 @@ struct Probe
     std::uint8_t version = kStateVersion;
     std::string name;
     std::vector<Member> members;  // guid ascending
+    std::uint32_t team = TEAM_NEUTRAL;  // of the first member (character cache); skips enemy-capital entrances
     std::uint32_t leader = 0;
     bool rolesKnown = false;
     std::size_t next = 0;         // queue index
@@ -228,6 +229,13 @@ void Finish(Probe& p, End end, std::uint64_t now)
     p.phaseMs = now;
 }
 
+// A non-permanent bind to this dungeon goes, so the next entry gets a fresh instance.
+void Unbind(Player* bot, std::uint32_t map)
+{
+    if (sInstanceSaveMgr->PlayerGetBoundInstance(bot->GetGUID(), map, DUNGEON_DIFFICULTY_NORMAL))
+        sInstanceSaveMgr->PlayerUnbindInstance(bot->GetGUID(), map, DUNGEON_DIFFICULTY_NORMAL, true, bot);
+}
+
 void DisbandOwn(Probe const& p, Group* g)
 {
     for (Group::MemberSlot const& s : g->GetMemberSlots())
@@ -263,6 +271,12 @@ void StepPrepare(Probe& p, std::uint64_t now)
         p.next = 0;
     }
     std::uint32_t const map = gParams.queue[p.next];
+    if (EntranceInEnemyCapital(p.team, map))
+    {
+        LOG_INFO("playerbots", "[DProbe] party={} map={} skipped: entrance in an enemy capital", p.name, map);
+        ++p.next;
+        return;
+    }
     if (!p.run.rid || p.run.map != map || p.run.end != End::None)
     {
         p.run = RunRecord{};
@@ -305,6 +319,16 @@ void StepPrepare(Probe& p, std::uint64_t now)
         }
         if (bot->IsBeingTeleported() || bot->IsInFlight() || bot->IsInCombat())
             waiting = true;
+        else if (bot->GetMap()->IsDungeon())
+        {
+            // Left inside a dungeon (the soak stopped mid-run): out first. Disbanding its group in there marks
+            // the instance invalid for it, an instance-to-instance teleport keeps that, and the core repops it
+            // at the graveyard 60 s later (S53 Deadmines: both parties abandoned at 61 s).
+            waiting = true;
+            Revive(bot);
+            bot->TeleportTo(bot->m_homebindMapId, bot->m_homebindX, bot->m_homebindY, bot->m_homebindZ,
+                            bot->GetOrientation());
+        }
         else
             ApplyMode(p, m, bot);  // probe instruments never run their own New-RPG loop, not even while waiting
         bots.push_back(bot);
@@ -350,6 +374,8 @@ void StepPrepare(Probe& p, std::uint64_t now)
                     return;
             }
         }
+    for (Player* bot : bots)
+        Unbind(bot, map);  // a run cut short (soak stop) would otherwise re-enter its old instance
 
     // Magic setup: exact level, fixed spec, best available exact-quality gear, pet, fresh state.
     std::uint32_t quality = 5;
@@ -423,6 +449,7 @@ void StepEnter(Probe& p, std::uint64_t now)
     std::vector<Player*> const bots = Online(p);
     if (bots.empty())
     {
+        p.run.why = "member_offline";
         Finish(p, End::Abandoned, now);
         return;
     }
@@ -578,6 +605,8 @@ void StepInside(Probe& p, std::uint64_t now)
         case Verdict::Continue:
             return;
         case Verdict::Finish:
+            if (end == End::Abandoned)
+                p.run.why = AbandonReason(f);
             Finish(p, end, now);
             return;
         case Verdict::Revive:
@@ -657,8 +686,7 @@ void StepExit(Probe& p, std::uint64_t now)
         {
             if (Group* g = bot->GetGroup())
                 DisbandOwn(p, g);
-            if (sInstanceSaveMgr->PlayerGetBoundInstance(bot->GetGUID(), map, DUNGEON_DIFFICULTY_NORMAL))
-                sInstanceSaveMgr->PlayerUnbindInstance(bot->GetGUID(), map, DUNGEON_DIFFICULTY_NORMAL, true, bot);
+            Unbind(bot, map);
         }
     Advance(p, now);
 }
@@ -706,6 +734,9 @@ void LoadConfig()
         }
         Probe p;
         p.name = def.name;
+        if (CharacterCacheEntry const* c =
+                sCharacterCache->GetCharacterCacheByGuid(ObjectGuid::Create<HighGuid::Player>(def.guids.front())))
+            p.team = Player::TeamIdForRace(c->Race);
         for (std::uint32_t const g : def.guids)
         {
             p.members.push_back({g});

@@ -208,6 +208,15 @@ inline std::uint32_t BandLevel(std::uint32_t map, std::uint32_t levelOver, std::
     return std::min(rec + levelOver, maxPlayerLevel);
 }
 
+// Entrances inside an opposite-faction capital (areatrigger_teleport + areatrigger coordinates): Ragefire Chasm
+// (389, trigger 2230, Orgrimmar) for Alliance, the Stockade (34, trigger 101, Stormwind) for Horde; the probe
+// teleport there fails (S53: alliance enter_failed at 389). No other classic queue entrance lies in a capital.
+// team: 0 alliance, 1 horde (TeamId); anything else never skips.
+inline bool EntranceInEnemyCapital(std::uint32_t team, std::uint32_t map)
+{
+    return (team == 0 && map == 389) || (team == 1 && map == 34);
+}
+
 // ---- fixture ------------------------------------------------------------------------------------------------
 // Fixed role spec per class (AiPlayerbot.PremadeSpecName index): warrior prot pve, priest holy pve, mage frost pve,
 // rogue combat pve, hunter bm pve. -1 = the bot's stored spec (other classes).
@@ -358,6 +367,12 @@ inline Verdict DecideInside(InsideFacts const& f, InsideParams const& p, End& en
     return Verdict::Continue;
 }
 
+// Why DecideInside abandoned (ledger `why`): a member offline, or the alive leader off the dungeon map.
+inline char const* AbandonReason(InsideFacts const& f)
+{
+    return f.online < f.size ? "member_offline" : !f.leaderOnDungeonMap ? "leader_off_map" : "";
+}
+
 // One DungeonEncounter record of the dungeon. A kill-credit record counts only when that creature has a static
 // spawn on the dungeon map; a boss summoned only by a script event (RFK Grubbis 7361, escort) can never be
 // reached by the navigator, so a full clear could never be scored. Spell / script credit records always count.
@@ -414,6 +429,7 @@ struct RunRecord
     std::vector<std::uint32_t> deaths;   // same order
     std::uint64_t startMs = 0;           // prepare start
     End end = End::None;
+    std::string why;                     // abandon reason (AbandonReason); empty = not written
 };
 
 struct StuckPoint
@@ -445,6 +461,8 @@ inline std::string Fields(RunRecord const& r, std::uint64_t nowMs, std::int32_t 
                       ",\"deaths\":" + List(r.deaths) + ",\"dur_ms\":" +
                       std::to_string(nowMs >= r.startMs ? nowMs - r.startMs : 0) + ",\"end\":\"" + EndName(r.end) +
                       "\",\"members\":" + List(r.members);
+    if (!r.why.empty())
+        out += ",\"why\":\"" + r.why + "\"";
     if (s)
         out += ",\"smap\":" + std::to_string(s->map) + ",\"sx\":" + std::to_string(s->x) + ",\"sy\":" +
                std::to_string(s->y) + ",\"sz\":" + std::to_string(s->z) + ",\"next\":" + std::to_string(s->next) +

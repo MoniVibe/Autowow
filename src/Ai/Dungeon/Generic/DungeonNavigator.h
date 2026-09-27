@@ -76,6 +76,9 @@ private:
     std::map<uint32, std::size_t> convoyBackwardReanchorFloors;
     // ConvoyV2: member guid -> (leader frontier, route index) the follower last settled on.
     std::map<uint32, std::pair<std::size_t, std::size_t>> convoySettledRouteFloors;
+    // ConvoyV2: route index of the leader's current navmesh-gap direct hop and its attempts.
+    std::size_t directHopRouteIndex = DungeonRouteReconnect::NoSelection;
+    uint8 directHopAttempts = 0;
 };
 
 #endif
