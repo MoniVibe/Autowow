@@ -67,6 +67,44 @@ TEST(AutoWowTrainPolicy, LearnFilterOnlyStartsPlannedProfessions)
     EXPECT_TRUE(AllowSkillGrant(182, true, plan, secondaries));
 }
 
+TEST(AutoWowTrainPolicy, DropOffPlanDropsOnlyOffPlanPrimaries)
+{
+    V const gatherPlan{186, 182};
+    // Crafting and off-plan gathering primaries drop, in known order; planned lines stay.
+    EXPECT_EQ(OffPlanPrimaries(V{164, 171, 182, 186}, gatherPlan, false), (V{164, 171}));
+    EXPECT_EQ(OffPlanPrimaries(V{186, 393}, gatherPlan, false), (V{393}));
+    // Already on plan (or nothing known): nothing to drop.
+    EXPECT_TRUE(OffPlanPrimaries(V{182, 186}, gatherPlan, false).empty());
+    EXPECT_TRUE(OffPlanPrimaries(V{}, gatherPlan, false).empty());
+    // Secondaries and non-profession lines are never dropped.
+    EXPECT_TRUE(OffPlanPrimaries(V{129, 185, 356, 762}, gatherPlan, false).empty());
+    // A configured supply artisan keeps every line, planned or not.
+    EXPECT_TRUE(OffPlanPrimaries(V{197, 165, 333}, V{197, 333}, true).empty());
+
+    // The ascending line table is exactly the primary set.
+    int count = 0;
+    std::uint32_t prev = 0;
+    for (std::uint32_t const skill : kPrimaryProfessionSkillLines)
+    {
+        EXPECT_TRUE(IsPrimaryProfessionSkillLine(skill)) << skill;
+        EXPECT_LT(prev, skill);
+        prev = skill;
+        ++count;
+    }
+    EXPECT_EQ(count, 11);
+}
+
+TEST(AutoWowTrainPolicy, ArtisanConfigKeysNameHouseAndTeam)
+{
+    EXPECT_TRUE(IsArtisanConfigKey("AutoWow.Supply.Artisan.Weavers.Alliance"));
+    EXPECT_TRUE(IsArtisanConfigKey("AutoWow.Supply.Artisan.Tanners.Horde"));
+    for (char const* bad : {"AutoWow.Supply.Artisan.Learn", "AutoWow.Supply.Artisan.Learn.cloth_gear",
+                            "AutoWow.Supply.Artisan.Learn.Alliance", "AutoWow.Supply.Artisan..Horde",
+                            "AutoWow.Supply.Artisan.Weavers", "AutoWow.Supply.Artisan.Weavers.Neutral",
+                            "AutoWow.Supply.ArtisanMinLevel", "AutoWow.Guilds.Rep.Weavers.Alliance"})
+        EXPECT_FALSE(IsArtisanConfigKey(bad)) << bad;
+}
+
 TEST(AutoWowTrainPolicy, ProfessionSkillLinesAreTheFourteen)
 {
     int count = 0;

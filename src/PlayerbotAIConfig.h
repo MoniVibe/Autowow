@@ -409,6 +409,8 @@ public:
     bool autoWowProfessionsEnable;             // AutoWow.Professions.Enable
     bool autoWowProfessionsTrainOnArrival;     // AutoWow.Professions.TrainOnArrival (needs Enable)
     bool autoWowProfessionsCraftPriorityFix;   // AutoWow.Professions.CraftPriorityFix
+    bool autoWowProfessionsDropOffPlan;        // AutoWow.Professions.DropOffPlan (needs Enable)
+    std::vector<uint32> autoWowSupplyArtisanGuids;  // AutoWow.Supply.Artisan.<House>.<Team>: DropOffPlan exemption
     std::unordered_map<uint32, std::vector<uint32>> autoWowProfessionAssignments;  // guid -> primaries
     std::vector<uint32> autoWowProfessionSecondaries;                              // AutoWow.Professions.Secondaries
     // Planned primaries of a bot, or nullptr when AutoWow.Professions.Enable is off or the guid has no

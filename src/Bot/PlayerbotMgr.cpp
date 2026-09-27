@@ -14,6 +14,8 @@
 #include <algorithm>
 
 #include "AutoWowGuildsPolicy.h"
+#include "AutoWowQuestLedger.h"
+#include "AutoWowTrainPolicy.h"
 #include "ClassQuestPolicy.h"
 #include "ChannelMgr.h"
 #include "CharacterCache.h"
@@ -467,6 +469,31 @@ Player* PlayerbotHolder::GetPlayerBot(ObjectGuid::LowType lowGuid) const
     return (it == playerBots.end()) ? 0 : it->second;
 }
 
+// AutoWow.Professions.DropOffPlan: a planned (AutoWow.Professions.Assignments) bot that is not a configured
+// supply artisan unlearns every primary line outside its plan, freeing the slot the train-on-arrival path
+// fills with the planned line. SetSkill(skill, 0, 0, 0) is the core's own unlearn
+// (WorldSession::HandleUnlearnSkillOpcode): it removes the skill and every spell of that line.
+static void AutoWowDropOffPlanProfessions(Player* bot)
+{
+    uint32 const guid = bot->GetGUID().GetCounter();
+    std::vector<uint32> const* plan = sPlayerbotAIConfig.GetAutoWowProfessionPlan(guid);
+    if (!plan)
+        return;
+    std::vector<uint32> known;
+    for (uint32 const skill : AutoWowTrainPolicy::kPrimaryProfessionSkillLines)
+        if (bot->HasSkill(skill))
+            known.push_back(skill);
+    bool const artisan = AutoWowTrainPolicy::Contains(sPlayerbotAIConfig.autoWowSupplyArtisanGuids, guid);
+    for (uint32 const skill : AutoWowTrainPolicy::OffPlanPrimaries(known, *plan, artisan))
+    {
+        uint32 const value = bot->GetPureSkillValue(skill);
+        bot->SetSkill(skill, 0, 0, 0);
+        LOG_INFO("playerbots", "[Professions] dropped bot={} skill={} value={}", guid, skill, value);
+        if (AutoWowQuestLedger::Enabled() && AutoWowQuestLedger::SkillUpEnabled())
+            AutoWowQuestLedger::EmitSkillUp(bot, skill, value, 0, 0, "dropped");
+    }
+}
+
 void PlayerbotHolder::OnBotLogin(Player* const bot)
 {
     // Prevent duplicate login
@@ -486,6 +513,9 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
     // AutoWow.ClassQuests (default 0): class-quest rewards the cohort / supply role bot is owed at its level.
     if (AutoWowClassQuests::Enabled())
         AutoWowClassQuests::Grant(bot, "login");
+    // AutoWow.Professions.DropOffPlan (default 0): a planned bot unlearns primaries outside its plan.
+    if (sPlayerbotAIConfig.autoWowProfessionsDropOffPlan)
+        AutoWowDropOffPlanProfessions(bot);
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)

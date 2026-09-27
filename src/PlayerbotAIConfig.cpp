@@ -760,6 +760,15 @@ bool PlayerbotAIConfig::Initialize()
     autoWowProfessionsEnable = sConfigMgr->GetOption<bool>("AutoWow.Professions.Enable", false);
     autoWowProfessionsTrainOnArrival = sConfigMgr->GetOption<bool>("AutoWow.Professions.TrainOnArrival", false);
     autoWowProfessionsCraftPriorityFix = sConfigMgr->GetOption<bool>("AutoWow.Professions.CraftPriorityFix", false);
+    autoWowProfessionsDropOffPlan = sConfigMgr->GetOption<bool>("AutoWow.Professions.DropOffPlan", false);
+    autoWowSupplyArtisanGuids.clear();
+    for (std::string const& key : sConfigMgr->GetKeysByString("AutoWow.Supply.Artisan."))
+        if (AutoWowTrainPolicy::IsArtisanConfigKey(key))
+            if (uint32 const guid = sConfigMgr->GetOption<uint32>(key, 0, false))
+                autoWowSupplyArtisanGuids.push_back(guid);
+    if (autoWowProfessionsDropOffPlan)
+        LOG_INFO("server.loading", "AutoWow.Professions.DropOffPlan on: {} supply artisan guids exempt",
+                 autoWowSupplyArtisanGuids.size());
     if (!AutoWowTrainPolicy::ParseAssignments(
             sConfigMgr->GetOption<std::string>("AutoWow.Professions.Assignments", ""), autoWowProfessionAssignments))
         LOG_ERROR("server.loading", "AutoWow.Professions.Assignments is malformed; no bot gets a profession plan");

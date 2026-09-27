@@ -171,6 +171,40 @@ inline bool AllowSkillGrant(std::uint32_t grantedSkill, bool alreadyHasSkill,
         return true;
     return Contains(primaries, grantedSkill) || Contains(secondaries, grantedSkill);
 }
+
+// The 11 primary lines of IsPrimaryProfessionSkillLine, ascending (the order a bot's lines are checked).
+inline constexpr std::uint32_t kPrimaryProfessionSkillLines[] = {164, 165, 171, 182, 186, 197,
+                                                                 202, 333, 393, 755, 773};
+
+// AutoWow.Professions.DropOffPlan: the primaries a planned bot unlearns at login, in `known` order —
+// every known primary line not in its plan. A configured supply artisan keeps all of its lines (its
+// house recipes are learned outside the plan).
+inline std::vector<std::uint32_t> OffPlanPrimaries(std::vector<std::uint32_t> const& known,
+                                                   std::vector<std::uint32_t> const& plan, bool artisan)
+{
+    std::vector<std::uint32_t> drop;
+    if (artisan)
+        return drop;
+    for (std::uint32_t const skill : known)
+        if (IsPrimaryProfessionSkillLine(skill) && !Contains(plan, skill))
+            drop.push_back(skill);
+    return drop;
+}
+
+// "AutoWow.Supply.Artisan.<House>.<Alliance|Horde>" names an artisan guid; the ".Learn[.<line>]"
+// recipe-list keys under the same prefix do not.
+inline bool IsArtisanConfigKey(std::string_view key)
+{
+    constexpr std::string_view prefix = "AutoWow.Supply.Artisan.";
+    if (key.substr(0, prefix.size()) != prefix)
+        return false;
+    std::string_view const rest = key.substr(prefix.size());
+    std::size_t const dot = rest.find('.');
+    if (dot == std::string_view::npos || dot == 0 || rest.substr(0, dot) == "Learn")
+        return false;
+    std::string_view const team = rest.substr(dot + 1);
+    return team == "Alliance" || team == "Horde";
+}
 }  // namespace AutoWowTrainPolicy
 
 #endif
