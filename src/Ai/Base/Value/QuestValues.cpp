@@ -5,6 +5,7 @@
  */
 
 #include "QuestValues.h"
+#include "Config.h"
 
 #include <algorithm>
 #include <mutex>
@@ -23,6 +24,18 @@
 #include "SharedValueContext.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+
+namespace
+{
+// AutoWow.Quests.NeutralNpcs (default 0): quest givers/finishers of a Neutral faction (Mudsprocket, Booty Bay,
+// Ratchet...) are accepted, not only Friendly ones; hostile ones stay excluded. soak-s30..s47: 381 blocked
+// hand-ins, e.g. four completed Mudsprocket quests never turned in (no_finisher_relation).
+ReputationRank QuestNpcMinReaction()
+{
+    static bool const neutral = sConfigMgr->GetOption<bool>("AutoWow.Quests.NeutralNpcs", false);
+    return neutral ? REP_NEUTRAL : REP_FRIENDLY;
+}
+}  // namespace
 
 // What kind of a relation does this entry have with this quest.
 entryQuestRelationMap EntryQuestRelationMapValue::Calculate()
@@ -193,7 +206,7 @@ std::vector<GuidPosition> ActiveQuestGiversValue::Calculate()
             {
                 if (bot->GetFactionReactionTo(bot->GetFactionTemplateEntry(),
                                               sFactionTemplateStore.LookupEntry(creatureTemplate->faction)) <
-                    REP_FRIENDLY)
+                    QuestNpcMinReaction())
                     continue;
             }
 
@@ -248,7 +261,7 @@ std::vector<GuidPosition> ActiveQuestTakersValue::Calculate()
                     if (CreatureTemplate const* info = sObjectMgr->GetCreatureTemplate(entry.first))
                     {
                         if (bot->GetFactionReactionTo(bot->GetFactionTemplateEntry(),
-                                                      sFactionTemplateStore.LookupEntry(info->faction)) < REP_FRIENDLY)
+                                                      sFactionTemplateStore.LookupEntry(info->faction)) < QuestNpcMinReaction())
                             continue;
                     }
                 }
@@ -801,7 +814,7 @@ QuestFinisherRef ActiveQuestFinisherValue::Calculate()
                 if (CreatureTemplate const* info = sObjectMgr->GetCreatureTemplate(signedEntry))
                 {
                     if (bot->GetFactionReactionTo(bot->GetFactionTemplateEntry(),
-                                                  sFactionTemplateStore.LookupEntry(info->faction)) < REP_FRIENDLY)
+                                                  sFactionTemplateStore.LookupEntry(info->faction)) < QuestNpcMinReaction())
                         continue;
                 }
             }
