@@ -424,6 +424,10 @@ void AddScripts();
 
 bool WantsSpiritHealer(std::uint32_t botGuid);
 bool IsDangerous(std::uint32_t botGuid, std::uint32_t map, float x, float y);
+// AutoWow.Survival.RestSafe: marks (map, x, y) a danger area of this bot for durationMs (MarkDanger slot
+// rules). False with the flag off or the bot untracked.
+bool MarkDangerArea(std::uint32_t botGuid, std::uint32_t map, std::int32_t x, std::int32_t y, std::uint32_t radius,
+                    std::uint64_t durationMs);
 // Consumes the pending relocation (one attempt per escalation).
 bool TakeRelocation(std::uint32_t botGuid);
 // Deaths of this bot within WindowMs of now (0 with the flag off). Escape portal rule input.

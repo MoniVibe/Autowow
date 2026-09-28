@@ -2667,6 +2667,20 @@ AutoWow.Survival.SafeRevive.WindowMs = 600000
 # within 120 s (at its home position) - not only idle ones in aggro range.
 AutoWow.Survival.SafeRevive.V2 = 0
 
+# Safe rest (SurvivalRecovery.h; default 0). (1) A solo independent bot out of combat below the
+# AutoWow.Survival.RestGate hp/mana thresholds checks once per rest episode whether a hostile covers it
+# (creature aggro radius + 5 yd, as SafeRevive V2: idle, in combat or respawning within 120 s; a hostile
+# player 45 yd); if so it walks to the mmap-reachable point (8 bearings at 30 yd, then 60 yd) with the least
+# threat, logging "[RestSafe] move ... go|stay" (30 s timeout). Then the RPG holds in REST (the food strategy
+# eats) until rested; combat ends the episode. (2) Needs AutoWow.Survival.SafeRevive = 1: the corpse plan
+# counts hostile players; after a death to a player (killer or its pet, or a hostile player within 40 yd at
+# death) the ghost reclaims only on a threat-free spot, else takes the spirit healer, and the death spot
+# becomes a death-loop danger area of PvpDangerYards for PvpDangerMs (needs AutoWow.DeathLoop.Enable; 0 yd =
+# none) that RPG grind / quest / travel picks avoid; logs "[RestSafe] pvp_death" / "pvp_plan". 0 = legacy.
+AutoWow.Survival.RestSafe = 0
+AutoWow.Survival.RestSafe.PvpDangerYards = 80
+AutoWow.Survival.RestSafe.PvpDangerMs = 1800000
+
 # Unstick for autonomous bots (SurvivalRecovery.h; default 0). A bot with a travel / quest goal that stays
 # within RadiusYards for FrozenMs (0 = rule off), or gives up ReplanExhausted walks with
 # intent_replan_exhausted within WindowMs (0 = rule off), casts its hearthstone (in the bags, off cooldown,
