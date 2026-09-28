@@ -1,0 +1,72 @@
+From 720a711f90a2dc0672a6ce73de121c4ecf3ec9de Mon Sep 17 00:00:00 2001
+From: Monivibe <shonhay@gmail.com>
+Date: Mon, 28 Sep 2026 12:24:52 +0300
+Subject: [PATCH 3/3] AutoWoW gatherscale: AutoWow.Gather.AnySkill lets a known
+ gatherer work any node (default 0)
+
+Owner rule 2026-09-28: gathering is always allowed once the profession is known; the yield scales
+with the skill deficit (module side). With AutoWow.Gather.AnySkill = 1 (read from the playerbots
+module conf through sConfigMgr, no log when absent) a player whose pure Herbalism / Mining /
+Skinning skill is >= 1 is no longer rejected with SPELL_FAILED_LOW_CASTLEVEL by:
+  - Spell::CanOpenLock (herb / ore locks; cast-item opens keep the stock check),
+  - Spell::CheckCast SPELL_EFFECT_SKINNING (skinning, and herb / ore creature corpses).
+Lockpicking, engineering corpses and every other lock keep the stock check. Flag off: the
+rejection branches are unchanged (the helper is consulted only after the stock comparison fails).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/server/game/Spells/Spell.cpp | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
+index a5f8bcc1d..db935bcd0 100644
+--- a/src/server/game/Spells/Spell.cpp
++++ b/src/server/game/Spells/Spell.cpp
+@@ -23,6 +23,7 @@
+ #include "CellImpl.h"
+ #include "Common.h"
+ #include "ConditionMgr.h"
++#include "Config.h"
+ #include "DisableMgr.h"
+ #include "DynamicObject.h"
+ #include "GameObjectAI.h"
+@@ -64,6 +65,18 @@
+ 
+ extern pEffect SpellEffects[TOTAL_SPELL_EFFECTS];
+ 
++// AutoWoW gatherscale (AutoWow.Gather.AnySkill, default 0; the key lives in the playerbots module conf):
++// a player who knows Herbalism, Mining or Skinning (pure skill >= 1) may gather a node / corpse above its
++// skill. The module scales the yield by the deficit. Flag off: every caller keeps its stock rejection.
++static bool AutoWowGatherAnySkill(Unit const* caster, uint32 skillId)
++{
++    if (skillId != SKILL_HERBALISM && skillId != SKILL_MINING && skillId != SKILL_SKINNING)
++        return false;
++    Player const* player = caster->ToPlayer();
++    return player && player->GetPureSkillValue(skillId) >= 1 &&
++           sConfigMgr->GetOption<bool>("AutoWow.Gather.AnySkill", false, false);
++}
++
+ SpellDestination::SpellDestination()
+ {
+     _position.Relocate(0, 0, 0, 0);
+@@ -6275,7 +6288,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
+                     int32 skillValue = m_caster->ToPlayer()->GetSkillValue(skill);
+                     int32 TargetLevel = m_targets.GetUnitTarget()->GetLevel();
+                     int32 ReqValue = (skillValue < 100 ? (TargetLevel - 10) * 10 : TargetLevel * 5);
+-                    if (ReqValue > skillValue)
++                    if (ReqValue > skillValue && !AutoWowGatherAnySkill(m_caster, skill))
+                         return SPELL_FAILED_LOW_CASTLEVEL;
+ 
+                     break;
+@@ -8469,7 +8482,7 @@ SpellCastResult Spell::CanOpenLock(uint32 effIndex, uint32 lockId, SkillType& sk
+                             skillValue += m_spellInfo->Effects[effIndex].CalcValue();
+                         }
+ 
+-                        if (skillValue < reqSkillValue)
++                        if (skillValue < reqSkillValue && (m_CastItem || !AutoWowGatherAnySkill(m_caster, skillId)))
+                             return SPELL_FAILED_LOW_CASTLEVEL;
+                     }
+ 
+-- 
+2.43.0
+
