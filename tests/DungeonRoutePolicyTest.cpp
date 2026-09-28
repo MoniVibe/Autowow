@@ -202,6 +202,12 @@ TEST(DungeonRoutePolicy, DirectStepGuards)
     EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, 12.0f, 0.0f, -DirectLevelTolerance - 0.1f, true}));
     EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, DirectMaximumLevelCrossing + 0.1f, 0.0f, 0.0f, true}));
     EXPECT_FALSE(DirectStepShape(top, {36, 5, 14, 12.0f, 0.0f, 0.0f, true}));  // other map
+
+    // Level crossings move on a raw spline; ledge steps and drops keep MovePoint.
+    EXPECT_TRUE(IsLevelCrossing(top, {43, 5, 14, 12.0f, 0.0f, 0.0f, true}));
+    EXPECT_FALSE(IsLevelCrossing(top, {43, 5, 14, 5.0f, 0.0f, -6.0f, true}));
+    EXPECT_FALSE(IsLevelCrossing(top, {43, 5, 14, DirectMaximumLevelCrossing + 0.1f, 0.0f, 0.0f, true}));
+    EXPECT_FALSE(IsLevelCrossing(top, {36, 5, 14, 12.0f, 0.0f, 0.0f, true}));
 }
 
 TEST(DungeonRoutePolicy, BlackfathomSarevessLegSwimsThePool)
@@ -228,6 +234,11 @@ TEST(DungeonRoutePolicy, BlackfathomSarevessLegSwimsThePool)
     EXPECT_GT(across, DirectMaximumHorizontal);
     EXPECT_NEAR(to.z, from.z, 0.01f);
     EXPECT_TRUE(DirectStepShape(from, to));
+    EXPECT_TRUE(IsLevelCrossing(from, to));
+    // The Wailing Caverns steps are not level crossings.
+    for (std::size_t row : RouteFor(43, 7))
+        if (Points[row].direct)
+            EXPECT_FALSE(IsLevelCrossing(Points[row - 1], Points[row])) << row;
 }
 
 TEST(DungeonRoutePolicy, DirectStepTimesOutOnce)
