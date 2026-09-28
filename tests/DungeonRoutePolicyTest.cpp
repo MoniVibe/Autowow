@@ -210,6 +210,20 @@ TEST(DungeonRoutePolicy, DirectStepGuards)
     EXPECT_FALSE(IsLevelCrossing(top, {36, 5, 14, 12.0f, 0.0f, 0.0f, true}));
 }
 
+TEST(DungeonRoutePolicy, RazorfenDownsAmnennarLegClimbsTheSpiral)
+{
+    // Amnennar the Coldbringer, idx3 (spawn 87209); no earlier Razorfen Downs leg.
+    EXPECT_TRUE(RouteFor(129, 2).empty());
+    std::vector<std::size_t> const rows = RouteFor(129, 3);
+    ASSERT_EQ(rows.size(), 23u);
+    EXPECT_TRUE(EndsAt(rows, 2403.37f, 960.93f, 55.1437f));
+    // Starts at Glutton's spawn (8567); a party at the S68 kill point enters there, not mid-spiral.
+    EXPECT_LT(Distance(Points[rows.front()], 2468.7f, 1006.8f, 23.8f), 0.01f);
+    EXPECT_EQ(NearestPoint(rows, 2463.0f, 1019.0f, 24.0f), 0u);
+    for (std::size_t row : rows)
+        EXPECT_FALSE(Points[row].direct) << row;
+}
+
 TEST(DungeonRoutePolicy, BlackfathomSarevessLegSwimsThePool)
 {
     // Lady Sarevess, idx1 (spawn 26129); no leg for Ghamoo-ra (idx0), so the route is leg 1 alone.

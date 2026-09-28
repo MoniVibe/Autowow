@@ -28,6 +28,7 @@ enum class Kind : std::uint8_t
     ProxyKill,  // KillSet whose target stands in for a boss with no static spawn
     LootGo,     // open the chest GO and autostore item doneValue into the navigating bot's bags
     UseItemOnGo,  // the party member holding keyItem uses it on the GO (CMSG_USE_ITEM)
+    AreaTrigger,  // send CMSG_AREATRIGGER entry from the row position (headless bots never emit it)
 };
 
 enum class DoneWhen : std::uint8_t
@@ -39,6 +40,7 @@ enum class DoneWhen : std::uint8_t
     Escorting,      // the row creature's AI reports an escort in progress
     Unlocked,       // door GO doneData not READY or gone from its loaded grid, or (doneValue != 0) a
                     // party member holds item doneValue
+    Hostile,        // the row creature (spawnGuid) is hostile to the navigating bot
 };
 
 struct Step
@@ -119,6 +121,12 @@ inline constexpr Step Steps[] = {
         DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
     {48, 7, 8, Kind::EnterArea, 21117, 32682, -818.361f, -200.647f, -25.7911f, 10.0f, 0, 1,
         DoneWhen::GoUsed, 0, 0, 0, false, 180000},
+    // Uldaman: Ironaya (idx2) sleeps behind the Seal of Khaz'Mul (124372), unattackable, until the Keystone
+    // (124371, lock 359 = Staff of Prehistoria 7733) is used: its SAI sets DATA_IRONAYA_DOORS (0) DONE (3), opens
+    // the seal and frees Ironaya. Key row: without the staff the encounter is set aside (KeyBlocked). S68: the
+    // horde probe walked to the sealed room from the north and stalled no_reachable_waypoint at (-214,374).
+    {70, 2, 0, Kind::UseGo, 124371, 14393, -234.688f, 239.619f, -50.9083f, 10.0f, 0, 1,
+        DoneWhen::InstanceData, 0, 3, 7733, false, 60000},
     // Uldaman: Altar of Archaedas (ritual, 1 participant) casts 10340, which sets DATA_ARCHAEDAS (2)
     // IN_PROGRESS and wakes Archaedas (idx7).
     {70, 7, 0, Kind::UseGo, 133234, 40698, 96.4808f, 269.052f, -52.1487f, 10.0f, 0, 1,
@@ -152,6 +160,10 @@ inline constexpr Step Steps[] = {
         DoneWhen::GoUsed, 0, 0, 0, false, 60000},
     {129, 0, 2, Kind::KillSet, 7355, 0, 2552.44f, 856.984f, 51.495f, 80.0f, 0, 1,
         DoneWhen::EncounterDone, 0, 0, 0, false, 300000},
+    // Zul'Farrak: Witch Doctor Zum'rah (idx4, guid 81524) is faction 35 until area trigger 962 (r10 at his
+    // grave) runs its SAI (set faction 37). S68: the probe stood on him logging activation_blocked=not_hostile.
+    {209, 4, 0, Kind::AreaTrigger, 962, 81524, 1909.27f, 1015.11f, 11.5155f, 5.0f, 0, 1,
+        DoneWhen::Hostile, 0, 0, 0, false, 60000},
 };
 
 constexpr std::size_t NoStep = std::numeric_limits<std::size_t>::max();
@@ -193,6 +205,7 @@ inline char const* KindName(Kind kind)
         case Kind::ProxyKill: return "proxy_kill";
         case Kind::LootGo: return "loot_go";
         case Kind::UseItemOnGo: return "use_item_on_go";
+        case Kind::AreaTrigger: return "area_trigger";
     }
     return "unknown";
 }
@@ -200,7 +213,7 @@ inline char const* KindName(Kind kind)
 inline bool CountsUses(Kind kind)
 {
     return kind == Kind::UseGo || kind == Kind::Gossip || kind == Kind::LootGo ||
-        kind == Kind::UseItemOnGo;
+        kind == Kind::UseItemOnGo || kind == Kind::AreaTrigger;
 }
 
 // Per-instance runtime of one row.
@@ -233,6 +246,24 @@ std::size_t SelectStep(std::vector<Step> const& rows, std::vector<StepRuntime> c
         return index;
     }
     return NoStep;
+}
+
+// The encounter cannot start for this party: its first unfinished row (in order, not done, not skipped) is
+// key-gated (keyItem set, not held, bypassKeys off). The navigator sets such an encounter aside instead of walking
+// to its boss (S68 Uldaman Ironaya). Same lazy isDone contract as SelectStep.
+template <typename HoldsKey, typename IsDone>
+bool KeyBlocked(std::vector<Step> const& rows, std::vector<StepRuntime> const& runtime, bool bypassKeys,
+    HoldsKey&& holdsKey, IsDone&& isDone)
+{
+    for (std::size_t index = 0; index < rows.size(); ++index)
+    {
+        if (index < runtime.size() && (runtime[index].done || runtime[index].skipped))
+            continue;
+        if (isDone(index))
+            continue;
+        return rows[index].keyItem && !bypassKeys && !holdsKey(rows[index].keyItem);
+    }
+    return false;
 }
 
 enum class Wait
