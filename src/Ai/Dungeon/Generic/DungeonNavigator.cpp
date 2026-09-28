@@ -517,6 +517,8 @@ constexpr float StoredWalkCliffStep = 5.5f;
 
 // Route-leg probe: the slope-checked probe, or with ConvoyV2 the slope-free one when
 // DungeonNavigatorConvoy::UseSlopeFreeLeg picks it. ConvoyV2 off: exactly AutoWowDungeonPath::Probe.
+// The slope-free retry may swim (AutoWowDungeonPath::SwimSampleGrounded): S58 Deadmines, the only
+// corridor from the Iron Clad Door ledge to Mr. Smite crosses the cove on 23 navmesh water polys.
 AutoWowDungeonPath::ProbeResult ProbeLeg(Player const* player, float x, float y, float z)
 {
     AutoWowDungeonPath::ProbeResult checked = AutoWowDungeonPath::Probe(player, x, y, z);
@@ -525,7 +527,7 @@ AutoWowDungeonPath::ProbeResult ProbeLeg(Player const* player, float x, float y,
     bool const checkedReached = ProbeReachedStoredDestination(checked);
     if (checked.safe && checkedReached)
         return checked;
-    AutoWowDungeonPath::ProbeResult slopeFree = AutoWowDungeonPath::Probe(player, x, y, z, false);
+    AutoWowDungeonPath::ProbeResult slopeFree = AutoWowDungeonPath::Probe(player, x, y, z, false, true);
     return DungeonNavigatorConvoy::UseSlopeFreeLeg(true, checked.safe, checkedReached, slopeFree.safe,
         ProbeReachedStoredDestination(slopeFree)) ? slopeFree : checked;
 }
@@ -2689,7 +2691,8 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 creature && creature->GetSpawnId() == goal.spawnId,
                 creature && creature->IsAlive(),
                 creature && creature->IsInWorld(),
-                creature && creature->IsHostileTo(bot),
+                creature && DungeonEncounterActivation::CountsAsHostile(creature->IsHostileTo(bot),
+                    creature->IsFriendlyTo(bot), GatesEnabled()),
                 creature && creature->isTargetableForAttack() && bot->IsValidAttackTarget(creature),
                 creature && bot->IsWithinLOSInMap(creature),
             };
@@ -3114,6 +3117,22 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
 
                 if (invalidReason)
                 {
+                    if (skippedTransition)
+                    {
+                        // Why no ordinary corridor reached the goal before the transition route.
+                        AutoWowDungeonPath::ProbeResult const checked = AutoWowDungeonPath::Probe(
+                            bot, goal.finalX, goal.finalY, goal.finalZ);
+                        AutoWowDungeonPath::ProbeResult const slopeFree = ConvoyV2Enabled() ?
+                            AutoWowDungeonPath::Probe(bot, goal.finalX, goal.finalY, goal.finalZ, false, true) :
+                            AutoWowDungeonPath::ProbeResult();
+                        LOG_INFO("playerbots",
+                            "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_source={} "
+                            "diagnostic={} route_points={} walking_suffix={} probe={} slope_free_probe={}",
+                            bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
+                            routeSource ? routeSource : "unknown", invalidReason, route.size(),
+                            walkingSuffix, AutoWowDungeonPath::Json(checked, false),
+                            ConvoyV2Enabled() ? AutoWowDungeonPath::Json(slopeFree, false) : std::string("{}"));
+                    }
                     // A transition-only graph can be a symptom of combat leaving the leader on a
                     // different collision layer from the rest of the party. Re-anchor the route to
                     // a lower-floor party member only when a strict party majority occupies that

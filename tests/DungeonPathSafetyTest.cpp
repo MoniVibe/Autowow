@@ -8,6 +8,8 @@
 
 #include "gtest/gtest.h"
 
+#include <limits>
+
 namespace
 {
 AutoWowDungeonPath::ValidationFacts SafeFacts()
@@ -106,4 +108,17 @@ TEST(DungeonPathSafety, GroundLineRequiresDenseGroundedVisibleGentleSamples)
     EXPECT_EQ(AutoWowDungeonPath::ValidateGroundLine(facts), "ground_line_blocked");
     facts = {true, 12, true, 0.5f, true, 8.0f};
     EXPECT_EQ(AutoWowDungeonPath::ValidateGroundLine(facts), "ground_line_too_steep");
+}
+
+// S58 Deadmines cove: navmesh water polys at z 0.6, no floor within the 10 yd ground search.
+TEST(DungeonPathSafety, SwimSampleCountsOnlyWaterSurfacePointsWhenAllowed)
+{
+    using AutoWowDungeonPath::SwimSampleGrounded;
+    EXPECT_TRUE(SwimSampleGrounded(true, true, 1.2f, 0.6f));
+    EXPECT_TRUE(SwimSampleGrounded(true, true, 4.0f, 0.6f));
+    EXPECT_FALSE(SwimSampleGrounded(true, true, 4.2f, 0.6f));   // deeper than the ground tolerance
+    EXPECT_FALSE(SwimSampleGrounded(false, true, 1.2f, 0.6f));  // default probes never swim
+    EXPECT_FALSE(SwimSampleGrounded(true, false, 1.2f, 0.6f));  // magma / slime
+    EXPECT_FALSE(SwimSampleGrounded(true, true, -100000.0f, 0.6f));  // INVALID_HEIGHT
+    EXPECT_FALSE(SwimSampleGrounded(true, true, std::numeric_limits<float>::quiet_NaN(), 0.6f));
 }

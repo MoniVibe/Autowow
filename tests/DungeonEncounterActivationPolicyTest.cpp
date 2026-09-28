@@ -63,3 +63,14 @@ TEST(DungeonEncounterActivationPolicy, AcceptsOnlyFullyValidatedExactTarget)
 {
     EXPECT_EQ(DungeonEncounterActivation::Evaluate(AttackableTarget()), Decision::Attack);
 }
+
+// S58 Wailing Caverns: Kresh (faction 7) is neither hostile nor friendly to either faction.
+TEST(DungeonEncounterActivationPolicy, GatesAttackNeutralButNeverFriendlyBosses)
+{
+    using DungeonEncounterActivation::CountsAsHostile;
+    EXPECT_TRUE(CountsAsHostile(true, false, false));
+    EXPECT_TRUE(CountsAsHostile(true, false, true));
+    EXPECT_FALSE(CountsAsHostile(false, false, false));  // Gates off: unchanged
+    EXPECT_TRUE(CountsAsHostile(false, false, true));    // neutral Kresh
+    EXPECT_FALSE(CountsAsHostile(false, true, true));    // friendly
+}
