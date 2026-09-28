@@ -301,6 +301,24 @@ TEST(Squad, LevelWindowAnchorDeathClusterCoolsTheZone)
     EXPECT_EQ(TeamState{}.version, 2);
 }
 
+TEST(Squad, LevelWindowBenchHoldsAndMajorityStops)
+{
+    Params p;
+    EXPECT_FALSE(TooManyBenched(p, 5, 5));  // window off: never
+    p.levelWindow = 2;
+    std::uint64_t const until = BenchUntil(p, 1000);
+    EXPECT_EQ(until, 1000u + p.benchMs);
+    EXPECT_TRUE(BenchActive(until, 1000));
+    EXPECT_TRUE(BenchActive(until, until - 1));  // held: no re-evaluation until it lapses
+    EXPECT_FALSE(BenchActive(until, until));
+    EXPECT_FALSE(BenchActive(0, 0));            // never benched
+    EXPECT_FALSE(TooManyBenched(p, 2, 5));
+    EXPECT_TRUE(TooManyBenched(p, 3, 5));       // soak-s64: more than half out -> no stint
+    EXPECT_FALSE(TooManyBenched(p, 2, 4));      // exactly half: the stint goes on
+    EXPECT_TRUE(TooManyBenched(p, 1, 1));
+    EXPECT_FALSE(TooManyBenched(p, 0, 0));
+}
+
 TEST(Squad, SupplyUsableNowFollowsArtisanSkill)
 {
     AutoWowSupply::ProductLine const& potions = AutoWowSupply::LineOf(AutoWowSupply::Line::Potions);

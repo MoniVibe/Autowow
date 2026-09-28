@@ -52,7 +52,8 @@ struct MemberState
     bool hunting = false;         // inside the leash at the last step (Hunt)
     std::uint32_t stuck = 0;      // stuck walk ticks this stint
     std::uint64_t nextHoldLogMs = 0;
-    bool benched = false;         // AutoWow.Squad.LevelWindow (2): sits the running stint out (world tick)
+    std::uint64_t benchUntilMs = 0;  // AutoWow.Squad.LevelWindow (2)/(5): sits stints out until then (world tick)
+    bool benchEscape = false;        // (5): one escape trip pending for the new bench (member step takes it)
 };
 
 // Read-only after LoadConfig.
@@ -231,15 +232,26 @@ void ResetMembers(std::size_t t)
         {
             it->second.hunting = false;
             it->second.stuck = 0;
-            it->second.benched = false;
         }
 }
 
 bool Benched(std::uint32_t guid)
 {
+    std::uint64_t const now = NowMs();
     std::lock_guard<std::mutex> guard(gLock);
     auto const it = gMembers.find(guid);
-    return it != gMembers.end() && it->second.benched;
+    return it != gMembers.end() && BenchActive(it->second.benchUntilMs, now);
+}
+
+// (5): consumes the pending escape trip of a new bench.
+bool TakeBenchEscape(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gMembers.find(guid);
+    if (it == gMembers.end() || !it->second.benchEscape)
+        return false;
+    it->second.benchEscape = false;
+    return true;
 }
 
 // AutoWow.Squad.LevelWindow: the straight line (x, y) -> (ax, ay) on `map` crosses a zone bracketed more than
@@ -330,13 +342,24 @@ void TeamTick(std::size_t t, std::uint64_t now)
             members.push_back(m);
     TeamState s;
     std::uint32_t leaderStuck = 0;
+    std::vector<std::uint64_t> benchUntil(members.size(), 0);  // AutoWow.Squad.LevelWindow (5)
     {
         std::lock_guard<std::mutex> guard(gLock);
         s = gTeams[t];
         if (auto const it = gMembers.find(s.leader); it != gMembers.end())
             leaderStuck = it->second.stuck;
+        for (std::size_t k = 0; k < members.size(); ++k)
+            if (auto const it = gMembers.find(Low(members[k])); it != gMembers.end())
+                benchUntil[k] = it->second.benchUntilMs;
     }
     Player* leader = members.empty() ? nullptr : members.front();
+    // AutoWow.Squad.LevelWindow (5): the lowest unbenched member leads (anchors are searched around it).
+    for (std::size_t k = 0; LevelWindowOn(p) && k < members.size(); ++k)
+        if (!BenchActive(benchUntil[k], now))
+        {
+            leader = members[k];
+            break;
+        }
 
     std::vector<Want> const demand =
         leader && AutoWowSupply::Enabled() ? RankDemand(AutoWowSupply::MaterialDemand(alliance), p.minDemand)
@@ -348,8 +371,10 @@ void TeamTick(std::size_t t, std::uint64_t now)
     bool onAnchorMap = false;
     std::vector<char const*> bench;  // AutoWow.Squad.LevelWindow (2), per member ("" = takes part)
     bool anchorCluster = false;      // AutoWow.Squad.LevelWindow (4)
+    std::size_t benched = 0;         // (5): held benches + new ones
     for (Player* m : members)
     {
+        bool const held = BenchActive(benchUntil[bench.size()], now);  // (5): no re-evaluation while benched
         char const* cause = "";
         if (LevelWindowOn(p) && s.phase == Phase::Stint && m->GetMapId() == s.map)
         {
@@ -357,9 +382,12 @@ void TeamTick(std::size_t t, std::uint64_t now)
             std::int32_t const mx = static_cast<std::int32_t>(m->GetPositionX());
             std::int32_t const my = static_cast<std::int32_t>(m->GetPositionY());
             anchorCluster = anchorCluster || AnchorDeathCluster(p, s, m->GetMapId(), mx, my, deaths);
-            cause = BenchCause(p, CrossesHighZone(m->GetMap(), m->GetLevel(), mx, my, s.x, s.y), deaths);
+            if (!held)
+                cause = BenchCause(p, CrossesHighZone(m->GetMap(), m->GetLevel(), mx, my, s.x, s.y), deaths);
         }
         bench.push_back(cause);
+        bool const out = held || *cause;
+        benched += out ? 1 : 0;
         levels.push_back(m->GetLevel());
         if (m->HasSkill(SKILL_HERBALISM))
             skills.herbalism = std::max<std::uint32_t>(skills.herbalism, m->GetSkillValue(SKILL_HERBALISM));
@@ -367,9 +395,9 @@ void TeamTick(std::size_t t, std::uint64_t now)
             skills.mining = std::max<std::uint32_t>(skills.mining, m->GetSkillValue(SKILL_MINING));
         if (m->HasSkill(SKILL_SKINNING) && HasTool(m, std::begin(kSkinningKnives), std::end(kSkinningKnives)))
             skills.skinning = std::max<std::uint32_t>(skills.skinning, m->GetSkillValue(SKILL_SKINNING));
-        if (m != leader && !*cause && m->IsAlive() && m->GetMapId() == leader->GetMapId())
+        if (m != leader && !out && m->IsAlive() && m->GetMapId() == leader->GetMapId())
             spread.push_back({static_cast<std::int32_t>(m->GetPositionX()), static_cast<std::int32_t>(m->GetPositionY())});
-        onAnchorMap = onAnchorMap || (!*cause && m->GetMapId() == s.map);
+        onAnchorMap = onAnchorMap || (!out && m->GetMapId() == s.map);
     }
     if (LevelWindowOn(p))
     {
@@ -378,11 +406,12 @@ void TeamTick(std::size_t t, std::uint64_t now)
             std::lock_guard<std::mutex> guard(gLock);
             for (std::size_t k = 0; k < members.size(); ++k)
                 if (auto const it = gMembers.find(Low(members[k])); it != gMembers.end())
-                {
-                    if (*bench[k] && !it->second.benched)
+                    if (*bench[k])
+                    {
                         newly.push_back(k);
-                    it->second.benched = *bench[k] != 0;
-                }
+                        it->second.benchUntilMs = BenchUntil(p, now);
+                        it->second.benchEscape = true;
+                    }
         }
         for (std::size_t const k : newly)
             Emit(members[k], Reason::Bench, s, s.kind, s.item, members[k]->GetLevel(), now, bench[k]);
@@ -400,8 +429,10 @@ void TeamTick(std::size_t t, std::uint64_t now)
     {
         NoteHeld(s, Held(members, s.item));
         bool const danger = AutoWowDeathLoop::IsDangerous(s.leader, s.map, float(s.x), float(s.y)) || anchorCluster;
-        if (char const* cause = EndCause(p, s, now, Demanded(demand, s.item), onAnchorMap, danger, leaderStuck > kMaxStuck);
-            *cause)
+        char const* cause = EndCause(p, s, now, Demanded(demand, s.item), onAnchorMap, danger, leaderStuck > kMaxStuck);
+        if (!*cause && TooManyBenched(p, benched, members.size()))
+            cause = "benched";  // AutoWow.Squad.LevelWindow (5)
+        if (*cause)
         {
             Emit(leader, Reason::Gather, s, s.kind, s.item, s.gathered, now, cause);
             if (anchorCluster && std::string_view(cause) == "danger")
@@ -410,7 +441,14 @@ void TeamTick(std::size_t t, std::uint64_t now)
             ResetMembers(t);
         }
     }
-    if (s.phase == Phase::None && now >= s.nextSearchMs && leader)
+    if (s.phase == Phase::None && leader && TooManyBenched(p, benched, members.size()))
+    {
+        // AutoWow.Squad.LevelWindow (5): no stint while most of the squad sits out; the members quest.
+        if (s.holding)
+            Emit(leader, Reason::Release, s, Kind::Cloth, 0, static_cast<std::uint32_t>(benched), now, "benched");
+        s.holding = false;
+    }
+    else if (s.phase == Phase::None && now >= s.nextSearchMs && leader)
     {
         s.nextSearchMs = now + p.searchRetryMs;
         bool const had = s.holding;
@@ -462,6 +500,7 @@ void LoadConfig()
     p.levelWindow = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.LevelWindow", 0);
     p.deathCluster = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.DeathCluster", 3);
     p.dangerZoneMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.DangerZoneMs", 3600000);
+    p.benchMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.BenchMs", 1800000);
     for (auto& r : gRoster)
         r.clear();
     gTeamOf.clear();
@@ -594,6 +633,21 @@ bool NewRpgBaseAction::SquadStep()
     if (!AutoWowSquad::IsMember(guid) || !bot->IsAlive() || bot->IsInFlight() || !bot->GetMap() ||
         bot->GetMap()->Instanceable() || bot->GetTransport() || AutoWowOracleRuntime::IsManagedBot(guid))
         return false;
+    // AutoWow.Squad.LevelWindow (2)/(5): a benched member runs its own loop; once per bench it takes a death-loop
+    // escape trip to a level-fitting hub (ZoneProgression), out of the zone it kept dying in.
+    if (AutoWowSquad::LevelWindowOn(AutoWowSquad::detail::gParams) && AutoWowSquad::Benched(guid))
+    {
+        AutoWowSquad::NoteStep(guid, false, false);
+        if (AutoWowDeathLoop::EscapeEnabled() && AutoWowZoneProgression::Enabled() && !bot->IsInCombat() &&
+            !AutoWowZoneProgression::Active(guid) && !(AutoWowErrands::Enabled() && AutoWowErrands::Active(guid)) &&
+            AutoWowSquad::TakeBenchEscape(guid) && DeathLoopEscape())
+        {
+            LOG_INFO("playerbots", "[Squad] bench escape player={} lvl={} zone={}", bot->GetName(), bot->GetLevel(),
+                     bot->GetZoneId());
+            return true;
+        }
+        return false;
+    }
     AutoWowSquad::TeamState const s = AutoWowSquad::SnapshotOf(guid);
     if (s.phase != AutoWowSquad::Phase::Stint)
         return false;
@@ -602,12 +656,6 @@ bool NewRpgBaseAction::SquadStep()
     if ((AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(guid)) ||
         (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid)) || bot->IsInCombat())
         return false;
-    // AutoWow.Squad.LevelWindow (2): a benched member runs its own loop.
-    if (AutoWowSquad::LevelWindowOn(AutoWowSquad::detail::gParams) && AutoWowSquad::Benched(guid))
-    {
-        AutoWowSquad::NoteStep(guid, false, false);
-        return false;
-    }
     NewRpgInfo& info = botAI->rpgInfo;
     Step const step = AutoWowSquad::MemberStep(AutoWowSquad::detail::gParams, s, guid == s.leader,
                                                AutoWowSquad::Hunting(guid), bot->GetMapId(),
