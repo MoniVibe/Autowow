@@ -212,21 +212,23 @@ struct StepRuntime
     bool skipped = false;          // optional row that timed out
 };
 
-// First row, in order, that is not key-gated, not skipped and not done. A row is key-gated while its
+// First row, in order, that is not skipped, not done and not key-gated. A row is key-gated while its
 // keyItem is set, no party member holds it (holdsKey(item) false) and bypassKeys is off. isDone(i) is
 // evaluated lazily and never past the returned row, so a later row can never run before an earlier
-// unfinished one.
+// unfinished one. doneWhen is read before the key: the cannon consumes the Gunpowder, and soak S56 skipped
+// that row silently (no `done` line) once the key was gone, so the log could not tell an opened door from
+// a closed one.
 template <typename HoldsKey, typename IsDone>
 std::size_t SelectStep(std::vector<Step> const& rows, std::vector<StepRuntime> const& runtime,
     bool bypassKeys, HoldsKey&& holdsKey, IsDone&& isDone)
 {
     for (std::size_t index = 0; index < rows.size(); ++index)
     {
-        if (rows[index].keyItem && !bypassKeys && !holdsKey(rows[index].keyItem))
-            continue;
         if (index < runtime.size() && (runtime[index].done || runtime[index].skipped))
             continue;
         if (isDone(index))
+            continue;
+        if (rows[index].keyItem && !bypassKeys && !holdsKey(rows[index].keyItem))
             continue;
         return index;
     }

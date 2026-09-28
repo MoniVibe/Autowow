@@ -110,6 +110,21 @@ TEST(SupplyPolicy, RoutingDeliveryPayXpSurplus)
     EXPECT_EQ(Surplus(0, 4, 4), 0u);
 }
 
+TEST(SupplyPolicy, OwnRowsCarryTheBotsHouseLine)
+{
+    // Soak S56: the Tinkers artisan (gear line eng only) logged its travel / junk rows as house=Weavers (bags).
+    RoleInfo r;
+    EXPECT_EQ(OwnLine(r), Line::Bags);  // no line at all
+    r.gear = static_cast<std::uint8_t>(Line::Engineering);
+    EXPECT_EQ(OwnLine(r), Line::Engineering);
+    r.line = static_cast<std::uint8_t>(Line::Potions);
+    EXPECT_EQ(OwnLine(r), Line::Potions);  // the catalog line before the gear line
+    RoleInfo bags;
+    bags.bagHouse = true;
+    bags.gear = static_cast<std::uint8_t>(Line::ClothGear);
+    EXPECT_EQ(OwnLine(bags), Line::Bags);  // the bag house keeps its bag label
+}
+
 TEST(SupplyPolicy, ParsesHome)
 {
     Home h;
