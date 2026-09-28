@@ -3351,6 +3351,18 @@ AutoWow.Gear.AuctionPriceMult = 20
 AutoWow.Gear.AuctionIlvlPct = 75
 AutoWow.Gear.AuctionMinSpendPct = 50
 
+# Gear flow among the gear recipients (GearUpgradePolicy.h; default 0; the cohort, AutoWow.Supply.PriorityGuids and
+# the squad roster, no working roles). Supply gear lines deliver tradeable pieces only (a bound piece an artisan wore
+# no longer jams its line). Every FlowTickMs, on the world thread, each loose tradeable weapon / armor piece of
+# FlowMinQuality+ (1 = white) that the stock "item upgrade" value rates no upgrade for its holder is mailed (holder
+# pays postage) to the same-faction recipient it upgrades most: item level over the worn piece of that slot, the stock
+# value confirming; at most FlowMaxMails per pass, one per recipient. The flow mail counts as a supply mail for
+# AutoWow.Supply.MailPickup; the stock bag scan wears it. Logs "[GearFlow]".
+AutoWow.Gear.Flow = 0
+AutoWow.Gear.FlowTickMs = 60000
+AutoWow.Gear.FlowMaxMails = 10
+AutoWow.Gear.FlowMinQuality = 1
+
 # Self-sufficiency secondary professions for cohort adventurers (SelfCraftPolicy.h; default 0). Not supply
 # reps / artisans, not Oracle-managed bots. Learning is the stock errand trainer stop (the learn filter admits
 # AutoWow.Professions.Secondaries, default 129,185,356; ranks and recipes cost real gold). With the flag on,

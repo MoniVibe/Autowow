@@ -30,6 +30,7 @@
 #include "DBCStores.h"
 #include "GameObject.h"
 #include "GameTime.h"
+#include "GearUpgradePolicy.h"
 #include "Item.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
@@ -190,6 +191,13 @@ std::vector<Stack> LooseStacks(Player* p, std::uint32_t entry)
                 out.push_back({static_cast<std::uint32_t>(item->GetGUID().GetCounter()), item->GetCount()});
         });
     return out;
+}
+
+// AutoWow.Gear.Flow: the player's item `guid` may leave by mail (not bound: the mail helper refuses it as bad_item).
+bool Tradeable(Player* p, std::uint32_t guid)
+{
+    Item* item = p->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(guid));
+    return item && item->CanBeTraded(true);
 }
 
 std::uint32_t Loose(Player* p, std::uint32_t entry)
@@ -1808,7 +1816,8 @@ void GearTick(Line line, bool alliance, bool overlord)
         std::vector<GearItem> out;
         for (std::uint8_t const r : gGearRank[li])
             for (Stack const& st : LooseStacks(from, G.tiers[r].product))
-                out.push_back({r, st.guid});
+                if (!AutoWowGear::FlowEnabled() || Tradeable(from, st.guid))  // a worn-then-bound piece never mails
+                    out.push_back({r, st.guid});
         return out;
     };
     // `from`'s pieces to the ranked needs, one each (re-asked: still an upgrade); every planned need leaves the list
@@ -3251,9 +3260,97 @@ bool HasSupplyMail(Player* bot)
     time_t const now = GameTime::GetGameTime().count();
     for (Mail const* m : bot->GetMails())
         if (m && m->state != MAIL_STATE_DELETED && m->deliver_time <= now && !m->COD && m->HasItems() &&
-            m->messageType == MAIL_NORMAL && RoleOf(static_cast<std::uint32_t>(m->sender)).role != Role::None)
+            m->messageType == MAIL_NORMAL &&
+            (RoleOf(static_cast<std::uint32_t>(m->sender)).role != Role::None ||
+             (AutoWowGear::FlowEnabled() && m->subject == AutoWowGear::kFlowSubject)))
             return true;
     return false;
+}
+
+namespace
+{
+std::uint32_t gFlowAcc = 0;
+
+// Item level `proto` adds over what `m` wears in the slot it would take (FindEquipSlot, as the auction gear plan);
+// 0 when not higher, or for an off hand under a two-hander.
+std::uint32_t SlotGain(PlayerbotAI* ai, Player* m, ItemTemplate const* proto)
+{
+    uint8 const slot = ai->FindEquipSlot(proto, NULL_SLOT, true);
+    if (slot >= EQUIPMENT_SLOT_END)
+        return 0;
+    Item const* mh = m->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+    if (slot == EQUIPMENT_SLOT_OFFHAND && mh && mh->GetTemplate()->InventoryType == INVTYPE_2HWEAPON &&
+        !m->CanTitanGrip())
+        return 0;
+    Item const* worn = m->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+    std::uint32_t const wornIlvl = worn ? worn->GetTemplate()->ItemLevel : 0;
+    return proto->ItemLevel > wornIlvl ? proto->ItemLevel - wornIlvl : 0;
+}
+}  // namespace
+
+// AutoWow.Gear.Flow (world thread, maps idle): per faction the gear recipients in ascending guid, each holder's loose
+// pieces in bag order; a piece that Flows goes to the member PickTaker names (the ilvl gain is the cheap filter, the
+// stock scorer confirms), one mail per recipient per pass, at most FlowMaxMails per pass.
+// ponytail: recipients x flowing pieces scorer calls per pass; a round-robin holder cursor if the pass shows in the
+// world diff.
+void GearFlowUpdate(std::uint32_t diff)
+{
+    AutoWowGear::FlowParams const& fp = AutoWowGear::GetFlow();
+    gFlowAcc += diff;
+    if (gFlowAcc < fp.tickMs)
+        return;
+    gFlowAcc = 0;
+    std::uint32_t mails = 0;
+    for (bool const alliance : {true, false})
+    {
+        std::vector<Player*> const members = GearRecipients(alliance);
+        std::unordered_set<std::uint32_t> served;
+        for (Player* holder : members)
+        {
+            PlayerbotAI* const holderAi = PlayerbotsMgr::instance().GetPlayerbotAI(holder);
+            std::vector<Item*> pieces;
+            ForEachLoose(holder, [&](Item* item) {
+                ItemTemplate const* proto = item->GetTemplate();
+                bool const gear = (proto->Class == ITEM_CLASS_WEAPON || proto->Class == ITEM_CLASS_ARMOR) &&
+                                  proto->InventoryType != INVTYPE_NON_EQUIP;
+                bool const tradeable = item->CanBeTraded(true);
+                if (!gear || !tradeable || proto->Quality < fp.minQuality)
+                    return;  // cheap facts first: the holder's scorer only for candidates
+                if (AutoWowGear::Flows(fp, proto->Quality, gear, tradeable, GearUpgrade(holderAi, holder, proto)))
+                    pieces.push_back(item);
+            });
+            for (Item* item : pieces)
+            {
+                if (mails >= fp.maxMails)
+                    return;
+                ItemTemplate const* proto = item->GetTemplate();
+                std::vector<AutoWowGear::FlowTaker> takers;
+                for (Player* m : members)
+                {
+                    if (m == holder || served.count(Low(m)))
+                        continue;
+                    PlayerbotAI* const ai = PlayerbotsMgr::instance().GetPlayerbotAI(m);
+                    std::uint32_t const gain = SlotGain(ai, m, proto);
+                    if (gain && GearUpgrade(ai, m, proto))
+                        takers.push_back({Low(m), gain});
+                }
+                std::size_t const k = AutoWowGear::PickTaker(takers);
+                if (k == AutoWowGear::kNone)
+                    continue;
+                std::uint32_t const entry = proto->ItemId, to = takers[k].guid;
+                char const* why = nullptr;
+                bool const sent = AutoWowGuilds::SendItems(Low(holder), to,
+                                                           {static_cast<std::uint32_t>(item->GetGUID().GetCounter())},
+                                                           AutoWowGear::kFlowSubject, &why);
+                LOG_INFO("playerbots", "[GearFlow] mail bot={} to={} item={} quality={} ilvl_gain={} result={}",
+                         holder->GetName(), to, entry, proto->Quality, takers[k].gain, sent ? "sent" : why ? why : "refused");
+                if (!sent)
+                    continue;
+                served.insert(to);
+                ++mails;
+            }
+        }
+    }
 }
 
 // The seller's tradeable loose stacks of `item` (whole stacks; the mail helper refuses bound items).
