@@ -186,3 +186,28 @@ swim moves leader and followers across the pool; stragglers walk on the RFK dire
   `defend` and Emi died seconds later: trogg group 1 is ten attackers on her 1500 hp, the leader alone peeled one. Fix:
   escort rows rescan every 1 s and every idle party member attacks one of her attackers (round robin, nearest to
   her first; `defend_member`).
+
+## Lane dgates4 status, 2026-09-28 (S68, harder dungeons)
+- Razorfen Downs Amnennar idx3 (stuck 4x at 2360,900 next=3): travel nodes end below his spiral at (2364.8,904.5,
+  z 29), then `blocked=unsupported_transition`. Same navmesh region; the Detour ground corridor is 95 polys and the
+  smoothed path overruns PathGenerator's 74 points. Fix: ConvoyV2 curated leg (129, 3), 23 corridor points from
+  Glutton's spawn up the bramble spiral; every pair replays complete without the slope check.
+- Uldaman Lost Dwarves idx1 (alliance stuck at -354,117, `activation_blocked=not_hostile` 39x): Baelog/Eric/Olaf are
+  faction 122 (Ironforge; friend mask Alliance, hostile mask Horde) with no script that turns them. The horde probe
+  kills them. Fix (Gates on): an encounter with no gate rows whose every kill-credit creature is friendly to the
+  party by faction template is set aside (`gate_unavailable=friendly_credit`, selection prerequisites Blocked).
+- Uldaman Ironaya idx2 (horde stuck at -214,374 `no_reachable_waypoint`): she is NON_ATTACKABLE|NOT_SELECTABLE behind
+  the Seal of Khaz'Mul until the Keystone 124371 (guid 14393, lock 359 = Staff of Prehistoria 7733) runs its SAI
+  (DATA_IRONAYA_DOORS 0 = DONE, seal open, flags removed). Row: UseGo keystone, keyItem 7733, done InstanceData 0 >= 3.
+  New `DungeonGate::KeyBlocked`: an encounter whose first unfinished row is key-gated is set aside
+  (`gate_unavailable=key_blocked`) instead of walked to. With BypassKeys=1 the row runs.
+- Zul'Farrak Zum'rah idx4 (S68 stuck at 1912,1016 `not_hostile`): faction 35 until area trigger 962 (r10 at his
+  grave) sets faction 37 via SAI; headless bots never send CMSG_AREATRIGGER. New kind `AreaTrigger` (sends the packet
+  from the row position) and doneWhen `Hostile`. Row (209, 4): trigger 962, creature guid 81524.
+- Pre-emptive: Maraudon (both entrances), Sunken Temple (entrance, statues, Atal'alarion, Dreamscythe/Weaver,
+  Jammal'an, Morphaz/Hazzas, Eranikus) and Zul'Farrak (entrance to every static boss) are each one navmesh region
+  (offline region query). ZF Nekrum/Sezz'ziz have no static spawn; Ukorz (idx7) needs the pyramid event (cage key,
+  waves, Weegli): not attempted. S52/S54 ST stalls at the entrance predate the statue rows.
+- Probe scoring: DungeonProbePolicy::ClearableMask still counts set-aside encounters (Lost Dwarves for Alliance,
+  Ironaya without the staff), so such runs end `stuck` after the last reachable boss. Changing the score is outside
+  this lane.
