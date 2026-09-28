@@ -11,6 +11,7 @@
 #include <array>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "AutoWowGuildsPolicy.h"
@@ -51,6 +52,7 @@ struct MemberState
     bool hunting = false;         // inside the leash at the last step (Hunt)
     std::uint32_t stuck = 0;      // stuck walk ticks this stint
     std::uint64_t nextHoldLogMs = 0;
+    bool benched = false;         // AutoWow.Squad.LevelWindow (2): sits the running stint out (world tick)
 };
 
 // Read-only after LoadConfig.
@@ -229,7 +231,26 @@ void ResetMembers(std::size_t t)
         {
             it->second.hunting = false;
             it->second.stuck = 0;
+            it->second.benched = false;
         }
+}
+
+bool Benched(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gMembers.find(guid);
+    return it != gMembers.end() && it->second.benched;
+}
+
+// AutoWow.Squad.LevelWindow: the straight line (x, y) -> (ax, ay) on `map` crosses a zone bracketed more than
+// LevelWindow above `level` (the zone at (x, y) excepted; HardEscape's SegmentCrossesDanger sampling).
+bool CrossesHighZone(Map* map, std::uint32_t level, std::int32_t x, std::int32_t y, std::int32_t ax, std::int32_t ay)
+{
+    std::uint32_t const window = detail::gParams.levelWindow;
+    return AutoWowZoneProgression::SegmentCrossesDanger(
+        x, y, ax, ay, AutoWowZoneProgression::kDangerStepYards, AutoWowDeathLoop::ZoneAt(map, float(x), float(y)),
+        [map](std::int32_t sx, std::int32_t sy) { return AutoWowDeathLoop::ZoneAt(map, float(sx), float(sy)); },
+        [level, window](std::uint32_t z) { return ZoneTooHigh(AutoWowDeathLoop::ZoneMinLevel(z), level, window); });
 }
 
 // The nearest workable, level-safe source of the top demanded material the squad can work; true = issued.
@@ -273,9 +294,11 @@ bool Search(TeamState& s, std::vector<Want> const& demand, std::vector<Player*> 
                 // sources keep getting picked.
                 if (map->IsInWater(phaseMask, float(c.x), float(c.y), float(c.z), height))
                     return true;
-                std::uint32_t const zoneLow =
-                    AutoWowDeathLoop::ZoneMinLevel(AutoWowDeathLoop::ZoneAt(map, float(c.x), float(c.y)));
-                return zoneLow > avg + p.zoneLevelMargin;
+                std::uint32_t const zone = AutoWowDeathLoop::ZoneAt(map, float(c.x), float(c.y));
+                if (ZoneTooHigh(AutoWowDeathLoop::ZoneMinLevel(zone), avg, ZoneMargin(p)))
+                    return true;
+                // AutoWow.Squad.LevelWindow (1): no cooling death-cluster zone, no over-level zone on the leader's line.
+                return LevelWindowOn(p) && (ZoneCooling(s, zone, now) || CrossesHighZone(map, avg, bx, by, c.x, c.y));
             });
         if (!pick)
             continue;
@@ -285,6 +308,7 @@ bool Search(TeamState& s, std::vector<Want> const& demand, std::vector<Player*> 
             id = ++gNextId;
         }
         Issue(s, w, *pick, mapId, leaderGuid, id, Held(members, w.item), now);
+        s.anchorZone = AutoWowDeathLoop::ZoneAt(map, float(pick->x), float(pick->y));
         Emit(leader, Reason::Stint, s, w.kind, w.item, w.count, now, "",
              ",\"avg_level\":" + std::to_string(avg) + ",\"spawns\":" + std::to_string(pick->spawns) +
                  ",\"members\":" + std::to_string(members.size()));
@@ -321,8 +345,20 @@ void TeamTick(std::size_t t, std::uint64_t now)
     Skills skills;
     std::vector<std::array<std::int32_t, 2>> spread;
     bool onAnchorMap = false;
+    std::vector<char const*> bench;  // AutoWow.Squad.LevelWindow (2), per member ("" = takes part)
+    bool anchorCluster = false;      // AutoWow.Squad.LevelWindow (4)
     for (Player* m : members)
     {
+        char const* cause = "";
+        if (LevelWindowOn(p) && s.phase == Phase::Stint && m->GetMapId() == s.map)
+        {
+            std::uint32_t const deaths = AutoWowDeathLoop::RecentDeaths(Low(m));
+            std::int32_t const mx = static_cast<std::int32_t>(m->GetPositionX());
+            std::int32_t const my = static_cast<std::int32_t>(m->GetPositionY());
+            anchorCluster = anchorCluster || AnchorDeathCluster(p, s, m->GetMapId(), mx, my, deaths);
+            cause = BenchCause(p, CrossesHighZone(m->GetMap(), m->GetLevel(), mx, my, s.x, s.y), deaths);
+        }
+        bench.push_back(cause);
         levels.push_back(m->GetLevel());
         if (m->HasSkill(SKILL_HERBALISM))
             skills.herbalism = std::max<std::uint32_t>(skills.herbalism, m->GetSkillValue(SKILL_HERBALISM));
@@ -330,9 +366,25 @@ void TeamTick(std::size_t t, std::uint64_t now)
             skills.mining = std::max<std::uint32_t>(skills.mining, m->GetSkillValue(SKILL_MINING));
         if (m->HasSkill(SKILL_SKINNING) && HasTool(m, std::begin(kSkinningKnives), std::end(kSkinningKnives)))
             skills.skinning = std::max<std::uint32_t>(skills.skinning, m->GetSkillValue(SKILL_SKINNING));
-        if (m != leader && m->IsAlive() && m->GetMapId() == leader->GetMapId())
+        if (m != leader && !*cause && m->IsAlive() && m->GetMapId() == leader->GetMapId())
             spread.push_back({static_cast<std::int32_t>(m->GetPositionX()), static_cast<std::int32_t>(m->GetPositionY())});
-        onAnchorMap = onAnchorMap || m->GetMapId() == s.map;
+        onAnchorMap = onAnchorMap || (!*cause && m->GetMapId() == s.map);
+    }
+    if (LevelWindowOn(p))
+    {
+        std::vector<std::size_t> newly;
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            for (std::size_t k = 0; k < members.size(); ++k)
+                if (auto const it = gMembers.find(Low(members[k])); it != gMembers.end())
+                {
+                    if (*bench[k] && !it->second.benched)
+                        newly.push_back(k);
+                    it->second.benched = *bench[k] != 0;
+                }
+        }
+        for (std::size_t const k : newly)
+            Emit(members[k], Reason::Bench, s, s.kind, s.item, members[k]->GetLevel(), now, bench[k]);
     }
     std::uint32_t const avg = AvgLevel(levels);
     if (leader)
@@ -346,11 +398,13 @@ void TeamTick(std::size_t t, std::uint64_t now)
     if (s.phase == Phase::Stint)
     {
         NoteHeld(s, Held(members, s.item));
-        bool const danger = AutoWowDeathLoop::IsDangerous(s.leader, s.map, float(s.x), float(s.y));
+        bool const danger = AutoWowDeathLoop::IsDangerous(s.leader, s.map, float(s.x), float(s.y)) || anchorCluster;
         if (char const* cause = EndCause(p, s, now, Demanded(demand, s.item), onAnchorMap, danger, leaderStuck > kMaxStuck);
             *cause)
         {
             Emit(leader, Reason::Gather, s, s.kind, s.item, s.gathered, now, cause);
+            if (anchorCluster && std::string_view(cause) == "danger")
+                CoolZone(s, p, s.anchorZone, now);  // AutoWow.Squad.LevelWindow (4): the squad leaves the zone
             Finish(s, p, now);
             ResetMembers(t);
         }
@@ -404,6 +458,9 @@ void LoadConfig()
     p.minDropPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.MinDropPct", 5);
     p.cooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.CooldownMs", 600000);
     p.searchRetryMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.SearchRetryMs", 60000);
+    p.levelWindow = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.LevelWindow", 0);
+    p.deathCluster = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.DeathCluster", 3);
+    p.dangerZoneMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.DangerZoneMs", 3600000);
     for (auto& r : gRoster)
         r.clear();
     gTeamOf.clear();
@@ -454,8 +511,8 @@ void LoadConfig()
         LOG_ERROR("server.loading", "[Squad] AutoWow.Supply is off: no material demand, the squad only quests");
     BuildIndex();
     LOG_INFO("server.loading", "[Squad] enabled: alliance={} horde={} stint_ms={} level_above={} search_yards={} "
-             "leash={} min_demand={}", gRoster[0].size(), gRoster[1].size(), p.stintMs, p.levelAbove, p.searchYards,
-             p.leashYards, p.minDemand);
+             "leash={} min_demand={} level_window={} death_cluster={}", gRoster[0].size(), gRoster[1].size(),
+             p.stintMs, p.levelAbove, p.searchYards, p.leashYards, p.minDemand, p.levelWindow, p.deathCluster);
 }
 
 void WorldUpdate(std::uint32_t diff)
@@ -486,10 +543,16 @@ TeamState SnapshotOf(std::uint32_t guid)
     return gTeams[it->second];
 }
 
+TeamState SnapshotFor(std::uint32_t guid, std::uint32_t map)
+{
+    TeamState const s = SnapshotOf(guid);
+    return LevelWindowOn(detail::gParams) ? FilterView(detail::gParams, s, map, Benched(guid)) : s;
+}
+
 bool HoldsTier(Player* bot)
 {
     std::uint32_t const guid = Low(bot);
-    if (!IsMember(guid))
+    if (!IsMember(guid) || (LevelWindowOn(detail::gParams) && Benched(guid)))  // LevelWindow (2): no hold
         return false;
     TeamState const s = SnapshotOf(guid);
     bool const dangerous =
@@ -538,6 +601,12 @@ bool NewRpgBaseAction::SquadStep()
     if ((AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(guid)) ||
         (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid)) || bot->IsInCombat())
         return false;
+    // AutoWow.Squad.LevelWindow (2): a benched member runs its own loop.
+    if (AutoWowSquad::LevelWindowOn(AutoWowSquad::detail::gParams) && AutoWowSquad::Benched(guid))
+    {
+        AutoWowSquad::NoteStep(guid, false, false);
+        return false;
+    }
     NewRpgInfo& info = botAI->rpgInfo;
     Step const step = AutoWowSquad::MemberStep(AutoWowSquad::detail::gParams, s, guid == s.leader,
                                                AutoWowSquad::Hunting(guid), bot->GetMapId(),

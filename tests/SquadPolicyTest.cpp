@@ -220,6 +220,79 @@ TEST(Squad, LedgerSchema)
     EXPECT_EQ(static_cast<int>(AutoWowParty::Reason::Squad), 3);
 }
 
+TEST(Squad, LevelWindowOffKeepsZoneLevelMargin)
+{
+    Params p;
+    EXPECT_FALSE(LevelWindowOn(p));
+    EXPECT_EQ(ZoneMargin(p), p.zoneLevelMargin);
+    EXPECT_STREQ(BenchCause(p, true, 99), "");  // off: nobody benched
+    TeamState s = Running();
+    EXPECT_FALSE(AnchorDeathCluster(p, s, 0, 1000, 1000, 99));
+    TeamState const v = FilterView(p, s, 1, true);  // off: other map / benched still filtered
+    EXPECT_EQ(v.phase, Phase::Stint);
+}
+
+TEST(Squad, LevelWindowZoneBracket)
+{
+    Params p;
+    p.levelWindow = 2;
+    EXPECT_EQ(ZoneMargin(p), 2u);
+    // soak-s62: squad average 23, Alterac Mountains (bracket 30) out; Hillsbrad (20) and a 25 zone in; unknown in.
+    EXPECT_TRUE(ZoneTooHigh(30, 23, ZoneMargin(p)));
+    EXPECT_FALSE(ZoneTooHigh(25, 23, ZoneMargin(p)));
+    EXPECT_TRUE(ZoneTooHigh(26, 23, ZoneMargin(p)));
+    EXPECT_FALSE(ZoneTooHigh(20, 23, ZoneMargin(p)));
+    EXPECT_FALSE(ZoneTooHigh(0, 23, ZoneMargin(p)));
+}
+
+TEST(Squad, LevelWindowBench)
+{
+    Params p;
+    p.levelWindow = 2;
+    EXPECT_STREQ(BenchCause(p, false, 0), "");
+    EXPECT_STREQ(BenchCause(p, false, 2), "");
+    EXPECT_STREQ(BenchCause(p, false, 3), "deaths");
+    EXPECT_STREQ(BenchCause(p, true, 0), "route");
+    EXPECT_STREQ(BenchCause(p, true, 5), "route");  // route beats deaths
+    p.deathCluster = 0;                              // death rule off
+    EXPECT_STREQ(BenchCause(p, false, 50), "");
+    EXPECT_STREQ(ReasonName(Reason::Bench), "bench");
+    EXPECT_EQ(static_cast<int>(Reason::Bench), 5);
+}
+
+TEST(Squad, LevelWindowFilterView)
+{
+    Params p;
+    p.levelWindow = 2;
+    TeamState s = Running();  // anchor map 0
+    EXPECT_EQ(FilterView(p, s, 0, false).phase, Phase::Stint);  // taking part: filtered
+    EXPECT_EQ(FilterView(p, s, 1, false).phase, Phase::None);   // another continent: its own targets
+    EXPECT_EQ(FilterView(p, s, 0, true).phase, Phase::None);    // benched
+    EXPECT_EQ(FilterView(p, s, 1, false).id, s.id);             // the rest of the state stays
+}
+
+TEST(Squad, LevelWindowAnchorDeathClusterCoolsTheZone)
+{
+    Params p;
+    p.levelWindow = 2;
+    TeamState s = Running();  // anchor (1000, 1000) map 0
+    EXPECT_TRUE(AnchorDeathCluster(p, s, 0, 1100, 1000, 3));
+    EXPECT_FALSE(AnchorDeathCluster(p, s, 0, 1100, 1000, 2));  // fewer than DeathCluster
+    EXPECT_FALSE(AnchorDeathCluster(p, s, 0, 1200, 1000, 9));  // outside the leash: a walk death, not the anchor
+    EXPECT_FALSE(AnchorDeathCluster(p, s, 1, 1100, 1000, 9));  // other map
+    EXPECT_FALSE(AnchorDeathCluster(p, TeamState{}, 0, 1000, 1000, 9));
+    s.anchorZone = 11;
+    CoolZone(s, p, s.anchorZone, 5000);
+    Finish(s, p, 5000);  // the zone cooldown outlives the stint
+    EXPECT_TRUE(ZoneCooling(s, 11, 5000));
+    EXPECT_TRUE(ZoneCooling(s, 11, 5000 + p.dangerZoneMs - 1));
+    EXPECT_FALSE(ZoneCooling(s, 11, 5000 + p.dangerZoneMs));
+    EXPECT_FALSE(ZoneCooling(s, 12, 5000));
+    EXPECT_FALSE(ZoneCooling(s, 0, 5000));
+    EXPECT_FALSE(ZoneCooling(TeamState{}, 0, 0));
+    EXPECT_EQ(TeamState{}.version, 2);
+}
+
 TEST(Squad, SupplyUsableNowFollowsArtisanSkill)
 {
     AutoWowSupply::ProductLine const& potions = AutoWowSupply::LineOf(AutoWowSupply::Line::Potions);

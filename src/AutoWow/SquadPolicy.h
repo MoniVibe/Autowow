@@ -37,7 +37,7 @@ class Player;
 // orders (count, then material table order; distance, then spawns, then spawn id).
 namespace AutoWowSquad
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 2;  // 2: LevelWindow zone cooldown (cooldownZone, anchorZone)
 inline constexpr std::size_t kMaxMembers = 10;  // per team roster; config guids beyond are ignored
 using AutoWowContracts::Cluster;
 using AutoWowContracts::Spawn;
@@ -111,6 +111,10 @@ struct Params
     std::uint32_t cooldownMs = 600000;     // AutoWow.Squad.CooldownMs: the last anchor rests this long
     std::uint32_t searchRetryMs = 60000;   // AutoWow.Squad.SearchRetryMs: no-stint search stride
     std::uint32_t holdLogMs = 600000;      // `hold` rows per member at most this often
+    // AutoWow.Squad.LevelWindow (default 0 = off; LevelWindowOn documents the ON behaviour).
+    std::uint32_t levelWindow = 0;         // AutoWow.Squad.LevelWindow: zone bracket low <= level + this
+    std::uint32_t deathCluster = 3;        // AutoWow.Squad.DeathCluster: recent deaths (death-loop window)
+    std::uint32_t dangerZoneMs = 3600000;  // AutoWow.Squad.DangerZoneMs: a death-cluster anchor zone rests this long
 };
 
 // ---- demand ----------------------------------------------------------------------------------------------
@@ -259,7 +263,8 @@ enum class Reason : std::uint8_t
     Gather = 1,   // a stint ended; count = units gathered, cause = done|demand_met|danger|timeout|stuck|empty
     Deliver = 2,  // a member mailed squad materials to a house rep (errand sell stop routing)
     Hold = 3,     // zone progression deferred for a member (tier hold)
-    Release = 4   // no workable demand left: the squad quests
+    Release = 4,  // no workable demand left: the squad quests
+    Bench = 5     // LevelWindow: a member sits the stint out; cause = route|deaths
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -271,6 +276,7 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Deliver: return "deliver";
         case Reason::Hold: return "hold";
         case Reason::Release: return "release";
+        case Reason::Bench: return "bench";
     }
     return "stint";
 }
@@ -302,6 +308,9 @@ struct TeamState
     std::int32_t cooldownX = 0;
     std::int32_t cooldownY = 0;
     std::uint64_t cooldownUntilMs = 0;
+    std::uint32_t anchorZone = 0;           // LevelWindow: zone of the running stint's anchor (0 = unknown)
+    std::uint32_t cooldownZone = 0;         // LevelWindow: the last death-cluster anchor zone
+    std::uint64_t zoneCooldownUntilMs = 0;  // ... skipped by the search until then
 };
 
 inline void Issue(TeamState& s, Want const& w, Cluster const& c, std::uint32_t map, std::uint32_t leader,
@@ -378,6 +387,68 @@ inline void Finish(TeamState& s, Params const& p, std::uint64_t nowMs)
 {
     return nowMs < s.cooldownUntilMs && map == s.cooldownMap &&
            AutoWowContracts::Within(x, y, s.cooldownX, s.cooldownY, p.clusterYards);
+}
+
+// ---- AutoWow.Squad.LevelWindow (default 0 = off) ---------------------------------------------------------
+// soak-s62-full-r1 (1.5 h): 91 of 103 squad deaths were three members, none at a stint anchor: a L23 mage walking
+// Hillsbrad -> the Tirisfal anchor through Alterac Mountains (bracket 30+; 32 deaths there, the death-loop escape
+// dropped it back in Hillsbrad and the stint walked it in again while the leader waited for it), a L22 rogue dying
+// on its walk through the Wetlands (24), and a L19 priest on another continent (35 deaths, 0 kills: the stint's
+// target filter left it no grind target). Window on (LevelWindow > 0):
+//   (1) an anchor's zone bracket starts at most LevelWindow above the squad average (ZoneLevelMargin otherwise),
+//       the leader's straight line to it crosses no such zone, and a death-cluster zone is skipped while cooling;
+//   (2) a member whose straight line to the anchor crosses a zone bracketed above its level + LevelWindow (its own
+//       zone excepted), or with DeathCluster deaths in the death-loop window, is benched: its own loop runs, nobody
+//       waits for it, no tier hold, no stint target filter (ledger `squad` bench, cause route|deaths);
+//   (3) a member on another map than the anchor gets no stint target filter;
+//   (4) a member within the leash of the anchor with DeathCluster recent deaths ends the stint (cause danger) and
+//       the anchor zone rests DangerZoneMs.
+[[nodiscard]] inline bool LevelWindowOn(Params const& p) { return p.levelWindow != 0; }
+
+// Bracket margin of an anchor zone above the squad average level.
+[[nodiscard]] inline std::uint32_t ZoneMargin(Params const& p) { return p.levelWindow ? p.levelWindow : p.zoneLevelMargin; }
+
+// The zone's bracket starts more than margin above level (zoneLow 0 = unknown: never).
+[[nodiscard]] inline bool ZoneTooHigh(std::uint32_t zoneLow, std::uint32_t level, std::uint32_t margin)
+{
+    return zoneLow > level + margin;
+}
+
+// (2): the member sits the stint out; "route" beats "deaths"; "" = it takes part.
+[[nodiscard]] inline char const* BenchCause(Params const& p, bool routeCrossesHighZone, std::uint32_t recentDeaths)
+{
+    if (!LevelWindowOn(p))
+        return "";
+    if (routeCrossesHighZone)
+        return "route";
+    return p.deathCluster && recentDeaths >= p.deathCluster ? "deaths" : "";
+}
+
+// (4): a member at (map, x, y) with recentDeaths makes the running stint's anchor a death cluster.
+[[nodiscard]] inline bool AnchorDeathCluster(Params const& p, TeamState const& s, std::uint32_t map, std::int32_t x,
+                                             std::int32_t y, std::uint32_t recentDeaths)
+{
+    return LevelWindowOn(p) && p.deathCluster && recentDeaths >= p.deathCluster && s.phase == Phase::Stint &&
+           map == s.map && AutoWowContracts::Within(x, y, s.x, s.y, p.leashYards);
+}
+
+inline void CoolZone(TeamState& s, Params const& p, std::uint32_t zone, std::uint64_t nowMs)
+{
+    s.cooldownZone = zone;
+    s.zoneCooldownUntilMs = nowMs + p.dangerZoneMs;
+}
+
+[[nodiscard]] inline bool ZoneCooling(TeamState const& s, std::uint32_t zone, std::uint64_t nowMs)
+{
+    return zone && zone == s.cooldownZone && nowMs < s.zoneCooldownUntilMs;
+}
+
+// (2) + (3): the stint as the member's target filter sees it (phase None = no filter). Window off: s unchanged.
+[[nodiscard]] inline TeamState FilterView(Params const& p, TeamState s, std::uint32_t map, bool benched)
+{
+    if (LevelWindowOn(p) && (benched || map != s.map))
+        s.phase = Phase::None;
+    return s;
 }
 
 // Tier hold: a member does not graduate to the next zone while its squad holds, unless where it stands is
@@ -463,6 +534,8 @@ bool IsMember(std::uint32_t guid);
 std::vector<std::uint32_t> Roster(bool alliance);
 // The member's team state (phase None for a non-member).
 TeamState SnapshotOf(std::uint32_t guid);
+// The stint as the member's grind target filter sees it on `map` (FilterView; LevelWindow off: SnapshotOf).
+TeamState SnapshotFor(std::uint32_t guid, std::uint32_t map);
 // Zone progression (map thread): true = the member holds its tier (a `hold` row at most every holdLogMs).
 bool HoldsTier(Player* bot);
 // Supply donation (world thread): a squad member's materials reached a house rep (`deliver` row).
