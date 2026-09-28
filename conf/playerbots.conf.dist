@@ -3184,6 +3184,11 @@ AutoWow.Squad.SearchRetryMs = 60000
 AutoWow.Squad.LevelWindow = 0
 AutoWow.Squad.DeathCluster = 3
 AutoWow.Squad.DangerZoneMs = 3600000
+#   (5) a bench lasts BenchMs (not re-evaluated, outlives stint ends); a newly benched member takes one death-loop
+#       escape trip to a level-fitting hub (needs AutoWow.DeathLoop.EscapeViaZoneProgression and
+#       AutoWow.ZoneProgression.Enable); the lowest unbenched member leads; more than half of the online members
+#       benched ends the stint and holds the search (squad gather / release cause benched).
+AutoWow.Squad.BenchMs = 1800000
 
 # Dungeon completability probe (lane P; DungeonProbePolicy.h / DungeonProbeRuntime.cpp). TEST INSTRUMENTS, not
 # faction members (owner ruling 2026-09-27): magic level, gear, spec, teleports and resurrections are allowed for

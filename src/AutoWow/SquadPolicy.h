@@ -115,6 +115,7 @@ struct Params
     std::uint32_t levelWindow = 0;         // AutoWow.Squad.LevelWindow: zone bracket low <= level + this
     std::uint32_t deathCluster = 3;        // AutoWow.Squad.DeathCluster: recent deaths (death-loop window)
     std::uint32_t dangerZoneMs = 3600000;  // AutoWow.Squad.DangerZoneMs: a death-cluster anchor zone rests this long
+    std::uint32_t benchMs = 1800000;       // AutoWow.Squad.BenchMs: a bench lasts this long (no re-evaluation)
 };
 
 // ---- demand ----------------------------------------------------------------------------------------------
@@ -261,7 +262,7 @@ enum class Phase : std::uint8_t
 enum class Reason : std::uint8_t
 {
     Stint = 0,    // a stint started (material, target, anchor)
-    Gather = 1,   // a stint ended; count = units gathered, cause = done|demand_met|danger|timeout|stuck|empty
+    Gather = 1,   // a stint ended; count = units gathered, cause = done|demand_met|danger|timeout|stuck|empty|benched
     Deliver = 2,  // a member mailed squad materials to a house rep (errand sell stop routing)
     Hold = 3,     // zone progression deferred for a member (tier hold)
     Release = 4,  // no workable demand left: the squad quests
@@ -403,7 +404,14 @@ inline void Finish(TeamState& s, Params const& p, std::uint64_t nowMs)
 //       waits for it, no tier hold, no stint target filter (ledger `squad` bench, cause route|deaths);
 //   (3) a member on another map than the anchor gets no stint target filter;
 //   (4) a member within the leash of the anchor with DeathCluster recent deaths ends the stint (cause danger) and
-//       the anchor zone rests DangerZoneMs.
+//       the anchor zone rests DangerZoneMs;
+//   (5) soak-s64-full-r1 (1.9 h, 128 squad deaths): benches cleared at every stint end and the benched Horde
+//       leader re-anchored the next stint beside itself, so two members were re-benched every ~30 s (95 bench
+//       rows) and kept dying where they stood (Hillsbrad bears). Now: a bench lasts BenchMs (not re-evaluated,
+//       outlives stints); a newly benched member takes one death-loop escape trip to a level-fitting hub
+//       (ZoneProgression, needs AutoWow.DeathLoop.EscapeViaZoneProgression); the leader is the lowest
+//       unbenched member; more than half the online members benched ends the stint and holds the search
+//       (gather / release cause benched).
 [[nodiscard]] inline bool LevelWindowOn(Params const& p) { return p.levelWindow != 0; }
 
 // Bracket margin of an anchor zone above the squad average level.
@@ -442,6 +450,16 @@ inline void CoolZone(TeamState& s, Params const& p, std::uint32_t zone, std::uin
 [[nodiscard]] inline bool ZoneCooling(TeamState const& s, std::uint32_t zone, std::uint64_t nowMs)
 {
     return zone && zone == s.cooldownZone && nowMs < s.zoneCooldownUntilMs;
+}
+
+// (5): a bench started at nowMs holds until the returned time.
+[[nodiscard]] inline std::uint64_t BenchUntil(Params const& p, std::uint64_t nowMs) { return nowMs + p.benchMs; }
+[[nodiscard]] inline bool BenchActive(std::uint64_t untilMs, std::uint64_t nowMs) { return nowMs < untilMs; }
+
+// (5): more than half of the online members benched: no stint.
+[[nodiscard]] inline bool TooManyBenched(Params const& p, std::size_t benched, std::size_t members)
+{
+    return LevelWindowOn(p) && benched * 2 > members;
 }
 
 // (2) + (3): the stint as the member's target filter sees it (phase None = no filter). Window off: s unchanged.
