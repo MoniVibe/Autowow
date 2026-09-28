@@ -85,6 +85,10 @@ struct Params
                                               // this often on its own
     std::uint32_t outfitMaxCopper = 500;      // AutoWow.Supply.OutfitMaxCopper: grants per bot per level
     std::uint32_t outfitBudgetPerHour = 5000;  // AutoWow.Supply.OutfitBudgetPerHour: grants per team per game hour
+    // Weapon / food floors (lane AN; off by default; GearUpgradePolicy.h FloorWeapons, ErrandsPolicy.h FloorKinds):
+    bool outfitGear = false;                        // AutoWow.Supply.OutfitGear
+    std::uint32_t outfitGearCopper = 25;            // AutoWow.Supply.OutfitGearCopper: + this x level^2 per bot per level
+    std::uint32_t outfitGearBudgetPerHour = 50000;  // AutoWow.Supply.OutfitGearBudgetPerHour: + this per team per hour
     // Artisan upkeep (lane F):
     std::uint32_t artisanFreeSlots = 4;  // AutoWow.Supply.ArtisanFreeSlots: the artisan makes room below this many
                                          // free bag slots (0 = off; a blocked craft still makes one)
@@ -1338,6 +1342,15 @@ struct GrantDecision
     return d;
 }
 
+// AutoWow.Supply.OutfitGear: a bot's grant cap per level grows by gearCopper x level^2 (vendor weapons, world DB
+// 2026-09-28, cheapest by RequiredLevel: L20 58s, L30 1g57s, L40 3g57s; 25 x level^2 = L20 1g, L30 2g25s, L40 4g)
+// so a floor weapon plus a stack of food and drink fits one level's grants. Off: maxCopper.
+[[nodiscard]] inline std::uint64_t GrantCapCopper(std::uint64_t maxCopper, bool gear, std::uint32_t gearCopper,
+                                                  std::uint32_t level)
+{
+    return maxCopper + (gear ? std::uint64_t(gearCopper) * level * level : 0);
+}
+
 // Books a paid grant into the bot's level window and the team's hour.
 inline void NoteGrant(GrantWindow& w, GrantBudget& b, std::uint32_t level, std::uint64_t hour, std::uint64_t copper)
 {
@@ -1407,7 +1420,10 @@ enum class Reason : std::uint8_t
     Outfit = 13,  // Outfit: a member bought a gathering tool at a vendor with its own gold (copper = price)
     Junk = 14,    // artisan make-room: op vendor (count = stacks sold, copper = proceeds) | destroy (item, count)
     Cancel = 15,  // Market: rep took back its own listing of a wanted item (copper = its buyout; item by mail)
-    Waste = 16    // DemandOnly: a surplus sale (house output nobody wanted), in place of `surplus`
+    Waste = 16,   // DemandOnly: a surplus sale (house output nobody wanted), in place of `surplus`
+    WeaponFloor = 17,  // OutfitGear: a member bought its floor weapon at a vendor (copper = price; line outfit)
+    FoodFloor = 18,    // OutfitGear: a member bought food / drink at an errand vendor (copper = price; line outfit)
+    Grant = 19         // OutfitGear: the treasury paid a member's outfit grant (item 0, from 0, copper; line outfit)
 };
 
 inline constexpr char const* ReasonName(Reason r)
@@ -1431,6 +1447,9 @@ inline constexpr char const* ReasonName(Reason r)
         case Reason::Junk: return "junk";
         case Reason::Cancel: return "cancel";
         case Reason::Waste: return "waste";
+        case Reason::WeaponFloor: return "weapon_floor";
+        case Reason::FoodFloor: return "food_floor";
+        case Reason::Grant: return "grant";
     }
     return "refused";
 }
@@ -2044,6 +2063,8 @@ std::vector<MaterialNeed> MaterialDemand(bool alliance);
 
 // ---- outfitting (AutoWow.Supply.Outfit) ----
 inline bool Outfit() { return detail::gEnabled && detail::gParams.outfit; }
+// AutoWow.Supply.OutfitGear (needs Outfit; the weapon floor also AutoWow.Gear.Upgrades for the vendor catalog).
+inline bool OutfitGear() { return Outfit() && detail::gParams.outfitGear; }
 // Map thread (errand arrival): the bot wants `need` copper in hand for its tools / planned trainer ranks. Every
 // TickMs the world thread ranks the pending requests (RankGrants) and pays each shortfall from the bot's house
 // bank (AutoWowGuilds::Pay, reason grant; a short bank levies or refuses) within OutfitMaxCopper per bot per level

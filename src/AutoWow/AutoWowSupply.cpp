@@ -2317,8 +2317,12 @@ void OutfitTick()
             continue;  // logged out / not in a house: nothing to pay into
         GrantBudget& budget = gGrantBudgets[T(bot->GetTeamId() == TEAM_ALLIANCE)];
         GrantWindow& window = gGrantWindows[r.guid];
+        // AutoWow.Supply.OutfitGear: the floors' room on top of both caps (off: the Outfit caps as they were).
+        bool const gear = OutfitGear();
         GrantDecision const d =
-            DecideGrant(r, bot->GetMoney(), window, budget, hour, p.outfitMaxCopper, p.outfitBudgetPerHour);
+            DecideGrant(r, bot->GetMoney(), window, budget, hour,
+                        GrantCapCopper(p.outfitMaxCopper, gear, p.outfitGearCopper, r.level),
+                        p.outfitBudgetPerHour + (gear ? std::uint64_t(p.outfitGearBudgetPerHour) : 0));
         if (d.verdict == GrantVerdict::Covered)
             continue;
         if (d.verdict != GrantVerdict::Pay)
@@ -2327,7 +2331,11 @@ void OutfitTick()
             continue;
         }
         if (AutoWowGuilds::Pay(gid, bot, d.copper, AutoWowGuilds::Reason::Grant))
+        {
             NoteGrant(window, budget, r.level, hour, d.copper);
+            if (gear)
+                EmitOutfit(bot, Reason::Grant, 0, d.copper);
+        }
     }
 }
 
@@ -2384,6 +2392,9 @@ void LoadConfig()
     p.outfitCheckMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitCheckMs", 600000);
     p.outfitMaxCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitMaxCopper", 500);
     p.outfitBudgetPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitBudgetPerHour", 5000);
+    p.outfitGear = sConfigMgr->GetOption<bool>("AutoWow.Supply.OutfitGear", false);
+    p.outfitGearCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitGearCopper", 25);
+    p.outfitGearBudgetPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitGearBudgetPerHour", 50000);
     p.artisanFreeSlots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanFreeSlots", 4);
     p.artisanMinLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanMinLevel", 10);
     p.repStore = sConfigMgr->GetOption<bool>("AutoWow.Supply.RepStore", true);

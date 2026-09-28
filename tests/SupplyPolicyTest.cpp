@@ -1515,4 +1515,33 @@ TEST(SupplyEngGuns, SkillBridge)
         EXPECT_GE(PickSkillup(skill, at, false), 0) << skill;
     }
 }
+TEST(SupplyOutfitGear, GrantCapGrowsWithLevelSquaredOnlyWithTheFlag)
+{
+    EXPECT_EQ(GrantCapCopper(2000, false, 25, 36), 2000u);          // off: OutfitMaxCopper as it was
+    EXPECT_EQ(GrantCapCopper(2000, true, 25, 36), 2000u + 32400u);  // L36: + 3g24s
+    EXPECT_EQ(GrantCapCopper(500, true, 25, 20), 500u + 10000u);
+    // L36 rogue with 2000 copper: a 5800 sword + 16000 of bread = 21800 need, 19800 short.
+    GrantWindow const w;
+    GrantBudget const b;
+    GrantRequest const r{70580, 36, 21800};
+    EXPECT_EQ(DecideGrant(r, 2000, w, b, 3, 2000, 5000).verdict, GrantVerdict::BotCap);  // Outfit caps alone
+    GrantDecision const d = DecideGrant(r, 2000, w, b, 3, GrantCapCopper(2000, true, 25, 36), 5000u + 50000u);
+    EXPECT_EQ(d.verdict, GrantVerdict::Pay);
+    EXPECT_EQ(d.copper, 19800u);
+    Params const p;
+    EXPECT_FALSE(p.outfitGear);
+    EXPECT_EQ(p.outfitGearCopper, 25u);
+    EXPECT_EQ(p.outfitGearBudgetPerHour, 50000u);
+}
+
+TEST(SupplyOutfitGear, FloorReasonsWire)
+{
+    EXPECT_STREQ(ReasonName(Reason::WeaponFloor), "weapon_floor");
+    EXPECT_STREQ(ReasonName(Reason::FoodFloor), "food_floor");
+    EXPECT_STREQ(ReasonName(Reason::Grant), "grant");
+    EXPECT_EQ(static_cast<int>(Reason::WeaponFloor), 17);
+    EXPECT_EQ(static_cast<int>(Reason::FoodFloor), 18);
+    EXPECT_EQ(static_cast<int>(Reason::Grant), 19);
+}
+
 }  // namespace

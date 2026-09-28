@@ -7,6 +7,7 @@
 #ifndef AUTOWOW_GEAR_UPGRADE_POLICY_H
 #define AUTOWOW_GEAR_UPGRADE_POLICY_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -188,6 +189,70 @@ inline constexpr std::size_t kMaxPicks = 6;  // main hand, off hand, up to four 
             ++armorBuys;
         }
     }
+    return out;
+}
+
+// ---- AutoWow.Supply.OutfitGear weapon floor (default 0; needs Gear.Upgrades + Supply.Outfit) ---------------
+// S62-S65 (1190 cohort deaths, 3.55 / bot-h): rogues 9.5 / bot-h, 4 of 7 on starter weapons (0.9-2.1 DPS) at
+// L27-43 with 0.4 g; 48 errands had gear due, 2 bought (the reserve left no budget). A main hand (a hunter's
+// ranged too) under FarBelowPct of ExpectedDpsMilli (the world DB vendor-weapon curve) is an urgent gear need once
+// per level whatever the purse; its buy skips the trainer / food reserve, and the house treasury grants the part
+// the bot's own gold cannot pay (up to the grant room). Offers are the stock "item upgrade" scorer's (GearOffers).
+inline constexpr std::uint8_t kSlotRanged = 17;  // EQUIPMENT_SLOT_RANGED
+
+[[nodiscard]] inline bool FloorDue(Params const& p, std::uint32_t level, std::uint32_t lastGearLevel,
+                                   std::uint32_t mainHandMilli, bool hunter, std::uint32_t rangedMilli)
+{
+    return level > lastGearLevel &&
+           (FarBelow(p, mainHandMilli, level) || (hunter && FarBelow(p, rangedMilli, level)));
+}
+
+// Floor weapon for `slot`: the best upgrade the bot's own gold buys when it clears the floor; else the cheapest
+// upgrade clearing it within money + grantRoom (the treasury pays the rest); else the best upgrade within
+// money + grantRoom (all below the floor: still the most DPS for the gold).
+[[nodiscard]] inline std::size_t PickFloorWeapon(Params const& p, std::vector<Offer> const& offers, std::uint8_t slot,
+                                                 std::uint32_t curMilli, std::uint32_t level, std::uint64_t money,
+                                                 std::uint64_t grantRoom)
+{
+    std::size_t const own = PickWeapon(p, offers, slot, curMilli, money);
+    if (own != kNone && !FarBelow(p, offers[own].dpsMilli, level))
+        return own;
+    std::size_t best = kNone;
+    for (std::size_t i = 0; i < offers.size(); ++i)
+    {
+        Offer const& o = offers[i];
+        if (!o.weapon || o.slot != slot || o.price > money + grantRoom || !Beats(p, o.dpsMilli, curMilli) ||
+            FarBelow(p, o.dpsMilli, level))
+            continue;
+        if (best == kNone || Cheaper(o, offers[best]))
+            best = i;
+    }
+    return best != kNone ? best : PickWeapon(p, offers, slot, curMilli, money + grantRoom);
+}
+
+// The run's floor weapons in buy order (main hand, then a hunter's ranged), each only for a slot under the floor;
+// money then grantRoom are drawn down in turn.
+[[nodiscard]] inline std::vector<Offer> FloorWeapons(Params const& p, std::vector<Offer> const& offers,
+                                                     std::uint32_t level, std::uint32_t mainHandMilli, bool hunter,
+                                                     std::uint32_t rangedMilli, std::uint64_t money,
+                                                     std::uint64_t grantRoom)
+{
+    std::vector<Offer> out;
+    auto pick = [&](std::uint8_t slot, std::uint32_t cur)
+    {
+        if (!FarBelow(p, cur, level))
+            return;
+        std::size_t const i = PickFloorWeapon(p, offers, slot, cur, level, money, grantRoom);
+        if (i == kNone)
+            return;
+        out.push_back(offers[i]);
+        std::uint64_t const own = std::min(money, offers[i].price);
+        money -= own;
+        grantRoom -= offers[i].price - own;
+    };
+    pick(kSlotMainHand, mainHandMilli);
+    if (hunter)
+        pick(kSlotRanged, rangedMilli);
     return out;
 }
 
