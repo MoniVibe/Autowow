@@ -2270,6 +2270,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
     {
         gateRuntime.clear();
         gateLogLast.clear();
+        gateUnavailableLogged.clear();
         gateMapId = map->GetId();
         gateInstanceId = map->GetInstanceId();
     }
@@ -2329,6 +2330,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 Creature* creature = GateCreature(map, step.spawnGuid);
                 return creature && creature->AI() && creature->AI()->IsEscorted();
             }
+            case DungeonGate::DoneWhen::Hostile:
+            {
+                Creature* creature = GateCreature(map, step.spawnGuid);
+                return creature && creature->IsAlive() && creature->IsHostileTo(bot);
+            }
             case DungeonGate::DoneWhen::Unlocked:
             {
                 if (step.doneValue && gateItemHolder(step.doneValue))
@@ -2361,6 +2367,45 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 return true;
             });
         return selected == DungeonGate::NoStep ? DungeonGate::NoStep : rowIndices[selected];
+    };
+
+    // Gates: an encounter this party can never start is set aside (prerequisites Blocked) so the navigator goes on
+    // to the next one instead of walking to a boss it cannot fight. Two cases: the first unfinished gate row is
+    // key-gated (DungeonGate::KeyBlocked; S68 Uldaman Ironaya without the Staff of Prehistoria), or, with no gate
+    // rows, every kill-credit creature is friendly to the party by faction template (S68 Uldaman: the Lost Dwarves
+    // are faction 122, Ironforge, friendly to the Alliance probe, which logged activation_blocked=not_hostile).
+    auto gateUnavailable = [&](uint32 encounterIndex, std::vector<DungeonEncounter const*> const& records)
+        -> char const*
+    {
+        std::vector<std::size_t> const rowIndices = DungeonGate::StepsFor(map->GetId(), encounterIndex);
+        if (!rowIndices.empty())
+        {
+            std::vector<DungeonGate::Step> rows;
+            std::vector<DungeonGate::StepRuntime> runtime;
+            for (std::size_t row : rowIndices)
+            {
+                rows.push_back(DungeonGate::Steps[row]);
+                runtime.push_back(gateRuntime[row]);
+            }
+            bool const blocked = DungeonGate::KeyBlocked(rows, runtime, GateBypassKeys(),
+                [&](uint32 itemId) { return gateItemHolder(itemId) != nullptr; },
+                [&](std::size_t index) { return gateStepDone(rows[index]); });
+            return blocked ? "key_blocked" : nullptr;
+        }
+        FactionTemplateEntry const* botFaction = bot->GetFactionTemplateEntry();
+        bool anyCredit = false;
+        for (DungeonEncounter const* record : records)
+        {
+            if (record->creditType != ENCOUNTER_CREDIT_KILL_CREATURE)
+                return nullptr;
+            CreatureTemplate const* creditTemplate = sObjectMgr->GetCreatureTemplate(record->creditEntry);
+            FactionTemplateEntry const* creditFaction = creditTemplate ?
+                sFactionTemplateStore.LookupEntry(creditTemplate->faction) : nullptr;
+            if (!botFaction || !creditFaction || !creditFaction->IsFriendlyTo(*botFaction))
+                return nullptr;
+            anyCredit = true;
+        }
+        return anyCredit ? "friendly_credit" : nullptr;
     };
 
     std::vector<DungeonEncounterSelection::CandidateFacts> candidates;
@@ -2495,6 +2540,16 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         facts.completion = complete ? DungeonEncounterSelection::Completion::Complete :
             DungeonEncounterSelection::Completion::Incomplete;
         facts.prerequisites = DungeonEncounterSelection::GateState::Satisfied;
+        if (!complete && GatesEnabled())
+        {
+            if (char const* reason = gateUnavailable(encounterIndex, records))
+            {
+                facts.prerequisites = DungeonEncounterSelection::GateState::Blocked;
+                if (gateUnavailableLogged.insert(encounterIndex).second)
+                    LOG_INFO("playerbots", "[DungeonNavigator] bot={} map={} encounter={} gate_unavailable={}",
+                        bot->GetName(), map->GetId(), encounterIndex, reason);
+            }
+        }
         facts.reachability = bestGoal.spawnId ? DungeonEncounterSelection::Reachability::Reachable :
             DungeonEncounterSelection::Reachability::Unreachable;
         candidates.push_back(facts);
@@ -2743,6 +2798,16 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 case DungeonGate::Kind::EnterArea:
                     logGate(row, "wait", false);
                     return false;
+                case DungeonGate::Kind::AreaTrigger:
+                {
+                    // Same packet the dungeon transition sends for instance portals (DungeonTransition.cpp).
+                    WorldPacket trigger(CMSG_AREATRIGGER, 4);
+                    trigger << uint32(step.entry);
+                    bot->GetSession()->HandleAreaTriggerOpcode(trigger);
+                    ++runtime.acts;
+                    logGate(row, "trigger", true);
+                    return true;
+                }
                 case DungeonGate::Kind::LootGo:
                 {
                     GameObject* chest = GateObject(map, step.spawnGuid);

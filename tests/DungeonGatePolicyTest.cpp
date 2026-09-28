@@ -220,6 +220,50 @@ TEST(DungeonGatePolicy, EscortDefendsBeforeWaitingOrFollowing)
     EXPECT_EQ(SelectEscortAct(false, false), EscortAct::Follow);
 }
 
+TEST(DungeonGatePolicy, KeyBlockedLooksAtTheFirstUnfinishedRow)
+{
+    auto held = [](std::uint32_t) { return true; };
+    auto notDone = [](std::size_t) { return false; };
+    Step keyed = Row(0);
+    keyed.keyItem = 7733;
+    Step open = Row(1);
+    // Uldaman Ironaya: the Keystone row alone, staff not held.
+    EXPECT_TRUE(KeyBlocked(std::vector<Step>{keyed}, {}, false, noKey, notDone));
+    EXPECT_FALSE(KeyBlocked(std::vector<Step>{keyed}, {}, true, noKey, notDone));  // BypassKeys
+    EXPECT_FALSE(KeyBlocked(std::vector<Step>{keyed}, {}, false, held, notDone));
+    EXPECT_FALSE(KeyBlocked(std::vector<Step>{keyed}, {}, false, noKey, [](std::size_t) { return true; }));
+    // Deadmines: an unkeyed loot row first is never blocked; once it is done the keyed cannon row decides.
+    EXPECT_FALSE(KeyBlocked(std::vector<Step>{open, keyed}, {}, false, noKey, notDone));
+    std::vector<StepRuntime> runtime(2);
+    runtime[0].done = true;
+    EXPECT_TRUE(KeyBlocked(std::vector<Step>{open, keyed}, runtime, false, noKey, notDone));
+    EXPECT_FALSE(KeyBlocked(std::vector<Step>{}, {}, false, noKey, notDone));
+}
+
+TEST(DungeonGatePolicy, UldamanIronayaNeedsTheStaffAndZumrahTheTrigger)
+{
+    std::vector<std::size_t> const ironaya = StepsFor(70, 2);
+    ASSERT_EQ(ironaya.size(), 1u);
+    Step const& keystone = Steps[ironaya.front()];
+    EXPECT_EQ(keystone.entry, 124371u);
+    EXPECT_EQ(keystone.spawnGuid, 14393u);
+    EXPECT_EQ(keystone.keyItem, 7733u);  // Staff of Prehistoria, lock 359
+    EXPECT_EQ(keystone.doneWhen, DoneWhen::InstanceData);
+    EXPECT_EQ(keystone.doneData, 0u);   // DATA_IRONAYA_DOORS
+    EXPECT_EQ(keystone.doneValue, 3u);  // DONE
+
+    std::vector<std::size_t> const zumrah = StepsFor(209, 4);
+    ASSERT_EQ(zumrah.size(), 1u);
+    Step const& trigger = Steps[zumrah.front()];
+    EXPECT_EQ(trigger.kind, Kind::AreaTrigger);
+    EXPECT_EQ(trigger.entry, 962u);
+    EXPECT_EQ(trigger.spawnGuid, 81524u);
+    EXPECT_EQ(trigger.doneWhen, DoneWhen::Hostile);
+    EXPECT_LE(trigger.radius, 10.0f);  // stand inside the 10 yd trigger
+    EXPECT_TRUE(CountsUses(Kind::AreaTrigger));
+    EXPECT_STREQ(KindName(Kind::AreaTrigger), "area_trigger");
+}
+
 TEST(DungeonGatePolicy, PerScanGateLogsAreRateLimited)
 {
     EXPECT_TRUE(ShouldLog(false, 0));

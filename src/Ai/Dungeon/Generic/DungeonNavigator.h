@@ -101,6 +101,8 @@ private:
     uint32 gateInstanceId = 0;
     // Instance of the last selection when it was a gate row, else 0: the party-cohesion straggler walk.
     uint32 gateGoalInstanceId = 0;
+    // Encounters already logged as set aside (gate_unavailable) in gateMapId/gateInstanceId.
+    std::set<uint32> gateUnavailableLogged;
 };
 
 #endif

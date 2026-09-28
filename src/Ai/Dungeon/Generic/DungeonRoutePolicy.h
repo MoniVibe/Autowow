@@ -189,6 +189,33 @@ inline constexpr Point Points[] = {
     {48, 1, 12, -317.5f, 401.6f, -54.21f},
     {48, 1, 13, -307.6f, 408.5f, -55.82f},
     {48, 1, 14, -299.917f, 413.755f, -57.123f},
+    // Razorfen Downs, Amnennar the Coldbringer (idx3, spawn 87209): from Glutton's spawn (8567) south, up onto
+    // the bramble spiral and round it to Amnennar's top (z 55). S68: both probe parties stalled at the travel-node
+    // end below it (2364,904, z 29) with blocked=unsupported_transition; the full path is a 95-poly corridor whose
+    // smoothed point path runs past PathGenerator's 74-point limit. Corners of the Detour ground corridor.
+    {129, 3, 0, 2468.7f, 1006.8f, 23.8f},
+    {129, 3, 1, 2468.9f, 981.4f, 24.85f},
+    {129, 3, 2, 2469.1f, 956.0f, 25.58f},
+    {129, 3, 3, 2463.2f, 937.6f, 25.84f},
+    {129, 3, 4, 2457.6f, 929.9f, 30.64f},
+    {129, 3, 5, 2452.5f, 933.3f, 35.18f},
+    {129, 3, 6, 2447.5f, 950.7f, 35.98f},
+    {129, 3, 7, 2446.9f, 991.5f, 37.84f},
+    {129, 3, 8, 2436.5f, 1007.7f, 37.84f},
+    {129, 3, 9, 2427.5f, 1012.5f, 37.31f},
+    {129, 3, 10, 2377.9f, 1008.0f, 39.98f},
+    {129, 3, 11, 2364.0f, 996.0f, 39.71f},
+    {129, 3, 12, 2353.3f, 974.1f, 39.98f},
+    {129, 3, 13, 2346.7f, 960.0f, 43.44f},
+    {129, 3, 14, 2370.9f, 941.3f, 42.38f},
+    {129, 3, 15, 2389.3f, 938.7f, 43.71f},
+    {129, 3, 16, 2412.0f, 934.7f, 44.78f},
+    {129, 3, 17, 2421.9f, 950.7f, 46.11f},
+    {129, 3, 18, 2423.7f, 971.7f, 48.78f},
+    {129, 3, 19, 2422.1f, 989.9f, 50.38f},
+    {129, 3, 20, 2396.5f, 989.6f, 53.31f},
+    {129, 3, 21, 2392.8f, 988.0f, 54.64f},
+    {129, 3, 22, 2403.37f, 960.93f, 55.1437f},
 };
 
 constexpr std::size_t NoPoint = std::numeric_limits<std::size_t>::max();
