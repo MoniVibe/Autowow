@@ -89,6 +89,12 @@ std::string ValidateGroundLine(GroundLineFacts const& facts)
     return {};
 }
 
+bool SwimSampleGrounded(bool allowSwim, bool waterOrOcean, float liquidLevel, float pointZ)
+{
+    return allowSwim && waterOrOcean && std::isfinite(liquidLevel) && liquidLevel > INVALID_HEIGHT &&
+        std::isfinite(pointZ) && std::fabs(pointZ - liquidLevel) <= MaxGroundDelta;
+}
+
 std::string Validate(ValidationFacts const& facts)
 {
     if (!facts.calculated)
@@ -129,7 +135,8 @@ std::string Validate(ValidationFacts const& facts)
 namespace
 {
 ProbeResult ProbeNavmeshFrom(Player const* player, float sourceX, float sourceY, float sourceZ,
-                             float destinationX, float destinationY, float destinationZ, bool slopeCheck)
+                             float destinationX, float destinationY, float destinationZ, bool slopeCheck,
+                             bool allowSwim)
 {
     ProbeResult result;
     result.sourceX = sourceX;
@@ -188,7 +195,16 @@ ProbeResult ProbeNavmeshFrom(Player const* player, float sourceX, float sourceY,
 
         float const ground = player->GetMap()->GetHeight(
             player->GetPhaseMask(), point.x, point.y, point.z + 2.0f, true, 10.0f);
-        if (ground <= INVALID_HEIGHT || !std::isfinite(ground))
+        bool const groundFound = ground > INVALID_HEIGHT && std::isfinite(ground);
+        if (allowSwim && (!groundFound || std::fabs(point.z - ground) > MaxGroundDelta))
+        {
+            LiquidData const liquid = player->GetMap()->GetLiquidData(player->GetPhaseMask(), point.x,
+                point.y, point.z, player->GetCollisionHeight(), {});
+            if (liquid.Status != LIQUID_MAP_NO_WATER && SwimSampleGrounded(true,
+                    (liquid.Flags & (MAP_LIQUID_TYPE_WATER | MAP_LIQUID_TYPE_OCEAN)) != 0, liquid.Level, point.z))
+                continue;
+        }
+        if (!groundFound)
         {
             result.allGroundSamplesValid = false;
             continue;
@@ -301,10 +317,11 @@ ProbeResult ProbeGroundLineFrom(Player const* player, float sourceX, float sourc
 }
 
 ProbeResult ProbeFrom(Player const* player, float sourceX, float sourceY, float sourceZ,
-                      float destinationX, float destinationY, float destinationZ, bool slopeCheck)
+                      float destinationX, float destinationY, float destinationZ, bool slopeCheck,
+                      bool allowSwim)
 {
     ProbeResult navmesh = ProbeNavmeshFrom(
-        player, sourceX, sourceY, sourceZ, destinationX, destinationY, destinationZ, slopeCheck);
+        player, sourceX, sourceY, sourceZ, destinationX, destinationY, destinationZ, slopeCheck, allowSwim);
     if (navmesh.safe)
         return navmesh;
 
@@ -322,12 +339,13 @@ ProbeResult ProbeFrom(Player const* player, float sourceX, float sourceY, float 
 }
 
 ProbeResult Probe(Player const* player, float destinationX, float destinationY, float destinationZ,
-                  bool slopeCheck)
+                  bool slopeCheck, bool allowSwim)
 {
     if (!player)
-        return ProbeFrom(nullptr, 0.0f, 0.0f, 0.0f, destinationX, destinationY, destinationZ, slopeCheck);
+        return ProbeFrom(nullptr, 0.0f, 0.0f, 0.0f, destinationX, destinationY, destinationZ, slopeCheck,
+                         allowSwim);
     return ProbeFrom(player, player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(),
-                     destinationX, destinationY, destinationZ, slopeCheck);
+                     destinationX, destinationY, destinationZ, slopeCheck, allowSwim);
 }
 
 std::string Json(ProbeResult const& result, bool includePoints)

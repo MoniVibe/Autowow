@@ -565,7 +565,7 @@ TEST(DungeonNavigatorConvoySourceContract, RouteLegsFallBackSlopeFreeAndSkipClif
     std::size_t const helper = source.find("AutoWowDungeonPath::ProbeResult ProbeLeg(");
     ASSERT_NE(helper, std::string::npos);
     std::size_t const offGate = source.find("if (!ConvoyV2Enabled())\n        return checked;", helper);
-    std::size_t const slopeFree = source.find("AutoWowDungeonPath::Probe(player, x, y, z, false)", helper);
+    std::size_t const slopeFree = source.find("AutoWowDungeonPath::Probe(player, x, y, z, false, true)", helper);
     ASSERT_NE(offGate, std::string::npos);
     ASSERT_NE(slopeFree, std::string::npos);
     EXPECT_LT(offGate, slopeFree);
@@ -718,4 +718,20 @@ TEST(DungeonNavigatorAmbientSourceContract, GatesOnlyAmbientMovementAndLegacyGri
     {
         EXPECT_EQ(guardedScope.find(forbidden), std::string::npos) << forbidden;
     }
+}
+
+// S58 Deadmines: the transition fallback logs both goal probes; only ConvoyV2 route legs may swim.
+TEST(DungeonNavigatorConvoySourceContract, TransitionFallbackLogsGoalProbesAndOnlyRouteLegsSwim)
+{
+    std::string const source = ReadSource(
+        ModuleRoot() / "src/Ai/Dungeon/Generic/DungeonNavigator.cpp");
+    ASSERT_FALSE(source.empty());
+    EXPECT_NE(source.find("walking_suffix={} probe={} slope_free_probe={}"), std::string::npos);
+    std::size_t first = source.find(", false, true)");
+    ASSERT_NE(first, std::string::npos);
+    first = source.find(", false, true)", first + 1);
+    ASSERT_NE(first, std::string::npos);
+    EXPECT_EQ(source.find(", false, true)", first + 1), std::string::npos);
+    EXPECT_NE(source.find("probe = AutoWowDungeonPath::Probe(bot, step.x, step.y, step.z, false);"),
+        std::string::npos);
 }

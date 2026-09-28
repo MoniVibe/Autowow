@@ -33,6 +33,13 @@ struct TargetFacts
     bool lineOfSight = false;
 };
 
+// attackNeutral (AutoWow.DungeonNav.Gates): a neutral boss (neither hostile nor friendly, S58 Wailing
+// Caverns Kresh, faction 7) is attacked like a hostile one; a friendly one never is.
+inline bool CountsAsHostile(bool hostile, bool friendly, bool attackNeutral)
+{
+    return hostile || (attackNeutral && !friendly);
+}
+
 inline Decision Evaluate(TargetFacts const& facts)
 {
     if (!facts.arrived)

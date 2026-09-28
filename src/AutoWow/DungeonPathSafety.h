@@ -66,17 +66,22 @@ struct ProbeResult
 std::string Validate(ValidationFacts const& facts);
 std::string ValidateGroundLine(GroundLineFacts const& facts);
 
+// allowSwim: a path point with no floor within reach (or floor too far below) still counts as grounded
+// when it lies in water/ocean (not magma/slime) within the ground tolerance of the liquid surface.
+bool SwimSampleGrounded(bool allowSwim, bool waterOrOcean, float liquidLevel, float pointZ);
+
 // Navmesh/vmap probe. It prepares only the required terrain collision cache and never changes
 // player position, object data, or MotionMaster state. slopeCheck = false computes the Detour path
 // without PathGenerator's per-step slope check (NavmeshSnap.h: it fails navmesh-walkable humps); every
-// other validation still applies.
+// other validation still applies. allowSwim: see SwimSampleGrounded (default off, unchanged).
 ProbeResult Probe(Player const* player, float destinationX, float destinationY, float destinationZ,
-                  bool slopeCheck = true);
+                  bool slopeCheck = true, bool allowSwim = false);
 
 // Same read-only probe with an explicit virtual source. The player supplies map, phase, and
 // movement capabilities only; its live position and MotionMaster remain untouched.
 ProbeResult ProbeFrom(Player const* player, float sourceX, float sourceY, float sourceZ,
-                      float destinationX, float destinationY, float destinationZ, bool slopeCheck = true);
+                      float destinationX, float destinationY, float destinationZ, bool slopeCheck = true,
+                      bool allowSwim = false);
 
 std::string Json(ProbeResult const& result, bool includePoints = true);
 }
