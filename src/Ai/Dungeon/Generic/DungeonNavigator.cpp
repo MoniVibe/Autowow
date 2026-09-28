@@ -523,6 +523,22 @@ bool IsWalkPoint(PathNodeType type)
 
 bool ProbeReachedStoredDestination(AutoWowDungeonPath::ProbeResult const& probe);
 
+// Walks an idle, out-of-combat party member to the navigator: slope-checked path, else the slope-free one (like
+// the navigator's own gate approach). False when the member is busy or no walk started.
+bool WalkStragglerToNavigator(Player* bot, Player* member)
+{
+    PlayerbotAI* memberAI = member->isMoving() || member->IsInCombat() ? nullptr :
+        PlayerbotsMgr::instance().GetPlayerbotAI(member);
+    if (!memberAI)
+        return false;
+    AutoWowDungeonPath::ProbeResult probe = AutoWowDungeonPath::Probe(member,
+        bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+    if (!probe.safe || !ProbeReachedStoredDestination(probe))
+        probe = AutoWowDungeonPath::Probe(member, bot->GetPositionX(), bot->GetPositionY(),
+            bot->GetPositionZ(), false);
+    return AutoWowDungeonWalkAction(memberAI).WalkPrepared(probe);
+}
+
 // Stored-walk cliff step (DungeonNavigatorConvoy::IsStoredWalkCliff) = DungeonPathSafety MaxSegmentVerticalDelta.
 constexpr float StoredWalkCliffStep = 5.5f;
 
@@ -2082,6 +2098,19 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         else if (leaderDistance > PartyCohesionRadius)
         {
             nextScanTime = now + PartyCohesionBackoffMs;
+            // Gates: a gate row's direct approach has no convoy route and moves the navigator only. Soak S62
+            // Razorfen Kraul: the leader's direct walk to the Ward Keeper row outran the party, which stood idle
+            // 52-57 yd back (complete slope-checked paths to the leader, offline replay) while this branch logged
+            // blocked=party_cohesion for ten minutes. Walk the idle straggler to the navigator, as the gate row does
+            // once arrived.
+            if (GatesEnabled() && gateGoalInstanceId && gateGoalInstanceId == map->GetInstanceId() &&
+                WalkStragglerToNavigator(bot, member))
+            {
+                LOG_INFO("playerbots",
+                    "[DungeonNavigator] bot={} map={} recovery=gate_party_walk member={} distance={}",
+                    bot->GetName(), map->GetId(), member->GetName(), leaderDistance);
+                return false;
+            }
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} blocked=party_cohesion member={} distance={} combat={} teleporting={}",
                 bot->GetName(), map->GetId(), member->GetName(), leaderDistance,
@@ -2483,6 +2512,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
     }
 
     auto const gateStep = gateSteps.find(selection.selected.encounterId);
+    gateGoalInstanceId = gateStep != gateSteps.end() ? map->GetInstanceId() : 0;
     if (gateStep != gateSteps.end())
     {
         std::size_t const row = gateStep->second;
@@ -2532,16 +2562,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     if (bot->GetExactDist(member) <= DungeonPullReadiness::DefaultSupportRadius)
                         continue;
                     waiting = true;
-                    PlayerbotAI* memberAI = member->isMoving() || member->IsInCombat() ? nullptr :
-                        PlayerbotsMgr::instance().GetPlayerbotAI(member);
-                    if (!memberAI)
-                        continue;
-                    AutoWowDungeonPath::ProbeResult probe = AutoWowDungeonPath::Probe(member,
-                        bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
-                    if (!probe.safe || !ProbeReachedStoredDestination(probe))
-                        probe = AutoWowDungeonPath::Probe(member, bot->GetPositionX(), bot->GetPositionY(),
-                            bot->GetPositionZ(), false);
-                    if (AutoWowDungeonWalkAction(memberAI).WalkPrepared(probe))
+                    if (WalkStragglerToNavigator(bot, member))
                         walked = true;
                 }
                 if (waiting)
@@ -2616,10 +2637,39 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                         logGate(row, "npc_missing", false);
                         return false;
                     }
-                    if (bot->GetExactDist(escorted) <= GateEscortDistance)
+                    // Nearest live attacker of the escorted creature, ties by guid.
+                    Unit* threat = nullptr;
+                    for (Unit* attacker : escorted->getAttackers())
                     {
-                        logGate(row, "wait", false);
-                        return false;
+                        if (!IsLiveCombatUnit(escorted, attacker))
+                            continue;
+                        float const distance = bot->GetExactDist(attacker);
+                        float const threatDistance = threat ? bot->GetExactDist(threat) : 0.0f;
+                        if (!threat || distance < threatDistance ||
+                            (distance == threatDistance &&
+                                attacker->GetGUID().GetCounter() < threat->GetGUID().GetCounter()))
+                        {
+                            threat = attacker;
+                        }
+                    }
+                    switch (DungeonGate::SelectEscortAct(threat != nullptr,
+                        bot->GetExactDist(escorted) <= GateEscortDistance))
+                    {
+                        case DungeonGate::EscortAct::Defend:
+                        {
+                            if (!bot->IsWithinDistInMap(threat, GateAttackDistance))
+                                return moveNear(threat, GateAttackApproachDistance);
+                            bool const attacked = Attack(threat);
+                            nextScanTime = now + (attacked ? SuccessfulMoveRescanDelayMs() :
+                                BlockedScanBackoffMs);
+                            logGate(row, attacked ? "defend" : "defend_rejected", !attacked);
+                            return attacked;
+                        }
+                        case DungeonGate::EscortAct::Wait:
+                            logGate(row, "wait", false);
+                            return false;
+                        case DungeonGate::EscortAct::Follow:
+                            break;
                     }
                     return moveNear(escorted, GateEscortFollowDistance);
                 }

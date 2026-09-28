@@ -99,6 +99,8 @@ private:
     std::map<std::pair<std::size_t, std::string>, uint32> gateLogLast;
     uint32 gateMapId = 0;
     uint32 gateInstanceId = 0;
+    // Instance of the last selection when it was a gate row, else 0: the party-cohesion straggler walk.
+    uint32 gateGoalInstanceId = 0;
 };
 
 #endif

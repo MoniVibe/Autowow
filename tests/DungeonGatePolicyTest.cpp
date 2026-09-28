@@ -211,6 +211,15 @@ TEST(DungeonGatePolicy, SlopeFreeNavmeshPathWalksDirect)
     EXPECT_EQ(SelectApproach(false, false), Approach::TravelNodes);
 }
 
+TEST(DungeonGatePolicy, EscortDefendsBeforeWaitingOrFollowing)
+{
+    // Soak S62: Emi Shortfuse died to her own summons while the party waited beside her.
+    EXPECT_EQ(SelectEscortAct(true, true), EscortAct::Defend);
+    EXPECT_EQ(SelectEscortAct(true, false), EscortAct::Defend);
+    EXPECT_EQ(SelectEscortAct(false, true), EscortAct::Wait);
+    EXPECT_EQ(SelectEscortAct(false, false), EscortAct::Follow);
+}
+
 TEST(DungeonGatePolicy, PerScanGateLogsAreRateLimited)
 {
     EXPECT_TRUE(ShouldLog(false, 0));

@@ -24,7 +24,8 @@
 // A direct point is an unmeshed step or drop the navmesh does not connect (Wailing Caverns: the Serpentis /
 // Verdan ledge is a 126-poly island). Each mover (leader or follower) reaches it by a straight MoveTo without
 // pathfinding, only from within DirectStartRadius of the previous point and only for a step of at most
-// DirectMaximumHorizontal across, DirectMaximumDrop down and DirectMaximumRise up (DirectStepShape).
+// DirectMaximumHorizontal across, DirectMaximumDrop down and DirectMaximumRise up, or a level crossing (a swim
+// across a water surface the navmesh leaves unlinked) of at most DirectMaximumLevelCrossing (DirectStepShape).
 namespace DungeonRoute
 {
 struct Point
@@ -169,6 +170,25 @@ inline constexpr Point Points[] = {
     {43, 7, 48, -106.7f, 149.3f, -80.49f},
     {43, 7, 49, -128.0f, 128.0f, -78.63f},
     {43, 7, 50, -134.965f, 125.402f, -78.0945f},
+    // Blackfathom Deeps, Lady Sarevess (idx1, spawn 26129): from Ghamoo-ra (spawn 25732) north-east down into
+    // the pool, the 15.8 yd swim across its surface (z -55.96) where the navmesh water polys are unlinked islands
+    // (S62: both probe parties blocked=unsupported_transition after Ghamoo-ra; the main mesh region and
+    // Sarevess's 88-poly region share no link), then up the far shore to Sarevess.
+    {48, 1, 0, -442.424f, 211.822f, -52.637f},
+    {48, 1, 1, -428.0f, 225.7f, -52.57f},
+    {48, 1, 2, -413.6f, 239.6f, -54.13f},
+    {48, 1, 3, -399.2f, 253.4f, -55.38f},
+    {48, 1, 4, -384.8f, 267.3f, -55.46f},
+    {48, 1, 5, -366.9f, 284.5f, -55.96f},
+    {48, 1, 6, -355.5f, 295.5f, -55.96f, true},
+    {48, 1, 7, -351.1f, 323.2f, -54.77f},
+    {48, 1, 8, -347.3f, 346.9f, -52.7f},
+    {48, 1, 9, -344.1f, 366.6f, -53.15f},
+    {48, 1, 10, -341.6f, 382.4f, -53.24f},
+    {48, 1, 11, -330.7f, 392.6f, -53.33f},
+    {48, 1, 12, -317.5f, 401.6f, -54.21f},
+    {48, 1, 13, -307.6f, 408.5f, -55.82f},
+    {48, 1, 14, -299.917f, 413.755f, -57.123f},
 };
 
 constexpr std::size_t NoPoint = std::numeric_limits<std::size_t>::max();
@@ -248,6 +268,8 @@ constexpr float DirectStartRadius = 8.0f;
 constexpr float DirectMaximumHorizontal = 8.0f;
 constexpr float DirectMaximumDrop = 30.0f;
 constexpr float DirectMaximumRise = 6.0f;
+constexpr float DirectMaximumLevelCrossing = 18.0f;
+constexpr float DirectLevelTolerance = 0.5f;
 constexpr float DirectArrivalRadius = 3.0f;
 constexpr std::uint32_t DirectTimeoutMs = 10000;
 
@@ -256,8 +278,12 @@ inline bool DirectStepShape(Point const& from, Point const& to)
     float const dx = to.x - from.x;
     float const dy = to.y - from.y;
     float const dz = to.z - from.z;
-    return from.mapId == to.mapId && std::sqrt(dx * dx + dy * dy) <= DirectMaximumHorizontal &&
-        dz >= -DirectMaximumDrop && dz <= DirectMaximumRise;
+    float const horizontal = std::sqrt(dx * dx + dy * dy);
+    if (from.mapId != to.mapId)
+        return false;
+    if (std::fabs(dz) <= DirectLevelTolerance && horizontal <= DirectMaximumLevelCrossing)
+        return true;
+    return horizontal <= DirectMaximumHorizontal && dz >= -DirectMaximumDrop && dz <= DirectMaximumRise;
 }
 
 // The mover stands within DirectStartRadius of the step's previous point and nearer it than the step
