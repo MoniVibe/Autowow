@@ -241,6 +241,7 @@ struct Buy
     std::uint32_t count = 0;
     std::uint32_t price = 0;
     Want want = Want::None;
+    std::uint32_t gain = 0;  // AutoWow.Gear.AuctionUpgrades: ilvl gain of an ah_gear purchase (0 = not one)
 };
 
 // Copper one visit may spend on purchases: BuyBudgetPct of the money above the reserve.
@@ -389,8 +390,9 @@ inline bool SplitU32(std::string_view s, std::uint32_t* out, std::size_t n)
 
 // Trailing fields of the ledger `trade` line (AutoWowQuestLedger.h documents them). gold = signed
 // copper change of the bot's money; ah = auction id (0 = unknown); kind only on `fee`.
+// gain (ilvl) only on an AutoWow.Gear.AuctionUpgrades buy.
 inline std::string LedgerFields(Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price,
-                                std::int64_t gold, std::uint32_t ah, char const* kind = nullptr)
+                                std::int64_t gold, std::uint32_t ah, char const* kind = nullptr, std::uint32_t gain = 0)
 {
     std::string out = ",\"action\":\"";
     out += ActionName(a);
@@ -403,6 +405,8 @@ inline std::string LedgerFields(Action a, std::uint32_t item, std::uint32_t coun
         out += kind;
         out += "\"";
     }
+    if (gain)
+        out += ",\"gain\":" + std::to_string(gain);
     return out;
 }
 
@@ -437,8 +441,10 @@ bool HasCollectableMailWithRoom(Player* bot);
 // DeleteEmptyMail: the bot has a delivered mail with nothing left to take (EmptyMail); a mailbox visit deletes it.
 bool HasEmptyMail(Player* bot);
 // At the auctioneer (map thread): plan posts and buys (ErrandsPolicy reserve: `reserve` copper kept),
-// queue them for the world thread.
-void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve);
+// queue them for the world thread. AutoWow.Gear.AuctionUpgrades: the gear buys (AutoWowGear::AhPlan) replace the
+// one cheapest upgrade and go first; `ahGear` (optional) receives their item entries.
+void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve,
+                     std::vector<std::uint32_t>* ahGear = nullptr);
 // At the mailbox (map thread): queue the collection for the world thread.
 void VisitMailbox(Player* bot, GameObject* mailbox);
 // AutoWow.Supply surplus (map thread, at the auctioneer): list these whole stacks, priced as PlanPosts prices

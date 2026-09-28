@@ -31,11 +31,12 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 8;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 9;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
                                                   // 7: nextTrainRunMs (Professions.TrainRuns);
-                                                  // 8: floorGear (Supply.OutfitGear)
+                                                  // 8: floorGear (Supply.OutfitGear);
+                                                  // 9: lastAhGearLevel / ahGearItems (Gear.AuctionUpgrades)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -53,7 +54,8 @@ enum Need : std::uint32_t
     NeedFlightPath = 1u << 9,  // current zone's flight master node unknown
     NeedGear = 1u << 10,       // AutoWow.Gear.Upgrades: vendor weapon / armor shopping due (AutoWowGear::GearDue)
     NeedTool = 1u << 11,       // AutoWow.Supply.Outfit: a known Mining / Skinning without its gathering tool
-    NeedMail = 1u << 12        // AutoWow.Supply.MailPickup: a supply mail (bag / potions from its house) waits
+    NeedMail = 1u << 12,       // AutoWow.Supply.MailPickup: a supply mail (bag / potions from its house) waits
+    NeedAhGear = 1u << 13      // AutoWow.Gear.AuctionUpgrades: gear far under the ilvl curve, gold for the AH
 };
 inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
 
@@ -347,6 +349,7 @@ struct Obs
     bool supplyMail = false;                   // AutoWow.Supply.MailPickup only: HasSupplyMail
     bool mailRunDue = false;                   // AutoWow.Supply.MailPickup only: MailRunDue
     bool trainRunDue = false;                  // AutoWow.Professions.TrainRuns only: TrainRunDue
+    bool ahGearDue = false;                    // AutoWow.Gear.AuctionUpgrades only: AutoWowGear::AhRunDue
 };
 
 struct Assessment
@@ -452,6 +455,9 @@ struct Assessment
     // AutoWow.Professions.TrainRuns: a missing / capped planned profession alone starts a run.
     if (o.trainRunDue)
         a.urgent |= NeedProfTrain;
+    // AutoWow.Gear.AuctionUpgrades: alone starts a run (to an auction town) once per level.
+    if (o.ahGearDue)
+        a.urgent |= NeedAhGear;
     a.needs |= a.urgent;
     return a;
 }
@@ -675,6 +681,7 @@ struct TownFacts
     bool gearVendor = false;           // AutoWow.Gear.Upgrades: a usable vendor sells weapons / armor
     std::uint8_t tools = 0;            // AutoWow.Supply.Outfit: missing Tool bits a usable vendor sells
     bool mailbox = false;              // AutoWow.Supply.MailPickup: the town has a mailbox (catalogued with Trade on)
+    bool auction = false;              // AutoWow.Gear.AuctionUpgrades: a usable auctioneer (catalogued with Trade on)
 };
 
 [[nodiscard]] inline std::uint32_t Serves(TownFacts const& f)
@@ -702,6 +709,8 @@ struct TownFacts
         m |= NeedTool;
     if (f.mailbox)
         m |= NeedMail;
+    if (f.auction)
+        m |= NeedAhGear;
     return m;
 }
 
@@ -785,7 +794,8 @@ enum Done : std::uint32_t
     DoneGeared = 1u << 7,   // AutoWow.Gear.Upgrades: a vendor weapon / armor piece was bought
     DoneTooled = 1u << 8,   // AutoWow.Supply.Outfit: a gathering tool was bought
     DoneWeaponFloor = 1u << 9,  // AutoWow.Supply.OutfitGear: a floor weapon was bought
-    DoneFoodFloor = 1u << 10    // AutoWow.Supply.OutfitGear: food / drink was bought
+    DoneFoodFloor = 1u << 10,   // AutoWow.Supply.OutfitGear: food / drink was bought
+    DoneAhGear = 1u << 11       // AutoWow.Gear.AuctionUpgrades: an auction-bought piece was equipped
 };
 
 // Operations at one npc, run in bit order.
@@ -1019,6 +1029,10 @@ struct BotState
     std::uint64_t nextMailMs = 0;
     // AutoWow.Professions.TrainRuns: no train-triggered run before this (survives runs, not restarts).
     std::uint64_t nextTrainRunMs = 0;
+    // AutoWow.Gear.AuctionUpgrades: level of the last auction-run due check (survives runs, not restarts) and this
+    // run's auction gear purchases (item entries queued at the auctioneer, 0 = none), equipped at the errands' end.
+    std::uint32_t lastAhGearLevel = 0;
+    std::array<std::uint32_t, AutoWowGear::kAhMaxBuys> ahGearItems{};
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
@@ -1052,6 +1066,7 @@ struct BotState
     next.nextOutfitMs = s.nextOutfitMs;
     next.nextMailMs = s.nextMailMs;
     next.nextTrainRunMs = s.nextTrainRunMs;
+    next.lastAhGearLevel = s.lastAhGearLevel;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;

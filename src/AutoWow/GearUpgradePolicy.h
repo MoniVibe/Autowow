@@ -8,6 +8,7 @@
 #define AUTOWOW_GEAR_UPGRADE_POLICY_H
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -267,15 +268,131 @@ inline constexpr std::uint8_t kSlotRanged = 17;  // EQUIPMENT_SLOT_RANGED
     return best;
 }
 
+// ---- AutoWow.Gear.AuctionUpgrades (default 0; needs AutoWow.Trade.Enable + AutoWow.Errands.Enable) ----------
+// Owner 2026-09-28 "they are dying because they are low geared": S65 cohort (avg L40) wore avg ilvl ~29 at L42,
+// 22-55% of pieces grey / white, 3.5 deaths / bot-h; gear came from loot / quest equips and 6 vendor errands (white
+// items only); 50 errand auctioneer visits bought 3 pieces (TradePolicy PlanBuys: the one cheapest upgrade). Purses
+// are skewed (avg 12.7 g, max 173 g). With the flag on the auctioneer stop instead buys up to MaxBuys buyout
+// listings the stock "item upgrade" scorer rates an equip (EQUIP / REPLACE) that raise the item level of the slot
+// (FindEquipSlot), slot by slot in AhSlotOrder (main hand, a hunter's ranged, off hand, chest, legs, ...), per slot
+// the most ilvl gain per copper, each <= level^2 x PriceMult copper, all within Spendable (trainer rank + food) less
+// the repair bill; the mail stop brings them and the errand's end runs the stock equip action. A bot whose average
+// equipped ilvl sits under IlvlPct of ExpectedIlvl with MinSpendPct of one item cap to spend makes an auction-town
+// run once per level (ErrandsPolicy NeedAhGear). Logs "[AhGear]"; trade ledger reason ah_gear (+ gain).
+struct AhParams
+{
+    std::uint32_t maxBuys = 3;       // AutoWow.Gear.AuctionMaxBuys (<= kAhMaxBuys): purchases per auctioneer visit
+    std::uint32_t priceMult = 20;    // AutoWow.Gear.AuctionPriceMult: one item <= level^2 x this copper
+    std::uint32_t ilvlPct = 75;      // AutoWow.Gear.AuctionIlvlPct: avg ilvl under this % of ExpectedIlvl = run due
+    std::uint32_t minSpendPct = 50;  // AutoWow.Gear.AuctionMinSpendPct: ... with AhBudget >= this % of AhItemCap
+};
+
+inline constexpr std::size_t kAhMaxBuys = 4;
+
+// A green of RequiredLevel L carries ilvl ~L+5 (world DB AH census 2026-09-28: req 35 -> 40, 45 -> 50, 49 -> 54).
+[[nodiscard]] inline std::uint32_t ExpectedIlvl(std::uint32_t level) { return level + 5; }
+
+// Average equipped ilvl (integer; empty slots count 0) under IlvlPct of the curve.
+[[nodiscard]] inline bool IlvlFarBelow(AhParams const& ap, std::uint32_t avgIlvl, std::uint32_t level)
+{
+    return std::uint64_t(avgIlvl) * 100 < std::uint64_t(ExpectedIlvl(level)) * ap.ilvlPct;
+}
+
+[[nodiscard]] inline std::uint64_t AhItemCap(AhParams const& ap, std::uint32_t level)
+{
+    return std::uint64_t(level) * level * ap.priceMult;
+}
+
+// Copper the auction gear may take: Spendable (trainer rank + food kept) of the money less the repair bill.
+[[nodiscard]] inline std::uint64_t AhBudget(std::uint64_t money, std::uint32_t level, std::uint64_t repairCopper)
+{
+    return Spendable(money > repairCopper ? money - repairCopper : 0, level);
+}
+
+// An auction-town run: once per level (lastAhLevel = level of the last due check), gear far under the curve and
+// MinSpendPct of one item cap to spend.
+[[nodiscard]] inline bool AhRunDue(AhParams const& ap, std::uint32_t level, std::uint32_t lastAhLevel,
+                                   std::uint64_t money, std::uint64_t repairCopper, std::uint32_t avgIlvl)
+{
+    return level > lastAhLevel && IlvlFarBelow(ap, avgIlvl, level) &&
+           AhBudget(money, level, repairCopper) * 100 >= AhItemCap(ap, level) * ap.minSpendPct;
+}
+
+// One buyout listing the bot may equip, with its ilvl gain over the piece worn in `slot` (EQUIPMENT_SLOT_*).
+struct AhOffer
+{
+    std::uint32_t id = 0;     // auction id: stable, never reused
+    std::uint32_t item = 0;
+    std::uint64_t price = 0;  // buyout copper
+    std::uint32_t gain = 0;   // ItemLevel - worn ItemLevel (empty slot: ItemLevel)
+    std::uint8_t slot = 0;
+    bool twoHand = false;     // a two-hander bought for the main hand leaves the off hand out
+};
+
+// Slot buy order: weapons (main hand, a hunter's ranged, off hand), chest, legs, head, shoulders, hands, feet,
+// waist, wrists, back, a non-hunter's ranged (wand / thrown), neck, rings, trinkets. Shirt / tabard never.
+inline constexpr std::array<std::uint8_t, 17> kAhOrderHunter = {15, 17, 16, 4, 6, 0, 2, 9, 7, 5, 8, 14, 1, 10, 11, 12, 13};
+inline constexpr std::array<std::uint8_t, 17> kAhOrderOther = {15, 16, 4, 6, 0, 2, 9, 7, 5, 8, 14, 17, 1, 10, 11, 12, 13};
+
+// Same slot: more gain per copper (cross-multiplied, no floats), then more gain, then cheaper, then lower id.
+[[nodiscard]] inline bool AhBetter(AhOffer const& a, AhOffer const& b)
+{
+    std::uint64_t const l = std::uint64_t(a.gain) * b.price, r = std::uint64_t(b.gain) * a.price;
+    if (l != r)
+        return l > r;
+    if (a.gain != b.gain)
+        return a.gain > b.gain;
+    if (a.price != b.price)
+        return a.price < b.price;
+    return a.id < b.id;
+}
+
+// The visit's purchases in buy order: per slot of the order the AhBetter-best offer with a gain, <= AhItemCap and
+// <= what is left of `budget`; at most MaxBuys (<= kAhMaxBuys).
+[[nodiscard]] inline std::vector<AhOffer> AhPlan(AhParams const& ap, std::vector<AhOffer> const& offers,
+                                                 std::uint32_t level, bool hunter, std::uint64_t budget)
+{
+    std::uint64_t const cap = AhItemCap(ap, level);
+    std::size_t const maxBuys = std::min<std::size_t>(ap.maxBuys, kAhMaxBuys);
+    std::vector<AhOffer> out;
+    bool twoHander = false;
+    for (std::uint8_t const slot : hunter ? kAhOrderHunter : kAhOrderOther)
+    {
+        if (out.size() >= maxBuys)
+            break;
+        if (slot == kSlotOffHand && twoHander)
+            continue;
+        std::size_t best = kNone;
+        for (std::size_t i = 0; i < offers.size(); ++i)
+        {
+            AhOffer const& o = offers[i];
+            if (o.slot != slot || !o.gain || !o.price || o.price > cap || o.price > budget)
+                continue;
+            if (best == kNone || AhBetter(o, offers[best]))
+                best = i;
+        }
+        if (best == kNone)
+            continue;
+        out.push_back(offers[best]);
+        budget -= offers[best].price;
+        twoHander = twoHander || (slot == kSlotMainHand && offers[best].twoHand);
+    }
+    return out;
+}
+
 // ---- runtime (flag + params; read by AutoWowErrands::LoadConfig, used by NewRpgErrands.cpp and
-// NewRpgBaseAction::BestRewardIndex) ------------------------------------------------------------------
+// NewRpgBaseAction::BestRewardIndex; the auction part by AutoWowTrade.cpp) ------------------------------
 namespace detail
 {
 inline bool gEnabled = false;
 inline Params gParams;
+inline bool gAuctionEnabled = false;
+inline AhParams gAhParams;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
 inline Params const& Get() { return detail::gParams; }
+inline bool AuctionEnabled() { return detail::gAuctionEnabled; }
+inline AhParams const& GetAh() { return detail::gAhParams; }
 }  // namespace AutoWowGear
 
 #endif  // AUTOWOW_GEAR_UPGRADE_POLICY_H
