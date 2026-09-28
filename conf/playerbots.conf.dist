@@ -3592,6 +3592,30 @@ AutoWow.Professions.Secondaries = "129,185,356"
 # CraftPriorityFix 1 = the random craft action prefers useful / skill-up recipes (GetSpellPriority
 # compared create-item with `!=`, and the sort ignored priority). Default 0 = legacy order.
 AutoWow.Professions.CraftPriorityFix = 0
+# TrainRuns 1 (needs Enable and AutoWow.Errands.Enable) = a planned bot missing one of its planned
+# professions, or capped at a rank max (75/150/225/300/375) with the next rank's level reached, starts an
+# errand run on its own, to the nearest same-map town whose trade trainer teaches it a planned rank now
+# (the stock trainer action + learn filter). At most one such check per TrainRunCooldownMs (ms, default
+# 1800000). Logs "[Professions] train_due", and "[Professions] learn" / "[Professions] rank_up" for every
+# profession spell a player learns while the flag is on. Default 0.
+AutoWow.Professions.TrainRuns = 0
+AutoWow.Professions.TrainRunCooldownMs = 1800000
+
+# Gathering rule 2026-09-28 (owner, "Warcraft redefined"; src/AutoWow/GatherScalePolicy.h). All default 0.
+# d = required skill - current skill (node lock skill; corpse: the core's skinning red level).
+# AnySkill 1 = a player who knows Herbalism / Mining / Skinning (skill >= 1) may gather any node or corpse
+#   of that profession regardless of skill. Needs the core patch (core-patches/series, Spell::CanOpenLock and
+#   the skinning CheckCast read this same key); the bot-side loot / reveal / gather-seek gates follow it.
+AutoWow.Gather.AnySkill = 0
+# YieldScale 1 = gathered stacks shrink with d: count * max(0, 100 - 2*d) / 100, never below 1 unit
+#   (full at d <= 0, half at d = 25, one unit from d = 50). d > 50 turns a known material into its
+#   previous tier (e.g. Iron Ore -> Tin Ore, Kingsblood -> Briarthorn, Heavy Leather -> Medium Leather).
+AutoWow.Gather.YieldScale = 0
+# MultiGain 1 = a gathering skill-up with d > 0 is 1 + d/25 points (at most 5), never past the rank max.
+AutoWow.Gather.MultiGain = 0
+# Craft.MultiGain 1 = a skill-up from an orange recipe (skill below its yellow level) is one point more,
+#   never past the rank max.
+AutoWow.Craft.MultiGain = 0
 
 # Bot chat safety (soak-s5-cohort-r1 chat storm). Bots that hear chat decide whether the speaker is a
 # bot (reply cooldown, low odds) or a real player (no cooldown, eager replies naming the speaker).

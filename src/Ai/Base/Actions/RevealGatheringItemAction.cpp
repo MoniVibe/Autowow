@@ -9,9 +9,11 @@
 #include "CellImpl.h"
 #include "ChatHelper.h"
 #include "Event.h"
+#include "GatherScalePolicy.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
 #include "ServerFacade.h"
 #include "NearestGameObjects.h"
 
@@ -42,7 +44,9 @@ bool RevealGatheringItemAction::Execute(Event /*event*/)
                     uint32 skillId = SkillByLockType(LockType(lockInfo->Index[i]));
                     uint32 reqSkillValue = std::max(2u, lockInfo->Skill[i]);
                     if ((skillId == SKILL_MINING || skillId == SKILL_HERBALISM) &&
-                        botAI->HasSkill((SkillType)skillId) && uint32(bot->GetSkillValue(skillId)) >= reqSkillValue)
+                        botAI->HasSkill((SkillType)skillId) &&
+                        AutoWowGatherScale::CanAttempt(sPlayerbotAIConfig.autoWowGatherAnySkill, skillId,
+                                                       uint32(bot->GetSkillValue(skillId)), reqSkillValue))
                     {
                         result.push_back(go);
                         break;

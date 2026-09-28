@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 6U);
+    EXPECT_EQ(s.version, 7U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -732,7 +732,7 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 6u);
+    EXPECT_EQ(kStateVersion, 7u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
 }

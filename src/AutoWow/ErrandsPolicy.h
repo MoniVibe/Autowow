@@ -31,9 +31,10 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 6;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 7;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
-                                                  // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup)
+                                                  // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
+                                                  // 7: nextTrainRunMs (Professions.TrainRuns)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -306,6 +307,19 @@ struct Params
     return false;
 }
 
+// AutoWow.Professions.TrainRuns: a planned profession needs a trainer when the bot lacks it (from level 5,
+// the apprentice level) or sits at its rank max with the next rank's level reached (ProfessionRankDue).
+[[nodiscard]] inline bool PlannedTrainNeeded(bool known, std::uint32_t value, std::uint32_t max, std::uint32_t level)
+{
+    return known ? max && value >= max && ProfessionRankDue(value, max, level) : level >= 5;
+}
+
+// ... and alone starts a run once per TrainRunCooldownMs (nextTrainRunMs = check + it).
+[[nodiscard]] inline bool TrainRunDue(bool needed, std::uint64_t nowMs, std::uint64_t nextTrainRunMs)
+{
+    return needed && nowMs >= nextTrainRunMs;
+}
+
 struct Obs
 {
     std::uint32_t bagUsedPct = 0;
@@ -324,6 +338,7 @@ struct Obs
     bool toolRunDue = false;                   // AutoWow.Supply.Outfit only: OutfitRunDue
     bool supplyMail = false;                   // AutoWow.Supply.MailPickup only: HasSupplyMail
     bool mailRunDue = false;                   // AutoWow.Supply.MailPickup only: MailRunDue
+    bool trainRunDue = false;                  // AutoWow.Professions.TrainRuns only: TrainRunDue
 };
 
 struct Assessment
@@ -426,6 +441,9 @@ struct Assessment
         a.needs |= NeedMail;
     if (o.supplyMail && o.mailRunDue)
         a.urgent |= NeedMail;
+    // AutoWow.Professions.TrainRuns: a missing / capped planned profession alone starts a run.
+    if (o.trainRunDue)
+        a.urgent |= NeedProfTrain;
     a.needs |= a.urgent;
     return a;
 }
@@ -974,6 +992,8 @@ struct BotState
     std::uint64_t nextOutfitMs = 0;
     // AutoWow.Supply.MailPickup: no mail-triggered run before this (survives runs, not restarts).
     std::uint64_t nextMailMs = 0;
+    // AutoWow.Professions.TrainRuns: no train-triggered run before this (survives runs, not restarts).
+    std::uint64_t nextTrainRunMs = 0;
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
@@ -1006,6 +1026,7 @@ struct BotState
     next.lastGearLevel = s.lastGearLevel;
     next.nextOutfitMs = s.nextOutfitMs;
     next.nextMailMs = s.nextMailMs;
+    next.nextTrainRunMs = s.nextTrainRunMs;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;

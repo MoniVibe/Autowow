@@ -410,6 +410,13 @@ public:
     bool autoWowProfessionsTrainOnArrival;     // AutoWow.Professions.TrainOnArrival (needs Enable)
     bool autoWowProfessionsCraftPriorityFix;   // AutoWow.Professions.CraftPriorityFix
     bool autoWowProfessionsDropOffPlan;        // AutoWow.Professions.DropOffPlan (needs Enable)
+    bool autoWowProfessionsTrainRuns;          // AutoWow.Professions.TrainRuns (needs Enable + AutoWow.Errands.Enable)
+    uint32 autoWowProfessionsTrainRunCooldownMs;  // AutoWow.Professions.TrainRunCooldownMs (default 1800000)
+    // Gathering rule 2026-09-28 (GatherScalePolicy.h). All default off.
+    bool autoWowGatherAnySkill;                // AutoWow.Gather.AnySkill (the core reads the same key)
+    bool autoWowGatherYieldScale;              // AutoWow.Gather.YieldScale
+    bool autoWowGatherMultiGain;               // AutoWow.Gather.MultiGain
+    bool autoWowCraftMultiGain;                // AutoWow.Craft.MultiGain
     std::vector<uint32> autoWowSupplyArtisanGuids;  // AutoWow.Supply.Artisan.<House>.<Team>: DropOffPlan exemption
     std::unordered_map<uint32, std::vector<uint32>> autoWowProfessionAssignments;  // guid -> primaries
     std::vector<uint32> autoWowProfessionSecondaries;                              // AutoWow.Professions.Secondaries

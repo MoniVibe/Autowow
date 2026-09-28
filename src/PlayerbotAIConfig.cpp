@@ -761,6 +761,13 @@ bool PlayerbotAIConfig::Initialize()
     autoWowProfessionsTrainOnArrival = sConfigMgr->GetOption<bool>("AutoWow.Professions.TrainOnArrival", false);
     autoWowProfessionsCraftPriorityFix = sConfigMgr->GetOption<bool>("AutoWow.Professions.CraftPriorityFix", false);
     autoWowProfessionsDropOffPlan = sConfigMgr->GetOption<bool>("AutoWow.Professions.DropOffPlan", false);
+    autoWowProfessionsTrainRuns = sConfigMgr->GetOption<bool>("AutoWow.Professions.TrainRuns", false);
+    autoWowProfessionsTrainRunCooldownMs =
+        sConfigMgr->GetOption<uint32>("AutoWow.Professions.TrainRunCooldownMs", 1800000);
+    autoWowGatherAnySkill = sConfigMgr->GetOption<bool>("AutoWow.Gather.AnySkill", false);
+    autoWowGatherYieldScale = sConfigMgr->GetOption<bool>("AutoWow.Gather.YieldScale", false);
+    autoWowGatherMultiGain = sConfigMgr->GetOption<bool>("AutoWow.Gather.MultiGain", false);
+    autoWowCraftMultiGain = sConfigMgr->GetOption<bool>("AutoWow.Craft.MultiGain", false);
     autoWowSupplyArtisanGuids.clear();
     for (std::string const& key : sConfigMgr->GetKeysByString("AutoWow.Supply.Artisan."))
         if (AutoWowTrainPolicy::IsArtisanConfigKey(key))

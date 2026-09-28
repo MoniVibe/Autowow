@@ -10,6 +10,7 @@
 #include "GuildMgr.h"
 #include "GuildTaskMgr.h"
 #include "GatheringWorkerState.h"
+#include "GatherScalePolicy.h"
 #include "ItemUsageValue.h"
 #include "LootObjectStack.h"
 #include "LootStrategyValue.h"
@@ -305,7 +306,7 @@ bool OpenLootAction::CanOpenLock(LootObject& /*lootObject*/, SpellInfo const* sp
 bool OpenLootAction::CanOpenLock(uint32 skillId, uint32 reqSkillValue)
 {
     uint32 skillValue = bot->GetSkillValue(skillId);
-    return skillValue >= reqSkillValue || !reqSkillValue;
+    return AutoWowGatherScale::CanAttempt(sPlayerbotAIConfig.autoWowGatherAnySkill, skillId, skillValue, reqSkillValue);
 }
 
 /*
