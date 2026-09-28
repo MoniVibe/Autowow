@@ -1711,6 +1711,18 @@ struct RoleInfo
     std::uint8_t gear = kNoLine;  // the enabled gear line (Products cloth_gear / leather_gear / eng) its house makes
 };
 
+// The line (hence the house label) of a role bot's own rows (travel, junk): the bag line for the bag house, else
+// its catalog line, else its gear line, else bags. Soak S56: the Tinkers artisan (gear line eng only) logged
+// house=Weavers, the bag house, while in the Tinkers guild.
+[[nodiscard]] inline Line OwnLine(RoleInfo const& r)
+{
+    if (r.bagHouse)
+        return Line::Bags;
+    if (r.line != kNoLine)
+        return static_cast<Line>(r.line);
+    return r.gear != kNoLine ? static_cast<Line>(r.gear) : Line::Bags;
+}
+
 // ---- artisan upkeep (lane F) ----
 
 // Apprentice phase (ArtisanMinLevel, 0 = off): a configured artisan below the level is no role at all (it quests,

@@ -2381,14 +2381,34 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
 
             if (step.kind != DungeonGate::Kind::Escort)
             {
+                // A direct gate walk moves the navigator only. Soak S56: the alliance probe's followers stayed
+                // at the Gunpowder chest, 42 yd from the cannon (> DefaultSupportRadius), and the row logged
+                // wait_party until the run was declared stuck. Walk each idle out-of-combat straggler to the
+                // navigator (slope-checked path, else the slope-free one, like the navigator's approach).
+                bool waiting = false;
+                bool walked = false;
                 for (Player* member : followers)
                 {
-                    if (bot->GetExactDist(member) > DungeonPullReadiness::DefaultSupportRadius)
-                    {
-                        nextScanTime = now + PartyCohesionBackoffMs;
-                        logGate(row, "wait_party", false);
-                        return false;
-                    }
+                    if (bot->GetExactDist(member) <= DungeonPullReadiness::DefaultSupportRadius)
+                        continue;
+                    waiting = true;
+                    PlayerbotAI* memberAI = member->isMoving() || member->IsInCombat() ? nullptr :
+                        PlayerbotsMgr::instance().GetPlayerbotAI(member);
+                    if (!memberAI)
+                        continue;
+                    AutoWowDungeonPath::ProbeResult probe = AutoWowDungeonPath::Probe(member,
+                        bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+                    if (!probe.safe || !ProbeReachedStoredDestination(probe))
+                        probe = AutoWowDungeonPath::Probe(member, bot->GetPositionX(), bot->GetPositionY(),
+                            bot->GetPositionZ(), false);
+                    if (AutoWowDungeonWalkAction(memberAI).WalkPrepared(probe))
+                        walked = true;
+                }
+                if (waiting)
+                {
+                    nextScanTime = now + PartyCohesionBackoffMs;
+                    logGate(row, walked ? "party_walk" : "wait_party", false);
+                    return false;
                 }
             }
 
@@ -2581,7 +2601,15 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     use << uint32(TARGET_FLAG_GAMEOBJECT) << gameObject->GetGUID().WriteAsPacked();
                     holder->GetSession()->HandleUseItemOpcode(use);
                     ++runtime.acts;
-                    logGate(row, "use_item", true);
+                    // Soak S56: one use_item line could not tell a started cast from a refused one. 6250 has
+                    // a 2 s cast broken by movement; the key is consumed only when it lands on the cannon,
+                    // whose SAI then opens the door (the row's `done` line).
+                    bool const casting = holder->FindCurrentSpellBySpellId(spellId) != nullptr;
+                    logGate(row, casting ? "use_item" : "use_item_no_cast", true);
+                    LOG_INFO("playerbots",
+                        "[DungeonNavigator] gate map={} enc={} step={} holder={} item={} spell={} casting={}",
+                        step.mapId, step.encounterIdx, step.stepOrder, holder->GetName(), step.keyItem,
+                        spellId, casting);
                     return true;
                 }
             }

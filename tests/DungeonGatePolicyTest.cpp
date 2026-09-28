@@ -85,6 +85,23 @@ TEST(DungeonGatePolicy, KeyRowsSkippedUnlessHeldOrBypassed)
     EXPECT_TRUE(asked.empty());
 }
 
+TEST(DungeonGatePolicy, SpentKeyRowStillReportsDone)
+{
+    // Soak S56: the cannon consumes the Gunpowder. Its row must still be observed done (the door opened)
+    // after the key is gone, not skipped as key-gated without a trace.
+    std::vector<Step> const rows = {Row(0, 5397), Row(1)};
+    std::vector<std::size_t> evaluated;
+    auto isDone = [&](std::size_t i)
+    {
+        evaluated.push_back(i);
+        return i == 0;
+    };
+    EXPECT_EQ(SelectStep(rows, {}, false, noKey, isDone), 1u);
+    EXPECT_EQ(evaluated, std::vector<std::size_t>({0, 1}));
+    // Not done and no key: still key-gated.
+    EXPECT_EQ(SelectStep(rows, {}, false, noKey, [](std::size_t) { return false; }), 1u);
+}
+
 TEST(DungeonGatePolicy, TimeoutSkipsOptionalAndRetriesRequired)
 {
     StepRuntime runtime;

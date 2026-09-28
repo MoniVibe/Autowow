@@ -469,7 +469,7 @@ bool NewRpgBaseAction::SupplyStep()
         LOG_INFO("playerbots", "[Supply] bot={} travel=portal why={} from map={} ({},{}) to map={} ({},{})",
                  bot->GetName(), why, bot->GetMapId(), int32(bot->GetPositionX()), int32(bot->GetPositionY()),
                  home.map, home.x, home.y);
-        Emit(bot, Reason::Travel, 0, 0, 0, 0, guid, guid, why);
+        EmitLine(OwnLine(role), bot, Reason::Travel, 0, 0, 0, 0, guid, guid, why);
         s.stuck = 0;
         s.task = Task::None;
         StoreRole(guid, s);
@@ -479,13 +479,10 @@ bool NewRpgBaseAction::SupplyStep()
     if (bot->GetMapId() != home.map || bot->GetMap()->Instanceable())
         return portal("other_map");
 
-    // A `supply` row of the bot's line (bags or its catalog line).
+    // A `supply` row of the bot's own line (bags, its catalog line or its gear line).
     auto emit = [&](Reason r, std::uint32_t item, std::uint32_t count, std::uint64_t copper, char const* op)
     {
-        if (lined)
-            EmitLine(lineId, bot, r, 0, item, count, copper, guid, 0, op);
-        else
-            Emit(bot, r, 0, item, count, copper, guid, 0, op);
+        EmitLine(OwnLine(role), bot, r, 0, item, count, copper, guid, 0, op);
     };
     bool const crafter = role.role == Role::Artisan && (artisan || lined || geared);
 
