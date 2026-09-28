@@ -170,6 +170,7 @@ struct Skills
     std::uint32_t herbalism = 0;
     std::uint32_t mining = 0;
     std::uint32_t skinning = 0;
+    bool anySkill = false;  // AutoWow.Gather.AnySkill: a learned skill works any source (no requirement gate)
 };
 
 // Integer mean of the members' levels (0 for none).
@@ -195,9 +196,9 @@ struct Skills
     switch (kind)
     {
         case Kind::Cloth: return true;
-        case Kind::Herb: return s.herbalism && s.herbalism >= req;
-        case Kind::Ore: return s.mining && s.mining >= req;
-        case Kind::Leather: return s.skinning && s.skinning >= req;
+        case Kind::Herb: return s.herbalism && (s.anySkill || s.herbalism >= req);
+        case Kind::Ore: return s.mining && (s.anySkill || s.mining >= req);
+        case Kind::Leather: return s.skinning && (s.anySkill || s.skinning >= req);
     }
     return false;
 }

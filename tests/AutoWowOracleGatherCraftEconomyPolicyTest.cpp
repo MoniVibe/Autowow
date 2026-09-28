@@ -176,6 +176,26 @@ TEST(AutoWowOracleGatherCraftEconomyPolicyTest, EnforcesProfessionSkillToolAndLe
     EXPECT_EQ(plan.receipt.status, PlanStatus::Planned);
 }
 
+// AutoWow.Gather.AnySkill: a learned gathering skill below the node requirement no longer blocks the plan.
+TEST(AutoWowOracleGatherCraftEconomyPolicyTest, AnyGatherSkillDropsOnlyTheRequirementGate)
+{
+    AutoWowOracleGatherCraftEconomyInput input = BaseInput();
+    AddSkill(input, Profession::Mining, 4);
+    AddMaterial(input, {201, 0, 0, 0, 0, 0, 0, 0, false, false, false});
+    input.requests[0] = {201, 1, 10};
+    input.requestCount = 1;
+    AddLegalNode(input, 81, 201, 1, true);
+    input.gatherNodes[0].requiredSkill = 125;
+    AddMiningTool(input);
+    EXPECT_EQ(Plan(input).receipt.reason, PlanBlockReason::MissingSkill);  // flag off: stock gate
+
+    input.anyGatherSkill = true;
+    EXPECT_EQ(Plan(input).receipt.status, PlanStatus::Planned);
+
+    input.skills[0].learned = false;  // still needs the profession
+    EXPECT_EQ(Plan(input).receipt.reason, PlanBlockReason::MissingSkill);
+}
+
 TEST(AutoWowOracleGatherCraftEconomyPolicyTest, BuildsBoundedCraftDependencyDagInTopologicalOrder)
 {
     AutoWowOracleGatherCraftEconomyInput input = BaseInput();

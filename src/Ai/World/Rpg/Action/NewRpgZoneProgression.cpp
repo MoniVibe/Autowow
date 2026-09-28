@@ -813,6 +813,7 @@ void LoadConfig()
     p.yards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gathering.DetourYards", 60);
     p.maxDz = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gathering.DetourMaxDz", 20);
     p.timeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gathering.DetourTimeoutMs", 45000);
+    p.anySkill = sConfigMgr->GetOption<bool>("AutoWow.Gather.AnySkill", false);
 }
 }  // namespace AutoWowGatherDetour
 

@@ -417,6 +417,7 @@ struct AutoWowOracleGatherCraftEconomyInput
     std::uint32_t mapId = 0;
     bool botAlive = true;
     bool inCombat = false;
+    bool anyGatherSkill = false;  // AutoWow.Gather.AnySkill: a learned gathering skill works any node
 
     std::array<ProfessionSkillFact, kMaxSkills> skills{};
     std::size_t skillCount = 0;
@@ -1268,7 +1269,7 @@ inline GatherSearch FindBestGatherNode(AutoWowOracleGatherCraftEconomyInput cons
 
         std::size_t const skillIndex = FindSkill(input, node.profession);
         if (skillIndex == kInvalidIndex || !input.skills[skillIndex].learned ||
-            input.skills[skillIndex].skill < node.requiredSkill)
+            (input.skills[skillIndex].skill < node.requiredSkill && !input.anyGatherSkill))
         {
             search.sawSkillFailure = true;
             continue;
