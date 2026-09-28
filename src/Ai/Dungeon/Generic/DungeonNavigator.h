@@ -8,6 +8,7 @@
 
 #include "AttackAction.h"
 #include "DungeonGatePolicy.h"
+#include "DungeonRoutePolicy.h"
 #include "DungeonRouteReconnectPolicy.h"
 #include "Strategy.h"
 
@@ -61,6 +62,8 @@ private:
     bool travelRouteInitialized = false;
     bool travelRouteBlocked = false;
     char const* travelRouteBlockedReason = "none";
+    // ConvoyV2: DungeonRoute::Points row of travelRoute[0] when the route is a curated leg, else NoPoint.
+    std::size_t travelRouteCuratedRow = DungeonRoute::NoPoint;
     uint32 lastTravelEncounterId = 0;
     uint32 lastTravelSpawnId = 0;
     std::size_t lastTravelWaypointIndex = 0;
