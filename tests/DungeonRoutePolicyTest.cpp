@@ -43,6 +43,14 @@ TEST(DungeonRoutePolicy, TableIsOrderedContiguousAndFinite)
             if (previous.mapId == point.mapId)
                 EXPECT_LE(Distance(previous, point.x, point.y, point.z), MaximumPointSpacing) << i;
         }
+        if (point.direct)
+        {
+            // A direct point has a walk point of the same map before it and fits the step bounds.
+            ASSERT_GT(i, 0u);
+            EXPECT_EQ(Points[i - 1].mapId, point.mapId) << i;
+            EXPECT_FALSE(Points[i - 1].direct) << i;
+            EXPECT_TRUE(DirectStepShape(Points[i - 1], point)) << i;
+        }
     }
 }
 
@@ -100,7 +108,7 @@ TEST(DungeonRoutePolicy, EntersAtNearestPoint)
     EXPECT_EQ(NearestPoint({}, 0.0f, 0.0f, 0.0f), NoPoint);
 }
 
-TEST(DungeonRoutePolicy, NearestPointTieKeepsEarlierPoint)
+TEST(DungeonRoutePolicy, NearestPointTieKeepsLaterPoint)
 {
     std::vector<std::size_t> const rows = RouteFor(36, 3);
     Point const& a = Points[rows[3]];
@@ -111,8 +119,108 @@ TEST(DungeonRoutePolicy, NearestPointTieKeepsEarlierPoint)
     float const da = Distance(a, midX, midY, midZ);
     float const db = Distance(b, midX, midY, midZ);
     std::size_t const nearest = NearestPoint(rows, midX, midY, midZ);
-    EXPECT_EQ(nearest, da <= db ? 3u : 4u);
-    EXPECT_EQ(NearestPoint({rows[3], rows[3]}, a.x, a.y, a.z), 0u);
+    EXPECT_EQ(nearest, da < db ? 3u : 4u);
+    EXPECT_EQ(NearestPoint({rows[3], rows[3]}, a.x, a.y, a.z), 1u);
+
+    // Wailing Caverns: leg 7 repeats leg 5's ledge points on the way back; a leader on one resumes on leg 7.
+    std::vector<std::size_t> const wc = RouteFor(43, 7);
+    std::size_t const onLedge = NearestPoint(wc, -232.5f, 55.5f, -49.03f);
+    ASSERT_NE(onLedge, NoPoint);
+    EXPECT_EQ(Points[wc[onLedge]].encounterIdx, 7u);
+}
+
+TEST(DungeonRoutePolicy, WailingCavernsLegsEndAtGoals)
+{
+    // creature spawns 38148 Lord Serpentis, 33974 Verdan the Everliving; idx7 ends at the Disciple of Naralex
+    // gossip gate row (spawn 18675).
+    struct Goal { std::uint32_t encounter; float x, y, z; std::size_t points; };
+    Goal const goals[] = {
+        {5, -120.16f, -24.62f, -28.58f, 25},
+        {6, -81.86f, 32.26f, -30.99f, 3},
+        {7, -134.965f, 125.402f, -78.0945f, 51},
+    };
+    std::size_t total = 0;
+    for (Goal const& goal : goals)
+    {
+        total += goal.points;
+        std::vector<std::size_t> const rows = RouteFor(43, goal.encounter);
+        ASSERT_EQ(rows.size(), total) << goal.encounter;
+        EXPECT_TRUE(EndsAt(rows, goal.x, goal.y, goal.z)) << goal.encounter;
+    }
+    // Starts at Skum (spawn 87131), where S60 parties stalled with Serpentis next.
+    EXPECT_LT(Distance(Points[RouteFor(43, 5).front()], -285.58f, -312.97f, -69.19f), 0.01f);
+
+    // Two direct points: the step onto the ledge island and the drop off it.
+    std::vector<std::size_t> direct;
+    for (std::size_t row : RouteFor(43, 7))
+        if (Points[row].direct)
+            direct.push_back(row);
+    ASSERT_EQ(direct.size(), 2u);
+    EXPECT_EQ(Points[direct[0]].encounterIdx, 5u);
+    EXPECT_EQ(Points[direct[0]].pointOrder, 14u);
+    EXPECT_LT(Distance(Points[direct[0] - 1], -291.6f, -1.4f, -58.1f), 0.1f);
+    EXPECT_LT(Distance(Points[direct[0]], -289.1f, 3.5f, -64.0f), 0.1f);
+    EXPECT_EQ(Points[direct[1]].encounterIdx, 7u);
+    EXPECT_EQ(Points[direct[1]].pointOrder, 10u);
+    EXPECT_NEAR(Points[direct[1]].z - Points[direct[1] - 1].z, -28.0f, 0.1f);
+}
+
+TEST(DungeonRoutePolicy, RouteServesOnlyTheGoalItEndsAt)
+{
+    // Deadmines encounter 3's gate rows (Defias Gunpowder chest, cannon) never take the Mr. Smite leg.
+    std::vector<std::size_t> const smite = RouteFor(36, 3);
+    EXPECT_TRUE(EndsAt(smite, -22.8471f, -797.283f, 20.3745f));
+    EXPECT_FALSE(EndsAt(smite, -106.409f, -617.284f, 13.8495f));
+    EXPECT_FALSE(EndsAt(smite, -107.562f, -659.674f, 7.21211f));
+    EXPECT_FALSE(EndsAt({}, 0.0f, 0.0f, 0.0f));
+}
+
+TEST(DungeonRoutePolicy, DirectStepGuards)
+{
+    Point const top = {43, 5, 13, 0.0f, 0.0f, 0.0f};
+    Point const step = {43, 5, 14, 5.0f, 0.0f, -6.0f, true};
+    Point const walk = {43, 5, 14, 5.0f, 0.0f, -6.0f};
+    float const stepDistance = Distance(step, 0.0f, 0.0f, 0.0f);
+    EXPECT_TRUE(CanDirectStep(0.5f, stepDistance, top, step));
+    EXPECT_TRUE(CanDirectStep(DirectStartRadius, DirectStartRadius + 1.0f, top, step));
+    EXPECT_FALSE(CanDirectStep(DirectStartRadius + 0.1f, 20.0f, top, step));  // not at the step's start
+    EXPECT_FALSE(CanDirectStep(7.0f, 1.0f, top, step));  // already at the bottom
+    EXPECT_FALSE(CanDirectStep(0.5f, stepDistance, top, walk));  // walk points are never stepped
+    EXPECT_FALSE(CanDirectStep(std::nanf(""), stepDistance, top, step));
+
+    EXPECT_TRUE(DirectStepShape(top, {43, 5, 14, 8.0f, 0.0f, -30.0f, true}));
+    EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, 8.1f, 0.0f, -1.0f, true}));  // too far across
+    EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, 1.0f, 0.0f, -30.1f, true}));  // too far down
+    EXPECT_TRUE(DirectStepShape(top, {43, 5, 14, 1.0f, 0.0f, 6.0f, true}));
+    EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, 1.0f, 0.0f, 6.1f, true}));  // too far up
+    EXPECT_FALSE(DirectStepShape(top, {36, 5, 14, 1.0f, 0.0f, -1.0f, true}));  // other map
+}
+
+TEST(DungeonRoutePolicy, DirectStepTimesOutOnce)
+{
+    EXPECT_EQ(EvaluateDirectStep(DirectArrivalRadius, 0), DirectWait::Arrived);
+    EXPECT_EQ(EvaluateDirectStep(1.0f, DirectTimeoutMs + 5000), DirectWait::Arrived);
+    EXPECT_EQ(EvaluateDirectStep(20.0f, DirectTimeoutMs - 1), DirectWait::Pending);
+    EXPECT_EQ(EvaluateDirectStep(20.0f, DirectTimeoutMs), DirectWait::Failed);
+    EXPECT_EQ(EvaluateDirectStep(std::nanf(""), DirectTimeoutMs), DirectWait::Failed);
+    EXPECT_EQ(DirectTimeoutMs, 10000u);
+
+    std::vector<std::size_t> const rows = RouteFor(43, 7);
+    std::size_t const stepRow = rows[14];  // leg 5 point 14, the step onto the island
+    ASSERT_TRUE(Points[stepRow].direct);
+    auto failedStep = [&](std::size_t row) { return row == stepRow; };
+    EXPECT_TRUE(RouteHasFailedStep(rows, 0, failedStep));
+    EXPECT_FALSE(RouteHasFailedStep(rows, 15, failedStep));  // already past it
+    EXPECT_FALSE(RouteHasFailedStep(rows, 0, [](std::size_t) { return false; }));
+}
+
+TEST(DungeonRoutePolicy, EntryNeverStartsOnADirectPoint)
+{
+    std::vector<std::size_t> const rows = RouteFor(43, 5);
+    EXPECT_EQ(EntryStart(rows, 14), 13u);  // entered at the step: start from its top
+    EXPECT_EQ(EntryStart(rows, 15), 15u);
+    EXPECT_EQ(EntryStart(rows, 0), 0u);
+    EXPECT_EQ(EntryStart(rows, NoPoint), NoPoint);
 }
 
 TEST(DungeonRoutePolicy, UseRouteBetweenEntryAndHandoff)

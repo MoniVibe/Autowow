@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -64,6 +65,14 @@ private:
     char const* travelRouteBlockedReason = "none";
     // ConvoyV2: DungeonRoute::Points row of travelRoute[0] when the route is a curated leg, else NoPoint.
     std::size_t travelRouteCuratedRow = DungeonRoute::NoPoint;
+    // ConvoyV2 curated direct points: the leader's pending step, followers' pending steps (member guid ->
+    // (row, start ms)), and failed (mover guid, row) steps, which are never retried in directStepInstanceId.
+    std::size_t directStepRow = DungeonRoute::NoPoint;
+    uint32 directStepStartMs = 0;
+    std::map<uint32, std::pair<std::size_t, uint32>> directStepFollowers;
+    std::set<std::pair<uint32, std::size_t>> directStepFailed;
+    uint32 directStepMapId = 0;
+    uint32 directStepInstanceId = 0;
     uint32 lastTravelEncounterId = 0;
     uint32 lastTravelSpawnId = 0;
     std::size_t lastTravelWaypointIndex = 0;
