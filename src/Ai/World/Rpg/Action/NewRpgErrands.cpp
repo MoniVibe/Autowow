@@ -748,6 +748,15 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
             if (bot->HasSkill(skill) &&
                 ProfessionRankDue(bot->GetPureSkillValue(skill), bot->GetPureMaxSkillValue(skill), o.level))
                 o.profTrainDue = true;
+    if (sPlayerbotAIConfig.autoWowProfessionsTrainRuns)
+        if (std::vector<uint32> const* plan = sPlayerbotAIConfig.GetAutoWowProfessionPlan(bot->GetGUID().GetCounter()))
+        {
+            bool needed = false;
+            for (uint32 const skill : *plan)
+                needed |= PlannedTrainNeeded(bot->HasSkill(skill), bot->GetPureSkillValue(skill),
+                                             bot->GetPureMaxSkillValue(skill), o.level);
+            o.trainRunDue = TrainRunDue(needed, nowMs, s.nextTrainRunMs);
+        }
     o.hearthElsewhere = ZoneOfArea(bot->m_homebindAreaId) != bot->GetZoneId();
     TravelMgr::FlightMasterInfo const* fm = sTravelMgr.GetNearestFlightMasterInfo(bot);
     o.unknownFlightPath =
@@ -768,9 +777,25 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
     return Assess(p, o);
 }
 
+// AutoWow.Professions.TrainRuns: a trade trainer of the town teaches the bot a planned rank now (and the
+// arrival would train there: TrainerHasWork).
+bool TownTeachesPlan(Player* bot, Town const& t, std::uint8_t team)
+{
+    uint64 const money = bot->GetMoney();
+    for (Npc const& n : t.npcs)
+    {
+        bool unaffordable = false;
+        if ((n.teams & team) && (n.roles & RoleTradeTrainer) && PlannedRankCost(bot, sObjectMgr->GetTrainer(n.entry)) &&
+            TrainerHasWork(bot, n.entry, money, unaffordable))
+            return true;
+    }
+    return false;
+}
+
 // Cheapest reachable friendly town: the nearest CandidateTowns on the bot's map by straight line, plus
 // the hearth town. Zones far above the bot's level are skipped unless reached by hearthstone.
-Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg)
+// `trainOnly` (AutoWow.Professions.TrainRuns): only towns that teach the bot a planned rank now count.
+Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly = false)
 {
     Params const& p = detail::gParams;
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
@@ -779,6 +804,8 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg)
     for (Town const& t : detail::gTowns)
     {
         if (!(t.teams & team) || t.map != bot->GetMapId())
+            continue;
+        if (trainOnly && !TownTeachesPlan(bot, t, team))
             continue;
         nearby.emplace_back(Dist2(bx, by, t.x, t.y), &t);
         if (!hearthTown && HearthBoundAt(bot, t))
@@ -967,10 +994,21 @@ bool NewRpgBaseAction::ErrandsStep()
             s.nextMailMs = now + AutoWowSupply::detail::gParams.mailRunMs;
             StoreState(guid, s);
         }
+        if (a.urgent & NeedProfTrain)
+        {
+            // AutoWow.Professions.TrainRuns only: a train-due check spends the TrainRunCooldownMs window, run or not.
+            s.nextTrainRunMs = now + sPlayerbotAIConfig.autoWowProfessionsTrainRunCooldownMs;
+            StoreState(guid, s);
+        }
         if (!ShouldRun(a.needs, a.urgent))
             return false;
         Leg leg = Leg::None;
-        Town const* town = ChooseTown(bot, team, leg);
+        // A run only a missing / capped planned profession asked for goes to a town that teaches it.
+        bool const trainOnly = a.urgent == NeedProfTrain;
+        Town const* town = ChooseTown(bot, team, leg, trainOnly);
+        if (trainOnly)
+            LOG_INFO("playerbots", "[Professions] train_due bot={} level={} town={}", bot->GetName(), bot->GetLevel(),
+                     town ? town->id : 0);
         if (!town)
             return false;
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));

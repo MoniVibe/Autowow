@@ -28,6 +28,7 @@
 #include "ContractsPolicy.h"
 #include "DeathLoopBreaker.h"
 #include "GatherDetourPolicy.h"
+#include "GatherScalePolicy.h"
 #include "TransportCrossingPolicy.h"
 #include "UnstickPolicy.h"
 #include "ZoneProgressionPolicy.h"
@@ -777,6 +778,7 @@ void AddPlayerbotsScripts()
     AutoWowDeathLoop::AddScripts();
     AutoWowSurvivalRecovery::AddScripts();
     AutoWowClassQuests::AddScripts();
+    AutoWowGatherScale::AddScripts();
     PlayerBotsGuildValidationScript();
     AddSC_MagtheridonBotScripts();
     AddSC_TempestKeepBotScripts();

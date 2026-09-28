@@ -29,6 +29,7 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "SharedDefines.h"
 
@@ -946,6 +947,7 @@ std::optional<Candidate> SelectCandidateFor(Player* bot, PlayerbotAI* botAI)
     profile.miningSkill = botAI->HasSkill(SKILL_MINING) ? bot->GetSkillValue(SKILL_MINING) : 0;
     profile.skinningSkill = botAI->HasSkill(SKILL_SKINNING) ? bot->GetSkillValue(SKILL_SKINNING) : 0;
     profile.hasMiningTool = HasMiningTool(bot);
+    profile.anySkill = sPlayerbotAIConfig.autoWowGatherAnySkill;
     profile.maxDistance = sConfigMgr->GetOption<float>("AutoWow.GatherSeek.SearchDistance", 1200.0f);
     profile.maxNodeLevelAboveBot =
         sConfigMgr->GetOption<std::uint32_t>("AutoWow.GatherSeek.MaxNodeLevelAboveBot", 5);

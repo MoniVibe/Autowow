@@ -54,6 +54,7 @@ struct Profile
     bool hasMiningTool = false;
     float maxDistance = 0.0f;
     std::uint32_t maxNodeLevelAboveBot = 0;
+    bool anySkill = false;  // AutoWow.Gather.AnySkill: a known profession works nodes above its skill
 };
 
 using CooldownMap = std::unordered_map<std::uint64_t, std::uint64_t>;
@@ -99,7 +100,7 @@ inline bool IsEligible(Candidate const& candidate, Profile const& profile, Coold
         default: return false;
     }
 
-    if (!skill || skill < candidate.requiredSkill)
+    if (!skill || (skill < candidate.requiredSkill && !profile.anySkill))  // AutoWow.Gather.AnySkill
         return false;
 
     if (candidate.nodeLevel && candidate.nodeLevel > profile.level + profile.maxNodeLevelAboveBot)

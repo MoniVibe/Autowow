@@ -6,9 +6,11 @@
 
 #include "LootObjectStack.h"
 
+#include "GatherScalePolicy.h"
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
+#include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "QuestObjectiveContext.h"
 #include "Unit.h"
@@ -75,7 +77,10 @@ void LootObject::Refresh(Player* bot, ObjectGuid lootGUID)
             skillId = creature->GetCreatureTemplate()->GetRequiredLootSkill();
             uint32 targetLevel = creature->GetLevel();
             reqSkillValue = targetLevel < 10 ? 1 : targetLevel < 20 ? (targetLevel - 10) * 10 : targetLevel * 5;
-            if (botAI->HasSkill((SkillType)skillId) && bot->GetSkillValue(skillId) >= reqSkillValue)
+            // AutoWow.Gather.AnySkill: a known skinner skins any corpse (yield scaled by the deficit).
+            if (botAI->HasSkill((SkillType)skillId) &&
+                AutoWowGatherScale::CanAttempt(sPlayerbotAIConfig.autoWowGatherAnySkill, skillId,
+                                               bot->GetSkillValue(skillId), reqSkillValue))
                 guid = lootGUID;
         }
 
@@ -325,7 +330,7 @@ bool LootObject::IsLootPossible(Player* bot)
         return true;
 
     uint32 skillValue = uint32(bot->GetSkillValue(skillId));
-    if (reqSkillValue > skillValue)
+    if (!AutoWowGatherScale::CanAttempt(sPlayerbotAIConfig.autoWowGatherAnySkill, skillId, skillValue, reqSkillValue))
         return false;
 
     if (skillId == SKILL_MINING && !bot->HasItemCount(756, 1) && !bot->HasItemCount(778, 1) &&
