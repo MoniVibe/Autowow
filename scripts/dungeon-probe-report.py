@@ -4,11 +4,13 @@
 Input: worldserver ledger logs (logger `autowow.ledger`); each line may carry a log prefix, the JSON object
 starting at '{"v":' is extracted. Only ev == "dprobe" rows are read:
   run    one per finished probe run: dmap, plvl, bosses/total, wipes, revives, stucks, deaths, dur_ms,
-         end (completed|abandoned|stuck|timeout|wiped_out|enter_failed|prepare_failed), party, rid
+         end (completed|abandoned|stuck|timeout|wiped_out|enter_failed|prepare_failed), party, rid,
+         unavailable (encounter indices the navigator set aside, outside bosses/total; absent = none)
   stuck  one per stuck event: smap, sx, sy, sz (leader, integer yards), next (encounter index), boss (credit entry)
 
 Output (markdown, stdout or --out): one table row per (dungeon map, probe level):
-  dungeon, level, runs, completed, best bosses x/y, wipes (total), median time (all runs), ends, stuck points
+  dungeon, level, runs, completed, best bosses x/y, set aside (encounter indices, union over runs), wipes
+  (total), median time (all runs), ends, stuck points
 Stuck points are bucketed to BUCKET_YARDS and listed most frequent first (count x (x,y,z) next=enc).
 
 Usage: python dungeon-probe-report.py LOG [LOG ...] [--out FILE] [--party NAME] [--run RUNID]
@@ -87,6 +89,7 @@ def reduce_rows(rows):
             "runs": len(rs),
             "completed": sum(1 for r in rs if r.get("end") == "completed"),
             "best": "%d/%d" % (best.get("bosses", 0), best.get("total", 0)) if best else "-",
+            "unavailable": sorted({i for r in rs for i in r.get("unavailable", [])}),
             "wipes": sum(r.get("wipes", 0) for r in rs),
             "median_ms": statistics.median([r.get("dur_ms", 0) for r in rs]) if rs else None,
             "ends": dict(sorted(Counter(r.get("end", "") for r in rs).items())),
@@ -96,14 +99,15 @@ def reduce_rows(rows):
 
 
 def render(table):
-    out = ["| dungeon | level | runs | completed | best bosses | wipes | median time | ends | stuck points |",
-           "|---|---:|---:|---:|---:|---:|---:|---|---|"]
+    out = ["| dungeon | level | runs | completed | best bosses | set aside | wipes | median time | ends | stuck points |",
+           "|---|---:|---:|---:|---:|---|---:|---:|---|---|"]
     for t in table:
         name = "%s (%d)" % (NAMES.get(t["dmap"], "map"), t["dmap"])
         median = fmt_ms(t["median_ms"]) if t["median_ms"] is not None else "-"
         ends = ", ".join("%s %d" % kv for kv in t["ends"].items()) or "-"
-        out.append("| %s | %d | %d | %d | %s | %d | %s | %s | %s |" % (
-            name, t["level"], t["runs"], t["completed"], t["best"], t["wipes"], median, ends,
+        aside = ",".join(str(i) for i in t["unavailable"]) or "-"
+        out.append("| %s | %d | %d | %d | %s | %s | %d | %s | %s | %s |" % (
+            name, t["level"], t["runs"], t["completed"], t["best"], aside, t["wipes"], median, ends,
             "; ".join(t["stuck"]) or "-"))
     return "\n".join(out) + "\n"
 
@@ -122,16 +126,20 @@ def selftest():
         line("run", 36, 28, ms=4, bosses=3, total=6, wipes=1, dur_ms=600000, end="stuck"),
         line("run", 36, 28, ms=5, rid=2, bosses=6, total=6, wipes=0, dur_ms=1200000, end="completed"),
         line("run", 43, 26, ms=6, rid=3, bosses=2, total=8, wipes=4, dur_ms=300000, end="wiped_out"),
+        line("run", 70, 44, ms=7, rid=4, bosses=5, total=5, wipes=0, dur_ms=60000, end="completed",
+             unavailable=[1, 2]),
         '{"v":1,"ev":"dungeon","reason":"run"}',
         "garbage",
     ]
     table = reduce_rows(read_rows(lines))
     assert [(t["dmap"], t["runs"], t["completed"], t["best"], t["wipes"]) for t in table] == \
-        [(36, 2, 1, "6/6", 1), (43, 1, 0, "2/8", 4)], table
+        [(36, 2, 1, "6/6", 1), (43, 1, 0, "2/8", 4), (70, 1, 1, "5/5", 0)], table
+    assert table[0]["unavailable"] == [] and table[2]["unavailable"] == [1, 2], table
     assert table[0]["median_ms"] == 900000 and table[0]["ends"] == {"completed": 1, "stuck": 1}
     assert table[0]["stuck"] == ["2x (-120,20,0) next=2"], table[0]["stuck"]
     md = render(table)
-    assert "| The Deadmines (36) | 28 | 2 | 1 | 6/6 | 1 | 15:00 | completed 1, stuck 1 |" in md, md
+    assert "| The Deadmines (36) | 28 | 2 | 1 | 6/6 | - | 1 | 15:00 | completed 1, stuck 1 |" in md, md
+    assert "| Uldaman (70) | 44 | 1 | 1 | 5/5 | 1,2 | 0 | 1:00 | completed 1 |" in md, md
     assert read_rows(lines, party="zzz") == []
     print("selftest OK")
     return 0
