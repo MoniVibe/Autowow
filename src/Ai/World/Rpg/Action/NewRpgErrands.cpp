@@ -523,6 +523,9 @@ TownFacts FactsOf(Player* bot, Town const& t, std::uint8_t team)
                     f.tools |= static_cast<std::uint8_t>(n.tools & missing);
     if (AutoWowSupply::MailPickup())
         f.mailbox = std::any_of(t.npcs.begin(), t.npcs.end(), [](Npc const& n) { return (n.roles & RoleMailbox) != 0; });
+    if (AutoWowGear::AuctionEnabled())
+        f.auction = std::any_of(t.npcs.begin(), t.npcs.end(),
+                                [team](Npc const& n) { return (n.teams & team) && (n.roles & RoleAuction); });
     return f;
 }
 
@@ -558,6 +561,45 @@ uint32 EmptyArmorSlots(Player* bot)
     if (!bot->CanDualWield() && !twoHander && !bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
         mask |= 1u << EQUIPMENT_SLOT_OFFHAND;
     return mask;
+}
+
+// AutoWow.Gear.AuctionUpgrades: integer average ItemLevel over the slots the core's average counts (no shirt,
+// tabard, off hand, ranged); an empty slot counts 0.
+uint32 AvgIlvl(Player* bot)
+{
+    uint32 sum = 0, count = 0;
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_OFFHAND ||
+            slot == EQUIPMENT_SLOT_RANGED)
+            continue;
+        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            sum += item->GetTemplate()->ItemLevel;
+        ++count;
+    }
+    return count ? sum / count : 0;
+}
+
+// AutoWow.Gear.AuctionUpgrades, errands' end: the auction purchases came by the mail stop (the world thread took the
+// mail after the map update that queued it); the stock equip action puts upgrades on. Logs each piece.
+void EquipAhGear(Player* bot, PlayerbotAI* botAI, BotState& s)
+{
+    uint32 const avg0 = AvgIlvl(bot);
+    botAI->DoSpecificAction("equip upgrades packet action", Event("autowow ahgear"), true);
+    for (uint32 const item : s.ahGearItems)
+    {
+        if (!item)
+            continue;
+        bool equipped = false;
+        for (uint8 e = EQUIPMENT_SLOT_START; e < EQUIPMENT_SLOT_END && !equipped; ++e)
+            if (Item* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, e))
+                equipped = worn->GetEntry() == item;
+        if (equipped)
+            s.done |= DoneAhGear;
+        LOG_INFO("playerbots", "[AhGear] bot={} equip item={} equipped={} in_bags={} avg_ilvl={}->{} lvl={}",
+                 bot->GetName(), item, equipped, bot->GetItemCount(item, false), avg0, AvgIlvl(bot), bot->GetLevel());
+    }
+    s.ahGearItems.fill(0);
 }
 
 // The town's gear the stock "item upgrade" value rates an equip for this bot (class / spec weights, armor
@@ -844,6 +886,12 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
                               EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND), o.cls == kClassHunter,
                               EquippedDpsMilli(bot, EQUIPMENT_SLOT_RANGED)))
         o.gear.soft = o.gear.urgent = true;
+    // AutoWow.Gear.AuctionUpgrades: gear far under the ilvl curve with gold for it -> an auction town, once per level.
+    if (AutoWowGear::AuctionEnabled() && AutoWowTrade::Enabled())
+        if (PlayerbotAI* ai = GET_PLAYERBOT_AI(bot))
+            o.ahGearDue = AutoWowGear::AhRunDue(AutoWowGear::GetAh(), o.level, s.lastAhGearLevel, money,
+                                                ai->GetAiObjectContext()->GetValue<uint32>("repair cost")->Get(),
+                                                AvgIlvl(bot));
     if (AutoWowSupply::Outfit())
     {
         o.missingTools = BotMissingTools(bot);
@@ -875,7 +923,8 @@ bool TownTeachesPlan(Player* bot, Town const& t, std::uint8_t team)
 // Cheapest reachable friendly town: the nearest CandidateTowns on the bot's map by straight line, plus
 // the hearth town. Zones far above the bot's level are skipped unless reached by hearthstone.
 // `trainOnly` (AutoWow.Professions.TrainRuns): only towns that teach the bot a planned rank now count.
-Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly = false)
+// `auctionOnly` (AutoWow.Gear.AuctionUpgrades): only towns with a usable auctioneer count.
+Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly = false, bool auctionOnly = false)
 {
     Params const& p = detail::gParams;
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
@@ -886,6 +935,9 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly 
         if (!(t.teams & team) || t.map != bot->GetMapId())
             continue;
         if (trainOnly && !TownTeachesPlan(bot, t, team))
+            continue;
+        if (auctionOnly && std::none_of(t.npcs.begin(), t.npcs.end(), [team](Npc const& n)
+                                        { return (n.teams & team) && (n.roles & RoleAuction); }))
             continue;
         nearby.emplace_back(Dist2(bx, by, t.x, t.y), &t);
         if (!hearthTown && HearthBoundAt(bot, t))
@@ -967,6 +1019,14 @@ void LoadConfig()
     g.farBelowPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FarBelowPct", 50);
     g.armorSpendPct = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.ArmorSpendPct", 25));
     g.maxArmorBuys = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.MaxArmorBuys", 4);
+    // AutoWow.Gear.AuctionUpgrades (GearUpgradePolicy.h; the auction stop needs AutoWow.Trade.Enable).
+    AutoWowGear::detail::gAuctionEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.AuctionUpgrades", false);
+    AutoWowGear::AhParams& ah = AutoWowGear::detail::gAhParams;
+    ah.maxBuys = std::min<std::uint32_t>(AutoWowGear::kAhMaxBuys,
+                                         sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionMaxBuys", 3));
+    ah.priceMult = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionPriceMult", 20);
+    ah.ilvlPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionIlvlPct", 75);
+    ah.minSpendPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionMinSpendPct", 50);
     if (detail::gEnabled)
         BuildCatalog();
 }
@@ -1080,15 +1140,26 @@ bool NewRpgBaseAction::ErrandsStep()
             s.nextTrainRunMs = now + sPlayerbotAIConfig.autoWowProfessionsTrainRunCooldownMs;
             StoreState(guid, s);
         }
+        if (a.urgent & NeedAhGear)
+        {
+            // AutoWow.Gear.AuctionUpgrades only: an auction-run due check spends the level, run or not.
+            s.lastAhGearLevel = bot->GetLevel();
+            StoreState(guid, s);
+        }
         if (!ShouldRun(a.needs, a.urgent))
             return false;
         Leg leg = Leg::None;
         // A run only a missing / capped planned profession asked for goes to a town that teaches it.
         bool const trainOnly = a.urgent == NeedProfTrain;
-        Town const* town = ChooseTown(bot, team, leg, trainOnly);
+        // A run only the auction gear asked for goes to a town with an auctioneer.
+        bool const auctionOnly = a.urgent == NeedAhGear;
+        Town const* town = ChooseTown(bot, team, leg, trainOnly, auctionOnly);
         if (trainOnly)
             LOG_INFO("playerbots", "[Professions] train_due bot={} level={} town={}", bot->GetName(), bot->GetLevel(),
                      town ? town->id : 0);
+        if (a.urgent & NeedAhGear)
+            LOG_INFO("playerbots", "[AhGear] run_due bot={} lvl={} avg_ilvl={} money={} only={} town={}", bot->GetName(),
+                     bot->GetLevel(), AvgIlvl(bot), bot->GetMoney(), auctionOnly, town ? town->id : 0);
         if (!town)
             return false;
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));
@@ -1330,6 +1401,8 @@ bool NewRpgBaseAction::ErrandsStep()
         bool const timedOut = now - s.phaseMs > p.errandsTimeoutMs;
         if (timedOut || s.stop >= s.plan.count)
         {
+            if (s.ahGearItems[0])
+                EquipAhGear(bot, botAI, s);
             if (timedOut)
                 s.outcome = Outcome::ErrandsTimeout;
             s.durAfter = EquippedDurabilityPct(bot);
@@ -1714,6 +1787,12 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             s.done |= DoneLearnedFp;
     }
     // AutoWow.Trade (only planned with the flag on): the class-trainer budget is kept out of purchases.
+    // AutoWow.Gear.AuctionUpgrades: the queued gear purchases are equipped at the errands' end (EquipAhGear).
     if (st.ops & OpAuction)
-        AutoWowTrade::VisitAuctioneer(botAI, bot, npc, ClassTrainBudgetCopper(bot->GetLevel()));
+    {
+        std::vector<uint32> ahGear;
+        AutoWowTrade::VisitAuctioneer(botAI, bot, npc, ClassTrainBudgetCopper(bot->GetLevel()), &ahGear);
+        for (std::size_t k = 0; k < ahGear.size() && k < s.ahGearItems.size(); ++k)
+            s.ahGearItems[k] = ahGear[k];
+    }
 }

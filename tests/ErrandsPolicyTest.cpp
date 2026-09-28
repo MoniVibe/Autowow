@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 8U);
+    EXPECT_EQ(s.version, 9U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -732,7 +732,7 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 8u);
+    EXPECT_EQ(kStateVersion, 9u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
 }
@@ -909,4 +909,130 @@ TEST(OutfitGear, PlanStopsFloorWeaponBeforeTrainer)
     EXPECT_EQ(std::uint32_t(DoneFoodFloor), 1024U);
 }
 
+// ---- AutoWow.Gear.AuctionUpgrades (GearUpgradePolicy.h AhPlan / AhRunDue; ErrandsPolicy NeedAhGear) -----------
+namespace
+{
+AutoWowGear::AhOffer Ah(std::uint32_t id, std::uint8_t slot, std::uint64_t price, std::uint32_t gain, bool twoHand = false)
+{
+    AutoWowGear::AhOffer o;
+    o.id = id;
+    o.item = 1000 + id;
+    o.slot = slot;
+    o.price = price;
+    o.gain = gain;
+    o.twoHand = twoHand;
+    return o;
+}
+}  // namespace
+
+TEST(AhGear, IlvlCurveBudgetAndRunDue)
+{
+    AutoWowGear::AhParams const ap;
+    EXPECT_EQ(AutoWowGear::ExpectedIlvl(42), 47U);
+    EXPECT_TRUE(AutoWowGear::IlvlFarBelow(ap, 29, 42));    // S65 cohort: 29 at L42 (< 35.25)
+    EXPECT_TRUE(AutoWowGear::IlvlFarBelow(ap, 35, 42));
+    EXPECT_FALSE(AutoWowGear::IlvlFarBelow(ap, 36, 42));
+    EXPECT_EQ(AutoWowGear::AhItemCap(ap, 40), 32000U);     // 3.2 g per item at L40
+    // Spendable keeps level^2 x 5 + level x 100 (L40: 8000 + 4000); the repair bill comes off first.
+    EXPECT_EQ(AutoWowGear::AhBudget(50000, 40, 0), 38000U);
+    EXPECT_EQ(AutoWowGear::AhBudget(50000, 40, 8000), 30000U);
+    EXPECT_EQ(AutoWowGear::AhBudget(10000, 40, 0), 0U);
+    EXPECT_EQ(AutoWowGear::AhBudget(5000, 40, 9000), 0U);
+    // Due: new level, far below, budget >= 50% of the item cap (16000 at L40 -> money 28000 with no repair).
+    EXPECT_TRUE(AutoWowGear::AhRunDue(ap, 40, 39, 28000, 0, 29));
+    EXPECT_FALSE(AutoWowGear::AhRunDue(ap, 40, 39, 27999, 0, 29));   // one copper short
+    EXPECT_FALSE(AutoWowGear::AhRunDue(ap, 40, 39, 28000, 1, 29));   // the repair bill tips it
+    EXPECT_FALSE(AutoWowGear::AhRunDue(ap, 40, 40, 900000, 0, 29));  // level already spent
+    EXPECT_FALSE(AutoWowGear::AhRunDue(ap, 40, 39, 900000, 0, 40));  // gear on the curve
+}
+
+TEST(AhGear, PlanWeaponsFirstThenArmorBestGainPerCopper)
+{
+    AutoWowGear::AhParams const ap;  // 3 buys, cap level^2 x 20
+    std::vector<AutoWowGear::AhOffer> const offers = {
+        Ah(1, 6, 9000, 10),    // legs: 10 / 9000
+        Ah(2, 4, 3000, 6),     // chest: 6 / 3000 (better ratio than 3)
+        Ah(3, 4, 12000, 15),   // chest: 15 / 12000
+        Ah(4, 15, 20000, 8),   // main hand
+        Ah(5, 0, 1000, 5),     // head: 4th in line, over the per-visit cap
+    };
+    std::vector<AutoWowGear::AhOffer> const plan = AutoWowGear::AhPlan(ap, offers, 40, false, 100000);
+    ASSERT_EQ(plan.size(), 3U);
+    EXPECT_EQ(plan[0].id, 4U);  // main hand first
+    EXPECT_EQ(plan[1].id, 2U);  // chest: most gain per copper
+    EXPECT_EQ(plan[2].id, 1U);  // legs
+}
+
+TEST(AhGear, PlanCapsPriceBudgetAndTies)
+{
+    AutoWowGear::AhParams const ap;
+    // L20: item cap 8000. Main hand 8001 is over the cap; budget 5000 leaves the 6000 chest out.
+    std::vector<AutoWowGear::AhOffer> offers = {Ah(1, 15, 8001, 20), Ah(2, 4, 6000, 10), Ah(3, 6, 4000, 4),
+                                                Ah(4, 9, 1000, 0)};  // gain 0: never
+    std::vector<AutoWowGear::AhOffer> plan = AutoWowGear::AhPlan(ap, offers, 20, false, 5000);
+    ASSERT_EQ(plan.size(), 1U);
+    EXPECT_EQ(plan[0].id, 3U);
+    // The budget is drawn down in slot order: main hand 4000 leaves 1000, the 2000 chest no longer fits.
+    offers = {Ah(1, 15, 4000, 5), Ah(2, 4, 2000, 5), Ah(3, 6, 1000, 1)};
+    plan = AutoWowGear::AhPlan(ap, offers, 20, false, 5000);
+    ASSERT_EQ(plan.size(), 2U);
+    EXPECT_EQ(plan[0].id, 1U);
+    EXPECT_EQ(plan[1].id, 3U);
+    // Equal gain per copper: more gain wins; equal everything: lower auction id.
+    offers = {Ah(7, 4, 2000, 4), Ah(6, 4, 1000, 2)};
+    EXPECT_EQ(AutoWowGear::AhPlan(ap, offers, 20, false, 5000)[0].id, 7U);
+    offers = {Ah(9, 4, 1000, 2), Ah(8, 4, 1000, 2)};
+    EXPECT_EQ(AutoWowGear::AhPlan(ap, offers, 20, false, 5000)[0].id, 8U);
+    // Input order does not matter.
+    std::vector<AutoWowGear::AhOffer> rev(offers.rbegin(), offers.rend());
+    EXPECT_EQ(AutoWowGear::AhPlan(ap, rev, 20, false, 5000)[0].id, 8U);
+}
+
+TEST(AhGear, PlanHunterRangedSecondTwoHanderSkipsOffHand)
+{
+    AutoWowGear::AhParams ap;
+    ap.maxBuys = 9;  // clamped to kAhMaxBuys (4)
+    std::vector<AutoWowGear::AhOffer> const offers = {Ah(1, 16, 500, 3), Ah(2, 17, 500, 3), Ah(3, 15, 500, 3, true),
+                                                      Ah(4, 4, 500, 3), Ah(5, 6, 500, 3), Ah(6, 0, 500, 3)};
+    std::vector<AutoWowGear::AhOffer> plan = AutoWowGear::AhPlan(ap, offers, 30, true, 100000);
+    ASSERT_EQ(plan.size(), AutoWowGear::kAhMaxBuys);
+    EXPECT_EQ(plan[0].id, 3U);  // two-hander main hand
+    EXPECT_EQ(plan[1].id, 2U);  // hunter ranged
+    EXPECT_EQ(plan[2].id, 4U);  // off hand skipped: chest
+    EXPECT_EQ(plan[3].id, 5U);  // legs
+    // A non-hunter: off hand (no two-hander bought) before armor, ranged after back.
+    std::vector<AutoWowGear::AhOffer> const caster = {Ah(1, 16, 500, 3), Ah(2, 17, 500, 3), Ah(4, 4, 500, 3)};
+    plan = AutoWowGear::AhPlan(ap, caster, 30, false, 100000);
+    ASSERT_EQ(plan.size(), 3U);
+    EXPECT_EQ(plan[0].id, 1U);
+    EXPECT_EQ(plan[1].id, 4U);
+    EXPECT_EQ(plan[2].id, 2U);
+    ap.maxBuys = 0;  // 0 buys = nothing
+    EXPECT_TRUE(AutoWowGear::AhPlan(ap, caster, 30, false, 100000).empty());
+}
+
+TEST(AhGear, NeedIsUrgentServedByAuctionTownAndLevelSurvivesRuns)
+{
+    Params p;
+    Obs o = Healthy(kClassWarrior, 40);
+    o.ahGearDue = true;
+    Assessment const a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedAhGear));
+    EXPECT_EQ(a.needs, std::uint32_t(NeedAhGear));
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+    EXPECT_EQ(Assess(p, Healthy(kClassWarrior, 40)).needs, 0U);  // flag off: never set
+    TownFacts f;
+    EXPECT_EQ(Serves(f) & NeedAhGear, 0U);
+    f.auction = true;
+    EXPECT_EQ(Serves(f) & NeedAhGear, std::uint32_t(NeedAhGear));
+    BotState s;
+    s.lastAhGearLevel = 40;
+    s.ahGearItems[0] = 9811;
+    BotState const next = AfterRun(p, s, 1000);
+    EXPECT_EQ(next.lastAhGearLevel, 40U);
+    EXPECT_EQ(next.ahGearItems[0], 0U);  // run-scoped
+    // Wire-stable bits.
+    EXPECT_EQ(std::uint32_t(NeedAhGear), 8192U);
+    EXPECT_EQ(std::uint32_t(DoneAhGear), 2048U);
+}
 }  // namespace

@@ -3335,6 +3335,22 @@ AutoWow.Gear.FarBelowPct = 50
 AutoWow.Gear.ArmorSpendPct = 25
 AutoWow.Gear.MaxArmorBuys = 4
 
+# Auction-house gear upgrades for independent bots (GearUpgradePolicy.h; default 0; needs AutoWow.Trade.Enable and
+# AutoWow.Errands.Enable). Real gold only. At an errand's auctioneer stop the bot buys out up to AuctionMaxBuys (<= 4)
+# listings of others that the stock "item upgrade" value rates an equip for it and that raise the item level of their
+# slot: slot by slot (main hand, a hunter's ranged, off hand, chest, legs, head, shoulders, hands, feet, waist, wrists,
+# back, other ranged, neck, rings, trinkets), per slot the most ilvl gain per copper, each <= level^2 x AuctionPriceMult
+# copper, all within the money less the repair bill, a class-trainer rank and a food reserve. This replaces the one
+# cheapest upgrade AutoWow.Trade buys. The mail stop brings them, the stock equip action puts them on at the errands'
+# end. A bot whose average equipped item level is under AuctionIlvlPct of (level + 5), with AuctionMinSpendPct of one
+# item cap to spend, makes an auction-town run once per level. Logs "[AhGear]"; trade ledger reason ah_gear (+ gain);
+# errand ledger needs bit 8192, done bit 2048.
+AutoWow.Gear.AuctionUpgrades = 0
+AutoWow.Gear.AuctionMaxBuys = 3
+AutoWow.Gear.AuctionPriceMult = 20
+AutoWow.Gear.AuctionIlvlPct = 75
+AutoWow.Gear.AuctionMinSpendPct = 50
+
 # Self-sufficiency secondary professions for cohort adventurers (SelfCraftPolicy.h; default 0). Not supply
 # reps / artisans, not Oracle-managed bots. Learning is the stock errand trainer stop (the learn filter admits
 # AutoWow.Professions.Secondaries, default 129,185,356; ranks and recipes cost real gold). With the flag on,

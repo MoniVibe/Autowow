@@ -55,7 +55,7 @@
 //     town (innkeeper spawn guid), town_zone, needs (AutoWowErrands::Need bits), done (Done bits: sold 1,
 //     repaired 2, restocked 4, trained 8, bound 16, learned_fp 32, skipped 64, geared 128 with
 //     AutoWow.Gear.Upgrades, tooled 256 with AutoWow.Supply.Outfit, weapon_floor 512 / food_floor 1024 with
-//     AutoWow.Supply.OutfitGear), spent, sold (copper),
+//     AutoWow.Supply.OutfitGear, ah_gear 2048 with AutoWow.Gear.AuctionUpgrades), spent, sold (copper),
 //     dur0, dur1 (average equipped durability % at arrival / after the errands), bag0, bag1 (free bag
 //     slots, same points), travel_ms (decision to arrival), return_ms, leg (walk|flight|hearth|none: the
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast).
@@ -63,7 +63,8 @@
 //     mail result, or per fee paid (AutoWowTrade, TradePolicy.h). reason = action; quest is 0. Trailing:
 //     action (post|buy|sold|expired|mail|fee|tax), item (entry, 0 = none), count, price (copper: listing
 //     buyout, purchase price, sale's winning bid, fee), gold (signed copper change of the bot's money),
-//     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train). `tax` (AutoWow.Guilds.TaxPct): the
+//     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train). AutoWow.Gear.AuctionUpgrades: a gear
+//     purchase is a buy row with reason ah_gear and gain (item level over the piece worn in its slot). `tax` (AutoWow.Guilds.TaxPct): the
 //     vendor-income tax paid into the bot's house guild bank (also a `guild` row, reason tax). AutoWow.Market.MailOrders
 //     (lane U): cod_sell (a random seller mailed an order fill to a rep; price = COD, gold = -postage), cod_buy (the
 //     rep took it; price = COD, gold = its purse change), cod_return (the rep returned it; kind = unordered|budget|

@@ -21,6 +21,7 @@
 #include "Creature.h"
 #include "GameObject.h"
 #include "GameTime.h"
+#include "GearUpgradePolicy.h"
 #include "Item.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
@@ -42,13 +43,15 @@ namespace AutoWowTrade
 {
 namespace
 {
+// gain != 0: an AutoWow.Gear.AuctionUpgrades purchase (ledger reason ah_gear, + gain; action stays buy).
 void Emit(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price, std::int64_t gold,
-          std::uint32_t ah)
+          std::uint32_t ah, std::uint32_t gain = 0)
 {
     LOG_INFO("playerbots", "[Trade] bot={} {} item={} count={} price={} gold={} ah={}", bot->GetName(),
              ActionName(a), item, count, price, gold, ah);
     if (AutoWowQuestLedger::Enabled())
-        AutoWowQuestLedger::EmitTrade(bot, ActionName(a), LedgerFields(a, item, count, price, gold, ah));
+        AutoWowQuestLedger::EmitTrade(bot, gain ? "ah_gear" : ActionName(a),
+                                      LedgerFields(a, item, count, price, gold, ah, nullptr, gain));
 }
 
 bool Collectable(Mail const* m, time_t now)
@@ -78,6 +81,57 @@ void ForEachBagItem(Player* bot, F&& fn)
 std::string UsageKey(uint32 entry, int32 randomPropertyId)
 {
     return std::to_string(entry) + "," + std::to_string(randomPropertyId);
+}
+
+// AutoWow.Gear.AuctionUpgrades (map thread, read-only over the house): the buyout listings of others the stock
+// "item upgrade" scorer rates an equip for the bot (EQUIP / REPLACE: class / spec weights, proficiency, level) that
+// raise the item level of their slot (FindEquipSlot), planned by AutoWowGear::AhPlan within AhBudget of `money`.
+std::vector<Buy> PlanAhGear(PlayerbotAI* botAI, Player* bot, AuctionHouseObject* ah, uint64 money)
+{
+    AiObjectContext* context = botAI->GetAiObjectContext();
+    uint32 const level = bot->GetLevel();
+    Item const* mh = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+    bool const wields2h = mh && mh->GetTemplate()->InventoryType == INVTYPE_2HWEAPON && !bot->CanTitanGrip();
+    std::vector<AutoWowGear::AhOffer> offers;
+    for (auto const& [id, a] : ah->GetAuctions())
+    {
+        if (!a || a->owner == bot->GetGUID() || !a->buyout || !a->itemCount)
+            continue;
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(a->item_template);
+        if (!proto || proto->InventoryType == INVTYPE_NON_EQUIP || proto->RequiredLevel > level ||
+            bot->CanUseItem(proto) != EQUIP_ERR_OK)
+            continue;
+        Item const* aitem = sAuctionMgr->GetAItem(a->item_guid);
+        ItemUsage const usage =
+            context->GetValue<ItemUsage>("item upgrade", UsageKey(a->item_template, aitem ? aitem->GetItemRandomPropertyId() : 0))
+                ->Get();
+        if (usage != ITEM_USAGE_EQUIP && usage != ITEM_USAGE_REPLACE)
+            continue;
+        uint8 const slot = botAI->FindEquipSlot(proto, NULL_SLOT, true);
+        if (slot >= EQUIPMENT_SLOT_END || (slot == EQUIPMENT_SLOT_OFFHAND && wields2h))
+            continue;  // an off hand would push the two-hander out
+        Item const* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        uint32 const wornIlvl = worn ? worn->GetTemplate()->ItemLevel : 0;
+        if (proto->ItemLevel <= wornIlvl)
+            continue;
+        offers.push_back({id, a->item_template, a->buyout, proto->ItemLevel - wornIlvl, slot,
+                          proto->InventoryType == INVTYPE_2HWEAPON});
+    }
+    uint64 const repair = context->GetValue<uint32>("repair cost")->Get();
+    uint64 const budget = AutoWowGear::AhBudget(money, level, repair);
+    std::vector<AutoWowGear::AhOffer> const plan =
+        AutoWowGear::AhPlan(AutoWowGear::GetAh(), offers, level, bot->getClass() == CLASS_HUNTER, budget);
+    LOG_INFO("playerbots", "[AhGear] bot={} scan offers={} planned={} budget={} item_cap={} money={} repair={} lvl={}",
+             bot->GetName(), offers.size(), plan.size(), budget, AutoWowGear::AhItemCap(AutoWowGear::GetAh(), level),
+             money, repair, level);
+    std::vector<Buy> buys;
+    for (AutoWowGear::AhOffer const& o : plan)
+    {
+        LOG_INFO("playerbots", "[AhGear] bot={} plan ah={} item={} slot={} price={} ilvl_gain={}", bot->GetName(), o.id,
+                 o.item, static_cast<uint32>(o.slot), o.price, o.gain);
+        buys.push_back({o.id, o.item, 1, static_cast<uint32>(o.price), Want::Upgrade, o.gain});
+    }
+    return buys;
 }
 
 // The bag stacks the bot may list at `house` (Postable with its stock item usage `ah`), each with the lowest
@@ -214,9 +268,15 @@ public:
             {
                 LOG_INFO("playerbots", "[Trade] bot={} buy rejected ah={} item={} price={}", bot->GetName(), buy.id,
                          buy.entry, buy.price);
+                if (buy.gain)
+                    LOG_INFO("playerbots", "[AhGear] bot={} rejected ah={} item={} price={} money={}", bot->GetName(),
+                             buy.id, buy.entry, buy.price, m0);
                 continue;
             }
-            Emit(bot, Action::Buy, buy.entry, buy.count, buy.price, int64(bot->GetMoney()) - int64(m0), buy.id);
+            Emit(bot, Action::Buy, buy.entry, buy.count, buy.price, int64(bot->GetMoney()) - int64(m0), buy.id, buy.gain);
+            if (buy.gain)
+                LOG_INFO("playerbots", "[AhGear] bot={} bought ah={} item={} price={} ilvl_gain={} money={} lvl={}",
+                         bot->GetName(), buy.id, buy.entry, buy.price, buy.gain, bot->GetMoney(), bot->GetLevel());
         }
         return true;
     }
@@ -387,7 +447,8 @@ bool HasEmptyMail(Player* bot)
     return false;
 }
 
-void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve)
+void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve,
+                     std::vector<std::uint32_t>* ahGear)
 {
     Params const& p = detail::gParams;
     AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
@@ -426,7 +487,24 @@ void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
     uint64 deposits = 0;
     for (Post const& post : posts)
         deposits += post.deposit;
+    // AutoWow.Gear.AuctionUpgrades: the gear plan replaces PlanBuys' one cheapest upgrade and goes first; the mats
+    // get the trade budget of what is left.
+    std::vector<Buy> gear;
+    if (AutoWowGear::AuctionEnabled())
+    {
+        gear = PlanAhGear(botAI, bot, ah, money > deposits ? money - deposits : 0);
+        listings.erase(std::remove_if(listings.begin(), listings.end(),
+                                      [](Listing const& l) { return l.want == Want::Upgrade; }),
+                       listings.end());
+        for (Buy const& b : gear)
+        {
+            deposits += b.price;  // committed copper from here on
+            if (ahGear)
+                ahGear->push_back(b.entry);
+        }
+    }
     std::vector<Buy> buys = PlanBuys(p, std::move(listings), BuyBudget(p, money > deposits ? money - deposits : 0, reserve));
+    buys.insert(buys.begin(), gear.begin(), gear.end());
     LOG_INFO("playerbots", "[Trade] bot={} auctioneer={} posts={} buys={} money={} reserve={}", bot->GetName(),
              auctioneer->GetEntry(), posts.size(), buys.size(), money, reserve);
     if (posts.empty() && buys.empty())

@@ -172,6 +172,11 @@ TEST(Trade, LedgerFieldsWireFormat)
               ",\"action\":\"post\",\"item\":2589,\"count\":20,\"price\":780,\"gold\":-117,\"ah\":0");
     EXPECT_EQ(LedgerFields(Action::Fee, 0, 0, 55, -55, 0, FeeKindName(FeeKind::Flight)),
               ",\"action\":\"fee\",\"item\":0,\"count\":0,\"price\":55,\"gold\":-55,\"ah\":0,\"kind\":\"flight\"");
+    // AutoWow.Gear.AuctionUpgrades: an ah_gear buy appends its ilvl gain; 0 appends nothing.
+    EXPECT_EQ(LedgerFields(Action::Buy, 9811, 1, 20259, -20259, 1899, nullptr, 12),
+              ",\"action\":\"buy\",\"item\":9811,\"count\":1,\"price\":20259,\"gold\":-20259,\"ah\":1899,\"gain\":12");
+    EXPECT_EQ(LedgerFields(Action::Buy, 9811, 1, 400, -400, 7, nullptr, 0),
+              LedgerFields(Action::Buy, 9811, 1, 400, -400, 7));
     // Wire-stable names.
     EXPECT_STREQ(ActionName(Action::Sold), "sold");
     EXPECT_STREQ(ActionName(Action::Expired), "expired");
