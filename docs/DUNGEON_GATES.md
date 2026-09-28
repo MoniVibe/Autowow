@@ -169,3 +169,20 @@ with `/root/dgates2-scratch/dg` (dmtool + `GW` ground|water corridor and `R` con
 
 Needs in-game proof: bot attacks on Emi's trogg waves keep her alive through groups 1-3 and Grubbis; the straight
 swim moves leader and followers across the pool; stragglers walk on the RFK direct approach.
+
+## Lane dgates3 status, 2026-09-28 (S64 follow-up)
+- BFD Sarevess (stuck 2x at -366,284 next=1): the curated leg ran to point 5, then the swim step logged
+  `kind=direct role=leader result=failed` with the leader still on point 5. Core cause: MovePoint(generatePath=false)
+  still calls MoveSplineInit::MoveTo(generatePath=true) (PointMovementGenerator), and across the unlinked water
+  navmesh that path is an incomplete stub at the start, so the leader never moved. The failed step blocked the route,
+  and the non-convoy cohesion branch then waited forever on an idle follower 65 yd back. Fix: level crossings
+  (`DungeonRoute::IsLevelCrossing`) move on a raw MoveSplineInit spline (no path) at the mover's own height, for
+  leader and followers; Wailing Caverns ledge steps keep MovePoint.
+- RFK Ward Keepers `attack_rejected` (horde run, leader at 2070,2009, 6 yd from both keepers): by elimination
+  (alive, not friendly, no raid claim, no pull-readiness line, IsValidAttackTarget passes for neutral faction 153 with no
+  reputation) AttackAction::Attack refuses on line of sight. Fix: kill rows walk to 2 yd of a target out of sight
+  (`result=approach_los`), then attack. LOS itself not reproduced offline (no vmap tool).
+- Gnomeregan: the travel-node approach reaches Emi (S64 `result=gossip`, then `done`). The escort then logged one
+  `defend` and Emi died seconds later: trogg group 1 is ten attackers on her 1500 hp, the leader alone peeled one. Fix:
+  escort rows rescan every 1 s and every idle party member attacks one of her attackers (round robin, nearest to
+  her first; `defend_member`).
