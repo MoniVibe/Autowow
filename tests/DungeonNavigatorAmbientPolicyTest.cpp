@@ -521,6 +521,61 @@ TEST(DungeonNavigatorConvoyPolicy, V2DirectHopIsBoundedToShortNoPathHopsWithSafe
     EXPECT_FALSE(hop(true, true, std::numeric_limits<float>::infinity(), 0.0f, true, 0));
 }
 
+// S56 offline Detour replay: slope-checked route legs NOPATH (BFD, Gnomeregan) or slope-truncated
+// NORMAL|INCOMPLETE (RFK, WC, Deadmines past the Iron Clad Door); the same legs slope-free are complete.
+TEST(DungeonNavigatorConvoyPolicy, V2RouteLegFallsBackToSlopeFreeProbe)
+{
+    using DungeonNavigatorConvoy::UseSlopeFreeLeg;
+    EXPECT_FALSE(UseSlopeFreeLeg(true, true, true, true, true));     // checked reached: kept
+    EXPECT_TRUE(UseSlopeFreeLeg(true, false, false, true, true));    // checked NOPATH, slope-free reaches
+    EXPECT_TRUE(UseSlopeFreeLeg(true, true, false, true, true));     // checked truncated, slope-free reaches
+    EXPECT_FALSE(UseSlopeFreeLeg(true, true, false, true, false));   // both partial: checked kept
+    EXPECT_TRUE(UseSlopeFreeLeg(true, false, false, true, false));   // slope-free the only safe progress
+    EXPECT_FALSE(UseSlopeFreeLeg(true, false, false, false, false)); // slope-free unsafe
+    EXPECT_FALSE(UseSlopeFreeLeg(false, false, false, true, true));  // ConvoyV2 off
+    EXPECT_FALSE(UseSlopeFreeLeg(false, true, false, true, true));
+}
+
+// S56 RFK stored link Ramtusk->Willix: 39.6 yd drop over 7.1 yd at its first segment.
+TEST(DungeonNavigatorConvoyPolicy, V2StoredWalkCliffIsAVerticalStepBeyondItsRun)
+{
+    using DungeonNavigatorConvoy::IsStoredWalkCliff;
+    EXPECT_TRUE(IsStoredWalkCliff(7.1f, -39.6f, 5.5f));
+    EXPECT_TRUE(IsStoredWalkCliff(0.9f, 12.2f, 5.5f));
+    EXPECT_FALSE(IsStoredWalkCliff(7.4f, 1.2f, 5.5f));
+    EXPECT_FALSE(IsStoredWalkCliff(6.3f, -10.6f, 5.5f));
+    EXPECT_FALSE(IsStoredWalkCliff(0.0f, 5.5f, 5.5f));
+    EXPECT_TRUE(IsStoredWalkCliff(0.0f, 5.6f, 5.5f));
+    EXPECT_TRUE(IsStoredWalkCliff(std::numeric_limits<float>::infinity(), 0.0f, 5.5f));
+    EXPECT_TRUE(IsStoredWalkCliff(1.0f, std::numeric_limits<float>::quiet_NaN(), 5.5f));
+
+    // RFK: Ramtusk->Willix (331 yd, cliff) loses to Ramtusk->Kraul->Charlga (141 + 510 yd).
+    using DungeonNavigatorConvoy::StoredWalkLinkCost;
+    EXPECT_GT(StoredWalkLinkCost(true, 331.0f), StoredWalkLinkCost(false, 141.0f) +
+        StoredWalkLinkCost(false, 510.0f));
+    EXPECT_EQ(StoredWalkLinkCost(false, 331.0f), 331.0f);
+}
+
+TEST(DungeonNavigatorConvoySourceContract, RouteLegsFallBackSlopeFreeAndSkipCliffsOnlyUnderV2)
+{
+    std::string const source = ReadSource(
+        ModuleRoot() / "src/Ai/Dungeon/Generic/DungeonNavigator.cpp");
+    ASSERT_FALSE(source.empty());
+
+    std::size_t const helper = source.find("AutoWowDungeonPath::ProbeResult ProbeLeg(");
+    ASSERT_NE(helper, std::string::npos);
+    std::size_t const offGate = source.find("if (!ConvoyV2Enabled())\n        return checked;", helper);
+    std::size_t const slopeFree = source.find("AutoWowDungeonPath::Probe(player, x, y, z, false)", helper);
+    ASSERT_NE(offGate, std::string::npos);
+    ASSERT_NE(slopeFree, std::string::npos);
+    EXPECT_LT(offGate, slopeFree);
+    EXPECT_NE(source.find("ProbeLeg(bot, point.x, point.y, point.z);"), std::string::npos);
+    EXPECT_EQ(source.find("AutoWowDungeonPath::Probe(bot, point.x, point.y, point.z);"), std::string::npos);
+    EXPECT_NE(source.find("(ConvoyV2Enabled() && StoredWalkPathHasCliff(path))"), std::string::npos);
+    EXPECT_NE(source.find("ConvoyV2Enabled() && StoredWalkPathHasCliff(path), path->getDistance()"),
+        std::string::npos);
+}
+
 TEST(DungeonNavigatorConvoySourceContract, SharedRegroupIsBoundedAndOrdinaryWalkOnly)
 {
     std::string const source = ReadSource(
