@@ -505,6 +505,17 @@ void RecoverFlagOnlyCombat(Player* member)
         memberAI->PetFollow();
 }
 
+// ConvoyV2 curated direct point: a straight spline onto the exact authored point without pathfinding, as
+// MovementAction::DoMovePoint with generatePath = false.
+void MoveStraight(Unit* unit, float x, float y, float z)
+{
+    if (MotionMaster* motion = unit->GetMotionMaster())
+    {
+        motion->Clear();
+        motion->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false, false);
+    }
+}
+
 bool IsWalkPoint(PathNodeType type)
 {
     return type == NODE_PREPATH || type == NODE_PATH || type == NODE_NODE;
@@ -1200,6 +1211,43 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
     if (!map || !map->IsDungeon())
         return false;
 
+    if (directStepMapId != map->GetId() || directStepInstanceId != map->GetInstanceId())
+    {
+        directStepRow = DungeonRoute::NoPoint;
+        directStepFollowers.clear();
+        directStepFailed.clear();
+        directStepMapId = map->GetId();
+        directStepInstanceId = map->GetInstanceId();
+    }
+
+    // ConvoyV2 curated direct point: the leader's step is judged as soon as it stops. Until it arrives or its
+    // DirectTimeoutMs runs out the convoy holds; a failed step is logged once, never retried in this instance,
+    // and blocks the curated route so the ordinary handling resumes.
+    if (directStepRow != DungeonRoute::NoPoint)
+    {
+        DungeonRoute::Point const& stepPoint = DungeonRoute::Points[directStepRow];
+        DungeonRoute::DirectWait const wait = DungeonRoute::EvaluateDirectStep(
+            bot->GetExactDist(stepPoint.x, stepPoint.y, stepPoint.z), getMSTimeDiff(directStepStartMs, now));
+        if (wait == DungeonRoute::DirectWait::Pending)
+        {
+            nextScanTime = now + SuccessfulMoveRescanDelayMs();
+            return false;
+        }
+        LOG_INFO("playerbots",
+            "[DungeonNavigator] bot={} map={} route_source=curated leg={} point={} kind=direct role=leader "
+            "result={} x={} y={} z={}",
+            bot->GetName(), map->GetId(), stepPoint.encounterIdx, stepPoint.pointOrder,
+            wait == DungeonRoute::DirectWait::Arrived ? "arrived" : "failed", bot->GetPositionX(),
+            bot->GetPositionY(), bot->GetPositionZ());
+        if (wait == DungeonRoute::DirectWait::Failed)
+        {
+            directStepFailed.insert({bot->GetGUID().GetCounter(), directStepRow});
+            if (travelRouteCuratedRow != DungeonRoute::NoPoint)
+                BlockTravelRoute("direct_step_failed");
+        }
+        directStepRow = DungeonRoute::NoPoint;
+    }
+
     InstanceMap* instanceMap = map->ToInstanceMap();
     InstanceScript* script = instanceMap ? instanceMap->GetInstanceScript() : nullptr;
     if (!instanceMap || !script)
@@ -1548,6 +1596,32 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             return false;
         }
 
+        // ConvoyV2 curated direct point (DungeonRoutePolicy.h): a follower's pending step holds the convoy until
+        // it arrives or times out; a timed-out step is logged once and never retried by this member here.
+        auto const pendingStep = directStepFollowers.find(convoyMemberGuid);
+        if (pendingStep != directStepFollowers.end())
+        {
+            std::size_t const stepRow = pendingStep->second.first;
+            DungeonRoute::Point const& stepPoint = DungeonRoute::Points[stepRow];
+            DungeonRoute::DirectWait const wait = DungeonRoute::EvaluateDirectStep(
+                member->GetExactDist(stepPoint.x, stepPoint.y, stepPoint.z),
+                getMSTimeDiff(pendingStep->second.second, now));
+            if (wait == DungeonRoute::DirectWait::Pending)
+            {
+                nextScanTime = now + PartyCohesionBackoffMs;
+                return false;
+            }
+            LOG_INFO("playerbots",
+                "[DungeonNavigator] bot={} map={} route_source=curated leg={} point={} kind=direct role=follower "
+                "member={} result={} x={} y={} z={}",
+                bot->GetName(), map->GetId(), stepPoint.encounterIdx, stepPoint.pointOrder, member->GetName(),
+                wait == DungeonRoute::DirectWait::Arrived ? "arrived" : "failed", member->GetPositionX(),
+                member->GetPositionY(), member->GetPositionZ());
+            if (wait == DungeonRoute::DirectWait::Failed)
+                directStepFailed.insert({convoyMemberGuid, stepRow});
+            directStepFollowers.erase(pendingStep);
+        }
+
         bool const needsConvoyMove = hasConvoyRoute && !member->isMoving() &&
             leaderDistance > ConvoyAdvanceDistance;
         if (needsConvoyMove)
@@ -1577,6 +1651,33 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     bot->GetName(), map->GetId(), member->GetName(), maximumRouteIndex,
                     travelRoute.size(), assignedDistance);
                 continue;
+            }
+            // ConvoyV2 curated direct point behind the follower's slot: from its previous point the follower
+            // takes the step itself (no probe reaches across it).
+            if (ConvoyV2Enabled() && travelRouteCuratedRow != DungeonRoute::NoPoint)
+            {
+                for (std::size_t routeIndex = 1; routeIndex <= maximumRouteIndex; ++routeIndex)
+                {
+                    std::size_t const stepRow = travelRouteCuratedRow + routeIndex;
+                    DungeonRoute::Point const& stepPoint = DungeonRoute::Points[stepRow];
+                    DungeonRoute::Point const& fromPoint = DungeonRoute::Points[stepRow - 1];
+                    if (!stepPoint.direct || directStepFailed.count({convoyMemberGuid, stepRow}) ||
+                        !DungeonRoute::CanDirectStep(member->GetExactDist(fromPoint.x, fromPoint.y, fromPoint.z),
+                            member->GetExactDist(stepPoint.x, stepPoint.y, stepPoint.z), fromPoint, stepPoint))
+                    {
+                        continue;
+                    }
+                    MoveStraight(member, stepPoint.x, stepPoint.y, stepPoint.z);
+                    directStepFollowers[convoyMemberGuid] = {stepRow, now ? now : 1};
+                    nextScanTime = now + SuccessfulMoveRescanDelayMs();
+                    LOG_INFO("playerbots",
+                        "[DungeonNavigator] bot={} map={} route_source=curated leg={} point={} kind=direct "
+                        "role=follower member={} result=started route_index={} from_distance={}",
+                        bot->GetName(), map->GetId(), stepPoint.encounterIdx, stepPoint.pointOrder,
+                        member->GetName(), routeIndex,
+                        member->GetExactDist(fromPoint.x, fromPoint.y, fromPoint.z));
+                    return true;
+                }
             }
             std::size_t const scanBegin = maximumRouteIndex + 1 > ConvoyRoutePointLimit ?
                 maximumRouteIndex + 1 - ConvoyRoutePointLimit : 0;
@@ -2795,24 +2896,35 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         return false;
     }
 
-    // ConvoyV2: toward a boss with a curated leg (DungeonRoutePolicy.h) the leader walks the leg, in preference
-    // to travel nodes, the slope-free swim and a direct MoveTo, once within EntryRadius of it and until
-    // HandoffRadius of the boss. A cached curated route is kept until it is exhausted or blocked; a blocked one
-    // falls back to the ordinary handling of this encounter's cached route.
+    // ConvoyV2: toward a goal (boss spawn or gate row) that ends a curated leg (DungeonRoutePolicy.h) the leader
+    // walks the leg, in preference to travel nodes, the slope-free swim and a direct MoveTo, once within
+    // EntryRadius of it and until HandoffRadius of the goal. A cached curated route is kept until it is exhausted
+    // or blocked; a blocked one, or a route through a direct step that failed in this instance, falls back to the
+    // ordinary handling of this encounter's route.
     std::vector<std::size_t> curatedRows;
     std::size_t curatedEntry = DungeonRoute::NoPoint;
-    if (ConvoyV2Enabled() && goal.spawnId < DungeonGate::GoalIdBase)
+    if (ConvoyV2Enabled())
     {
         bool const cachedRoute = travelRouteInitialized &&
             travelRouteEncounterId == selection.selected.encounterId && travelRouteSpawnId == goal.spawnId &&
             travelRouteMapId == map->GetId() && travelRouteInstanceId == map->GetInstanceId();
         curatedRows = DungeonRoute::RouteFor(map->GetId(), selection.selected.encounterId);
-        curatedEntry = DungeonRoute::NearestPoint(curatedRows, bot->GetPositionX(), bot->GetPositionY(),
-            bot->GetPositionZ());
+        if (!DungeonRoute::EndsAt(curatedRows, goal.x, goal.y, goal.z))
+            curatedRows.clear();
+        curatedEntry = DungeonRoute::EntryStart(curatedRows, DungeonRoute::NearestPoint(curatedRows,
+            bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
+        uint32 const leaderGuid = bot->GetGUID().GetCounter();
+        if (curatedEntry != DungeonRoute::NoPoint &&
+            DungeonRoute::RouteHasFailedStep(curatedRows, curatedEntry,
+                [&](std::size_t row) { return directStepFailed.count({leaderGuid, row}) != 0; }))
+        {
+            curatedEntry = DungeonRoute::NoPoint;
+        }
         bool useCurated = false;
         if (cachedRoute && travelRouteCuratedRow != DungeonRoute::NoPoint)
         {
-            useCurated = !travelRouteBlocked;
+            // A replan (empty route) re-enters only while the leg has a usable entry.
+            useCurated = !travelRouteBlocked && (!travelRoute.empty() || curatedEntry != DungeonRoute::NoPoint);
         }
         else if (curatedEntry != DungeonRoute::NoPoint && !(cachedRoute && travelRouteBlocked))
         {
@@ -2907,6 +3019,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
 
         if (!travelRouteBlocked && travelRoute.empty())
         {
+            travelRouteCuratedRow = DungeonRoute::NoPoint;
             std::size_t const priorRoutePoints = replanOnlyWalkRecovery ?
                 lastTravelWaypointIndex : 0;
             std::size_t const priorIndex = replanOnlyWalkRecovery ? travelRouteNextIndex : 0;
@@ -3428,6 +3541,50 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
                 travelRouteNextIndex, travelRoute.size());
             return false;
+        }
+
+        // ConvoyV2 curated direct point next: no probe reaches across it. From its previous point the leader
+        // moves straight onto it; away from that point it first walks back there on an ordinary probe.
+        if (ConvoyV2Enabled() && travelRouteCuratedRow != DungeonRoute::NoPoint && travelRouteNextIndex &&
+            travelRouteNextIndex < travelRoute.size())
+        {
+            std::size_t const stepRow = travelRouteCuratedRow + travelRouteNextIndex;
+            DungeonRoute::Point const& stepPoint = DungeonRoute::Points[stepRow];
+            DungeonRoute::Point const& fromPoint = DungeonRoute::Points[stepRow - 1];
+            if (stepPoint.direct && !directStepFailed.count({bot->GetGUID().GetCounter(), stepRow}))
+            {
+                float const fromDistance = bot->GetExactDist(fromPoint.x, fromPoint.y, fromPoint.z);
+                float const toDistance = bot->GetExactDist(stepPoint.x, stepPoint.y, stepPoint.z);
+                if (DungeonRoute::CanDirectStep(fromDistance, toDistance, fromPoint, stepPoint))
+                {
+                    MoveStraight(bot, stepPoint.x, stepPoint.y, stepPoint.z);
+                    directStepRow = stepRow;
+                    directStepStartMs = now ? now : 1;
+                    nextScanTime = now + SuccessfulMoveRescanDelayMs();
+                    LOG_INFO("playerbots",
+                        "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} route_points={} "
+                        "route_source={} kind=direct role=leader result=started from_distance={}",
+                        bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
+                        travelRouteNextIndex, travelRoute.size(), routeSourceAt(travelRouteNextIndex),
+                        fromDistance);
+                    return true;
+                }
+                AutoWowDungeonPath::ProbeResult const back = ProbeLeg(bot, fromPoint.x, fromPoint.y, fromPoint.z);
+                bool const moved = fromDistance > DungeonRoute::DirectStartRadius && back.safe &&
+                    ProbeReachedStoredDestination(back) && AutoWowDungeonWalkAction(botAI).WalkPrepared(back);
+                LOG_INFO("playerbots",
+                    "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} route_points={} "
+                    "route_source={} kind=direct role=leader result={} from_distance={}",
+                    bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
+                    travelRouteNextIndex, travelRoute.size(), routeSourceAt(travelRouteNextIndex),
+                    moved ? "approach_start" : "not_at_start", fromDistance);
+                if (moved)
+                {
+                    nextScanTime = now + SuccessfulMoveRescanDelayMs();
+                    return true;
+                }
+                // Otherwise the ordinary frontier handling below (probes, recoveries, no-progress block).
+            }
         }
 
         WorldPosition finish(map->GetId(), goal.finalX, goal.finalY, goal.finalZ);

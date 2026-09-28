@@ -3386,7 +3386,11 @@ AutoWow.Dungeon.PortalFallback = 0
 # Toward a boss with a curated leg (DungeonRoutePolicy.h; Deadmines door -> Mr. Smite -> Cookie -> Captain
 # Greenskin -> Edwin VanCleef along the dock walkway, gangplank and ship decks) the leader walks the leg point by
 # point instead of travel nodes, the cove swim or a direct move, from within 40 yd of it until 8 yd from the boss;
-# logs "route_source=curated leg=<encounter> point=<n>".
+# logs "route_source=curated leg=<encounter> point=<n>". Wailing Caverns legs reach Lord Serpentis, Verdan and the
+# Disciple of Naralex; their two direct points (the step onto the Serpentis ledge, the 28 yd drop off it) are taken
+# by each party member with a straight move without pathfinding, only from within 8 yd of the previous point and
+# for at most 8 yd across, 30 yd down, 6 yd up ("kind=direct"); a mover not there within 10 s logs result=failed
+# and the step is not retried in that instance (the leader's curated route then falls back to the ordinary one).
 # Read once at first use.
 AutoWow.DungeonNav.ConvoyV2 = 0
 

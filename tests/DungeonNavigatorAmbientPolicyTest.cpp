@@ -604,9 +604,10 @@ TEST(DungeonNavigatorPacingPolicy, NavigatorRoutesEverySuccessfulRescanThroughPo
         ModuleRoot() / "src/Ai/Dungeon/Generic/DungeonNavigator.cpp");
     ASSERT_FALSE(source.empty());
 
-    // The count includes the helper definition plus the twelve successful-rescan call sites
-    // (three are the AutoWow.DungeonNav.Gates step move/attack/key-holder walk).
-    EXPECT_EQ(CountOccurrences(source, "SuccessfulMoveRescanDelayMs()"), 13u);
+    // The count includes the helper definition plus the sixteen successful-rescan call sites
+    // (three are the AutoWow.DungeonNav.Gates step move/attack/key-holder walk, four the ConvoyV2 curated
+    // direct point: leader pending hold, follower step, leader step, leader walk back to the step's start).
+    EXPECT_EQ(CountOccurrences(source, "SuccessfulMoveRescanDelayMs()"), 17u);
     EXPECT_EQ(source.find("constexpr uint32 SuccessfulMoveBackoffMs"), std::string::npos);
     EXPECT_NE(source.find("DungeonNavigatorPacing::GetSuccessfulMoveBackoffMs"),
         std::string::npos);
