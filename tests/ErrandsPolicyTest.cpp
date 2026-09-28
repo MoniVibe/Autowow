@@ -661,6 +661,29 @@ TEST(Gear, QuestChoiceWithoutUpgradeTakesMostValuable)
     EXPECT_EQ(AutoWowGear::MostValuableChoice({}), 0U);
 }
 
+// ---- AutoWow.Gear.Flow (GearUpgradePolicy.h Flows / PickTaker) ----
+TEST(GearFlow, OnlyTradeableGearNoUpgradeForTheHolderFlows)
+{
+    AutoWowGear::FlowParams fp;
+    EXPECT_TRUE(AutoWowGear::Flows(fp, 2, true, true, false));   // green BoE the looter will not wear
+    EXPECT_TRUE(AutoWowGear::Flows(fp, 1, true, true, false));   // white: default FlowMinQuality 1
+    EXPECT_FALSE(AutoWowGear::Flows(fp, 0, true, true, false));  // grey
+    EXPECT_FALSE(AutoWowGear::Flows(fp, 2, true, true, true));   // the holder's own upgrade stays
+    EXPECT_FALSE(AutoWowGear::Flows(fp, 2, true, false, false)); // bound (worn once): the mail would refuse it
+    EXPECT_FALSE(AutoWowGear::Flows(fp, 3, false, true, false)); // not a weapon / armor piece
+    fp.minQuality = 2;
+    EXPECT_FALSE(AutoWowGear::Flows(fp, 1, true, true, false));
+}
+
+TEST(GearFlow, TakerIsTheBiggestGainThenLowerGuid)
+{
+    using T = AutoWowGear::FlowTaker;
+    EXPECT_EQ(AutoWowGear::PickTaker({}), AutoWowGear::kNone);
+    EXPECT_EQ(AutoWowGear::PickTaker({T{62970, 0}}), AutoWowGear::kNone);  // no gain: nobody
+    EXPECT_EQ(AutoWowGear::PickTaker({T{62970, 5}, T{62960, 12}, T{62980, 3}}), 1U);
+    EXPECT_EQ(AutoWowGear::PickTaker({T{62990, 12}, T{62960, 12}, T{62955, 4}}), 1U);  // tie: lower guid
+}
+
 TEST(Gear, ErrandNeedServedOnlyByAGearTownAndPlannedAfterTraining)
 {
     Obs o = Healthy(kClassRogue, 20);

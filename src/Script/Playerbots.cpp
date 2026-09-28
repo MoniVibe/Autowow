@@ -21,6 +21,7 @@
 #include "AutoWowGuildsPolicy.h"
 #include "SquadPolicy.h"
 #include "SupplyPolicy.h"
+#include "GearUpgradePolicy.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
@@ -601,6 +602,8 @@ public:
             AutoWowParty::WorldUpdate(diff);  // world thread, after the map updates
         if (AutoWowSupply::Enabled())
             AutoWowSupply::WorldUpdate(diff);  // world thread: overlord, feed, delivery, pay, XP
+        if (AutoWowGear::FlowEnabled())
+            AutoWowSupply::GearFlowUpdate(diff);  // world thread: hand-me-down gear mails
         if (AutoWowSquad::Enabled())
             AutoWowSquad::WorldUpdate(diff);  // world thread: squad party, demand, stints
         if (AutoWowDungeonProbe::Enabled())

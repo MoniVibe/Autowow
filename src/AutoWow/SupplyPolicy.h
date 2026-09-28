@@ -2082,6 +2082,9 @@ inline bool MailOrders() { return detail::gEnabled && detail::gParams.mailOrders
 // MailPickup (any thread for the bot itself): it holds a delivered, non-COD mail with items from a house rep or artisan
 // (the only mail role bots send a member: its bags / potions; decided on the sender's role, not the subject).
 bool HasSupplyMail(Player* bot);
+// AutoWow.Gear.Flow (world thread, maps idle; GearUpgradePolicy.h): hand-me-down gear mails among the gear recipients.
+// Runs without AutoWow.Supply.Enable (a flow mail also counts as a supply mail for MailPickup).
+void GearFlowUpdate(std::uint32_t diff);
 // MailOrders (map thread, a random seller): it holds a loose stack that fits an open order of its team.
 bool HoldsOrderedItem(Player* bot);
 // MailOrders (map thread, a random seller at a mailbox): fill its team's open orders from its own loose stacks, at

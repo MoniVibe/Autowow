@@ -380,19 +380,72 @@ inline constexpr std::array<std::uint8_t, 17> kAhOrderOther = {15, 16, 4, 6, 0, 
     return out;
 }
 
+// ---- AutoWow.Gear.Flow (default 0) --------------------------------------------------------------------------------
+// Lane AQ gearflow audit (soak-s65/s66-full-r1, cohort 62955-63004 avg L42): worn avg ilvl 30.2, 11.2 of 17 slots
+// filled, 38% of worn pieces grey / white. The own-upgrade pipeline holds (stock periodic bag scan: 13 of 84 evaluated
+// pieces never worn, mostly bags; 7 of 7 quest gear rewards worn; 0 cohort AH posts / house donations of gear). Leaks:
+//   1. crafter jam: a Weavers artisan (a cohort bot) wears its own products; a worn-then-replaced piece is soulbound,
+//      yet the gear line keeps planning it (lowest guid first): 1508 / 1299 refused gear-line rows (624 / 458
+//      `bad_item` mails) per soak; the artisan -> rep mail (all pieces in one) and the consumer the bound piece was
+//      planned for starve for good.
+//   2. hand-me-downs: 28 of the 40 green+ weapon / armor pieces in cohort bags at the end of s66 are BoE upgrades
+//      (ilvl, armor type, proficiency) for a same-faction cohort member; the looter's errand vendors them (usage AH).
+// With the flag on: gear lines deliver tradeable pieces only; a world-thread pass every FlowTickMs mails each loose,
+// tradeable weapon / armor piece of FlowMinQuality+ that is no upgrade for its holder (stock "item upgrade" scorer)
+// to the same-faction gear recipient it upgrades most (ilvl gain; the scorer confirms), at most FlowMaxMails per pass,
+// one per recipient; the recipient's mail run takes it (HasSupplyMail) and the stock bag scan wears it. Logs
+// "[GearFlow]".
+struct FlowParams
+{
+    std::uint32_t tickMs = 60000;   // AutoWow.Gear.FlowTickMs
+    std::uint32_t maxMails = 10;    // AutoWow.Gear.FlowMaxMails: hand-me-down mails per pass (both factions)
+    std::uint32_t minQuality = 1;   // AutoWow.Gear.FlowMinQuality: ITEM_QUALITY_NORMAL (white) and up
+};
+
+inline constexpr char kFlowSubject[] = "AutoWoW gear flow";
+
+// A loose piece that may leave its holder: gear of minQuality+, tradeable, no upgrade for the holder.
+[[nodiscard]] inline bool Flows(FlowParams const& fp, std::uint32_t quality, bool gear, bool tradeable,
+                                bool holderUpgrade)
+{
+    return gear && tradeable && !holderUpgrade && quality >= fp.minQuality;
+}
+
+// One member the piece upgrades, by item level over what it wears in that slot (empty = 0).
+struct FlowTaker
+{
+    std::uint32_t guid = 0;
+    std::uint32_t gain = 0;
+};
+
+// Most gain, then lower guid; kNone when no taker gains.
+[[nodiscard]] inline std::size_t PickTaker(std::vector<FlowTaker> const& takers)
+{
+    std::size_t best = kNone;
+    for (std::size_t i = 0; i < takers.size(); ++i)
+        if (takers[i].gain && (best == kNone || takers[i].gain > takers[best].gain ||
+                               (takers[i].gain == takers[best].gain && takers[i].guid < takers[best].guid)))
+            best = i;
+    return best;
+}
+
 // ---- runtime (flag + params; read by AutoWowErrands::LoadConfig, used by NewRpgErrands.cpp and
-// NewRpgBaseAction::BestRewardIndex; the auction part by AutoWowTrade.cpp) ------------------------------
+// NewRpgBaseAction::BestRewardIndex; the auction part by AutoWowTrade.cpp; the flow by AutoWowSupply.cpp) -----------
 namespace detail
 {
 inline bool gEnabled = false;
 inline Params gParams;
 inline bool gAuctionEnabled = false;
 inline AhParams gAhParams;
+inline bool gFlowEnabled = false;
+inline FlowParams gFlowParams;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
 inline Params const& Get() { return detail::gParams; }
 inline bool AuctionEnabled() { return detail::gAuctionEnabled; }
 inline AhParams const& GetAh() { return detail::gAhParams; }
+inline bool FlowEnabled() { return detail::gFlowEnabled; }
+inline FlowParams const& GetFlow() { return detail::gFlowParams; }
 }  // namespace AutoWowGear
 
 #endif  // AUTOWOW_GEAR_UPGRADE_POLICY_H
