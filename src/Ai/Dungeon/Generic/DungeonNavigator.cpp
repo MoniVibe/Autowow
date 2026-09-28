@@ -123,6 +123,8 @@ uint32 SuccessfulMoveRescanDelayMs()
 
 // Leader guid -> {map, instance, encounter index} of its last selected encounter; read by the probe.
 std::map<uint32, std::array<uint32, 3>> navigatorTargetEncounters;
+// Leader guid -> {map, instance, mask of encounters set aside (gate_unavailable)} of its last scan; read by the probe.
+std::map<uint32, std::array<uint32, 3>> navigatorUnavailableEncounters;
 std::mutex navigatorTargetEncountersMutex;
 
 // AutoWow.DungeonNav.ConvoyV2 (default 0): follower settles on its best reachable point at or
@@ -1207,6 +1209,14 @@ int32 GetDungeonNavigatorTargetEncounter(uint32 botGuid, uint32 mapId, uint32 in
     auto const target = navigatorTargetEncounters.find(botGuid);
     return target != navigatorTargetEncounters.end() && target->second[0] == mapId &&
         target->second[1] == instanceId ? int32(target->second[2]) : -1;
+}
+
+uint32 GetDungeonNavigatorUnavailableMask(uint32 botGuid, uint32 mapId, uint32 instanceId)
+{
+    std::lock_guard<std::mutex> lock(navigatorTargetEncountersMutex);
+    auto const entry = navigatorUnavailableEncounters.find(botGuid);
+    return entry != navigatorUnavailableEncounters.end() && entry->second[0] == mapId &&
+        entry->second[1] == instanceId ? entry->second[2] : 0;
 }
 
 void DungeonNavigatorStrategy::InitTriggers(std::vector<TriggerNode*>& triggers)
@@ -2410,6 +2420,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
 
     std::vector<DungeonEncounterSelection::CandidateFacts> candidates;
     std::map<uint32, EncounterGoal> goals;
+    uint32 unavailableMask = 0;
     candidates.reserve(encounterGroups.size());
     uint8 const activeSpawnMask = uint8(1u << map->GetSpawnMode());
     SpellCreditBossFallbackGoal const spellCreditFallback = BuildSpellCreditBossFallback(
@@ -2545,6 +2556,8 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             if (char const* reason = gateUnavailable(encounterIndex, records))
             {
                 facts.prerequisites = DungeonEncounterSelection::GateState::Blocked;
+                if (encounterIndex < 32)
+                    unavailableMask |= 1u << encounterIndex;
                 if (gateUnavailableLogged.insert(encounterIndex).second)
                     LOG_INFO("playerbots", "[DungeonNavigator] bot={} map={} encounter={} gate_unavailable={}",
                         bot->GetName(), map->GetId(), encounterIndex, reason);
@@ -2553,6 +2566,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         facts.reachability = bestGoal.spawnId ? DungeonEncounterSelection::Reachability::Reachable :
             DungeonEncounterSelection::Reachability::Unreachable;
         candidates.push_back(facts);
+    }
+    {
+        std::lock_guard<std::mutex> lock(navigatorTargetEncountersMutex);
+        navigatorUnavailableEncounters[bot->GetGUID().GetCounter()] =
+            {map->GetId(), map->GetInstanceId(), unavailableMask};
     }
 
     DungeonEncounterSelection::Selection const selection =

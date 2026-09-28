@@ -422,6 +422,7 @@ struct RunRecord
     std::uint32_t instance = 0;
     std::uint32_t mask = 0;
     std::uint32_t allMask = 0;
+    std::uint32_t unavailable = 0;  // encounters the leader's navigator set aside (gate_unavailable)
     std::uint32_t wipes = 0;
     std::uint32_t revives = 0;
     std::uint32_t stucks = 0;
@@ -440,6 +441,23 @@ struct StuckPoint
     std::uint32_t boss = 0;           // its credit entry (0 = unknown)
 };
 
+// Clearable encounters of the run: the full-clear mask minus the ones the navigator set aside
+// (gate_unavailable=friendly_credit|key_blocked), which, like a kill credit with no static spawn, this party
+// can never clear. A run that clears the rest ends completed.
+inline std::uint32_t Clearable(RunRecord const& r)
+{
+    return r.allMask & ~r.unavailable;
+}
+
+inline std::vector<std::uint32_t> Indices(std::uint32_t mask)
+{
+    std::vector<std::uint32_t> out;
+    for (std::uint32_t i = 0; i < 32; ++i)
+        if (mask >> i & 1u)
+            out.push_back(i);
+    return out;
+}
+
 inline std::string List(std::vector<std::uint32_t> const& v)
 {
     std::string out = "[";
@@ -455,12 +473,14 @@ inline std::string Fields(RunRecord const& r, std::uint64_t nowMs, std::int32_t 
                       std::to_string(r.map) + ",\"plvl\":" + std::to_string(r.level) + ",\"q\":" +
                       std::to_string(r.quality) + ",\"inst\":" + std::to_string(r.instance) + ",\"enc\":" +
                       std::to_string(enc) + ",\"mask\":" + std::to_string(r.mask) + ",\"all\":" +
-                      std::to_string(r.allMask) + ",\"bosses\":" + std::to_string(Bits(r.mask & r.allMask)) +
-                      ",\"total\":" + std::to_string(Bits(r.allMask)) + ",\"wipes\":" + std::to_string(r.wipes) +
+                      std::to_string(Clearable(r)) + ",\"bosses\":" + std::to_string(Bits(r.mask & Clearable(r))) +
+                      ",\"total\":" + std::to_string(Bits(Clearable(r))) + ",\"wipes\":" + std::to_string(r.wipes) +
                       ",\"revives\":" + std::to_string(r.revives) + ",\"stucks\":" + std::to_string(r.stucks) +
                       ",\"deaths\":" + List(r.deaths) + ",\"dur_ms\":" +
                       std::to_string(nowMs >= r.startMs ? nowMs - r.startMs : 0) + ",\"end\":\"" + EndName(r.end) +
                       "\",\"members\":" + List(r.members);
+    if (r.unavailable)
+        out += ",\"unavailable\":" + List(Indices(r.unavailable));
     if (!r.why.empty())
         out += ",\"why\":\"" + r.why + "\"";
     if (s)

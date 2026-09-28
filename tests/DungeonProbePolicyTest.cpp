@@ -191,6 +191,34 @@ TEST(DungeonProbePolicyTest, LedgerFieldsAreFixedOrder)
               std::string::npos);
 }
 
+TEST(DungeonProbePolicyTest, SetAsideEncountersLeaveTheClearableMask)
+{
+    // S68 Uldaman, alliance: Lost Dwarves (1, friendly_credit) and Ironaya (2, key_blocked) set aside.
+    RunRecord r;
+    r.allMask = 0b11110111;
+    r.unavailable = 0b110;
+    r.mask = 0b11110001;
+    EXPECT_EQ(Clearable(r), 0b11110001u);
+    EXPECT_EQ(Indices(r.unavailable), (std::vector<std::uint32_t>{1, 2}));
+    std::string const fields = Fields(r, 0);
+    EXPECT_NE(fields.find(",\"all\":241,\"bosses\":5,\"total\":5,"), std::string::npos);
+    EXPECT_NE(fields.find("\"members\":[],\"unavailable\":[1,2]"), std::string::npos);
+    EXPECT_EQ(NextEncounter(0b1, Clearable(r)), 4);
+
+    // The rest cleared: completed.
+    InsideFacts f;
+    f.size = f.online = f.alive = 5;
+    f.mask = r.mask;
+    f.allMask = Clearable(r);
+    End end = End::None;
+    EXPECT_EQ(DecideInside(f, InsideParams{}, end), Verdict::Finish);
+    EXPECT_EQ(end, End::Completed);
+    // Nothing set aside: no field, full mask.
+    r.unavailable = 0;
+    EXPECT_EQ(Fields(r, 0).find("unavailable"), std::string::npos);
+    EXPECT_EQ(Clearable(r), r.allMask);
+}
+
 // S53: the alliance probe could not enter Ragefire Chasm (entrance inside Orgrimmar).
 TEST(DungeonProbePolicyTest, EnemyCapitalEntrancesAreSkippedPerTeam)
 {
