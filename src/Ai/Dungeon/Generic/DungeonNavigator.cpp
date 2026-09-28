@@ -1104,6 +1104,7 @@ void DungeonNavigateNextEncounterAction::ResetTravelRoute()
     travelRouteInitialized = false;
     travelRouteBlocked = false;
     travelRouteBlockedReason = "none";
+    travelRouteCuratedRow = DungeonRoute::NoPoint;
     lastTravelEncounterId = 0;
     lastTravelSpawnId = 0;
     lastTravelWaypointIndex = 0;
@@ -2794,6 +2795,58 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         return false;
     }
 
+    // ConvoyV2: toward a boss with a curated leg (DungeonRoutePolicy.h) the leader walks the leg, in preference
+    // to travel nodes, the slope-free swim and a direct MoveTo, once within EntryRadius of it and until
+    // HandoffRadius of the boss. A cached curated route is kept until it is exhausted or blocked; a blocked one
+    // falls back to the ordinary handling of this encounter's cached route.
+    std::vector<std::size_t> curatedRows;
+    std::size_t curatedEntry = DungeonRoute::NoPoint;
+    if (ConvoyV2Enabled() && goal.spawnId < DungeonGate::GoalIdBase)
+    {
+        bool const cachedRoute = travelRouteInitialized &&
+            travelRouteEncounterId == selection.selected.encounterId && travelRouteSpawnId == goal.spawnId &&
+            travelRouteMapId == map->GetId() && travelRouteInstanceId == map->GetInstanceId();
+        curatedRows = DungeonRoute::RouteFor(map->GetId(), selection.selected.encounterId);
+        curatedEntry = DungeonRoute::NearestPoint(curatedRows, bot->GetPositionX(), bot->GetPositionY(),
+            bot->GetPositionZ());
+        bool useCurated = false;
+        if (cachedRoute && travelRouteCuratedRow != DungeonRoute::NoPoint)
+        {
+            useCurated = !travelRouteBlocked;
+        }
+        else if (curatedEntry != DungeonRoute::NoPoint && !(cachedRoute && travelRouteBlocked))
+        {
+            useCurated = DungeonRoute::UseRoute(
+                DungeonRoute::Distance(DungeonRoute::Points[curatedRows[curatedEntry]], bot->GetPositionX(),
+                    bot->GetPositionY(), bot->GetPositionZ()),
+                DungeonRoute::Distance(DungeonRoute::Points[curatedRows.back()], bot->GetPositionX(),
+                    bot->GetPositionY(), bot->GetPositionZ()));
+            // A travel-node route toward this boss gives way to the curated one.
+            if (useCurated && cachedRoute)
+                ResetTravelRoute();
+        }
+        if (useCurated)
+        {
+            goal.travelNodes = true;
+            goal.finalX = goal.x;
+            goal.finalY = goal.y;
+            goal.finalZ = goal.z;
+        }
+        else
+        {
+            curatedEntry = DungeonRoute::NoPoint;
+        }
+    }
+    // Log tag of a travel route point: "travel_nodes", or with a curated route its leg and point.
+    auto routeSourceAt = [&](std::size_t routeIndex) -> std::string
+    {
+        if (travelRouteCuratedRow == DungeonRoute::NoPoint)
+            return "travel_nodes";
+        DungeonRoute::Point const& point = DungeonRoute::Points[std::min(travelRouteCuratedRow + routeIndex,
+            std::size(DungeonRoute::Points) - 1)];
+        return Acore::StringFormat("curated leg={} point={}", point.encounterIdx, point.pointOrder);
+    };
+
     bool const preserveCachedRoute = travelRouteInitialized && !travelRouteBlocked &&
         !travelRoute.empty() && travelRouteEncounterId == selection.selected.encounterId &&
         travelRouteSpawnId == goal.spawnId && travelRouteMapId == map->GetId() &&
@@ -2832,6 +2885,25 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         bool const pendingWalkRevalidation = replanOnlyWalkRecovery &&
             DungeonRouteReconnect::IsWalkRevalidationPending(
                 walkRevalidationState, walkRevalidationKey);
+
+        // ConvoyV2 curated leg: the table points from the one nearest the leader on; a replan re-enters there.
+        if (curatedEntry != DungeonRoute::NoPoint && !travelRouteBlocked && travelRoute.empty())
+        {
+            travelRouteNextIndex = 0;
+            lastTravelWaypointIndex = 0;
+            travelRouteCuratedRow = curatedRows[curatedEntry];
+            travelRoute.reserve(curatedRows.size() - curatedEntry);
+            for (std::size_t index = curatedEntry; index < curatedRows.size(); ++index)
+            {
+                DungeonRoute::Point const& point = DungeonRoute::Points[curatedRows[index]];
+                travelRoute.push_back({point.mapId, point.x, point.y, point.z});
+            }
+            LOG_INFO("playerbots",
+                "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_source={} route_points={} "
+                "replan={}",
+                bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId, routeSourceAt(0),
+                travelRoute.size(), travelNoProgressReplans);
+        }
 
         if (!travelRouteBlocked && travelRoute.empty())
         {
@@ -3296,9 +3368,9 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {
                 LOG_INFO("playerbots",
                     "[DungeonNavigator] bot={} map={} encounter={} spawn={} "
-                    "route_source=travel_nodes blocked={}",
+                    "route_source={} blocked={}",
                     bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
-                    travelRouteBlockedReason);
+                    routeSourceAt(0), travelRouteBlockedReason);
             }
             return false;
         }
@@ -3380,8 +3452,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             preparedCompletePrefix = false;
             hasSelectedPreparedProbe = false;
             uint32 examined = 0;
+            uint32 const lookaheadPointLimit = travelRouteCuratedRow != DungeonRoute::NoPoint ?
+                DungeonRoute::LookaheadPointLimit : TravelLookaheadPointLimit;
             for (std::size_t index = startIndex;
-                 index < travelRoute.size() && examined < TravelLookaheadPointLimit;
+                 index < travelRoute.size() && examined < lookaheadPointLimit;
                  ++index, ++examined)
             {
                 DungeonNavigatorRoutePoint const& point = travelRoute[index];
@@ -3515,10 +3589,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             frontierBlockedReason = "none";
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} "
-                "route_points={} route_source=travel_nodes recovery={} "
+                "route_points={} route_source={} recovery={} "
                 "endpoint_x={} endpoint_y={} endpoint_z={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
-                selectedRouteIndex, travelRoute.size(),
+                selectedRouteIndex, travelRoute.size(), routeSourceAt(selectedRouteIndex),
                 preparedCompletePrefix ? "prepared_complete_prefix" : "partial_progress",
                 goal.x, goal.y, goal.z);
         }
@@ -3628,9 +3702,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             nextScanTime = now + BlockedScanBackoffMs;
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} "
-                "route_points={} route_source=travel_nodes blocked={} probe={}",
+                "route_points={} route_source={} blocked={} probe={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
-                travelRouteNextIndex, travelRoute.size(), frontierBlockedReason,
+                travelRouteNextIndex, travelRoute.size(), routeSourceAt(travelRouteNextIndex),
+                frontierBlockedReason,
                 reconnectProbes.empty() ? std::string("{}") :
                     AutoWowDungeonPath::Json(reconnectProbes.front(), false));
             return false;
@@ -3684,10 +3759,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             nextScanTime = now + BlockedScanBackoffMs;
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} route_index={} "
-                "route_points={} route_source=travel_nodes recovery=no_progress_replan "
+                "route_points={} route_source={} recovery=no_progress_replan "
                 "retries={} replans={} probe={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
-                goal.waypointIndex, routePointCount, TravelNoProgressRetryLimit,
+                goal.waypointIndex, routePointCount, routeSourceAt(goal.waypointIndex), TravelNoProgressRetryLimit,
                 travelNoProgressReplans, hasSelectedPreparedProbe ?
                     AutoWowDungeonPath::Json(selectedPreparedProbe, false) : std::string("{}"));
             return false;
@@ -3699,11 +3774,12 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             LOG_INFO("playerbots",
                 "[DungeonNavigator] bot={} map={} encounter={} spawn={} final_x={} final_y={} "
                 "final_z={} route_index={} route_points={} waypoint_x={} waypoint_y={} waypoint_z={} "
-                "remaining_distance={} route_source=travel_nodes blocked=no_progress retries={} "
+                "remaining_distance={} route_source={} blocked=no_progress retries={} "
                 "probe={}",
                 bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
                 goal.finalX, goal.finalY, goal.finalZ, goal.waypointIndex, routePointCount,
-                goal.x, goal.y, goal.z, goal.pathLength, travelNoProgressRetries,
+                goal.x, goal.y, goal.z, goal.pathLength, routeSourceAt(goal.waypointIndex),
+                travelNoProgressRetries,
                 hasSelectedPreparedProbe ?
                     AutoWowDungeonPath::Json(selectedPreparedProbe, false) : std::string("{}"));
             BlockTravelRoute("no_progress");
@@ -3713,10 +3789,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         LOG_INFO("playerbots",
             "[DungeonNavigator] bot={} map={} encounter={} spawn={} final_x={} final_y={} "
             "final_z={} route_index={} route_points={} waypoint_x={} waypoint_y={} waypoint_z={} "
-            "remaining_distance={} route_source=travel_nodes selection=next_encounter",
+            "remaining_distance={} route_source={} selection=next_encounter",
             bot->GetName(), map->GetId(), selection.selected.encounterId, goal.spawnId,
             goal.finalX, goal.finalY, goal.finalZ, goal.waypointIndex, travelRoute.size(),
-            goal.x, goal.y, goal.z, goal.pathLength);
+            goal.x, goal.y, goal.z, goal.pathLength, routeSourceAt(goal.waypointIndex));
         AutoWowDungeonWalkAction walk(botAI);
         bool const moved = hasSelectedPreparedProbe ? walk.WalkPrepared(selectedPreparedProbe) :
             MoveTo(map->GetId(), goal.x, goal.y, goal.z, false, false, false, true,

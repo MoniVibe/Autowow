@@ -3355,6 +3355,10 @@ AutoWow.Dungeon.PortalFallback = 0
 # is back within 45 yd of the leader. Leader side: the backward re-anchor no longer rewinds onto the point the
 # leader was just marked arrived at, and a navmesh gap (NOPATH) to the immediate next route point within 15 yd
 # horizontal / 5.5 yd vertical is walked along the reversed safe probe from that point (2 tries per hop).
+# Toward a boss with a curated leg (DungeonRoutePolicy.h; Deadmines door -> Mr. Smite -> Cookie -> Captain
+# Greenskin -> Edwin VanCleef along the dock walkway, gangplank and ship decks) the leader walks the leg point by
+# point instead of travel nodes, the cove swim or a direct move, from within 40 yd of it until 8 yd from the boss;
+# logs "route_source=curated leg=<encounter> point=<n>".
 # Read once at first use.
 AutoWow.DungeonNav.ConvoyV2 = 0
 
