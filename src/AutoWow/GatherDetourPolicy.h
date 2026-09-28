@@ -33,6 +33,7 @@ struct Params
     std::uint32_t yards = 60;          // AutoWow.Gathering.DetourYards
     std::uint32_t maxDz = 20;          // AutoWow.Gathering.DetourMaxDz (yards above/below the bot)
     std::uint32_t timeoutMs = 45000;   // AutoWow.Gathering.DetourTimeoutMs (per node, then skipped)
+    bool anySkill = false;             // AutoWow.Gather.AnySkill: a learned skill works any node (no lock gate)
 };
 
 // The bot's gathering ability. 0 skill = not learned.
@@ -77,7 +78,7 @@ struct Node
         have = s.herbalism;
     else if (n.skill == kSkillMining)
         have = s.miningPick ? s.mining : 0;
-    if (!have || n.reqSkill > have)
+    if (!have || (n.reqSkill > have && !p.anySkill))
         return false;
     std::int64_t const reach = p.yards;
     std::int64_t const dz = n.dz < 0 ? -std::int64_t(n.dz) : n.dz;

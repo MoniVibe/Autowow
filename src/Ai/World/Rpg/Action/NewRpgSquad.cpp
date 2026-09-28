@@ -343,6 +343,7 @@ void TeamTick(std::size_t t, std::uint64_t now)
                                            : std::vector<Want>{};
     std::vector<std::uint32_t> levels;
     Skills skills;
+    skills.anySkill = sPlayerbotAIConfig.autoWowGatherAnySkill;
     std::vector<std::array<std::int32_t, 2>> spread;
     bool onAnchorMap = false;
     std::vector<char const*> bench;  // AutoWow.Squad.LevelWindow (2), per member ("" = takes part)

@@ -88,6 +88,14 @@ TEST(Squad, SkinningRequirementAndWorkability)
     EXPECT_FALSE(CanWork(Kind::Ore, s, 65));      // tin vein 65 > mining 60
     EXPECT_TRUE(CanWork(Kind::Leather, s, SkinReq(15)));
     EXPECT_FALSE(CanWork(Kind::Leather, s, SkinReq(16)));
+    {
+        Skills any = s;  // AutoWow.Gather.AnySkill: a learned skill works any source
+        any.anySkill = true;
+        EXPECT_TRUE(CanWork(Kind::Ore, any, 65));
+        EXPECT_TRUE(CanWork(Kind::Leather, any, SkinReq(60)));
+        any.herbalism = 0;
+        EXPECT_FALSE(CanWork(Kind::Herb, any, 1));  // still needs the skill
+    }
 
     std::vector<Spawn> beasts = {Src(1, 10, 0, 0, 14, 15), Src(2, 11, 0, 0, 16, 17)};
     auto noNode = [](std::uint32_t) { return ~0u; };

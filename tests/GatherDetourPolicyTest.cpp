@@ -40,6 +40,28 @@ TEST(GatherDetour, OnlySkillAppropriateNodes)
     EXPECT_FALSE(Eligible(p, s, Node{1, 393, 1, 10, 0, 0}));  // skinning / any other lock: not a detour
 }
 
+// AutoWow.Gather.AnySkill: the lock skill no longer gates a detour; a learned skill (and a pick for ore) still does.
+TEST(GatherDetour, AnySkillDropsOnlyTheLockSkillGate)
+{
+    Params p;
+    p.anySkill = true;
+    Skills s;
+    s.herbalism = 8;
+    EXPECT_TRUE(Eligible(p, s, Herb(1, 150, 10)));  // req far above skill
+    EXPECT_TRUE(Eligible(p, s, Herb(1, 8, 10)));
+    EXPECT_FALSE(Eligible(p, s, Ore(1, 1, 10)));    // mining not learned
+    s.mining = 4;
+    EXPECT_FALSE(Eligible(p, s, Ore(1, 125, 10)));  // no pick
+    s.miningPick = true;
+    EXPECT_TRUE(Eligible(p, s, Ore(1, 125, 10)));
+    EXPECT_FALSE(Eligible(p, s, Herb(1, 150, 61)));  // reach still applies
+    EXPECT_FALSE(Eligible(p, s, Node{1, 393, 1, 10, 0, 0}));  // still herb / ore only
+    std::vector<Node> const nodes = {Herb(5, 200, 30), Ore(6, 250, 10)};
+    EXPECT_EQ(PickNode(p, s, nodes, {}), 1);  // nearest, whatever its lock
+    p.anySkill = false;
+    EXPECT_EQ(PickNode(p, s, nodes, {}), -1);  // flag off: stock gate
+}
+
 TEST(GatherDetour, WithinDetourYardsAndHeight)
 {
     Params p;  // 60 yd, dz 20
