@@ -403,8 +403,9 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
         AutoWowContracts::Enabled() ? AutoWowContracts::Snapshot(botGuid) : AutoWowContracts::BotState{};
     // AutoWow.Squad (default 0): during a stint a squad member picks only source targets within the leash of the
     // anchor (SquadPolicy.h HuntTarget), grey ones included (linen mobs stay farmable). No stint: nothing filtered.
+    // AutoWow.Squad.LevelWindow: not for a benched member or one on another map (SnapshotFor).
     AutoWowSquad::TeamState const squad =
-        AutoWowSquad::Enabled() ? AutoWowSquad::SnapshotOf(botGuid) : AutoWowSquad::TeamState{};
+        AutoWowSquad::Enabled() ? AutoWowSquad::SnapshotFor(botGuid, bot->GetMapId()) : AutoWowSquad::TeamState{};
 
     for (ObjectGuid const guid : targets)
     {

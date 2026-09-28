@@ -3167,6 +3167,24 @@ AutoWow.Squad.MinDropPct = 5
 AutoWow.Squad.CooldownMs = 600000
 AutoWow.Squad.SearchRetryMs = 60000
 
+# Gatherer squad level window (lane AL squadzone; SquadPolicy.h "AutoWow.Squad.LevelWindow"; needs AutoWow.Squad.Enable).
+# soak-s62-full-r1: 91 of 103 squad deaths were three members away from any anchor (a L23 walking to the anchor
+# through Alterac Mountains, a L22 dying on its walk through the Wetlands, a L19 on another continent left without
+# grind targets by the stint filter). LevelWindow 0 = off (unchanged behaviour). LevelWindow > 0 (suggested 2):
+#   (1) an anchor's zone bracket low <= squad average level + LevelWindow (replaces ZoneLevelMargin), the leader's
+#       straight line to it crosses no zone bracketed above that, and a death-cluster zone (4) is skipped while it
+#       cools;
+#   (2) a member whose straight line to the anchor crosses a zone bracketed above its level + LevelWindow (its own
+#       zone excepted), or with DeathCluster deaths within AutoWow.DeathLoop.WindowMs (needs AutoWow.DeathLoop.Enable),
+#       is benched for the stint: its own loop runs, the leader does not wait for it, zone progression does not hold
+#       it, the stint target filter does not narrow its grind targets (ledger `squad` bench, cause route|deaths);
+#   (3) a member on another map than the anchor gets no stint target filter;
+#   (4) a member within LeashYards of the anchor with DeathCluster recent deaths ends the stint (cause danger) and
+#       the anchor zone is skipped by the search for DangerZoneMs.
+AutoWow.Squad.LevelWindow = 0
+AutoWow.Squad.DeathCluster = 3
+AutoWow.Squad.DangerZoneMs = 3600000
+
 # Dungeon completability probe (lane P; DungeonProbePolicy.h / DungeonProbeRuntime.cpp). TEST INSTRUMENTS, not
 # faction members (owner ruling 2026-09-27): magic level, gear, spec, teleports and resurrections are allowed for
 # the probe parties and never for cohort / role / squad bots. Parties: ';'-separated "name:guid,guid,..." (1..5
