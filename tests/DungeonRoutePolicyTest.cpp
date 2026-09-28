@@ -87,6 +87,7 @@ TEST(DungeonRoutePolicy, EncountersWithoutLegHaveNoRoute)
     EXPECT_TRUE(RouteFor(36, 2).empty());
     EXPECT_TRUE(RouteFor(36, 7).empty());
     EXPECT_TRUE(RouteFor(43, 3).empty());
+    EXPECT_TRUE(RouteFor(48, 2).empty());
 }
 
 TEST(DungeonRoutePolicy, EntersAtNearestPoint)
@@ -194,6 +195,39 @@ TEST(DungeonRoutePolicy, DirectStepGuards)
     EXPECT_TRUE(DirectStepShape(top, {43, 5, 14, 1.0f, 0.0f, 6.0f, true}));
     EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, 1.0f, 0.0f, 6.1f, true}));  // too far up
     EXPECT_FALSE(DirectStepShape(top, {36, 5, 14, 1.0f, 0.0f, -1.0f, true}));  // other map
+
+    // Level crossing (a swim across a water surface): farther across, but only level.
+    EXPECT_TRUE(DirectStepShape(top, {43, 5, 14, DirectMaximumLevelCrossing, 0.0f, 0.0f, true}));
+    EXPECT_TRUE(DirectStepShape(top, {43, 5, 14, 12.0f, 0.0f, -DirectLevelTolerance, true}));
+    EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, 12.0f, 0.0f, -DirectLevelTolerance - 0.1f, true}));
+    EXPECT_FALSE(DirectStepShape(top, {43, 5, 14, DirectMaximumLevelCrossing + 0.1f, 0.0f, 0.0f, true}));
+    EXPECT_FALSE(DirectStepShape(top, {36, 5, 14, 12.0f, 0.0f, 0.0f, true}));  // other map
+}
+
+TEST(DungeonRoutePolicy, BlackfathomSarevessLegSwimsThePool)
+{
+    // Lady Sarevess, idx1 (spawn 26129); no leg for Ghamoo-ra (idx0), so the route is leg 1 alone.
+    EXPECT_TRUE(RouteFor(48, 0).empty());
+    std::vector<std::size_t> const rows = RouteFor(48, 1);
+    ASSERT_EQ(rows.size(), 15u);
+    EXPECT_TRUE(EndsAt(rows, -299.917f, 413.755f, -57.123f));
+    // Starts at Ghamoo-ra's spawn (25732), where S62 parties stood with Sarevess next.
+    EXPECT_LT(Distance(Points[rows.front()], -442.424f, 211.822f, -52.6367f), 0.01f);
+    EXPECT_EQ(NearestPoint(rows, -443.0f, 207.0f, -52.6f), 0u);
+
+    // One direct point, the level swim across the unlinked water surface.
+    std::vector<std::size_t> direct;
+    for (std::size_t row : rows)
+        if (Points[row].direct)
+            direct.push_back(row);
+    ASSERT_EQ(direct.size(), 1u);
+    Point const& from = Points[direct[0] - 1];
+    Point const& to = Points[direct[0]];
+    EXPECT_EQ(to.pointOrder, 6u);
+    float const across = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y));
+    EXPECT_GT(across, DirectMaximumHorizontal);
+    EXPECT_NEAR(to.z, from.z, 0.01f);
+    EXPECT_TRUE(DirectStepShape(from, to));
 }
 
 TEST(DungeonRoutePolicy, DirectStepTimesOutOnce)

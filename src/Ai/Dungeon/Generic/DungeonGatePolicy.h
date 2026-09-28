@@ -270,6 +270,23 @@ inline Approach SelectApproach(bool slopeCheckedReached, bool slopeFreeReached)
     return slopeCheckedReached || slopeFreeReached ? Approach::Direct : Approach::TravelNodes;
 }
 
+// Escort row, per scan. Soak S62 Gnomeregan: Emi Shortfuse's escort (SAI 7998) summons trogg group 1 with
+// attackScriptOwner on her; the party stood within the escort distance logging `wait`, nobody was attacked, she
+// died (spawntime 86400) and the row logged npc_missing until the run was declared stuck. Her attackers come first.
+enum class EscortAct : std::uint8_t
+{
+    Defend,  // attack the nearest live attacker of the escorted creature
+    Wait,    // near enough, nothing to defend
+    Follow,  // move to the escorted creature
+};
+
+inline EscortAct SelectEscortAct(bool escortedAttacked, bool withinEscortDistance)
+{
+    if (escortedAttacked)
+        return EscortAct::Defend;
+    return withinEscortDistance ? EscortAct::Wait : EscortAct::Follow;
+}
+
 // The per-scan gate decision logs (approach, wait, wait_party, no_key, ...) are INFO: a (row, result) pair logs
 // the first time and again LogRepeatMs after its last line.
 constexpr std::uint32_t LogRepeatMs = 30000;
