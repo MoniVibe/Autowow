@@ -407,6 +407,34 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     if (AutoWowSupply::Enabled() && SupplyStep())
         return true;
 
+    // AutoWow.Survival.RestSafe (default 0): below the rest-gate hp/mana thresholds a solo independent bot
+    // first walks out of any hostile's aggro radius (hostile players too), then the RPG holds in REST while
+    // the food strategy eats (SurvivalRecovery.h). A flight leg is left alone; SafeRevive's post-revive
+    // retreat runs first.
+    if (AutoWowRestSafe::Enabled() && status != RPG_TRAVEL_FLIGHT &&
+        !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()))
+    {
+        float x = 0.0f, y = 0.0f, z = 0.0f;
+        switch (AutoWowRestSafe::RestStep(botAI, x, y, z))
+        {
+            case AutoWowRestSafe::Step::Walk:
+                if (bot->isMoving() || IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL) ||
+                    MoveTo(bot->GetMapId(), x, y, z, false, false, false, true))
+                    return true;
+                AutoWowRestSafe::EndMove(bot->GetGUID().GetCounter());
+                break;
+            case AutoWowRestSafe::Step::Rest:
+                if (status != RPG_REST)
+                {
+                    info.ChangeToRest();
+                    return true;
+                }
+                return false;  // stay in REST (no RPG movement); lower actions (food) run
+            case AutoWowRestSafe::Step::None:
+                break;
+        }
+    }
+
     // AutoWow.Survival.SafeRevive: after a corpse revive the bot first walks off the kill spot, then the RPG
     // holds in REST below the rest-gate hp/mana thresholds while the food strategy eats (SurvivalRecovery.h).
     if (AutoWowSafeRevive::Enabled() && !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()))

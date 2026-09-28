@@ -64,12 +64,26 @@ struct ReviveState
     bool restPending = false;
     bool relocateOnRes = false;  // V2: this death's plan is a forced spirit healer
     bool relocate = false;       // V2: revived after it, one relocation owed
+    bool pendingPvp = false;     // RestSafe: killed by a player (or its pet), noted by the kill hook
+    bool pvpDeath = false;       // RestSafe: this death was PvP
+};
+
+// AutoWow.Survival.RestSafe: one rest episode (below the rest-gate thresholds, out of combat).
+struct RestState
+{
+    bool planned = false;
+    bool moving = false;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    std::uint64_t moveMs = 0;
 };
 
 // Deaths, revives and bot AI updates run on map threads. Touched only with a flag on.
 std::mutex gLock;
 std::unordered_map<std::uint32_t, ReviveState> gRevive;
 std::unordered_map<std::uint32_t, AutoWowUnstick::BotState> gUnstick;
+std::unordered_map<std::uint32_t, RestState> gRest;
 
 std::uint64_t NowMs()
 {
@@ -179,6 +193,31 @@ std::vector<WalkingV2Policy::Mob> ScanHostilesV2(Player* bot, float radius)
     return mobs;
 }
 
+// AutoWow.Survival.RestSafe: live hostile players (not GMs) within radius of the bot.
+std::vector<Player*> HostilePlayers(Player* bot, float radius)
+{
+    std::list<Player*> found;
+    Acore::AnyPlayerInObjectRangeCheck check(bot, radius, true, true);
+    Acore::PlayerListSearcher<Acore::AnyPlayerInObjectRangeCheck> searcher(bot, found, check);
+    Cell::VisitObjects(bot, searcher, radius);
+    std::vector<Player*> out;
+    for (Player* p : found)
+        if (p && p != bot && p->IsInWorld() && p->IsHostileTo(bot))
+            out.push_back(p);
+    return out;
+}
+
+// Appends the hostile players as threats; returns how many.
+std::size_t AppendPlayerThreats(Player* bot, float radius, std::vector<WalkingV2Policy::Mob>& mobs)
+{
+    std::vector<Player*> const players = HostilePlayers(bot, radius);
+    for (Player* p : players)
+        mobs.push_back(AutoWowRestSafe::PlayerThreat(static_cast<std::int32_t>(std::floor(p->GetPositionX())),
+                                                     static_cast<std::int32_t>(std::floor(p->GetPositionY())),
+                                                     p->GetLevel()));
+    return players.size();
+}
+
 // Ground-snapped (height search from zHint + 10 down 50 yd) and mmap-reachable from where the bot stands
 // on a complete path whose end lies within kAtSpotYards of the point.
 bool ReachableSpot(Player* bot, Point const& p, float zHint, G3D::Vector3& out)
@@ -226,6 +265,7 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
     std::optional<Point> killer;
     Point deathSpot;
     std::uint32_t recentDeaths = 0;
+    bool pvpDeath = false;
     {
         std::lock_guard<std::mutex> guard(gLock);
         ReviveState* s = Find(gRevive, guid);
@@ -245,6 +285,7 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
         killer = s->killer;
         deathSpot = s->deathSpot;
         recentDeaths = AutoWowDeathLoop::RecentDeaths(s->deaths, nowMs, detail::gParams.windowMs);
+        pvpDeath = AutoWowRestSafe::Enabled() && s->pvpDeath;
     }
     if (bot->GetExactDist2d(corpse) > float(kPlanYards))
         return std::nullopt;
@@ -252,7 +293,9 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
     Point const corpseAt = MakePoint(corpse->GetMapId(), corpse->GetPositionX(), corpse->GetPositionY(),
                                      corpse->GetPositionZ());
     bool const v2 = V2Enabled();
-    std::vector<Mob> const mobs = v2 ? ScanHostilesV2(bot, 150.0f) : ScanIdleHostiles(bot, 150.0f);
+    std::vector<Mob> mobs = v2 ? ScanHostilesV2(bot, 150.0f) : ScanIdleHostiles(bot, 150.0f);
+    // AutoWow.Survival.RestSafe: hostile players around the corpse are threats too.
+    std::size_t const players = AutoWowRestSafe::Enabled() ? AppendPlayerThreats(bot, 150.0f, mobs) : 0;
     std::vector<Spot> spots(kReviveCandidates);
     std::vector<G3D::Vector3> ends(kReviveCandidates);
     std::uint32_t reachable = 0;
@@ -267,7 +310,12 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
     Anchors const anchors{GraveAnchor(bot), killer, std::nullopt};
     Pick const best = PickSpot(spots, mobs, bot->GetLevel(), anchors, v2 ? kThreatYardsV2 : 0);
     Target t;
-    t.plan = v2 ? DecideV2(best, recentDeaths, detail::gParams) : Decide(best, recentDeaths, detail::gParams);
+    Plan const base = v2 ? DecideV2(best, recentDeaths, detail::gParams) : Decide(best, recentDeaths, detail::gParams);
+    // AutoWow.Survival.RestSafe: after a PvP death reclaim only on a zero-threat spot (players counted).
+    t.plan = pvpDeath ? AutoWowRestSafe::PvpPlan(base, best) : base;
+    if (pvpDeath)
+        LOG_INFO("playerbots", "[RestSafe] pvp_plan bot={} base={} plan={} threat={} players={}", bot->GetName(),
+                 PlanName(base), PlanName(t.plan), best.threat, players);
     if (t.plan == Plan::ReviveAt)
     {
         t.x = ends[best.index].x;
@@ -281,8 +329,9 @@ std::optional<Target> PlanFor(Player* bot, Corpse* corpse)
             s->planned = true;
             s->plan = t;
             s->planMs = nowMs;
+            // A RestSafe PvP spirit healer does not relocate (the danger area keeps the bot off the spot).
             if (v2)
-                s->relocateOnRes = t.plan == Plan::SpiritHealer;
+                s->relocateOnRes = base == Plan::SpiritHealer;
         }
     }
     LOG_INFO("playerbots",
@@ -434,6 +483,116 @@ bool TakeRelocation(std::uint32_t botGuid)
 }
 }  // namespace AutoWowSafeRevive
 
+namespace AutoWowRestSafe
+{
+namespace
+{
+constexpr float kScanYards = 110.0f;  // kOuterYards + the widest threat radius
+
+std::uint32_t PowerPct(std::uint64_t cur, std::uint64_t max) { return max ? static_cast<std::uint32_t>(cur * 100 / max) : 100; }
+
+// Once per rest episode: a hostile covers the bot -> the best reachable candidate with less threat.
+void PlanRest(Player* bot, std::uint32_t guid)
+{
+    Point const here = Here(bot);
+    std::vector<Mob> mobs = ScanHostilesV2(bot, kScanYards);
+    std::size_t const creatures = mobs.size();
+    std::size_t const players = AppendPlayerThreats(bot, kScanYards, mobs);
+    std::uint32_t const level = bot->GetLevel();
+    std::uint32_t const hereThreat = AutoWowSafeRevive::SpotThreat(here, mobs, level);
+    if (!hereThreat)
+        return;
+    std::vector<std::size_t> const order = MoveOrder(here, mobs, level);
+    std::size_t pick = AutoWowSafeRevive::kNoSpot;
+    std::size_t tried = 0;
+    G3D::Vector3 end;
+    for (std::size_t k : order)
+    {
+        ++tried;
+        if (ReachableSpot(bot, Candidate(here, k), bot->GetPositionZ(), end))
+        {
+            pick = k;
+            break;
+        }
+    }
+    bool const found = pick != AutoWowSafeRevive::kNoSpot;
+    LOG_INFO("playerbots",
+             "[RestSafe] move bot={} {} hp={} mana={} here_threat={} threat={} spot={} to=({},{}) from=({},{},{}) "
+             "mobs={} players={} tried={}/{}",
+             bot->GetName(), found ? "go" : "stay", PowerPct(bot->GetHealth(), bot->GetMaxHealth()),
+             bot->getPowerType() == POWER_MANA ? PowerPct(bot->GetPower(POWER_MANA), bot->GetMaxPower(POWER_MANA)) : 100,
+             hereThreat, found ? AutoWowSafeRevive::SpotThreat(Candidate(here, pick), mobs, level) : hereThreat,
+             found ? static_cast<int>(pick) : -1, found ? static_cast<std::int32_t>(std::floor(end.x)) : here.x,
+             found ? static_cast<std::int32_t>(std::floor(end.y)) : here.y, here.mapId, here.x, here.y, creatures,
+             players, tried, order.size());
+    if (!found)
+        return;
+    std::lock_guard<std::mutex> guard(gLock);
+    if (RestState* s = Find(gRest, guid))
+    {
+        s->moving = true;
+        s->x = end.x;
+        s->y = end.y;
+        s->z = end.z;
+        s->moveMs = NowMs();
+    }
+}
+}  // namespace
+
+Step RestStep(PlayerbotAI* botAI, float& x, float& y, float& z)
+{
+    Player* bot = botAI ? botAI->GetBot() : nullptr;
+    if (!Enabled() || !bot || bot->IsInFlight() || !AutonomousBotAI(bot))
+        return Step::None;
+    std::uint32_t const guid = GuidOf(bot);
+    // Eligible (rest gate), out of combat, below the hp / mana thresholds.
+    bool const need = AutoWowRestGate::HoldTravel(botAI);
+    bool plan = false;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        if (!need)
+        {
+            gRest.erase(guid);
+            return Step::None;
+        }
+        // SafeRevive walks a corpse revive off the kill spot first.
+        if (ReviveState const* r = Find(gRevive, guid); r && (r->retreatPending || r->retreating))
+            return Step::None;
+        RestState* s = FindOrCreate(gRest, guid);
+        if (!s)
+            return Step::None;
+        plan = !s->planned;
+        s->planned = true;
+    }
+    if (plan)
+        PlanRest(bot, guid);
+
+    std::uint64_t const nowMs = NowMs();
+    std::lock_guard<std::mutex> guard(gLock);
+    RestState* s = Find(gRest, guid);
+    if (s && s->moving)
+    {
+        if (nowMs - s->moveMs > kMoveTimeoutMs || bot->GetExactDist2d(s->x, s->y) <= float(AutoWowSafeRevive::kAtSpotYards))
+            s->moving = false;
+        else
+        {
+            x = s->x;
+            y = s->y;
+            z = s->z;
+            return Step::Walk;
+        }
+    }
+    return Step::Rest;
+}
+
+void EndMove(std::uint32_t botGuid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    if (RestState* s = Find(gRest, botGuid))
+        s->moving = false;
+}
+}  // namespace AutoWowRestSafe
+
 namespace AutoWowUnstick
 {
 void NoteReplanExhausted(std::uint32_t botGuid)
@@ -562,6 +721,11 @@ void LoadConfig()
     r.windowMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.SafeRevive.WindowMs", 600000);
     AutoWowSafeRevive::detail::gV2 = sConfigMgr->GetOption<bool>("AutoWow.Survival.SafeRevive.V2", false);
 
+    AutoWowRestSafe::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Survival.RestSafe", false);
+    AutoWowRestSafe::Params& rs = AutoWowRestSafe::detail::gParams;
+    rs.pvpDangerYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.RestSafe.PvpDangerYards", 80);
+    rs.pvpDangerMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.RestSafe.PvpDangerMs", 1800000);
+
     AutoWowUnstick::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Survival.Unstick", false);
     AutoWowUnstick::Params& u = AutoWowUnstick::detail::gParams;
     u.radiusYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.Unstick.RadiusYards", 10);
@@ -594,6 +758,8 @@ public:
     {
         if (AutoWowSafeRevive::Enabled() && killer && killed && killer != killed)
             NoteKiller(killed, Here(killer));
+        if (AutoWowRestSafe::Enabled() && AutoWowSafeRevive::Enabled() && killer && killed && killer != killed)
+            NotePvpKill(killed);
     }
 
     void OnPlayerKilledByCreature(Creature* killer, Player* killed) override
@@ -601,6 +767,10 @@ public:
         if (AutoWowSafeRevive::Enabled() && killer && killed)
             NoteKiller(killed, MakePoint(killer->GetMapId(), killer->GetPositionX(), killer->GetPositionY(),
                                          killer->GetPositionZ()));
+        // AutoWow.Survival.RestSafe: a player's pet (or charmed creature) kill is a PvP death.
+        if (AutoWowRestSafe::Enabled() && AutoWowSafeRevive::Enabled() && killer && killed &&
+            killer->GetCharmerOrOwnerPlayerOrPlayerItself())
+            NotePvpKill(killed);
     }
 
     void OnPlayerJustDied(Player* player) override
@@ -609,22 +779,46 @@ public:
             return;
         Point const at = Here(player);
         AutoWowDeathLoop::DeathSample const death{NowMs(), at.mapId, at.x, at.y};
-        std::lock_guard<std::mutex> guard(gLock);
-        ReviveState* s = FindOrCreate(gRevive, GuidOf(player));
-        if (!s)
+        // AutoWow.Survival.RestSafe: a hostile player close by at death makes it a PvP death too.
+        bool const restSafe = AutoWowRestSafe::Enabled();
+        bool const playerNear =
+            restSafe && !HostilePlayers(player, float(AutoWowRestSafe::kPvpNearYards)).empty();
+        bool killedByPlayer = false;
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            ReviveState* s = FindOrCreate(gRevive, GuidOf(player));
+            if (!s)
+                return;
+            AutoWowDeathLoop::DeathSample center;
+            AutoWowDeathLoop::RecordDeath(s->deaths, death, AutoWowSafeRevive::detail::gParams.windowMs, 0, center);
+            s->killer = s->pendingKiller;
+            s->pendingKiller.reset();
+            s->deathSpot = at;
+            s->planned = false;
+            s->plan = {};
+            s->retreatPending = false;
+            s->retreating = false;
+            s->restPending = false;
+            s->relocateOnRes = false;
+            s->relocate = false;
+            if (restSafe)
+            {
+                killedByPlayer = s->pendingPvp;
+                s->pvpDeath = killedByPlayer || playerNear;
+                s->pendingPvp = false;
+            }
+        }
+        if (!killedByPlayer && !playerNear)
             return;
-        AutoWowDeathLoop::DeathSample center;
-        AutoWowDeathLoop::RecordDeath(s->deaths, death, AutoWowSafeRevive::detail::gParams.windowMs, 0, center);
-        s->killer = s->pendingKiller;
-        s->pendingKiller.reset();
-        s->deathSpot = at;
-        s->planned = false;
-        s->plan = {};
-        s->retreatPending = false;
-        s->retreating = false;
-        s->restPending = false;
-        s->relocateOnRes = false;
-        s->relocate = false;
+        // The camped spot becomes a death-loop danger area: RPG grind / quest / travel picks skip it.
+        AutoWowRestSafe::Params const& p = AutoWowRestSafe::detail::gParams;
+        bool const marked = p.pvpDangerYards &&
+                            AutoWowDeathLoop::MarkDangerArea(GuidOf(player), at.mapId, at.x, at.y, p.pvpDangerYards,
+                                                             p.pvpDangerMs);
+        LOG_INFO("playerbots", "[RestSafe] pvp_death bot={} killer_player={} player_near={} at=({},{},{}) danger={} r={} "
+                 "cool_ms={}",
+                 player->GetName(), killedByPlayer, playerNear, at.mapId, at.x, at.y, marked, p.pvpDangerYards,
+                 p.pvpDangerMs);
     }
 
     void OnPlayerResurrect(Player* player, float /*restorePercent*/, bool& /*applySickness*/) override
@@ -651,14 +845,24 @@ public:
 
     void OnPlayerLogout(Player* player) override
     {
-        if ((!AutoWowSafeRevive::Enabled() && !AutoWowUnstick::Enabled()) || !player)
+        if ((!AutoWowSafeRevive::Enabled() && !AutoWowUnstick::Enabled() && !AutoWowRestSafe::Enabled()) || !player)
             return;
         std::lock_guard<std::mutex> guard(gLock);
         gRevive.erase(GuidOf(player));
         gUnstick.erase(GuidOf(player));
+        gRest.erase(GuidOf(player));
     }
 
 private:
+    static void NotePvpKill(Player* killed)
+    {
+        if (!AutonomousBotAI(killed) || !OpenWorld(killed))
+            return;
+        std::lock_guard<std::mutex> guard(gLock);
+        if (ReviveState* s = FindOrCreate(gRevive, GuidOf(killed)))
+            s->pendingPvp = true;
+    }
+
     static void NoteKiller(Player* killed, Point const& at)
     {
         if (!AutonomousBotAI(killed) || !OpenWorld(killed))

@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "TravelIntentPolicy.h"
@@ -276,6 +277,112 @@ bool RestPending(std::uint32_t botGuid);
 void ClearRestPending(std::uint32_t botGuid);
 }  // namespace AutoWowSafeRevive
 
+// ---- AutoWow.Survival.RestSafe (default 0) ----------------------------------------------------------
+// S62-S65 deaths: fights started below 70% hp died 45% of the time (10% above), and 237 of those 279 deaths
+// began < 60 s after the previous fight - the rest gate holds only self-initiated pulls, so the bot rested
+// (or walked on) where it stood while patrols, respawns and hostile players came to it; only 17% of fatal
+// fights had any rest before them. Two camping pairs caused 30 of 39 S65 PvP deaths (SafeRevive scanned
+// creatures only).
+//   (1) A rest-gate eligible bot (solo independent, open world, out of combat) below the rest-gate hp / mana
+//       thresholds plans once per rest episode: when a hostile's aggro radius (+kAggroMarginYards; SafeRevive
+//       V2 scan: idle, in combat, respawning soon) or a hostile player's kPlayerThreatYards covers it, it
+//       walks to the reachable candidate (8 bearings at kInnerYards, then kOuterYards) with the least threat
+//       (less than here), within kMoveTimeoutMs. Then the RPG holds in REST (the food strategy eats) until
+//       rested. Combat or being rested ends the episode.
+//   (2) SafeRevive's corpse plan counts hostile players too. After a death to a player (killer or its pet,
+//       or a hostile player within kPvpNearYards at death) the ghost reclaims only on a zero-threat spot,
+//       else takes the spirit healer, and the death spot becomes a death-loop danger area (PvpDangerYards
+//       for PvpDangerMs; needs AutoWow.DeathLoop.Enable) that the RPG picks avoid. Needs SafeRevive.
+namespace AutoWowRestSafe
+{
+using AutoWowSafeRevive::Pick;
+using AutoWowSafeRevive::Plan;
+using TravelIntentPolicy::Point;
+using WalkingV2Policy::Mob;
+
+inline constexpr std::uint8_t kPolicyVersion = 1;
+inline constexpr std::int32_t kInnerYards = 30;
+inline constexpr std::int32_t kOuterYards = 60;  // farthest rest move
+inline constexpr std::size_t kCandidates = 1 + 2 * AutoWowSafeRevive::kBearings.size();
+inline constexpr std::uint32_t kPlayerThreatYards = 40;  // + kAggroMarginYards
+inline constexpr std::uint32_t kPvpNearYards = 40;
+inline constexpr std::uint64_t kMoveTimeoutMs = 30000;
+
+struct Params
+{
+    std::uint32_t pvpDangerYards = 80;      // AutoWow.Survival.RestSafe.PvpDangerYards (0 = no danger area)
+    std::uint64_t pvpDangerMs = 1800000;    // AutoWow.Survival.RestSafe.PvpDangerMs
+};
+
+// k = 0: stay; 1..8: kInnerYards along each bearing; 9..16: kOuterYards.
+[[nodiscard]] inline Point Candidate(Point const& from, std::size_t k)
+{
+    std::size_t const n = AutoWowSafeRevive::kBearings.size();
+    if (k == 0 || k >= kCandidates)
+        return from;
+    return AutoWowSafeRevive::Offset(from, (k - 1) % n, k <= n ? kInnerYards : kOuterYards);
+}
+
+// A hostile player as a threat: the heaviest weight (elite) over kPlayerThreatYards.
+[[nodiscard]] inline Mob PlayerThreat(std::int32_t x, std::int32_t y, std::uint32_t level)
+{
+    Mob m;
+    m.x = x;
+    m.y = y;
+    m.level = level;
+    m.elite = true;
+    m.aggroYards = kPlayerThreatYards;
+    return m;
+}
+
+// Candidates worth trying, best first: less threat than here, by (threat, index). Empty when here is clear.
+[[nodiscard]] inline std::vector<std::size_t> MoveOrder(Point const& here, std::vector<Mob> const& mobs,
+                                                        std::uint32_t botLevel)
+{
+    std::uint32_t const hereThreat = AutoWowSafeRevive::SpotThreat(here, mobs, botLevel);
+    std::vector<std::pair<std::uint32_t, std::size_t>> better;
+    for (std::size_t k = 1; hereThreat && k < kCandidates; ++k)
+    {
+        std::uint32_t const t = AutoWowSafeRevive::SpotThreat(Candidate(here, k), mobs, botLevel);
+        if (t < hereThreat)
+            better.push_back({t, k});
+    }
+    std::sort(better.begin(), better.end());
+    std::vector<std::size_t> out;
+    for (auto const& b : better)
+        out.push_back(b.second);
+    return out;
+}
+
+// Corpse plan after a PvP death: reclaim only on a zero-threat spot, else the spirit healer.
+[[nodiscard]] inline Plan PvpPlan(Plan base, Pick const& best)
+{
+    if (base == Plan::SpiritHealer)
+        return base;
+    return best.index != AutoWowSafeRevive::kNoSpot && best.threat == 0 ? Plan::ReviveAt : Plan::SpiritHealer;
+}
+
+// ---- runtime (SurvivalRecovery.cpp) ------------------------------------------------------------------
+namespace detail
+{
+inline bool gEnabled = false;
+inline Params gParams;
+}  // namespace detail
+inline bool Enabled() { return detail::gEnabled; }
+
+// NewRpgStatusUpdateAction: Walk = move toward (x, y, z); Rest = hold the RPG in REST; None = nothing
+// (not below the thresholds, in combat, not eligible, or SafeRevive's post-revive retreat runs first).
+enum class Step : std::uint8_t
+{
+    None,
+    Walk,
+    Rest
+};
+Step RestStep(PlayerbotAI* botAI, float& x, float& y, float& z);
+// The move could not be issued: rest where it stands.
+void EndMove(std::uint32_t botGuid);
+}  // namespace AutoWowRestSafe
+
 // ---- AutoWow.Survival.Unstick (default 0) -----------------------------------------------------------
 // Observed on every MoveFarTo tick (the bot has an active travel / quest goal). Frozen = the bot stayed
 // within RadiusYards for FrozenMs (the clock restarts when the goal was not observed for kMaxGapMs:
@@ -428,7 +535,8 @@ bool Step(PlayerbotAI* botAI, std::uint32_t destMap, float destX, float destY, f
 
 namespace AutoWowSurvivalRecovery
 {
-// Reads AutoWow.Survival.SafeRevive.* and AutoWow.Survival.Unstick.*. Called once at world init.
+// Reads AutoWow.Survival.SafeRevive.*, AutoWow.Survival.RestSafe.* and AutoWow.Survival.Unstick.*. Called
+// once at world init.
 void LoadConfig();
 void AddScripts();
 }  // namespace AutoWowSurvivalRecovery

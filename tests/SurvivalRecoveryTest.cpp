@@ -297,4 +297,65 @@ TEST(SafeReviveV2, RespawnSoonWindow)
     EXPECT_TRUE(AutoWowSafeRevive::RespawnSoon(900, 1000));    // overdue: counts
     EXPECT_FALSE(AutoWowSafeRevive::RespawnSoon(0, 1000));     // none scheduled
 }
+
+TEST(RestSafe, CandidatesRingAtThirtyThenSixtyYards)
+{
+    Point const here = P(-9000, 400);
+    EXPECT_EQ(AutoWowRestSafe::Candidate(here, 0).x, here.x);
+    EXPECT_EQ(AutoWowRestSafe::Candidate(here, AutoWowRestSafe::kCandidates).y, here.y);
+    for (std::size_t k = 1; k < AutoWowRestSafe::kCandidates; ++k)
+    {
+        std::uint32_t const d = DistanceYards(here, AutoWowRestSafe::Candidate(here, k));
+        std::uint32_t const ring = k <= 8 ? AutoWowRestSafe::kInnerYards : AutoWowRestSafe::kOuterYards;
+        EXPECT_LE(d, ring) << k;
+        EXPECT_GE(d + 1, ring) << k;
+    }
+}
+
+TEST(RestSafe, AClearSpotStaysPut)
+{
+    Point const here = P(0, 0);
+    EXPECT_TRUE(AutoWowRestSafe::MoveOrder(here, {}, 20).empty());
+    EXPECT_TRUE(AutoWowRestSafe::MoveOrder(here, {M(100, 0, 20)}, 20).empty());  // out of aggro range
+}
+
+TEST(RestSafe, MoveOrderLeavesTheAggroRadiusNearestRingFirst)
+{
+    // Aggro 15 + margin 5 covers here and the inner E point (30, 0) only.
+    std::vector<std::size_t> const order = AutoWowRestSafe::MoveOrder(P(0, 0), {M(10, 0, 20, false, 15)}, 20);
+    ASSERT_EQ(order.size(), AutoWowRestSafe::kCandidates - 2);  // not stay, not inner E
+    EXPECT_EQ(order.front(), 2u);                                // inner NE, lowest clear index
+    EXPECT_EQ(std::count(order.begin(), order.end(), std::size_t(1)), 0);
+}
+
+TEST(RestSafe, LeastThreatFirstThenLowestIndex)
+{
+    // Elite on the bot (6); a normal mob covering only the outer W point (3 < 6: still better than here).
+    std::vector<Mob> const mobs{M(0, 0, 20, true, 10), M(-60, 0, 20, false, 10)};
+    std::vector<std::size_t> const order = AutoWowRestSafe::MoveOrder(P(0, 0), mobs, 20);
+    ASSERT_EQ(order.size(), AutoWowRestSafe::kCandidates - 1);
+    EXPECT_EQ(order.front(), 1u);
+    EXPECT_EQ(order.back(), 13u);  // outer W, threat 3
+}
+
+TEST(RestSafe, HostilePlayerThreatensFortyFiveYardsAtEliteWeight)
+{
+    Point const here = P(0, 0);
+    EXPECT_EQ(AutoWowSafeRevive::SpotThreat(here, {AutoWowRestSafe::PlayerThreat(44, 0, 1)}, 70), 6u);
+    EXPECT_EQ(AutoWowSafeRevive::SpotThreat(here, {AutoWowRestSafe::PlayerThreat(46, 0, 80)}, 70), 0u);
+    // A player on the bot covers the whole inner ring: only the 60 yd ring helps.
+    std::vector<std::size_t> const order =
+        AutoWowRestSafe::MoveOrder(here, {AutoWowRestSafe::PlayerThreat(0, 0, 20)}, 20);
+    ASSERT_EQ(order.size(), 8u);
+    EXPECT_EQ(order.front(), 9u);
+}
+
+TEST(RestSafe, PvpPlanRevivesOnlyOnAZeroThreatSpot)
+{
+    using AutoWowSafeRevive::Plan;
+    EXPECT_EQ(AutoWowRestSafe::PvpPlan(Plan::ReviveAt, {3, 0}), Plan::ReviveAt);
+    EXPECT_EQ(AutoWowRestSafe::PvpPlan(Plan::ReviveAt, {3, 6}), Plan::SpiritHealer);
+    EXPECT_EQ(AutoWowRestSafe::PvpPlan(Plan::None, {}), Plan::SpiritHealer);
+    EXPECT_EQ(AutoWowRestSafe::PvpPlan(Plan::SpiritHealer, {0, 0}), Plan::SpiritHealer);
+}
 }  // namespace

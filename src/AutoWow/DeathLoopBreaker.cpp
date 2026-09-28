@@ -366,6 +366,20 @@ bool IsDangerous(std::uint32_t botGuid, std::uint32_t map, float x, float y)
     return s && IsDangerous(*s, map, Yards(x), Yards(y), nowMs);
 }
 
+bool MarkDangerArea(std::uint32_t botGuid, std::uint32_t map, std::int32_t x, std::int32_t y, std::uint32_t radius,
+                    std::uint64_t durationMs)
+{
+    if (!Enabled())
+        return false;
+    std::uint64_t const nowMs = NowMs();
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState* s = FindOrCreate(botGuid);
+    if (!s)
+        return false;
+    MarkDanger(*s, DeathSample{nowMs, map, x, y}, radius, nowMs, nowMs + durationMs);
+    return true;
+}
+
 bool TakeRelocation(std::uint32_t botGuid)
 {
     if (!Enabled())
