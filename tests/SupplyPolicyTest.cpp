@@ -1100,7 +1100,8 @@ TEST(SupplyEng, CatalogLineAndStone)
     EXPECT_EQ(e.need, NeedRule::AmmoStock);
     EXPECT_EQ(e.consumer, Consumer::LoadAmmo);
     EXPECT_EQ(e.tierCount, 0u);  // gear runtime: never a LineTick line
-    EXPECT_EQ(e.gearCount, 9u);
+    EXPECT_EQ(e.gearCount, 13u);  // 9 + the EngGuns rows (lane tinkers2: GearTable keeps 9 with the flag off)
+    EXPECT_EQ(e.gearGuns, 4u);
     EXPECT_STREQ(e.learn, "4039,4040,4041,12657,2581,2582,3568,10249");  // engineering + mining ranks
     EXPECT_EQ(kStone[0], 2835u);
     EXPECT_EQ(kStone[1], 2836u);
@@ -1326,5 +1327,192 @@ TEST(SupplyGearBootstrap, SkillBlockedNeedGetsTheCheapestSkillupForItsRecipient)
     for (SkillupOption& x : none)
         x.known = false;
     EXPECT_TRUE(PlanGearSkillup(g, blocked, 0, none, 10).empty());
+}
+
+// Lane tinkers2 (S60: the Tinkers artisans trained engineering, needs stayed 0: the cohort's gun hunters hold 1000
+// vendor Heavy Shot, the bow / crossbow hunters have no Guns skill, and engineering stopped at 60 below Heavy Shot).
+RecipeTable EngGunsTable()
+{
+    detail::gEnabled = true;
+    detail::gParams.engGuns = true;
+    RecipeTable const g = GearTable(LineOf(Line::Engineering));
+    detail::gParams.engGuns = false;
+    detail::gEnabled = false;
+    return g;
+}
+
+TEST(SupplyEngGuns, RowsOnlyWithTheFlag)
+{
+    ProductLine const& L = LineOf(Line::Engineering);
+    EXPECT_EQ(L.gearGuns, kEngGuns);
+    EXPECT_EQ(GearTable(L).tierCount, 9u);  // off: the lane AA table unchanged
+    detail::gParams.engGuns = true;         // the flag alone (Supply disabled) adds nothing
+    EXPECT_EQ(GearTable(L).tierCount, 9u);
+    detail::gParams.engGuns = false;
+    RecipeTable const g = EngGunsTable();
+    ASSERT_EQ(g.tierCount, 13u);
+    EXPECT_EQ(GearTable(LineOf(Line::LeatherGear)).tierCount, 16u);  // other lines untouched
+    // Checked against the 3.3.5 world DB (trainer_spell 92 ReqSkillRank, item_template RequiredLevel) and Spell.dbc /
+    // SkillLineAbility.dbc (reagents, TrivialSkillLineRankHigh; every row: spell focus 1 anvil, TotemCategory 162).
+    struct Row
+    {
+        std::uint32_t spell, product, skill, grey, reqLevel;
+    };
+    Row const rows[] = {{3922, 4359, 30, 60, 0},     // Handful of Copper Bolts
+                        {3924, 4361, 50, 110, 0},    // Copper Tube
+                        {3925, 4362, 50, 110, 5},    // Rough Boomstick
+                        {3938, 4371, 105, 155, 0}};  // Bronze Tube (the 110 -> 125 bridge)
+    std::vector<std::uint32_t> const vendor = {2880, 4399};  // Weak Flux, Wooden Stock
+    for (std::size_t k = 0; k < std::size(rows); ++k)
+    {
+        LineTier const& t = g.tiers[9 + k];
+        EXPECT_EQ(t.spell, rows[k].spell);
+        EXPECT_EQ(t.product, rows[k].product);
+        EXPECT_EQ(t.skill, rows[k].skill);
+        EXPECT_EQ(t.grey, rows[k].grey);
+        EXPECT_EQ(t.reqLevel, rows[k].reqLevel);
+        EXPECT_GT(t.skill, 1u);  // trainer-taught: the load adds it to the learn list
+        for (Reagent const& r : t.reagents)
+        {
+            if (!r.item)
+                continue;
+            if (r.source == Source::Craft)  // a table intermediate, listed before its user
+            {
+                std::uint8_t const sub = TierOf(g, r.item);
+                ASSERT_NE(sub, kNoTier);
+                EXPECT_EQ(g.tiers[sub].reqLevel, 0u);
+                EXPECT_LT(sub, 9 + k);
+            }
+            else
+            {
+                EXPECT_EQ(r.source, Source::Vendor);
+                EXPECT_NE(std::find(vendor.begin(), vendor.end(), r.item), vendor.end()) << r.item;
+            }
+        }
+    }
+    std::uint8_t const tube = TierOf(g, 4361);
+    EXPECT_EQ(g.tiers[tube].reagents[0].item, 2840u);  // two Copper Bars
+    EXPECT_EQ(g.tiers[tube].reagents[0].count, 2u);
+    EXPECT_EQ(g.tiers[TierOf(g, 4371)].reagents[0].item, 2841u);  // two Bronze Bars
+    EXPECT_EQ(ToolFor(162), 5956u);  // Blacksmith Hammer
+    EXPECT_EQ(ToolFor(14), 0u);      // Arclight Spanner: no vendor sells it (Deadly Blunderbuss dropped)
+    EXPECT_EQ(kAnvilFocus, 1u);
+    EXPECT_EQ(kForgeFocus, 3u);
+    EXPECT_TRUE(LineItem(g, 4399));    // Wooden Stock kept by make-room
+    EXPECT_FALSE(LineItem(g, 2319));   // no Medium Leather (routed to the Tanners)
+    EXPECT_FALSE(LineItem(g, 2842));   // no Silver Bar
+    // A boomstick from nothing: three Copper Ore (tube 2 bars, bolts 1: merged), Weak Flux and Wooden Stock bought.
+    auto none = [](std::uint32_t) { return 0u; };
+    std::uint8_t const gun = TierOf(g, 4362);
+    std::vector<Lack> const lack = Lacks(g, gun, 1, none);
+    ASSERT_EQ(lack.size(), 3u);
+    EXPECT_EQ(lack[0].item, 2770u);
+    EXPECT_EQ(lack[0].units, 3u);
+    EXPECT_EQ(lack[0].source, Source::Route);
+    EXPECT_EQ(lack[1].item, 2880u);
+    EXPECT_EQ(lack[1].source, Source::Vendor);
+    EXPECT_EQ(lack[2].item, 4399u);
+    EXPECT_EQ(lack[2].source, Source::Vendor);
+    // Next casts from ore: the tube's bar (forge), the tube (anvil), then the bolts' bar and the bolts, then the gun.
+    std::unordered_map<std::uint32_t, std::uint32_t> held{{2770, 3}, {2880, 1}, {4399, 1}};
+    auto have = [&](std::uint32_t item)
+    {
+        auto const it = held.find(item);
+        return it == held.end() ? 0u : it->second;
+    };
+    EXPECT_EQ(NextCast(g, gun, have), TierOf(g, 2840));
+    held[2840] = 2;
+    EXPECT_EQ(NextCast(g, gun, have), tube);
+    held = {{4361, 1}, {2840, 1}, {4399, 1}};
+    EXPECT_EQ(NextCast(g, gun, have), TierOf(g, 4359));
+    held[4359] = 1;
+    EXPECT_EQ(NextCast(g, gun, have), gun);
+}
+
+TEST(SupplyEngGuns, GunNeedScoring)
+{
+    RecipeTable const g = EngGunsTable();
+    std::uint8_t const gun = TierOf(g, 4362), light = TierOf(g, 8067), heavy = TierOf(g, 8068), solid = TierOf(g, 8069);
+    // Item levels as the load reads them (equipment only): Rough Boomstick 10, shot 10 / 20 / 35; the parts are left out.
+    std::vector<std::uint32_t> ilvl(g.tierCount, 0);
+    ilvl[gun] = 10;
+    ilvl[light] = 10;
+    ilvl[heavy] = 20;
+    ilvl[solid] = 35;
+    std::vector<std::uint8_t> const rank = RankGearRecipes(g, ilvl);
+    EXPECT_EQ(rank, (std::vector<std::uint8_t>{solid, heavy, light, gun}));  // 10: spell 3920 before 3925
+    // S60 census (bags + worn): Durnstan (hunter 49, Old Blunderbuss ilvl 2) and Gromdur (hunter 28, the same) get a gun
+    // need on the ranged slot (17), ranked worst geared first; each its own ammo need (kAmmoSlot) beside it.
+    constexpr std::uint8_t kRanged = 17;  // EQUIPMENT_SLOT_RANGED
+    std::vector<GearNeed> const ranked = RankGearNeeds({{62962, gun, kRanged, kNoPriority, 380},
+                                                        {70576, gun, kRanged, kNoPriority, 210},
+                                                        {70576, heavy, kAmmoSlot, kNoPriority, 210}});
+    ASSERT_EQ(ranked.size(), 3u);
+    EXPECT_EQ(ranked[0].guid, 70576u);
+    EXPECT_EQ(ranked[0].slot, kRanged);  // slot orders the same recipient's needs
+    EXPECT_EQ(ranked[2].guid, 62962u);
+    // One order entry per recipe: two guns + RepStockPerItem 2, less one held; the consumer is the first ranked need.
+    std::vector<std::uint32_t> held(g.tierCount, 0);
+    held[gun] = 1;
+    std::vector<GearOrder> const o = PlanGearOrders(ranked, held, 4, 2);
+    ASSERT_EQ(o.size(), 2u);
+    EXPECT_EQ(o[0].recipe, gun);
+    EXPECT_EQ(o[0].units, 2u + 2u - 1u);
+    EXPECT_EQ(o[0].consumer, 70576u);
+    EXPECT_EQ(o[1].recipe, heavy);
+    // Deliveries: one gun per gun need, the lower item guid first.
+    std::vector<GearDelivery> const d = PlanGearDeliveries(ranked, {{gun, 900}, {gun, 800}});
+    ASSERT_EQ(d.size(), 2u);
+    EXPECT_EQ(d[0].need, 0u);
+    EXPECT_EQ(d[0].item, 800u);
+    EXPECT_EQ(d[1].need, 2u);
+}
+
+TEST(SupplyEngGuns, SkillBridge)
+{
+    RecipeTable const g = EngGunsTable();
+    std::uint8_t const powder = TierOf(g, 4357), light = TierOf(g, 8067), bolts = TierOf(g, 4359),
+                       tube = TierOf(g, 4361), gun = TierOf(g, 4362), bronze = TierOf(g, 4371),
+                       heavy = TierOf(g, 8068), solid = TierOf(g, 8069);
+    // Illustrative one-cast costs in BootstrapGearOrder's terms (Route / Craft at sell value, Vendor at buy price):
+    // powder 4, light shot 4 + 10, bolts 10 (a bar), tube 2 * 10 + 100 (flux), gun 120 + 12 + 200, bronze 2 * 25 + 100.
+    auto opts = [&](std::uint32_t known)  // options for every recipe the artisan knows at `known` skill
+    {
+        std::vector<SkillupOption> out;
+        for (auto const& [tier, cost] : std::vector<std::pair<std::uint8_t, std::uint64_t>>{
+                 {powder, 4}, {light, 14}, {bolts, 10}, {tube, 120}, {gun, 332}, {bronze, 150}})
+            out.push_back({g.tiers[tier].spell, tier, false, g.tiers[tier].skill <= known, g.tiers[tier].grey, true, cost,
+                           true});
+        return out;
+    };
+    // Engineering 60 (S60 report: Light Shot grey): a gun hunter's Heavy Shot (75) need is blocked -> Copper Tube.
+    std::vector<GearNeed> const heavyNeed = {{70576, heavy, kAmmoSlot, kNoPriority, 210}};
+    std::vector<GearOrder> o = PlanGearSkillup(g, heavyNeed, 60, opts(60), 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, tube);
+    EXPECT_EQ(o[0].consumer, 70576u);
+    // Off (no EngGuns rows): at 60 nothing known levels engineering -> the old dead end.
+    std::vector<SkillupOption> old = opts(60);
+    old.erase(std::remove_if(old.begin(), old.end(), [&](SkillupOption const& x) { return x.tier >= 9; }), old.end());
+    EXPECT_TRUE(PlanGearSkillup(g, heavyNeed, 60, old, 10).empty());
+    // 110 (tubes grey): Solid Shot (125) blocked -> Bronze Tube (known at 105).
+    o = PlanGearSkillup(g, {{70576, solid, kAmmoSlot, kNoPriority, 210}}, 110, opts(110), 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, bronze);
+    // 30: a gun need (Rough Boomstick 50) blocked -> the cheapest non-grey known recipe (powder, 4).
+    o = PlanGearSkillup(g, {{62962, gun, 17, kNoPriority, 380}}, 30, opts(30), 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, powder);
+    EXPECT_EQ(o[0].consumer, 62962u);
+    // 45: powder grey (40) -> bolts (10) before light shot (14).
+    o = PlanGearSkillup(g, {{62962, gun, 17, kNoPriority, 380}}, 45, opts(45), 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, bolts);
+    // Every rung up to Solid Shot has a non-grey known recipe at its learning skill.
+    for (std::uint32_t skill = 1; skill < 125; ++skill)
+    {
+        std::vector<SkillupOption> const at = opts(skill);
+        EXPECT_GE(PickSkillup(skill, at, false), 0) << skill;
+    }
 }
 }  // namespace

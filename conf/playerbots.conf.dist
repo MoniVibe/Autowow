@@ -3023,6 +3023,22 @@ AutoWow.Supply.AmmoTarget = 1000
 #   Handstitched Leather Boots / Cloak (the only casts below Handstitched Leather Pants, skill 15).
 #   Stations: a gear line without StationYards.<Key> searches 600 yards (the Engineering / Mining trainers stand past 400).
 AutoWow.Supply.GearBootstrap = 0
+# EngGuns (lane tinkers2, soak S60: the Tinkers artisans trained engineering but had no consumer: the cohort's gun
+# hunters hold 1000 vendor Heavy Shot, its bow / crossbow hunters have no Guns skill, and engineering stopped at 60,
+# below Heavy Shot's 75). Off by default; off = the eng line exactly as above. Needs Products eng; the climb from
+# skill 1 needs GearBootstrap.
+#   Table: + Handful of Copper Bolts, Copper Tube, Rough Boomstick (RequiredLevel 5, item level 10) and Bronze Tube,
+#   all trainer-taught (skill 30 / 50 / 50 / 105), all cast at an anvil with a Blacksmith Hammer in the bags.
+#   Need: Rough Boomstick is ordered only for a recipient it upgrades (the gear lines' need: the stock "item upgrade"
+#   value on the ranged slot, item level above the worn piece, the Guns skill); worn, a hunter's bullet need follows.
+#   Skill: Copper Tube / Rough Boomstick (grey 110) bridge engineering 60 -> 75 (Heavy Shot), Bronze Tube (grey 155)
+#   110 -> 125 (Solid Shot): GearBootstrap skill-up casts toward a blocked need.
+#   Stations: the anvil nearest home (Stormwind 23303 at 389 yards, Orgrimmar 1684 at 150); a cast needing it is a
+#   trip there (task 15), as a smelt is a forge trip. The line vendor sells Weak Flux, Wooden Stock and the hammer
+#   (Stormwind 1286, Orgrimmar 5817); the artisan buys one hammer when a known recipe needs it.
+#   Dropped: Deadly Blunderbuss (Medium Leather routes to the Tanners; no vendor sells the Arclight Spanner),
+#   Silver-plated Shotgun (Silver Bar, a wool-cloth gizmo), Lovingly Crafted Boomstick / Moonsight Rifle (schematics).
+AutoWow.Supply.EngGuns = 0
 # AutoWow.Guilds.Rep.Tinkers.Alliance = 0
 # AutoWow.Guilds.Rep.Tinkers.Horde = 0
 # AutoWow.Supply.Artisan.Tinkers.Alliance = 0

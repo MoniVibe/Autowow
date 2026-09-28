@@ -64,7 +64,8 @@ enum class Task : std::uint8_t
     GearTrainer = 11,  // gear line artisan: its line's due recipes / ranks at the line trainer
     GearVendor = 12,   // gear line artisan: its target's vendor reagents (thread, dye) at the line vendor
     Forge = 13,        // gear line artisan (lane AA): its order's smelting at the forge near home (spell focus)
-    GearTrainer2 = 14  // gear line artisan (lane AA): its line's due spells at the second trainer (Engineering: mining)
+    GearTrainer2 = 14, // gear line artisan (lane AA): its line's due spells at the second trainer (Engineering: mining)
+    Anvil = 15         // gear line artisan (lane tinkers2, EngGuns): its order's anvil casts at the anvil near home
 };
 
 constexpr std::uint32_t kHearthstone = 6948;
@@ -164,6 +165,7 @@ Station const* StationFor(Stations const& st, Task task)
         case Task::Market: return st.auctioneer.entry ? &st.auctioneer : nullptr;
         case Task::Bank: return st.banker.entry ? &st.banker : nullptr;
         case Task::Forge: return st.forge.entry ? &st.forge : nullptr;
+        case Task::Anvil: return st.anvil.entry ? &st.anvil : nullptr;
         case Task::GearTrainer2: return st.trainer2.entry ? &st.trainer2 : nullptr;
         default: return nullptr;
     }
@@ -179,11 +181,24 @@ std::pair<std::uint32_t, std::uint32_t> TierThread(TeamView const& view, bool ca
     return {ThreadItem(), 0};
 }
 
-// The cast needs a spell focus (a smelt: a forge) the bot is not within reach of (the forge station's object).
-bool FocusMissing(Player* bot, std::uint32_t spell, Station const& forge)
+// The station serving the cast's spell focus: the forge (a smelt), the anvil (lane tinkers2: engineering parts); nullptr
+// = no focus, or no such station.
+Station const* FocusStation(Stations const& st, std::uint32_t spell)
 {
     SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
-    return info && info->RequiresSpellFocus && (!forge.entry || !bot->FindNearestGameObject(forge.entry, kFocusYards));
+    Station const* s = !info ? nullptr
+                       : info->RequiresSpellFocus == kForgeFocus ? &st.forge
+                       : info->RequiresSpellFocus == kAnvilFocus ? &st.anvil
+                                                                 : nullptr;
+    return s && s->entry ? s : nullptr;
+}
+
+// The cast needs a spell focus (a smelt: a forge; a part: an anvil) the bot is not within reach of (its station's object).
+bool FocusMissing(Player* bot, std::uint32_t spell, Stations const& st)
+{
+    SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
+    Station const* s = FocusStation(st, spell);
+    return info && info->RequiresSpellFocus && (!s || !bot->FindNearestGameObject(s->entry, kFocusYards));
 }
 
 bool HouseMaterial(std::uint32_t entry)
@@ -536,7 +551,7 @@ bool NewRpgBaseAction::SupplyStep()
     auto gearCraft = [&]() -> bool
     {
         std::uint8_t const c = nextGearCast();
-        if (c == kNoTier || FocusMissing(bot, gtab.tiers[c].spell, gst.forge) ||
+        if (c == kNoTier || FocusMissing(bot, gtab.tiers[c].spell, gst) ||
             !craft(gtab.tiers[c].spell, gtab.tiers[c].product))
             return false;
         s.castLine = static_cast<std::uint8_t>(gearId);
@@ -684,11 +699,13 @@ bool NewRpgBaseAction::SupplyStep()
                 next = Task::GearTrainer2;
             if (next == Task::None && buy && bot->GetMoney() >= cheapest && gst.threadVendor.entry)
                 next = Task::GearVendor;
-            // Lane AA: the order's next cast is a smelt away from the forge (and castable: known, bag room).
+            // Lane AA: the order's next cast is a smelt away from the forge (and castable: known, bag room); lane
+            // tinkers2: an anvil part away from the anvil.
             std::uint8_t const c = nextGearCast();
-            if (next == Task::None && c != kNoTier && !s.craftBlocked && bot->HasSpell(gtab.tiers[c].spell) &&
-                gst.forge.entry && FocusMissing(bot, gtab.tiers[c].spell, gst.forge))
-                next = Task::Forge;
+            Station const* focus = c == kNoTier ? nullptr : FocusStation(gst, gtab.tiers[c].spell);
+            if (next == Task::None && c != kNoTier && !s.craftBlocked && bot->HasSpell(gtab.tiers[c].spell) && focus &&
+                FocusMissing(bot, gtab.tiers[c].spell, gst))
+                next = focus == &gst.anvil ? Task::Anvil : Task::Forge;
         }
         std::uint32_t lineSurplus = 0;
         for (std::uint32_t const u : lview.surplus)
@@ -741,7 +758,7 @@ bool NewRpgBaseAction::SupplyStep()
             ? (BagVendorOf(role.alliance).entry ? &BagVendorOf(role.alliance) : nullptr)
             : s.task == Task::GearTrainer ? StationFor(gst, Task::Trainer)
             : s.task == Task::GearVendor  ? StationFor(gst, Task::Thread)
-            : s.task == Task::Forge || s.task == Task::GearTrainer2 ? StationFor(gst, s.task)
+            : s.task == Task::Forge || s.task == Task::Anvil || s.task == Task::GearTrainer2 ? StationFor(gst, s.task)
                                           : StationFor(lined ? lst : st, s.task);
         if (!station || now - s.taskSinceMs > kTaskTimeoutMs)
         {
@@ -752,7 +769,7 @@ bool NewRpgBaseAction::SupplyStep()
             return true;
         }
         WorldObject* target = nullptr;
-        if (s.task == Task::Mailbox || s.task == Task::Forge)
+        if (s.task == Task::Mailbox || s.task == Task::Forge || s.task == Task::Anvil)
             target = bot->FindNearestGameObject(station->entry, 60.0f);
         else if (Creature* c = bot->FindNearestCreature(station->entry, 60.0f); c && c->IsAlive())
             target = c;
@@ -868,8 +885,9 @@ bool NewRpgBaseAction::SupplyStep()
                 break;
             }
             case Task::Forge:
+            case Task::Anvil:
                 // Lane AA: the order's casts here one at a time (the smelts first) while any is possible; each cast keeps
-                // the trip alive (its timeout restarts), none ends it.
+                // the trip alive (its timeout restarts), none ends it. Lane tinkers2: the anvil parts likewise.
                 if (gearCraft())
                 {
                     s.taskSinceMs = now;
