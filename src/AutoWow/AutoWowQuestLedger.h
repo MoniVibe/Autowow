@@ -54,7 +54,8 @@
 //     (done|travel_gave_up|errands_timeout|return_gave_up); quest is 0; lvl/zone/x/y at the end. Trailing:
 //     town (innkeeper spawn guid), town_zone, needs (AutoWowErrands::Need bits), done (Done bits: sold 1,
 //     repaired 2, restocked 4, trained 8, bound 16, learned_fp 32, skipped 64, geared 128 with
-//     AutoWow.Gear.Upgrades, tooled 256 with AutoWow.Supply.Outfit), spent, sold (copper),
+//     AutoWow.Gear.Upgrades, tooled 256 with AutoWow.Supply.Outfit, weapon_floor 512 / food_floor 1024 with
+//     AutoWow.Supply.OutfitGear), spent, sold (copper),
 //     dur0, dur1 (average equipped durability % at arrival / after the errands), bag0, bag1 (free bag
 //     slots, same points), travel_ms (decision to arrival), return_ms, leg (walk|flight|hearth|none: the
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast).
@@ -90,7 +91,8 @@
 //     order|donate|feed|craft|deliver|pay|surplus|xp|refused|travel|list|buy|sold (the last three:
 //     AutoWow.Supply.Market)|outfit (AutoWow.Supply.Outfit: a tool bought, "line":"outfit"); quest is 0; team is the row's. Trailing: house, oid (team order id, run-scoped, never reused), item, count, copper (xp: the XP amount), from,
 //     to (guid-lows, 0 = treasury / none), op (refused: the movement; travel: other_map|stuck; surplus:
-//     auction|vendor; line outfit: outfit|grant_bot_cap|grant_team_budget).
+//     auction|vendor; line outfit: outfit|grant_bot_cap|grant_team_budget|weapon_floor). AutoWow.Supply.OutfitGear
+//     adds line-outfit reasons weapon_floor|food_floor (item + copper paid) and grant (treasury paid, item 0).
 //   - `classquest` (event 23; AutoWow.ClassQuests.Enable): one line per class-quest reward granted to a cohort /
 //     supply role bot (ClassQuestPolicy.h). reason = grant; quest = the reward's quest (not rewarded: quest status
 //     is untouched). Trailing: spell (learned, 0 = none), item (stored, 0 = none), level (the quest's MinLevel).

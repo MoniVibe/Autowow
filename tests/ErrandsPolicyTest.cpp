@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 7U);
+    EXPECT_EQ(s.version, 8U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -732,7 +732,7 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 7u);
+    EXPECT_EQ(kStateVersion, 8u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
 }
@@ -804,6 +804,109 @@ TEST(ErrandsPolicy, AuctionDetourDiscountsOnlyAuctionTowns)
     EXPECT_EQ(DetourCostMs(100000, true, 180000), 0u);
     EXPECT_EQ(DetourCostMs(300000, false, 180000), 300000u);
     EXPECT_EQ(DetourCostMs(300000, true, 0), 300000u);
+}
+
+// ---- AutoWow.Supply.OutfitGear floors (lane AN) ---------------------------------------------------------------
+TEST(OutfitGear, FloorDueOncePerLevelWhateverThePurse)
+{
+    AutoWowGear::Params const p;  // floor at L36: 50 % of 25.2 DPS = 12.6
+    EXPECT_TRUE(AutoWowGear::FloorDue(p, 36, 35, 937, false, 0));     // starter dagger at L36
+    EXPECT_FALSE(AutoWowGear::FloorDue(p, 36, 36, 937, false, 0));    // shopped this level
+    EXPECT_FALSE(AutoWowGear::FloorDue(p, 36, 35, 12600, false, 0));  // on the floor; no ranged for a rogue
+    EXPECT_TRUE(AutoWowGear::FloorDue(p, 36, 35, 12600, true, 0));    // a hunter without a bow
+    EXPECT_FALSE(AutoWowGear::FloorDue(p, 36, 35, 12600, true, 12600));
+    Obs o;  // the assessment turns it urgent: a run on its own
+    o.gear.soft = o.gear.urgent = true;
+    Assessment const a = Assess(Params{}, o);
+    EXPECT_TRUE(a.urgent & NeedGear);
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+}
+
+TEST(OutfitGear, PickFloorWeaponOwnGoldThenCheapestGrantThenBest)
+{
+    AutoWowGear::Params const p;
+    using AutoWowGear::kSlotMainHand;
+    std::vector<AutoWowGear::Offer> const offers = {
+        Weapon(101, 1, 5800, 14300, kSlotMainHand),   // clears 12.6
+        Weapon(102, 1, 27000, 21000, kSlotMainHand),  // clears
+        Weapon(103, 1, 1300, 7300, kSlotMainHand)};   // an upgrade, under the floor
+    // Own gold buys the best: it clears the floor.
+    EXPECT_EQ(AutoWowGear::PickFloorWeapon(p, offers, kSlotMainHand, 937, 36, 30000, 0), 1U);
+    // Own gold only reaches 103 (under the floor): the cheapest clearing one within gold + room.
+    EXPECT_EQ(AutoWowGear::PickFloorWeapon(p, offers, kSlotMainHand, 937, 36, 2000, 32400), 0U);
+    // Nothing clears within reach: the best upgrade there is.
+    EXPECT_EQ(AutoWowGear::PickFloorWeapon(p, offers, kSlotMainHand, 937, 36, 2000, 0), 2U);
+    EXPECT_EQ(AutoWowGear::PickFloorWeapon(p, offers, kSlotMainHand, 937, 36, 0, 1000), AutoWowGear::kNone);
+    // Ties on price: lower item, then lower npc.
+    std::vector<AutoWowGear::Offer> const tie = {Weapon(105, 9, 5800, 14300, kSlotMainHand),
+                                                 Weapon(104, 9, 5800, 13000, kSlotMainHand)};
+    EXPECT_EQ(AutoWowGear::PickFloorWeapon(p, tie, kSlotMainHand, 937, 36, 0, 6000), 1U);
+}
+
+TEST(OutfitGear, FloorWeaponsMainHandThenHunterRangedDrawDownGoldThenRoom)
+{
+    AutoWowGear::Params const p;
+    using AutoWowGear::kSlotMainHand;
+    using AutoWowGear::kSlotRanged;
+    std::vector<AutoWowGear::Offer> const offers = {Weapon(101, 1, 5800, 14300, kSlotMainHand),
+                                                    Weapon(201, 2, 6300, 12900, kSlotRanged)};
+    // 2000 own + 3800 room for the sword; 6300 of the 28600 room left for the bow.
+    std::vector<AutoWowGear::Offer> list = AutoWowGear::FloorWeapons(p, offers, 36, 937, true, 0, 2000, 32400);
+    ASSERT_EQ(list.size(), 2U);
+    EXPECT_EQ(list[0].item, 101U);
+    EXPECT_EQ(list[1].item, 201U);
+    EXPECT_EQ(list[1].slot, kSlotRanged);
+    // Room for the sword only.
+    list = AutoWowGear::FloorWeapons(p, offers, 36, 937, true, 0, 2000, 3800);
+    ASSERT_EQ(list.size(), 1U);
+    EXPECT_EQ(list[0].item, 101U);
+    EXPECT_TRUE(AutoWowGear::FloorWeapons(p, offers, 36, 937, false, 0, 0, 3000).empty());     // out of reach
+    EXPECT_TRUE(AutoWowGear::FloorWeapons(p, offers, 36, 12600, false, 0, 99999, 0).empty());  // on the floor
+    list = AutoWowGear::FloorWeapons(p, offers, 36, 12600, true, 0, 99999, 0);  // hunter: the bow only
+    ASSERT_EQ(list.size(), 1U);
+    EXPECT_EQ(list[0].item, 201U);
+}
+
+TEST(OutfitGear, FoodFloorKindsAndCopper)
+{
+    EXPECT_EQ(KindsFor(kClassMage, 30, AmmoNone), 0U);  // conjures: the plain restock buys nothing
+    EXPECT_EQ(FloorKinds(kClassMage, 30, AmmoNone), std::uint32_t((1u << KindFood) | (1u << KindWater)));
+    EXPECT_EQ(FloorKinds(kClassRogue, 30, AmmoNone), std::uint32_t(1u << KindFood));
+    EXPECT_EQ(FloorKinds(kClassPriest, 30, AmmoNone), std::uint32_t((1u << KindFood) | (1u << KindWater)));
+    // Soft Banana Bread 4601: 2000 copper per pack of 5.
+    EXPECT_EQ(FloorCopper(20, 5, 2000), 8000U);
+    EXPECT_EQ(FloorCopper(16, 5, 2000), 8000U);  // whole packs
+    EXPECT_EQ(FloorCopper(15, 5, 2000), 6000U);
+    EXPECT_EQ(FloorCopper(0, 5, 2000), 0U);
+    EXPECT_EQ(FloorCopper(3, 0, 25), 75U);  // a BuyCount of 0 sells one
+}
+
+TEST(OutfitGear, PlanStopsFloorWeaponBeforeTrainer)
+{
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn | RoleVendor, 0);
+    Npc smith = MakeNpc(7, RoleRepair | RoleVendor, 20);
+    Npc trainer = MakeNpc(8, RoleClassTrainer, 30);
+    Npc weapons = MakeNpc(9, RoleVendor, 40);
+    t.npcs = {inn, smith, trainer, weapons};
+    PlanInput in;
+    in.team = kAlliance;
+    in.trainers = {8};
+    in.gearNpcs = {9};
+    Plan plan = PlanStops(t, in);  // flag off: gear after training
+    ASSERT_EQ(plan.count, 3U);
+    EXPECT_EQ(plan.stops[1].spawn, 8U);
+    EXPECT_EQ(plan.stops[2].spawn, 9U);
+    in.gearFirst = true;
+    plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 3U);
+    EXPECT_EQ(plan.stops[1].spawn, 9U);
+    EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpGear));
+    EXPECT_EQ(plan.stops[2].spawn, 8U);
+    EXPECT_EQ(plan.stops[2].ops, std::uint32_t(OpTrain));
+    EXPECT_EQ(std::uint32_t(DoneWeaponFloor), 512U);
+    EXPECT_EQ(std::uint32_t(DoneFoodFloor), 1024U);
 }
 
 }  // namespace

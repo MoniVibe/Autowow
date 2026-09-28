@@ -3062,6 +3062,24 @@ AutoWow.Supply.Outfit = 0
 AutoWow.Supply.OutfitCheckMs = 600000
 AutoWow.Supply.OutfitMaxCopper = 500
 AutoWow.Supply.OutfitBudgetPerHour = 5000
+# Weapon / food floors (lane AN; soak S62-S65: 3.55 cohort deaths per bot-hour, rogues 9.5 with starter weapons at
+# L27-43; 44 of 50 bots carried no food, 40 no drink; 48 errands had gear due and 2 bought it). OutfitGear (needs
+# AutoWow.Supply.Outfit and AutoWow.Errands.Enable; the weapon floor also AutoWow.Gear.Upgrades for the vendor catalog):
+# a main hand (a hunter's bow / gun / crossbow too) below AutoWow.Gear.FarBelowPct of the level curve (0.7 DPS x
+# level, the world DB vendor weapons) is an urgent errand need "gear" once per level, whatever the purse. At the town
+# the bot picks the best upgrade its own gold buys when that clears the floor, else the cheapest upgrade that does
+# within its gold + grant room, else the best upgrade within gold + room (the stock item-upgrade scorer's offers); the
+# floor weapon skips the trainer / food reserve and is bought before any trainer. Every errand also tops food up to
+# AutoWow.Errands.FoodTarget and drink (mana users, a mage too) to WaterTarget, skipping the trainer reserve. What
+# own gold cannot pay of the floor weapons + food / drink joins the Outfit grant request (the house treasury pays;
+# the weapon / buy stops wait for it). The per-bot per-level cap grows by OutfitGearCopper x level^2 (25: L20 1g,
+# L36 3g24s, L40 4g; cheapest vendor weapon L20 58s, L30 1g57s, L40 3g57s), the team's hourly budget by
+# OutfitGearBudgetPerHour. Rows: `supply` "line":"outfit" weapon_floor / food_floor (item + copper paid), grant (the
+# treasury paid: item 0, copper), refused op weapon_floor (the buy failed); errand done bits 512 = a floor weapon
+# bought, 1024 = food / drink bought; "[Outfit]" log lines weapon_floor plan / floor copper.
+AutoWow.Supply.OutfitGear = 0
+AutoWow.Supply.OutfitGearCopper = 25
+AutoWow.Supply.OutfitGearBudgetPerHour = 50000
 # Artisan upkeep (lane F; soak-s45-full-r1). Every role bot (rep and artisan) picks its mailbox only for a mail it
 # can take something from (its money, or an item its bags can store). ArtisanFreeSlots (0 = off): a crafting
 # artisan (bag house / catalog line) under this many free bag slots makes room at its next decision: unsellable

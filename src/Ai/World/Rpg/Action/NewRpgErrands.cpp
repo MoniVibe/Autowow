@@ -349,7 +349,9 @@ void KeepBuy(Player* bot, Creature* npc, Stop const& st, BotState& s, Params con
             if (slot == list->GetItemCount() || have >= target)
                 continue;
             uint64 const money = bot->GetMoney();
-            uint64 const keep = pass ? reserve : 0;
+            // AutoWow.Supply.OutfitGear: food / drink skip the trainer reserve (the food floor).
+            bool const floor = AutoWowSupply::OutfitGear() && (kind == KindFood || kind == KindWater);
+            uint64 const keep = pass && !floor ? reserve : 0;
             PackBuy const b = PacksToBuy(target - have, proto->BuyCount, proto->BuyPrice, money > keep ? money - keep : 0);
             uint32 bought = 0;
             while (bought < b.packs)
@@ -364,6 +366,12 @@ void KeepBuy(Player* bot, Creature* npc, Stop const& st, BotState& s, Params con
                 s.spent += money - bot->GetMoney();
             if (bought)
                 s.done |= DoneRestocked;
+            if (bought && floor)
+            {
+                s.done |= DoneFoodFloor;
+                AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::FoodFloor, item,
+                                          money > bot->GetMoney() ? money - bot->GetMoney() : 0);
+            }
             if (bought < b.packs || (pass && b.shortOfMoney))
             {
                 s.done |= DoneSkipped;
@@ -553,11 +561,13 @@ uint32 EmptyArmorSlots(Player* bot)
 }
 
 // The town's gear the stock "item upgrade" value rates an equip for this bot (class / spec weights, armor
-// type, proficiency, level), as AutoWowGear offers. Ranged slots are not shopped.
+// type, proficiency, level), as AutoWowGear offers. Ranged slots are not shopped (AutoWow.Supply.OutfitGear: a
+// hunter's bow / gun / crossbow is, for its floor).
 std::vector<AutoWowGear::Offer> GearOffers(Player* bot, PlayerbotAI* botAI, Town const& town, std::uint8_t team)
 {
     std::vector<AutoWowGear::Offer> offers;
     bool const dualWield = bot->CanDualWield();
+    bool const hunterRanged = AutoWowSupply::OutfitGear() && bot->getClass() == CLASS_HUNTER;
     for (Npc const& n : town.npcs)
     {
         if (!(n.teams & team))
@@ -593,6 +603,13 @@ std::vector<AutoWowGear::Offer> GearOffers(Player* bot, PlayerbotAI* botAI, Town
                 if (off)
                 {
                     o.slot = EQUIPMENT_SLOT_OFFHAND;
+                    offers.push_back(o);
+                }
+                if (hunterRanged && (proto->SubClass == ITEM_SUBCLASS_WEAPON_BOW ||
+                                     proto->SubClass == ITEM_SUBCLASS_WEAPON_GUN ||
+                                     proto->SubClass == ITEM_SUBCLASS_WEAPON_CROSSBOW))
+                {
+                    o.slot = EQUIPMENT_SLOT_RANGED;
                     offers.push_back(o);
                 }
                 continue;
@@ -631,10 +648,67 @@ void PlanGear(Player* bot, PlayerbotAI* botAI, Town const& town, std::uint8_t te
     in.gearNpcs.erase(std::unique(in.gearNpcs.begin(), in.gearNpcs.end()), in.gearNpcs.end());
 }
 
+// PlanGear with AutoWow.Supply.OutfitGear on: the floor weapons (AutoWowGear FloorWeapons: own gold, then the
+// grant room) go first, flagged in s.floorGear and bought before training (in.gearFirst); the regular list shops
+// against the floor main hand with what own gold is left. Returns the floor weapons' copper (grant request share).
+uint64 PlanFloorGear(Player* bot, PlayerbotAI* botAI, Town const& town, std::uint8_t team, BotState& s, PlanInput& in)
+{
+    AutoWowSupply::Params const& sp = AutoWowSupply::detail::gParams;
+    uint32 const level = bot->GetLevel();
+    s.lastGearLevel = level;
+    s.gearItems.fill(0);
+    s.gearNpcs.fill(0);
+    std::vector<AutoWowGear::Offer> const offers = GearOffers(bot, botAI, town, team);
+    uint32 mainHandMilli = EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND);
+    uint32 const rangedMilli = EquippedDpsMilli(bot, EQUIPMENT_SLOT_RANGED);
+    uint64 const money = bot->GetMoney();
+    uint64 const room = AutoWowSupply::GrantCapCopper(sp.outfitMaxCopper, true, sp.outfitGearCopper, level);
+    bool dualWield = bot->CanDualWield();
+    std::vector<AutoWowGear::Offer> list = AutoWowGear::FloorWeapons(
+        AutoWowGear::Get(), offers, level, mainHandMilli, bot->getClass() == CLASS_HUNTER, rangedMilli, money, room);
+    uint64 floorCopper = 0;
+    for (AutoWowGear::Offer const& o : list)
+    {
+        floorCopper += o.price;
+        LOG_INFO("playerbots", "[Outfit] bot={} weapon_floor plan item={} npc={} slot={} price={} dps_milli={} "
+                 "cur_milli={} floor_milli={} money={} grant_room={} lvl={}", bot->GetName(), o.item, o.npc,
+                 static_cast<uint32>(o.slot), o.price, o.dpsMilli,
+                 o.slot == EQUIPMENT_SLOT_RANGED ? rangedMilli : mainHandMilli,
+                 AutoWowGear::ExpectedDpsMilli(level) * AutoWowGear::Get().farBelowPct / 100, money, room, level);
+        if (o.slot == EQUIPMENT_SLOT_MAINHAND)
+        {
+            mainHandMilli = o.dpsMilli;
+            dualWield = dualWield && !o.twoHand;
+        }
+    }
+    s.floorGear = static_cast<std::uint8_t>((1u << list.size()) - 1);
+    in.gearFirst = !list.empty();
+    std::vector<AutoWowGear::Offer> const rest = AutoWowGear::ShoppingList(
+        AutoWowGear::Get(), offers, mainHandMilli, EquippedDpsMilli(bot, EQUIPMENT_SLOT_OFFHAND), dualWield,
+        EmptyArmorSlots(bot), AutoWowGear::Spendable(money - std::min(money, floorCopper), level));
+    list.insert(list.end(), rest.begin(), rest.end());
+    for (std::size_t k = 0; k < list.size() && k < AutoWowGear::kMaxPicks; ++k)
+    {
+        s.gearItems[k] = list[k].item;
+        s.gearNpcs[k] = list[k].npc;
+        in.gearNpcs.push_back(list[k].npc);
+        LOG_INFO("playerbots", "[Gear] bot={} plan item={} npc={} slot={} price={} dps_milli={} armor={} money={}",
+                 bot->GetName(), list[k].item, list[k].npc, static_cast<uint32>(list[k].slot), list[k].price,
+                 list[k].dpsMilli, list[k].armor, money);
+    }
+    std::sort(in.gearNpcs.begin(), in.gearNpcs.end());
+    in.gearNpcs.erase(std::unique(in.gearNpcs.begin(), in.gearNpcs.end()), in.gearNpcs.end());
+    return floorCopper;
+}
+
 // AutoWow.Supply.Outfit, arrival: the missing tools the town sells into the plan, and a grant request when the
 // bot's money is short of them plus its planned trainer ranks here (+ kGrantBufferCopper).
-void PlanOutfit(Player* bot, Town const& town, std::uint8_t team, PlanInput& in)
+// AutoWow.Supply.OutfitGear: floorCopper (floor weapons + food / drink stack) joins the one request.
+void PlanOutfit(Player* bot, Town const& town, std::uint8_t team, PlanInput& in, uint64 floorCopper = 0)
 {
+    if (floorCopper)
+        LOG_INFO("playerbots", "[Outfit] bot={} floor copper={} money={} lvl={}", bot->GetName(), floorCopper,
+                 bot->GetMoney(), bot->GetLevel());
     std::vector<uint32> learning;
     uint64 ranks = 0;
     for (uint32 const spawn : in.trainers)
@@ -651,7 +725,7 @@ void PlanOutfit(Player* bot, Town const& town, std::uint8_t team, PlanInput& in)
         if (in.tools & (1u << i))
             if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(kToolItems[i]))
                 tools += proto->BuyPrice;
-    uint64 const need = tools + ranks + (ranks ? AutoWowSupply::kGrantBufferCopper : 0);
+    uint64 const need = tools + ranks + (ranks ? AutoWowSupply::kGrantBufferCopper : 0) + floorCopper;
     if (!need)
         return;
     if (need > bot->GetMoney())
@@ -764,6 +838,12 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
     if (AutoWowGear::Enabled())
         o.gear = AutoWowGear::GearDue(AutoWowGear::Get(), o.level, s.lastGearLevel, money,
                                       EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND));
+    // AutoWow.Supply.OutfitGear: a main hand (hunter: or ranged) under the floor is urgent whatever the purse.
+    if (AutoWowGear::Enabled() && AutoWowSupply::OutfitGear() &&
+        AutoWowGear::FloorDue(AutoWowGear::Get(), o.level, s.lastGearLevel,
+                              EquippedDpsMilli(bot, EQUIPMENT_SLOT_MAINHAND), o.cls == kClassHunter,
+                              EquippedDpsMilli(bot, EQUIPMENT_SLOT_RANGED)))
+        o.gear.soft = o.gear.urgent = true;
     if (AutoWowSupply::Outfit())
     {
         o.missingTools = BotMissingTools(bot);
@@ -1116,10 +1196,32 @@ bool NewRpgBaseAction::ErrandsStep()
                                          { return (n.teams & team) && (n.roles & RoleAuction); });
                 in.mail = in.auction || AutoWowTrade::HasCollectableMail(bot);
             }
+            // AutoWow.Supply.OutfitGear: food (and drink for mana users, a mage too) topped up to Target on every
+            // run; what own gold cannot pay joins the floor weapons in the grant request.
+            uint64 floorCopper = 0;
+            if (AutoWowSupply::OutfitGear())
+                for (Kind const kind : {KindFood, KindWater})
+                {
+                    if (!(FloorKinds(bot->getClass(), bot->GetLevel(), AmmoOf(bot)) & (1u << kind)) ||
+                        have[kind] >= TargetOf(p, kind))
+                        continue;
+                    if (!in.buyItems[kind])
+                        if (uint32 const item = BestTier(kind, bot->GetLevel(), &available))
+                            if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+                                proto && proto->RequiredLevel <= bot->GetLevel())
+                                in.buyItems[kind] = item;
+                    if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(in.buyItems[kind]))
+                        floorCopper += FloorCopper(TargetOf(p, kind) - have[kind], proto->BuyCount, proto->BuyPrice);
+                }
             if (AutoWowGear::Enabled() && (s.needs & NeedGear))
-                PlanGear(bot, botAI, *town, team, s, in);
+            {
+                if (AutoWowSupply::OutfitGear())
+                    floorCopper += PlanFloorGear(bot, botAI, *town, team, s, in);
+                else
+                    PlanGear(bot, botAI, *town, team, s, in);
+            }
             if (AutoWowSupply::Outfit())
-                PlanOutfit(bot, *town, team, in);
+                PlanOutfit(bot, *town, team, in, floorCopper);
             s.plan = PlanStops(*town, in);
             s.buyItems = in.buyItems;
             s.stop = 0;
@@ -1285,7 +1387,9 @@ bool NewRpgBaseAction::ErrandsStep()
         {
             // AutoWow.Supply.Outfit: a trainer / tool stop waits for the bot's pending grant (the world tick pays
             // or refuses it within AutoWow.Supply.TickMs; the stop timeout bounds the wait).
-            if ((st.ops & (OpTrain | OpTool)) && AutoWowSupply::Outfit() && AutoWowSupply::GrantPending(guid))
+            // AutoWow.Supply.OutfitGear: the floors' food / weapon stops wait for it too.
+            uint32 const grantOps = OpTrain | OpTool | (AutoWowSupply::OutfitGear() ? uint32(OpBuy | OpGear) : 0u);
+            if ((st.ops & grantOps) && AutoWowSupply::Outfit() && AutoWowSupply::GrantPending(guid))
             {
                 if (bot->isMoving())
                     bot->StopMoving();
@@ -1431,7 +1535,10 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             uint32 const target = TargetOf(p, kind);
             if (slot == list->GetItemCount() || have >= target)
                 continue;
-            uint64 const spendable = money() > reserve ? money() - reserve : 0;
+            // AutoWow.Supply.OutfitGear: food / drink skip the trainer reserve (the food floor).
+            bool const floor = AutoWowSupply::OutfitGear() && (kind == KindFood || kind == KindWater);
+            uint64 const keepCopper = floor ? 0 : reserve;
+            uint64 const spendable = money() > keepCopper ? money() - keepCopper : 0;
             // BuyPrice is per pack of BuyCount, before the reputation discount (an upper bound).
             PackBuy const b = PacksToBuy(target - have, proto->BuyCount, proto->BuyPrice, spendable);
             uint64 const m0 = money();
@@ -1442,6 +1549,11 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
                 s.spent += m0 - money();
             if (bought)
                 s.done |= DoneRestocked;
+            if (bought && floor)
+            {
+                s.done |= DoneFoodFloor;
+                AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::FoodFloor, item, m0 > money() ? m0 - money() : 0);
+            }
             if (b.shortOfMoney || bought < b.packs)
             {
                 s.done |= DoneSkipped;
@@ -1537,21 +1649,36 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
                     break;
                 }
             uint64 const m0 = money();
+            // AutoWow.Supply.OutfitGear: a floor weapon skips the gear reserve (s.floorGear is 0 with the flag off).
+            bool const floor = (s.floorGear >> k) & 1u;
             if (slot == list->GetItemCount() ||
-                m0 < uint64(proto->BuyPrice) + AutoWowGear::ReserveCopper(bot->GetLevel()))
+                m0 < uint64(proto->BuyPrice) + (floor ? 0 : AutoWowGear::ReserveCopper(bot->GetLevel())))
             {
                 s.done |= DoneSkipped;
                 LOG_INFO("playerbots", "[Gear] bot={} skip item={} npc={} in_list={} money={}", bot->GetName(), item,
                          npc->GetEntry(), slot != list->GetItemCount(), m0);
+                if (floor)
+                    AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::Refused, item, proto->BuyPrice,
+                                              "weapon_floor");
                 continue;
             }
             uint32 const before = bot->GetItemCount(item, false);
             bot->BuyItemFromVendorSlot(npc->GetGUID(), slot, item, 1, NULL_BAG, NULL_SLOT);
             if (bot->GetItemCount(item, false) <= before)
+            {
+                if (floor)
+                    AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::Refused, item, proto->BuyPrice,
+                                              "weapon_floor");
                 continue;  // bags full / stock: the core reports its own error
+            }
             bought.push_back(item);
             if (m0 > money())
                 s.spent += m0 - money();
+            if (floor)
+            {
+                s.done |= DoneWeaponFloor;
+                AutoWowSupply::EmitOutfit(bot, AutoWowSupply::Reason::WeaponFloor, item, m0 > money() ? m0 - money() : 0);
+            }
         }
         if (!bought.empty())
         {

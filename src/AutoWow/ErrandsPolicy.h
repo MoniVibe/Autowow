@@ -31,10 +31,11 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 7;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 8;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
-                                                  // 7: nextTrainRunMs (Professions.TrainRuns)
+                                                  // 7: nextTrainRunMs (Professions.TrainRuns);
+                                                  // 8: floorGear (Supply.OutfitGear)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -116,6 +117,13 @@ enum RangedAmmo : std::uint8_t
     if (cls == kClassShaman && level >= kShamanReagent[0].minLevel)
         kinds |= 1u << KindReagent;
     return kinds;
+}
+
+// AutoWow.Supply.OutfitGear food floor: every errand tops food (and drink for mana users) up to Target, a mage too
+// (S62-S65: mages out of mana 23% of combat; squad mage 70581 held no drink).
+[[nodiscard]] inline std::uint32_t FloorKinds(std::uint32_t cls, std::uint32_t level, RangedAmmo ammo)
+{
+    return KindsFor(cls, level, ammo) | (cls == kClassMage ? (1u << KindFood) | (1u << KindWater) : 0u);
 }
 
 // Tier table of a kind (the reagent table is the shaman's; KindsFor gates the class).
@@ -756,6 +764,13 @@ struct PackBuy
     return b;
 }
 
+// AutoWow.Supply.OutfitGear: copper of the whole packs topping `deficit` up (the food floor's grant share).
+[[nodiscard]] inline std::uint64_t FloorCopper(std::uint32_t deficit, std::uint32_t perPack, std::uint64_t packPrice)
+{
+    std::uint32_t const per = std::max<std::uint32_t>(1, perPack);
+    return std::uint64_t((deficit + per - 1) / per) * packPrice;
+}
+
 // ---- errands at the town --------------------------------------------------------------------------
 // Wire-stable bits (ledger `done`); append only.
 enum Done : std::uint32_t
@@ -768,7 +783,9 @@ enum Done : std::uint32_t
     DoneLearnedFp = 1u << 5,
     DoneSkipped = 1u << 6,  // an item or trainer rank was skipped as unaffordable (logged)
     DoneGeared = 1u << 7,   // AutoWow.Gear.Upgrades: a vendor weapon / armor piece was bought
-    DoneTooled = 1u << 8    // AutoWow.Supply.Outfit: a gathering tool was bought
+    DoneTooled = 1u << 8,   // AutoWow.Supply.Outfit: a gathering tool was bought
+    DoneWeaponFloor = 1u << 9,  // AutoWow.Supply.OutfitGear: a floor weapon was bought
+    DoneFoodFloor = 1u << 10    // AutoWow.Supply.OutfitGear: food / drink was bought
 };
 
 // Operations at one npc, run in bit order.
@@ -816,6 +833,7 @@ struct PlanInput
     bool mail = false;                                 // AutoWow.Trade: visit the town's mailbox
     std::vector<std::uint32_t> gearNpcs;               // AutoWow.Gear.Upgrades: vendors with a planned buy
     std::uint8_t tools = 0;                            // AutoWow.Supply.Outfit: Tool bits to buy
+    bool gearFirst = false;                            // AutoWow.Supply.OutfitGear: a floor weapon is planned
 };
 
 // Errand batch in order: sell junk, repair, restock, train, bind, flight path. Operations on the same
@@ -866,6 +884,12 @@ struct PlanInput
                 break;
             }
     }
+    // AutoWow.Supply.OutfitGear: a floor weapon's gold (a grant, maybe) is spent before any trainer takes it.
+    if (in.gearFirst)
+        for (std::uint32_t spawn : in.gearNpcs)
+            for (Npc const& n : town.npcs)
+                if (n.spawn == spawn && usable(n))
+                    add(n, OpGear, 0);
     for (std::uint32_t spawn : in.trainers)
         for (Npc const& n : town.npcs)
             if (n.spawn == spawn && usable(n))
@@ -988,6 +1012,7 @@ struct BotState
     std::uint32_t lastGearLevel = 0;
     std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearItems{};
     std::array<std::uint32_t, AutoWowGear::kMaxPicks> gearNpcs{};
+    std::uint8_t floorGear = 0;  // AutoWow.Supply.OutfitGear: bit k = gearItems[k] is a floor weapon (no reserve)
     // AutoWow.Supply.Outfit: no tool-triggered run before this (survives runs, not restarts).
     std::uint64_t nextOutfitMs = 0;
     // AutoWow.Supply.MailPickup: no mail-triggered run before this (survives runs, not restarts).
