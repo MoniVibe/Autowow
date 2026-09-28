@@ -64,7 +64,6 @@ constexpr std::uint32_t kStationYards = 400;  // stations are searched this far 
 // GearBootstrap: a gear line's default radius (Engineering 466 / 491, Mining 381 / 458 yards; the role step walks to
 // any station within its 600-yard town radius). The nearest station wins, so a line found within 400 is unchanged.
 constexpr std::uint32_t kBootstrapYards = 600;
-constexpr std::uint32_t kForgeFocus = 3;      // SpellFocusObject.dbc: Forge (smelting)
 
 // Read-only after LoadConfig.
 std::size_t gBagHouse = 0;
@@ -1610,6 +1609,17 @@ void LoadAmmo(Player* m, RecipeTable const& G)
              m->GetUInt32Value(PLAYER_AMMO_ID) == best->ItemId);
 }
 
+// Lane tinkers2 (EngGuns): the tool categories (Spell TotemCategory) a recipe's cast needs.
+std::vector<std::uint32_t> ToolCategories(std::uint32_t spell)
+{
+    std::vector<std::uint32_t> out;
+    if (SpellInfo const* s = sSpellMgr->GetSpellInfo(spell))
+        for (std::uint32_t const c : s->TotemCategory)
+            if (c)
+                out.push_back(c);
+    return out;
+}
+
 // Vendor value of a gear line piece: its sell value; shot sells for 0: its vendor lot price (one cast's 200) instead.
 std::uint32_t PieceValue(std::uint32_t item)
 {
@@ -1918,6 +1928,16 @@ void GearTick(Line line, bool alliance, bool overlord)
             else
                 feed(k.item, k.units);
         }
+        // Lane tinkers2 (EngGuns): a tool (kTools: Blacksmith Hammer) a known recipe's cast needs that the artisan lacks
+        // (bags or worn): one, bought at the line vendor.
+        if (EngGuns())
+            for (std::size_t i = 0; i < G.tierCount; ++i)
+                if (art->HasSpell(G.tiers[i].spell))
+                    for (std::uint32_t const c : ToolCategories(G.tiers[i].spell))
+                        if (std::uint32_t const tool = ToolFor(c);
+                            tool && !art->HasItemTotemCategory(c) &&
+                            std::none_of(v.vendor.begin(), v.vendor.end(), [&](MarketWant const& w) { return w.item == tool; }))
+                            v.vendor.push_back({tool, 1, BuyOf(tool)});
         if (!feedStacks.empty())
         {
             char const* const why = Send(repGuid, Low(art), feedStacks, "AutoWoW materials", "feed");
@@ -2178,14 +2198,14 @@ private:
 };
 
 // The stations near `home` (within `yards`): the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no
-// extended cost; `vendorAll`: every item listed), the auctioneer, the banker, the mailbox and a forge, each the nearest
-// (ties the lower spawn id).
+// extended cost; `vendorAll`: every item listed), the auctioneer, the banker, the mailbox, a forge and (EngGuns) an
+// anvil, each the nearest (ties the lower spawn id).
 void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t trainerSpell, std::uint32_t vendorItem,
                   std::vector<std::uint32_t> const* vendorAll = nullptr, std::uint32_t yards = kStationYards)
 {
     st = Stations{};
-    std::array<std::int64_t, 6> best{};
-    std::array<std::uint64_t, 6> bestSpawn{};
+    std::array<std::int64_t, 7> best{};
+    std::array<std::uint64_t, 7> bestSpawn{};
     std::int64_t const r2 = std::int64_t(yards) * yards;
     auto consider = [&](std::size_t k, Station& s, std::uint64_t spawn, std::uint32_t entry, float x, float y, float z)
     {
@@ -2245,6 +2265,8 @@ void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t t
             consider(3, st.mailbox, spawn, data.id, data.posX, data.posY, data.posZ);
         if (gt && gt->type == GAMEOBJECT_TYPE_SPELL_FOCUS && gt->spellFocus.focusId == kForgeFocus)
             consider(5, st.forge, spawn, data.id, data.posX, data.posY, data.posZ);
+        if (EngGuns() && gt && gt->type == GAMEOBJECT_TYPE_SPELL_FOCUS && gt->spellFocus.focusId == kAnvilFocus)
+            consider(6, st.anvil, spawn, data.id, data.posX, data.posY, data.posZ);
     }
 }
 
@@ -2378,6 +2400,7 @@ void LoadConfig()
     p.gearPayPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.GearPayPct", 200);
     p.ammoTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.AmmoTarget", 1000);
     p.gearBootstrap = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearBootstrap", false);
+    p.engGuns = sConfigMgr->GetOption<bool>("AutoWow.Supply.EngGuns", false);
     gPriority.clear();
     std::string const priority = sConfigMgr->GetOption<std::string>("AutoWow.Supply.PriorityGuids", "");
     if (!ParseGuids(priority, gPriority))
@@ -2598,6 +2621,9 @@ void LoadConfig()
             bool t = sp && Output(sp) == tier.product && proto && proto->RequiredLevel == tier.reqLevel;
             for (Reagent const& r : tier.reagents)
                 t = t && (!r.item || (ReagentCount(sp, r.item) == r.count && sObjectMgr->GetItemTemplate(r.item)));
+            if (EngGuns())  // lane tinkers2: every tool the cast needs is a kTools vendor item
+                for (std::uint32_t const c : ToolCategories(tier.spell))
+                    t = t && ToolFor(c) && sObjectMgr->GetItemTemplate(ToolFor(c));
             if (!t)
                 LOG_ERROR("server.loading", "[Supply] line {} recipe {} (spell {}, product {}) does not match the "
                           "loaded spells / items", L.name, i, tier.spell, tier.product);
@@ -2677,6 +2703,10 @@ void LoadConfig()
                     if (r.item && r.source == Source::Vendor &&
                         std::find(vendorAll.begin(), vendorAll.end(), r.item) == vendorAll.end())
                         vendorAll.push_back(r.item);
+                if (EngGuns())  // lane tinkers2: the line vendor sells its tools too
+                    for (std::uint32_t const c : ToolCategories(G.tiers[i].spell))
+                        if (std::find(vendorAll.begin(), vendorAll.end(), ToolFor(c)) == vendorAll.end())
+                            vendorAll.push_back(ToolFor(c));
             }
             Stations& st = gLineStations[li][T(alliance)];
             // AutoWow.Supply.StationYards.<Key> (lane AA): the Engineering trainers stand 466 / 491 yards from the homes.
@@ -2706,6 +2736,9 @@ void LoadConfig()
             }
             LOG_INFO("server.loading", "[Supply] line {} {} stations: trainer2={} (spell {}) forge={} yards={}", L.name,
                      alliance ? "alliance" : "horde", st.trainer2.entry, spell2, st.forge.entry, yards);
+            if (EngGuns())
+                LOG_INFO("server.loading", "[Supply] line {} {} stations: anvil={} at ({},{}) (EngGuns)", L.name,
+                         alliance ? "alliance" : "horde", st.anvil.entry, st.anvil.x, st.anvil.y);
         }
         for (std::size_t i = 0; i < houses.size(); ++i)
         {
@@ -2762,6 +2795,9 @@ void LoadConfig()
     if (LineOn(Line::Engineering))
         LOG_INFO("server.loading", "[Supply] line eng: ammo target={} (gun hunters), consumer=load ammo",
                  p.ammoTarget);
+    if (LineOn(Line::Engineering) && EngGuns())
+        LOG_INFO("server.loading", "[Supply] line eng: EngGuns on: {} recipes (anvil parts, Rough Boomstick, Bronze Tube "
+                 "bridge), tools {}", kEngGuns, std::size(kTools));
     if (p.demandOnly)
         LOG_INFO("server.loading", "[Supply] demand only: consumer-first skill-ups, surplus sales are `waste`, "
                  "order / deliver rows name their consumer");

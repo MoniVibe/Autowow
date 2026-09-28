@@ -112,6 +112,9 @@ struct Params
     // Gear line bootstrap (lane bootstrap; off by default):
     bool gearBootstrap = false;            // AutoWow.Supply.GearBootstrap: skill-up orders for needs only skill blocks,
                                            // the starter recipes (gearStarters), the wider station radius
+    // Tinkers guns (lane tinkers2; off by default):
+    bool engGuns = false;                  // AutoWow.Supply.EngGuns: the eng table's gearGuns rows (anvil parts, Rough
+                                           // Boomstick, the Bronze Tube skill bridge), the anvil station, tool purchases
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -787,6 +790,7 @@ struct ProductLine
     LineTier const* gear = nullptr;  // gear lines (NeedRule::GearSlots): recipe table, intermediates (reqLevel 0) first
     std::uint8_t gearCount = 0;
     std::uint8_t gearStarters = 0;  // the last rows of `gear`: in the table only with GearBootstrap (GearTable)
+    std::uint8_t gearGuns = 0;      // the last rows of `gear`: in the table only with EngGuns (GearTable)
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -874,7 +878,7 @@ inline constexpr std::uint8_t kLeatherStarters = 3;
 // the stock AI has. Dropped: goggles (RequiredSkill Engineering: no adventurer can wear them), scopes (no stock path
 // applies one to a weapon; tubes need an anvil + Blacksmith Hammer), bombs / dynamite (no stock AI throws them), arrows
 // (engineering makes none). Engineering 60 -> 75 (Heavy Shot) has no anvil-free recipe: the Heavy / Solid rows wait for
-// a skill bridge.
+// the EngGuns rows (the anvil bridge).
 inline constexpr LineTier kEngGear[] = {
     // intermediates (RequiredLevel 0): blasting powder, then the bars (Mining; skill = mining)
     {3918, 4357, 1, 40, 0, {{{2835, 1, Source::Route}, {}, {}}}},     // Rough Blasting Powder (learned with the skill)
@@ -887,7 +891,37 @@ inline constexpr LineTier kEngGear[] = {
     {3920, 8067, 1, 60, 5, {{{4357, 1, Source::Craft}, {2840, 1, Source::Craft}, {}}}},     // Crafted Light Shot
     {3930, 8068, 75, 95, 15, {{{4364, 1, Source::Craft}, {2840, 1, Source::Craft}, {}}}},   // Crafted Heavy Shot
     {3947, 8069, 125, 145, 30, {{{4377, 1, Source::Craft}, {2841, 1, Source::Craft}, {}}}}, // Crafted Solid Shot
+    // Guns (lane tinkers2, EngGuns only, kEngGuns): an anvil (spell focus 1) and a Blacksmith Hammer (TotemCategory 162,
+    // kTools) for every row; Weak Flux / Wooden Stock from the trade-supplies vendor near home (Stormwind 1286, Orgrimmar
+    // 5817 sell both and the hammer). Rough Boomstick is a ranged upgrade for a gun user (hunter, warrior, rogue with the
+    // Guns skill) whose ranged slot is worse; worn, a hunter's bullet need follows. Copper Tube / Rough Boomstick (grey
+    // 110) bridge engineering 60 -> 75 (Heavy Shot), Bronze Tube (grey 155) 110 -> 125 (Solid Shot): skill-up casts only
+    // toward a blocked need (GearBootstrap). Dropped: Deadly Blunderbuss (Medium Leather is routed to the Tanners; the
+    // Arclight Spanner no vendor sells), Silver-plated Shotgun (Silver Bar, a wool-cloth gizmo, 4 reagents), Lovingly
+    // Crafted Boomstick / Moonsight Rifle (schematic items, not trainer-taught).
+    {3922, 4359, 30, 60, 0, {{{2840, 1, Source::Craft}, {}, {}}}},                               // Handful of Copper Bolts
+    {3924, 4361, 50, 110, 0, {{{2840, 2, Source::Craft}, {2880, 1, Source::Vendor}, {}}}},        // Copper Tube
+    {3925, 4362, 50, 110, 5,
+     {{{4361, 1, Source::Craft}, {4359, 1, Source::Craft}, {4399, 1, Source::Vendor}}}},          // Rough Boomstick
+    {3938, 4371, 105, 155, 0, {{{2841, 2, Source::Craft}, {2880, 1, Source::Vendor}, {}}}},       // Bronze Tube
 };
+inline constexpr std::uint8_t kEngGuns = 4;
+// Tools a gear line recipe needs (Spell TotemCategory) and the vendor item that is one (lane tinkers2: the artisan buys it
+// at the line vendor, once). A table recipe needing a category not listed turns the line off at load (EngGuns).
+struct Tool
+{
+    std::uint32_t category = 0, item = 0;
+};
+inline constexpr Tool kTools[] = {{162, 5956}};  // Blacksmith Hammer
+[[nodiscard]] inline constexpr std::uint32_t ToolFor(std::uint32_t category)
+{
+    for (Tool const& t : kTools)
+        if (t.category == category)
+            return t.item;
+    return 0;
+}
+inline constexpr std::uint32_t kForgeFocus = 3;  // SpellFocusObject.dbc: Forge (smelting)
+inline constexpr std::uint32_t kAnvilFocus = 1;  // SpellFocusObject.dbc: Anvil (engineering parts, lane tinkers2)
 // Blacksmithing (MailGear, Smiths): no table yet. Its bars come from smelting (a Mining spell, not blacksmithing): a
 // Smiths line needs a smelting intermediate the artisan can cast (it must also be a miner) or bars routed / bought, and
 // the blacksmith trainers sit 390-565 yards from the homes (kStationYards 400). Add the rows here and its artisan config.
@@ -922,9 +956,17 @@ inline constexpr ProductLine kCatalog[] = {
     // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
     // 20), Artisan 12657 (200, level 35); Mining ranks (trainer 80): 2581, 2582, 3568, 10249 (same gates).
     {Line::Engineering, "eng", "Engineering", "Tinkers", "4039,4040,4041,12657,2581,2582,3568,10249", 202,
-     NeedRule::AmmoStock, Consumer::LoadAmmo, {}, 0, kEngGear, static_cast<std::uint8_t>(std::size(kEngGear))},
+     NeedRule::AmmoStock, Consumer::LoadAmmo, {}, 0, kEngGear, static_cast<std::uint8_t>(std::size(kEngGear)), 0,
+     kEngGuns},
 };
 inline constexpr std::size_t kLineCount = std::size(kCatalog);
+// GearTable drops either tail by its own flag: a line has starter rows or gun rows, never both.
+static_assert([] {
+    for (ProductLine const& l : kCatalog)
+        if (l.gearStarters && l.gearGuns)
+            return false;
+    return true;
+}());
 
 [[nodiscard]] inline constexpr ProductLine const& LineOf(Line l) { return kCatalog[static_cast<std::size_t>(l)]; }
 
@@ -981,7 +1023,8 @@ template <typename L>
 
 // Casts of tier `i` the holdings make: every Route / Market / Craft reagent in hand (a Craft reagent also
 // counts the casts its own tier makes from the holdings); Vendor reagents are bought, never a limit.
-// have(item) -> units. Holdings shared by two levels are counted at both (not so in kCatalog).
+// have(item) -> units. Holdings shared by two levels are counted at both (EngGuns: Rough Boomstick's Copper Tube and
+// Handful of Copper Bolts both count the Copper Bars: an upper bound; Lacks is exact).
 template <typename L, typename Have>
 [[nodiscard]] std::uint32_t Casts(L const& l, std::size_t i, Have&& have, std::size_t depth = kMaxLineTiers)
 {
@@ -1877,6 +1920,7 @@ struct Stations
     Station mailbox, trainer, threadVendor, auctioneer;
     Station banker;  // RepStore: the rep's bank stash (Stormwind 2455 Olivia Burnside, Orgrimmar 3318 Koma)
     Station forge;     // a forge (spell focus 3) near home: gear lines' smelting (lane AA)
+    Station anvil;     // an anvil (spell focus 1) near home: EngGuns parts (lane tinkers2; none when off)
     Station trainer2;  // gear lines: the trainer of the learn spells `trainer` does not teach (Engineering: mining)
 };
 
@@ -1980,10 +2024,13 @@ void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item
 // ---- need-driven production (lane V) ----
 inline bool DemandOnly() { return detail::gEnabled && detail::gParams.demandOnly; }
 inline bool GearBootstrap() { return detail::gEnabled && detail::gParams.gearBootstrap; }
-// A gear line's recipe table: its gearStarters last rows only with GearBootstrap (off: the lane V / AA table as was).
+inline bool EngGuns() { return detail::gEnabled && detail::gParams.engGuns; }
+// A gear line's recipe table: its gearStarters last rows only with GearBootstrap, its gearGuns last rows only with
+// EngGuns (off: the lane V / AA table as was).
 [[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)
 {
-    return {l.gear, static_cast<std::uint8_t>(l.gearCount - (GearBootstrap() ? 0 : l.gearStarters))};
+    return {l.gear, static_cast<std::uint8_t>(l.gearCount - (GearBootstrap() ? 0 : l.gearStarters) -
+                                              (EngGuns() ? 0 : l.gearGuns))};
 }
 // Gear line recipe `recipe`: items one cast makes (the spell's create-item count; shot 200, a piece 1). Read-only.
 std::uint32_t GearYield(Line l, std::uint8_t recipe);
