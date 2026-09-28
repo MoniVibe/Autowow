@@ -61,6 +61,9 @@ namespace
 constexpr std::uint32_t kBagSpell = 3755, kBoltSpell = 2963, kThreadItem = 2320;
 constexpr std::size_t kMaxHeld = 4096;      // cloth stacks held back from sale at once
 constexpr std::uint32_t kStationYards = 400;  // stations are searched this far from home
+// GearBootstrap: a gear line's default radius (Engineering 466 / 491, Mining 381 / 458 yards; the role step walks to
+// any station within its 600-yard town radius). The nearest station wins, so a line found within 400 is unchanged.
+constexpr std::uint32_t kBootstrapYards = 600;
 constexpr std::uint32_t kForgeFocus = 3;      // SpellFocusObject.dbc: Forge (smelting)
 
 // Read-only after LoadConfig.
@@ -1671,6 +1674,47 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
     return out;
 }
 
+// GearBootstrap (world thread, overlord): no need of the line has a recipe the artisan knows. The needs of the recipes
+// it can reach (ReachSkill: its rank's cap, or the next rank's its level trains) but does not know; the first one only
+// skill blocks gets a skill-up order (PlanGearSkillup): SkillupCasts casts of the cheapest known recipe of the line's
+// own skill (Engineering's smelts level Mining) still below grey and not already stocked (held < SkillupCasts). Logged.
+std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art, std::vector<bool> const& known,
+                                          std::vector<std::uint32_t> const& held)
+{
+    Params const& p = detail::gParams;
+    ProductLine const& L = LineOf(line);
+    RecipeTable const G = GearTable(L);
+    std::uint32_t const skill = art->GetSkillValue(L.skillLine), cap = art->GetMaxSkillValue(L.skillLine);
+    std::uint32_t const reach = ReachSkill(cap, art->GetLevel());
+    std::vector<bool> blocked(G.tierCount, false);
+    std::vector<SkillupOption> options;
+    for (std::size_t i = 0; i < G.tierCount; ++i)
+    {
+        LineTier const& tier = G.tiers[i];
+        blocked[i] = !known[i] && tier.skill <= reach;
+        bool own = false;
+        SkillLineAbilityMapBounds const b = sSpellMgr->GetSkillLineAbilityMapBounds(tier.spell);
+        for (auto it = b.first; it != b.second && !own; ++it)
+            own = it->second->SkillLine == L.skillLine;
+        std::uint64_t cost = 0;  // one cast's reagents at their vendor value
+        for (Reagent const& r : tier.reagents)
+            if (r.item)
+                cost += std::uint64_t(r.source == Source::Vendor ? BuyOf(r.item) : SellOf(r.item)) * r.count;
+        options.push_back({tier.spell, static_cast<std::uint8_t>(i), false,
+                           known[i] && own && held[i] < p.skillupCasts, tier.grey, true, cost, true});
+    }
+    std::vector<GearNeed> const need = RankGearNeeds(ScanGearNeeds(static_cast<std::size_t>(line), alliance, blocked));
+    std::vector<GearOrder> out;
+    if (skill < cap)
+        out = PlanGearSkillup(G, need, skill, options, p.skillupCasts);
+    LOG_INFO("playerbots", "[Supply] gear bootstrap line={} team={} artisan={} skill={}/{} reach={} blocked={} "
+             "top_recipe={} consumer={} skillup={} casts={}", L.name, alliance ? "alliance" : "horde", Low(art), skill,
+             cap, reach, need.size(), need.empty() ? 0 : G.tiers[need.front().recipe].spell,
+             out.empty() ? 0 : out.front().consumer, out.empty() ? 0 : G.tiers[out.front().recipe].spell,
+             out.empty() ? 0 : out.front().units);
+    return out;
+}
+
 // A gear line over one team (world thread). Overlord: the need scan and the order (top GearMaxOrder needs, plus
 // RepStockPerItem per wanted recipe for the rep, less the finished pieces the house holds). Every tick: the artisan's
 // finished pieces go straight to their named consumers (still an upgrade), the rest to the rep's stock (each piece paid
@@ -1711,7 +1755,9 @@ void GearTick(Line line, bool alliance, bool overlord)
             held[i] = castUnits(static_cast<std::uint8_t>(i), house(G.tiers[i].product));
         }
         needs = RankGearNeeds(ScanGearNeeds(li, alliance, known));
-        std::vector<GearOrder> const orders = PlanGearOrders(needs, held, p.gearMaxOrder, p.repStockPerItem);
+        std::vector<GearOrder> orders = PlanGearOrders(needs, held, p.gearMaxOrder, p.repStockPerItem);
+        if (GearBootstrap() && needs.empty() && art)
+            orders = BootstrapGearOrder(line, alliance, art, known, held);
         if (!orders.empty() && (ts.orders.empty() || orders.front().recipe != ts.orders.front().recipe))
         {
             std::lock_guard<std::mutex> guard(gLock);
@@ -2331,6 +2377,7 @@ void LoadConfig()
     p.gearMaxOrder = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.GearMaxOrder", 4));
     p.gearPayPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.GearPayPct", 200);
     p.ammoTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.AmmoTarget", 1000);
+    p.gearBootstrap = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearBootstrap", false);
     gPriority.clear();
     std::string const priority = sConfigMgr->GetOption<std::string>("AutoWow.Supply.PriorityGuids", "");
     if (!ParseGuids(priority, gPriority))
@@ -2633,8 +2680,10 @@ void LoadConfig()
             }
             Stations& st = gLineStations[li][T(alliance)];
             // AutoWow.Supply.StationYards.<Key> (lane AA): the Engineering trainers stand 466 / 491 yards from the homes.
+            // GearBootstrap: kBootstrapYards when unset (soak S53-S59 ran without the key: no Engineering trainer).
             std::uint32_t const yards = sConfigMgr->GetOption<std::uint32_t>(
-                std::string("AutoWow.Supply.StationYards.") + L.key, kStationYards, false);
+                std::string("AutoWow.Supply.StationYards.") + L.key, GearBootstrap() ? kBootstrapYards : kStationYards,
+                false);
             FindStations(st, alliance, home, trainerSpell, 0, &vendorAll, yards);
             LOG_INFO("server.loading", "[Supply] line {} {} stations: mailbox={} trainer={} vendor={} ({} items)",
                      L.name, alliance ? "alliance" : "horde", st.mailbox.entry, st.trainer.entry, st.threadVendor.entry,
@@ -2708,7 +2757,7 @@ void LoadConfig()
         if (kCatalog[li].gearCount && LineOn(kCatalog[li].id))
             LOG_INFO("server.loading", "[Supply] line {} on: house={} artisan A={} H={} learn={} recipes={} equipment={} "
                      "max_order={} rep_stock={} pay_pct={} priority={}", kCatalog[li].name, gLineHouseName[li],
-                     gLineArtisan[li][0], gLineArtisan[li][1], gLineLearn[li].size(), kCatalog[li].gearCount,
+                     gLineArtisan[li][0], gLineArtisan[li][1], gLineLearn[li].size(), GearTable(kCatalog[li]).tierCount,
                      gGearRank[li].size(), p.gearMaxOrder, p.repStockPerItem, p.gearPayPct, gPriority.size());
     if (LineOn(Line::Engineering))
         LOG_INFO("server.loading", "[Supply] line eng: ammo target={} (gun hunters), consumer=load ammo",

@@ -1238,4 +1238,93 @@ TEST(SupplyEng, AmmoNeedAndLoad)
     EXPECT_EQ(o[0].units, 2u + 2u - 1u);
     EXPECT_EQ(o[0].consumer, 70u);
 }
+
+// Lane bootstrap (soak S53-S59: Tanners artisans stuck at leatherworking 1, no need, no order, no skill-up).
+TEST(SupplyGearBootstrap, ReachIsTheRankCapOrTheNextRankTheLevelTrains)
+{
+    EXPECT_EQ(ReachSkill(0, 4), 0u);      // untrained, below Apprentice's level 5
+    EXPECT_EQ(ReachSkill(0, 10), 75u);    // untrained: Apprentice
+    EXPECT_EQ(ReachSkill(75, 10), 150u);  // Apprentice at level 10: Journeyman (skill 50 comes from skill-ups)
+    EXPECT_EQ(ReachSkill(75, 9), 75u);
+    EXPECT_EQ(ReachSkill(150, 10), 150u);  // Expert needs level 20
+    EXPECT_EQ(ReachSkill(150, 20), 225u);
+    EXPECT_EQ(ReachSkill(450, 80), 450u);  // Grand Master: nothing above
+}
+
+TEST(SupplyGearBootstrap, StarterRowsOnlyWithTheFlag)
+{
+    ProductLine const& L = LineOf(Line::LeatherGear);
+    EXPECT_EQ(GearTable(L).tierCount, 16u);  // off: the lane V table unchanged
+    detail::gEnabled = true;
+    detail::gParams.gearBootstrap = true;
+    RecipeTable const g = GearTable(L);
+    detail::gParams.gearBootstrap = false;
+    detail::gEnabled = false;
+    ASSERT_EQ(g.tierCount, 19u);
+    EXPECT_EQ(GearTable(LineOf(Line::Engineering)).tierCount, 9u);  // no starters
+    // Starters: learned with the skill (skill 1), Light Leather from routed scraps (kLeather), then boots / cloak.
+    for (std::size_t i = 16; i < 19; ++i)
+        EXPECT_EQ(g.tiers[i].skill, 1u);
+    std::uint8_t const scraps = TierOf(g, 2318);
+    ASSERT_EQ(scraps, 16u);
+    EXPECT_EQ(g.tiers[scraps].reagents[0].item, 2934u);
+    EXPECT_EQ(g.tiers[scraps].reagents[0].count, 3u);
+    EXPECT_EQ(g.tiers[scraps].reqLevel, 0u);  // intermediate: never ranked, never a need
+    std::uint8_t const boots = TierOf(g, 2302);
+    ASSERT_NE(boots, kNoTier);
+    EXPECT_EQ(g.tiers[boots].grey, 70u);
+    EXPECT_EQ(g.tiers[boots].reqLevel, 3u);
+    // Medium Leather's Light Leather stays a Route reagent: Casts / Lacks never recurse into the scraps row.
+    std::unordered_map<std::uint32_t, std::uint32_t> held{{2934, 30}};
+    auto have = [&](std::uint32_t item)
+    {
+        auto const it = held.find(item);
+        return it == held.end() ? 0u : it->second;
+    };
+    EXPECT_EQ(Casts(g, TierOf(g, 2319), have), 0u);
+    EXPECT_EQ(Casts(g, scraps, have), 10u);
+}
+
+TEST(SupplyGearBootstrap, SkillBlockedNeedGetsTheCheapestSkillupForItsRecipient)
+{
+    detail::gEnabled = true;
+    detail::gParams.gearBootstrap = true;
+    RecipeTable const g = GearTable(LineOf(Line::LeatherGear));
+    detail::gParams.gearBootstrap = false;
+    detail::gEnabled = false;
+    std::uint8_t const pants = TierOf(g, 2303), vest = TierOf(g, 2300), boots = TierOf(g, 2302),
+                       cloak = TierOf(g, 7276), scraps = TierOf(g, 2318);
+    // Tanwyll, leatherworking 1: knows the starters only.
+    std::vector<SkillupOption> const opts = {
+        {2881, scraps, false, true, 40, true, 3, true},
+        {2149, boots, false, true, 70, true, 30, true},
+        {9058, cloak, false, true, 70, true, 30, true},
+        {2153, pants, false, false, 75, true, 20, true},  // not known yet
+    };
+    std::uint8_t const belt = TierOf(g, 4246);  // Fine Leather Belt, skill 80
+    std::vector<GearNeed> const blocked = RankGearNeeds(
+        {{72002, belt, 5, kNoPriority, 200}, {72001, vest, 4, kNoPriority, 90}, {70573, pants, 6, 0, 300}});
+    std::vector<GearOrder> o = PlanGearSkillup(g, blocked, 1, opts, 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, scraps);     // cheapest non-grey known recipe
+    EXPECT_EQ(o[0].units, 10u);         // SkillupCasts
+    EXPECT_EQ(o[0].consumer, 70573u);   // the top ranked blocked need (priority list)
+    o = PlanGearSkillup(g, blocked, 45, opts, 10);  // pants / vest learnable now: the belt; scraps grey at 40
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, boots);  // boots and cloak cost the same: the lower spell
+    EXPECT_EQ(o[0].consumer, 72002u);
+    EXPECT_TRUE(PlanGearSkillup(g, blocked, 70, opts, 10).empty());         // everything known is grey
+    EXPECT_TRUE(PlanGearSkillup(g, {}, 1, opts, 10).empty());               // nothing blocked
+    EXPECT_TRUE(PlanGearSkillup(g, blocked, 1, opts, 0).empty());           // SkillupCasts 0
+    // Pants learnable now (skill 20 >= 15): the trainer serves it, the vest (skill 40) still gets the skill-up.
+    o = PlanGearSkillup(g, blocked, 20, opts, 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].consumer, 72001u);
+    EXPECT_TRUE(PlanGearSkillup(g, {{70573, pants, 6, 0, 300}}, 20, opts, 10).empty());
+    // Untrained (Tinkers at engineering 0): no known recipe, no skill-up (the trainer trip teaches Apprentice).
+    std::vector<SkillupOption> none = opts;
+    for (SkillupOption& x : none)
+        x.known = false;
+    EXPECT_TRUE(PlanGearSkillup(g, blocked, 0, none, 10).empty());
+}
 }  // namespace

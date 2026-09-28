@@ -109,6 +109,9 @@ struct Params
     std::uint32_t gearPayPct = 200;        // AutoWow.Supply.GearPayPct: pay per gear piece = vendor sell value * this / 100
     // Tinkers (lane AA; Products eng, off by default):
     std::uint32_t ammoTarget = 1000;       // AutoWow.Supply.AmmoTarget: bullets a gun hunter should hold (bags + mailbox)
+    // Gear line bootstrap (lane bootstrap; off by default):
+    bool gearBootstrap = false;            // AutoWow.Supply.GearBootstrap: skill-up orders for needs only skill blocks,
+                                           // the starter recipes (gearStarters), the wider station radius
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -783,6 +786,7 @@ struct ProductLine
     std::uint8_t tierCount = 0;  // 0 = a bespoke runtime (bags: the bolt -> bag chain over kTiers)
     LineTier const* gear = nullptr;  // gear lines (NeedRule::GearSlots): recipe table, intermediates (reqLevel 0) first
     std::uint8_t gearCount = 0;
+    std::uint8_t gearStarters = 0;  // the last rows of `gear`: in the table only with GearBootstrap (GearTable)
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -857,7 +861,13 @@ inline constexpr LineTier kLeatherGear[] = {
      {{{2319, 12, Source::Craft}, {4340, 1, Source::Vendor}, {2321, 1, Source::Vendor}}}},   // Dark Leather Pants
     {3764, 4247, 145, 195, 24, {{{2319, 14, Source::Craft}, {2321, 4, Source::Vendor}, {}}}}, // Hillman's Leather Gloves
     {3760, 3719, 150, 190, 25, {{{4234, 5, Source::Craft}, {2321, 2, Source::Vendor}, {}}}},  // Hillman's Cloak
+    // Starters (GearBootstrap only, kLeatherStarters): learned with the skill (SkillLineAbility AcquireMethod 1, no
+    // trainer_spell row), the only casts below Handstitched Leather Pants (15): an artisan at skill 1 levels on them.
+    {2881, 2318, 1, 40, 0, {{{2934, 3, Source::Route}, {}, {}}}},                          // Light Leather <- scraps
+    {2149, 2302, 1, 70, 3, {{{2318, 2, Source::Route}, {2320, 1, Source::Vendor}, {}}}},   // Handstitched Leather Boots
+    {9058, 7276, 1, 70, 4, {{{2318, 2, Source::Route}, {2320, 1, Source::Vendor}, {}}}},   // Handstitched Leather Cloak
 };
+inline constexpr std::uint8_t kLeatherStarters = 3;
 // Engineering (lane AA, Tinkers; trainer 92 = Stormwind 5518 / Orgrimmar 11017, 466 / 491 yards from the homes) and its
 // smelting (Mining 186, trainer 80 = Stormwind 5513 / Orgrimmar 3357; spell focus 3: a forge near home): gun hunters'
 // shot (200 per cast) from routed stone (House.Stone) and ore (House.Ore). Only reagents the house gets and a consumer
@@ -908,7 +918,7 @@ inline constexpr ProductLine kCatalog[] = {
     {Line::MailGear, "mail_gear", "MailGear", "Smiths", "", 164, NeedRule::GearSlots, Consumer::EquipGear, {}, 0,
      nullptr, 0},
     {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
-     Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear))},
+     Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear)), kLeatherStarters},
     // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
     // 20), Artisan 12657 (200, level 35); Mining ranks (trainer 80): 2581, 2582, 3568, 10249 (same gates).
     {Line::Engineering, "eng", "Engineering", "Tinkers", "4039,4040,4041,12657,2581,2582,3568,10249", 202,
@@ -917,7 +927,6 @@ inline constexpr ProductLine kCatalog[] = {
 inline constexpr std::size_t kLineCount = std::size(kCatalog);
 
 [[nodiscard]] inline constexpr ProductLine const& LineOf(Line l) { return kCatalog[static_cast<std::size_t>(l)]; }
-[[nodiscard]] inline constexpr RecipeTable GearTable(ProductLine const& l) { return {l.gear, l.gearCount}; }
 
 // ",\"line\":\"bags\"": appended to every `supply` row (append-only schema).
 inline std::string LineField(Line l)
@@ -1629,6 +1638,35 @@ template <typename Have>
     return first;
 }
 
+// GearBootstrap: the highest profession skill a gear artisan can reach before its next trainer rank is out of reach:
+// its rank's cap (maxSkill), or the next rank's when its level trains it (3.3.5 trainer_spell: Apprentice 75 at level
+// 5, Journeyman 150 at 10, Expert 225 at 20, Artisan 300 at 35, Master 375 at 50, Grand Master 450 at 65).
+[[nodiscard]] inline std::uint32_t ReachSkill(std::uint32_t maxSkill, std::uint32_t level)
+{
+    constexpr std::uint32_t kRankCap[] = {75, 150, 225, 300, 375, 450}, kRankLevel[] = {5, 10, 20, 35, 50, 65};
+    for (std::size_t i = 0; i < std::size(kRankCap); ++i)
+        if (kRankCap[i] > maxSkill)
+            return level >= kRankLevel[i] ? kRankCap[i] : maxSkill;
+    return maxSkill;
+}
+
+// GearBootstrap: `blocked` = the ranked needs of recipes the artisan can reach but does not know (no known recipe
+// serves any need). The first one whose recipe is above `skill` (the others it learns at the trainer now) gets a
+// skill-up order: `casts` of the skill-up recipe (PickSkillup over `options`, no stock needed: the order's reagents are
+// fed), its consumer that need's recipient (DemandOnly). Empty when nothing is skill-blocked or no recipe levels it.
+[[nodiscard]] inline std::vector<GearOrder> PlanGearSkillup(RecipeTable const& g, std::vector<GearNeed> const& blocked,
+                                                            std::uint32_t skill,
+                                                            std::vector<SkillupOption> const& options,
+                                                            std::uint32_t casts)
+{
+    auto const top = std::find_if(blocked.begin(), blocked.end(), [&](GearNeed const& n)
+                                  { return n.recipe < g.tierCount && g.tiers[n.recipe].skill > skill; });
+    int const pick = top == blocked.end() || !casts ? -1 : PickSkillup(skill, options, false);
+    if (pick < 0)
+        return {};
+    return {{options[static_cast<std::size_t>(pick)].tier, casts, top->guid}};
+}
+
 // A finished piece a sender holds: its recipe and item guid-low.
 struct GearItem
 {
@@ -1941,6 +1979,12 @@ void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item
 
 // ---- need-driven production (lane V) ----
 inline bool DemandOnly() { return detail::gEnabled && detail::gParams.demandOnly; }
+inline bool GearBootstrap() { return detail::gEnabled && detail::gParams.gearBootstrap; }
+// A gear line's recipe table: its gearStarters last rows only with GearBootstrap (off: the lane V / AA table as was).
+[[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)
+{
+    return {l.gear, static_cast<std::uint8_t>(l.gearCount - (GearBootstrap() ? 0 : l.gearStarters))};
+}
 // Gear line recipe `recipe`: items one cast makes (the spell's create-item count; shot 200, a piece 1). Read-only.
 std::uint32_t GearYield(Line l, std::uint8_t recipe);
 inline Reason SurplusReason() { return SaleReason(DemandOnly()); }

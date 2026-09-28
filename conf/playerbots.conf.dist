@@ -3011,6 +3011,18 @@ AutoWow.Supply.House.Stone = "Tinkers"
 AutoWow.Supply.Artisan.Learn.Engineering = "4039,4040,4041,12657,2581,2582,3568,10249"
 AutoWow.Supply.StationYards.Engineering = 520
 AutoWow.Supply.AmmoTarget = 1000
+# GearBootstrap (lane bootstrap, soak S53-S59: the Tanners artisans sat at leatherworking 1 and the Tinkers artisans
+# never trained engineering). Off by default; off = the gear lines exactly as above.
+#   Need: when no need of a gear line has a recipe its artisan knows, the overlord scans the recipes it can reach (not
+#   known, recipe skill up to its rank's cap, or the next rank's when its level trains it: 75 / 150 / 225 at levels
+#   5 / 10 / 20 ...). The first such need only skill blocks (recipe above the artisan's skill; lower ones it learns at
+#   the trainer) gets a skill-up order: SkillupCasts casts of the cheapest known recipe of the line's own skill still
+#   below grey, not already held SkillupCasts deep by the house; the order names that need's recipient (DemandOnly).
+#   The pieces go to the rep's stock, as any order's. "[Supply] gear bootstrap" logs every decision.
+#   Table: leather_gear adds its starters (learned with Leatherworking): Light Leather from routed Ruined Leather Scraps,
+#   Handstitched Leather Boots / Cloak (the only casts below Handstitched Leather Pants, skill 15).
+#   Stations: a gear line without StationYards.<Key> searches 600 yards (the Engineering / Mining trainers stand past 400).
+AutoWow.Supply.GearBootstrap = 0
 # AutoWow.Guilds.Rep.Tinkers.Alliance = 0
 # AutoWow.Guilds.Rep.Tinkers.Horde = 0
 # AutoWow.Supply.Artisan.Tinkers.Alliance = 0
