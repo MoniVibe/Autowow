@@ -141,3 +141,31 @@ ordinary OPEN/TREASURE; looting it runs event 619 (Defias Overseer 634) and SAI 
 Needs in-game proof: chest loot lands 5397 in the leader's bags; the use-item packet fires 6250 on the cannon from 4 yd;
 door GO state flips; a follower holder actually walks to the cannon (its AI may re-follow). Risk: if the loot row latched
 done and the holder then leaves the party, the cannon row stays key-gated and idx3 falls back to the closed door.
+
+## Lane AM (dgates2) status, 2026-09-28
+Three S62 stalls (archive `soak-s62-full-r1`), fixed under the live flags (Gates, ConvoyV2). Offline Detour replay
+with `/root/dgates2-scratch/dg` (dmtool + `GW` ground|water corridor and `R` connected-region commands).
+
+- Gnomeregan Grubbis idx2 (stuck 2x at -520,-140 next=2): gossip worked (`result=gossip`, then `done` = escorting).
+  Emi's SAI summons trogg group 1 (107, attackScriptOwner=1) at her WP7 pause; the party stood within the escort
+  distance logging `wait`, no member fought (ledger fights flat 12:37-12:48), Emi died, spawntime 86400, and the
+  escort row logged `npc_missing` until the run was stuck. Not the invoker range check (WP_START targets self, so no
+  escort targets are stored). Fix: the Escort row now attacks the nearest live attacker of the escorted creature
+  first (`result=defend`, `DungeonGate::SelectEscortAct`), then waits/follows. Also covers the Wailing Caverns
+  Disciple and Grubbis himself (Emi attacks 7361 at WP14).
+- Razorfen Kraul Agathelos idx5 (one run stuck 2x at 2100,1980 next=5): not the ward row. The failing run took
+  `approach_direct` (slope-checked path, 100 yd) to the Ward Keeper row; direct approaches have no convoy route, so the
+  followers were left idle 52-57 yd back (replay: complete slope-checked paths to the leader) and the non-convoy
+  cohesion branch logged `blocked=party_cohesion member=Probehex distance=55.9` for ten minutes. The completed run took
+  `approach_slope_free` and met the keepers in combat on the way. Fix: while the last selection is a gate row
+  (Gates on), that branch walks an idle out-of-combat straggler to the navigator (`recovery=gate_party_walk`), the
+  same walk the gate row already does once arrived (`WalkStragglerToNavigator`).
+- Blackfathom Deeps Lady Sarevess idx1 (stuck 3x at -460,200 next=1): `blocked=unsupported_transition`, full-path
+  probe INCOMPLETE. Sarevess's navmesh region (88 polys) has no link to the main region (2611 polys); the closest
+  gap is 15.8 yd across the pool surface (z -55.96), covered by unlinked water-poly islands. Fix: ConvoyV2 curated
+  leg (48, 1), 15 points from Ghamoo-ra's spawn to Sarevess; point 6 is a direct level swim (-366.9,284.5) ->
+  (-355.5,295.5). `DirectStepShape` now also accepts a level crossing (|dz| <= 0.5) up to 18 yd. Every other pair
+  replays complete without the slope check.
+
+Needs in-game proof: bot attacks on Emi's trogg waves keep her alive through groups 1-3 and Grubbis; the straight
+swim moves leader and followers across the pool; stragglers walk on the RFK direct approach.
