@@ -27,6 +27,7 @@
 #include "Group.h"
 #include "GameObject.h"
 #include "InstanceScript.h"
+#include "MoveSplineInit.h"
 #include "Map.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
@@ -152,6 +153,8 @@ constexpr uint32 GateHoldMs = 5 * IN_MILLISECONDS;
 constexpr float GateCreatureSearchLimit = 150.0f;
 constexpr float GateEscortDistance = 8.0f;
 constexpr float GateEscortFollowDistance = 4.0f;
+constexpr uint32 GateEscortScanMs = 1000;  // escort rows rescan fast: summoned waves hit the escort at once
+constexpr float GateLosApproachDistance = 2.0f;
 constexpr float GateAttackDistance = 30.0f;
 constexpr float GateAttackApproachDistance = 20.0f;
 constexpr float GateItemUseDistance = 4.0f;  // key item spells (Defias Gunpowder 6250) reach 5 yd
@@ -515,6 +518,24 @@ void MoveStraight(Unit* unit, float x, float y, float z)
         motion->MovePoint(0, x, y, z, FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false, false);
     }
 }
+
+// ConvoyV2 level crossing (DungeonRoute::IsLevelCrossing): a raw straight spline at the mover's height, no path.
+void MoveLevelCrossing(Unit* unit, float x, float y)
+{
+    if (MotionMaster* motion = unit->GetMotionMaster())
+        motion->Clear();
+    Movement::MoveSplineInit init(unit);
+    init.MoveTo(x, y, unit->GetPositionZ(), false);
+    init.Launch();
+}
+
+// Lets the navigator run a party member's own AttackAction::Attack (its checks, target values and engine state).
+class GateMemberAttackAction final : public AttackAction
+{
+public:
+    explicit GateMemberAttackAction(PlayerbotAI* memberAI) : AttackAction(memberAI, "dungeon gate member attack") {}
+    bool Strike(Unit* target) { return Attack(target); }
+};
 
 bool IsWalkPoint(PathNodeType type)
 {
@@ -1683,7 +1704,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     {
                         continue;
                     }
-                    MoveStraight(member, stepPoint.x, stepPoint.y, stepPoint.z);
+                    if (DungeonRoute::IsLevelCrossing(fromPoint, stepPoint))
+                        MoveLevelCrossing(member, stepPoint.x, stepPoint.y);
+                    else
+                        MoveStraight(member, stepPoint.x, stepPoint.y, stepPoint.z);
                     directStepFollowers[convoyMemberGuid] = {stepRow, now ? now : 1};
                     nextScanTime = now + SuccessfulMoveRescanDelayMs();
                     LOG_INFO("playerbots",
@@ -2637,31 +2661,44 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                         logGate(row, "npc_missing", false);
                         return false;
                     }
-                    // Nearest live attacker of the escorted creature, ties by guid.
-                    Unit* threat = nullptr;
+                    // Live attackers of the escorted creature, nearest to it first, ties by guid.
+                    std::vector<Unit*> threats;
                     for (Unit* attacker : escorted->getAttackers())
+                        if (IsLiveCombatUnit(escorted, attacker))
+                            threats.push_back(attacker);
+                    std::sort(threats.begin(), threats.end(), [&](Unit* left, Unit* right)
                     {
-                        if (!IsLiveCombatUnit(escorted, attacker))
-                            continue;
-                        float const distance = bot->GetExactDist(attacker);
-                        float const threatDistance = threat ? bot->GetExactDist(threat) : 0.0f;
-                        if (!threat || distance < threatDistance ||
-                            (distance == threatDistance &&
-                                attacker->GetGUID().GetCounter() < threat->GetGUID().GetCounter()))
-                        {
-                            threat = attacker;
-                        }
-                    }
-                    switch (DungeonGate::SelectEscortAct(threat != nullptr,
+                        float const leftDistance = escorted->GetExactDist(left);
+                        float const rightDistance = escorted->GetExactDist(right);
+                        if (leftDistance != rightDistance)
+                            return leftDistance < rightDistance;
+                        return left->GetGUID().GetCounter() < right->GetGUID().GetCounter();
+                    });
+                    // Summoned waves hit the escort at once (S64 Gnomeregan: trogg group 1, ten attackers on
+                    // Emi's 1500 hp; the leader's one `defend` peeled one trogg and she died seconds later).
+                    nextScanTime = now + GateEscortScanMs;
+                    switch (DungeonGate::SelectEscortAct(!threats.empty(),
                         bot->GetExactDist(escorted) <= GateEscortDistance))
                     {
                         case DungeonGate::EscortAct::Defend:
                         {
+                            // Every idle out-of-combat member (followers in guid order) takes the next
+                            // attacker, round robin; the navigator takes the nearest.
+                            std::size_t assigned = 1;
+                            for (Player* member : followers)
+                            {
+                                if (member->IsInCombat() || !member->IsAlive())
+                                    continue;
+                                PlayerbotAI* memberAI = PlayerbotsMgr::instance().GetPlayerbotAI(member);
+                                Unit* memberTarget = threats[assigned++ % threats.size()];
+                                if (memberAI && GateMemberAttackAction(memberAI).Strike(memberTarget))
+                                    logGate(row, "defend_member", true);
+                            }
+                            Unit* threat = threats.front();
                             if (!bot->IsWithinDistInMap(threat, GateAttackDistance))
                                 return moveNear(threat, GateAttackApproachDistance);
                             bool const attacked = Attack(threat);
-                            nextScanTime = now + (attacked ? SuccessfulMoveRescanDelayMs() :
-                                BlockedScanBackoffMs);
+                            nextScanTime = now + (attacked ? GateEscortScanMs : BlockedScanBackoffMs);
                             logGate(row, attacked ? "defend" : "defend_rejected", !attacked);
                             return attacked;
                         }
@@ -2685,6 +2722,17 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     }
                     if (!bot->IsWithinDistInMap(target, GateAttackDistance))
                         return moveNear(target, GateAttackApproachDistance);
+                    // AttackAction::Attack refuses a target out of line of sight. S64 Razorfen Kraul: the horde
+                    // leader stood at the Ward Keeper row, 6 yd from both keepers, and logged attack_rejected for
+                    // minutes. By elimination (alive, not friendly, no raid claim, no pull-readiness line, valid:
+                    // faction 153 is neutral with no reputation) the refusal is line of sight. Walk up to the
+                    // keeper; the path goes round what blocks the sight line. Once there, attack regardless.
+                    if (!bot->IsWithinLOSInMap(target) &&
+                        bot->GetExactDist(target) > GateLosApproachDistance + 1.0f)
+                    {
+                        logGate(row, "approach_los", false);
+                        return moveNear(target, GateLosApproachDistance);
+                    }
 
                     bool const attacked = Attack(target);
                     nextScanTime = now + (attacked ? SuccessfulMoveRescanDelayMs() :
@@ -3607,7 +3655,10 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 float const toDistance = bot->GetExactDist(stepPoint.x, stepPoint.y, stepPoint.z);
                 if (DungeonRoute::CanDirectStep(fromDistance, toDistance, fromPoint, stepPoint))
                 {
-                    MoveStraight(bot, stepPoint.x, stepPoint.y, stepPoint.z);
+                    if (DungeonRoute::IsLevelCrossing(fromPoint, stepPoint))
+                        MoveLevelCrossing(bot, stepPoint.x, stepPoint.y);
+                    else
+                        MoveStraight(bot, stepPoint.x, stepPoint.y, stepPoint.z);
                     directStepRow = stepRow;
                     directStepStartMs = now ? now : 1;
                     nextScanTime = now + SuccessfulMoveRescanDelayMs();

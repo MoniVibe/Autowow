@@ -273,17 +273,29 @@ constexpr float DirectLevelTolerance = 0.5f;
 constexpr float DirectArrivalRadius = 3.0f;
 constexpr std::uint32_t DirectTimeoutMs = 10000;
 
+// A level crossing (a swim across an unlinked water surface) is moved on a raw straight spline at the mover's own
+// height: MovePoint without path generation still runs MoveSplineInit::MoveTo(generatePath = true), and across
+// unlinked navmesh that path is the incomplete stub at the start (S64 Blackfathom: the leader never left point 5,
+// direct step failed after DirectTimeoutMs). Ledge steps and drops keep MovePoint.
+inline bool IsLevelCrossing(Point const& from, Point const& to)
+{
+    float const dx = to.x - from.x;
+    float const dy = to.y - from.y;
+    return from.mapId == to.mapId && std::fabs(to.z - from.z) <= DirectLevelTolerance &&
+        std::sqrt(dx * dx + dy * dy) <= DirectMaximumLevelCrossing;
+}
+
 inline bool DirectStepShape(Point const& from, Point const& to)
 {
     float const dx = to.x - from.x;
     float const dy = to.y - from.y;
     float const dz = to.z - from.z;
-    float const horizontal = std::sqrt(dx * dx + dy * dy);
     if (from.mapId != to.mapId)
         return false;
-    if (std::fabs(dz) <= DirectLevelTolerance && horizontal <= DirectMaximumLevelCrossing)
+    if (IsLevelCrossing(from, to))
         return true;
-    return horizontal <= DirectMaximumHorizontal && dz >= -DirectMaximumDrop && dz <= DirectMaximumRise;
+    return std::sqrt(dx * dx + dy * dy) <= DirectMaximumHorizontal && dz >= -DirectMaximumDrop &&
+        dz <= DirectMaximumRise;
 }
 
 // The mover stands within DirectStartRadius of the step's previous point and nearer it than the step
