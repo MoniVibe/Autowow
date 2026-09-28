@@ -29,6 +29,8 @@ struct DungeonNavigatorRoutePoint
 
 // Encounter index the bot's dungeon navigator last selected in this map instance, or -1. Any thread.
 int32 GetDungeonNavigatorTargetEncounter(uint32 botGuid, uint32 mapId, uint32 instanceId);
+// Mask of the encounters the bot's navigator last set aside (gate_unavailable) in this map instance, or 0. Any thread.
+uint32 GetDungeonNavigatorUnavailableMask(uint32 botGuid, uint32 mapId, uint32 instanceId);
 
 class DungeonNavigatorStrategy : public Strategy
 {

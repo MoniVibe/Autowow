@@ -548,7 +548,8 @@ void StepInside(Probe& p, std::uint64_t now)
     f.nowMs = now;
     f.enteredMs = p.enteredMs;
     f.wipes = p.run.wipes;
-    f.allMask = p.run.allMask;
+    p.run.unavailable = GetDungeonNavigatorUnavailableMask(p.leader, e.map, p.run.instance) & p.run.allMask;
+    f.allMask = Clearable(p.run);
     bool anyDead = false;
     for (std::size_t i = 0; i < bots.size(); ++i)
     {
@@ -590,7 +591,7 @@ void StepInside(Probe& p, std::uint64_t now)
         // Label by the encounter the leader's navigator actually targets; lowest undone index if it has none.
         std::int32_t const target = GetDungeonNavigatorTargetEncounter(p.leader, e.map, p.run.instance);
         sp = {leader->GetMapId(), Yd(leader->GetPositionX()), Yd(leader->GetPositionY()), Yd(leader->GetPositionZ()),
-              target >= 0 ? target : NextEncounter(p.run.mask, p.run.allMask), 0};
+              target >= 0 ? target : NextEncounter(p.run.mask, Clearable(p.run)), 0};
         if (DungeonEncounterList const* list = sObjectMgr->GetDungeonEncounterList(e.map, DUNGEON_DIFFICULTY_NORMAL))
             for (DungeonEncounter const* enc : *list)
                 if (std::int32_t(enc->dbcEntry->encounterIndex) == sp.next)
