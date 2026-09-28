@@ -269,6 +269,37 @@ inline bool CanDirectHop(bool convoyV2, bool forwardNoPath, float horizontal, fl
         std::fabs(vertical) <= maximumVertical && attempts < attemptLimit;
 }
 
+// ConvoyV2 route legs: PathGenerator's per-step slope check (NavmeshSnap.h) fails navmesh-walkable legs.
+// S56 offline Detour replay over the p1data mmaps: every stall leg (BFD, Gnomeregan, RFK, WC, Deadmines
+// past the Iron Clad Door) is NOPATH or slope-truncated INCOMPLETE with it and complete without it; of the
+// stored segments on BFD 1667->1194 and Gnomeregan 936->1344, 14/73 and 40/148 pass it, all pass without.
+// A leg the slope-checked probe does not reach is re-probed slope-free (every other DungeonPathSafety check
+// still applies); that result is used when it reaches, or when it is the only safe one.
+inline bool UseSlopeFreeLeg(bool convoyV2, bool checkedSafe, bool checkedReached, bool slopeFreeSafe,
+                            bool slopeFreeReached)
+{
+    if (!convoyV2 || (checkedSafe && checkedReached) || !slopeFreeSafe)
+        return false;
+    return slopeFreeReached || !checkedSafe;
+}
+
+// ConvoyV2: a stored travel-node walk segment that climbs or drops more than its horizontal run plus
+// maximumStep is a cliff no walk crosses (S56 RFK link Ramtusk->Willix: 39.6 yd drop over 7.1 yd, the
+// leader probed it forever while Ramtusk->Kraul->Charlga replays slope-free). A link containing one costs
+// StoredWalkCliffPenalty extra yards in the stored-walk graph search: used only when nothing else reaches.
+inline bool IsStoredWalkCliff(float horizontal, float vertical, float maximumStep)
+{
+    return !std::isfinite(horizontal) || !std::isfinite(vertical) ||
+        std::fabs(vertical) > horizontal + maximumStep;
+}
+
+constexpr float StoredWalkCliffPenalty = 100000.0f;
+
+inline float StoredWalkLinkCost(bool cliff, float distance)
+{
+    return cliff ? distance + StoredWalkCliffPenalty : distance;
+}
+
 // Every follower owns a distinct route-ordered ceiling behind the leader. Selection remains on
 // exact stored points and accepts only independently proven, bounded physical movement.
 // routeFloor (ConvoyV2) excludes points below the follower's settled point for this frontier.

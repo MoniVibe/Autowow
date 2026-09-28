@@ -512,6 +512,40 @@ bool IsWalkPoint(PathNodeType type)
 
 bool ProbeReachedStoredDestination(AutoWowDungeonPath::ProbeResult const& probe);
 
+// Stored-walk cliff step (DungeonNavigatorConvoy::IsStoredWalkCliff) = DungeonPathSafety MaxSegmentVerticalDelta.
+constexpr float StoredWalkCliffStep = 5.5f;
+
+// Route-leg probe: the slope-checked probe, or with ConvoyV2 the slope-free one when
+// DungeonNavigatorConvoy::UseSlopeFreeLeg picks it. ConvoyV2 off: exactly AutoWowDungeonPath::Probe.
+AutoWowDungeonPath::ProbeResult ProbeLeg(Player const* player, float x, float y, float z)
+{
+    AutoWowDungeonPath::ProbeResult checked = AutoWowDungeonPath::Probe(player, x, y, z);
+    if (!ConvoyV2Enabled())
+        return checked;
+    bool const checkedReached = ProbeReachedStoredDestination(checked);
+    if (checked.safe && checkedReached)
+        return checked;
+    AutoWowDungeonPath::ProbeResult slopeFree = AutoWowDungeonPath::Probe(player, x, y, z, false);
+    return DungeonNavigatorConvoy::UseSlopeFreeLeg(true, checked.safe, checkedReached, slopeFree.safe,
+        ProbeReachedStoredDestination(slopeFree)) ? slopeFree : checked;
+}
+
+// ConvoyV2: the stored walk path has a cliff segment (DungeonNavigatorConvoy::IsStoredWalkCliff). The direct
+// stored route skips it; the graph search walks it only when no cliff-free route reaches the goal.
+bool StoredWalkPathHasCliff(TravelNodePath* path)
+{
+    std::vector<WorldPosition> const points = path->getPath();
+    for (std::size_t index = 1; index < points.size(); ++index)
+    {
+        float const dx = points[index].GetPositionX() - points[index - 1].GetPositionX();
+        float const dy = points[index].GetPositionY() - points[index - 1].GetPositionY();
+        float const dz = points[index].GetPositionZ() - points[index - 1].GetPositionZ();
+        if (DungeonNavigatorConvoy::IsStoredWalkCliff(std::sqrt(dx * dx + dy * dy), dz, StoredWalkCliffStep))
+            return true;
+    }
+    return false;
+}
+
 struct ReplanWalkCandidateEvidence
 {
     TravelNode* candidateNode = nullptr;
@@ -597,7 +631,8 @@ std::vector<PathNodePoint> FindDirectStoredWalkRoute(WorldPosition start,
                 continue;
 
             TravelNodePath* path = startNode->getPathTo(finishNode);
-            if (!path || path->getPathType() != TravelNodePathType::walk)
+            if (!path || path->getPathType() != TravelNodePathType::walk ||
+                (ConvoyV2Enabled() && StoredWalkPathHasCliff(path)))
                 continue;
 
             float const cost = start.distance(*startNode->getPosition()) + path->getDistance() +
@@ -658,7 +693,7 @@ StoredWalkGraphRouteResult FindStoredWalkGraphRoute(WorldPosition start, WorldPo
         if (!startNode || startNode->getMapId() != start.GetMapId())
             return nodes;
 
-        AutoWowDungeonPath::ProbeResult const attachment = AutoWowDungeonPath::Probe(
+        AutoWowDungeonPath::ProbeResult const attachment = ProbeLeg(
             bot, startNode->getX(), startNode->getY(), startNode->getZ());
         if (attachmentOutput)
             *attachmentOutput = attachment;
@@ -701,7 +736,8 @@ StoredWalkGraphRouteResult FindStoredWalkGraphRoute(WorldPosition start, WorldPo
                 {
                     continue;
                 }
-                float const nextCost = current.cost + path->getDistance();
+                float const nextCost = current.cost + DungeonNavigatorConvoy::StoredWalkLinkCost(
+                    ConvoyV2Enabled() && StoredWalkPathHasCliff(path), path->getDistance());
                 auto const nextKnown = distances.find(nextNode);
                 if (nextKnown != distances.end() && nextKnown->second <= nextCost)
                     continue;
@@ -1483,7 +1519,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 return false;
             }
 
-            AutoWowDungeonPath::ProbeResult leaderProbe = AutoWowDungeonPath::Probe(
+            AutoWowDungeonPath::ProbeResult leaderProbe = ProbeLeg(
                 member, bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
             bool const leaderPathReached = leaderProbe.safe &&
                 ProbeReachedStoredDestination(leaderProbe);
@@ -1548,7 +1584,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             for (std::size_t routeIndex = scanBegin; routeIndex <= maximumRouteIndex; ++routeIndex)
             {
                 DungeonNavigatorRoutePoint const& point = travelRoute[routeIndex];
-                AutoWowDungeonPath::ProbeResult const probe = AutoWowDungeonPath::Probe(
+                AutoWowDungeonPath::ProbeResult const probe = ProbeLeg(
                     member, point.x, point.y, point.z);
                 candidates.push_back({routeIndex, point.mapId == map->GetId(), probe.safe,
                     ProbeReachedStoredDestination(probe), probe.pathLength,
@@ -1733,11 +1769,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     }
                     else
                     {
-                        followerProbe = AutoWowDungeonPath::Probe(
+                        followerProbe = ProbeLeg(
                             member, point.x, point.y, point.z);
                     }
                     AutoWowDungeonPath::ProbeResult const leaderProbe =
-                        AutoWowDungeonPath::Probe(bot, point.x, point.y, point.z);
+                        ProbeLeg(bot, point.x, point.y, point.z);
                     sharedCandidates.push_back({
                         routeIndex,
                         point.mapId == map->GetId(),
@@ -1900,7 +1936,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 {
                     --routeIndex;
                     DungeonNavigatorRoutePoint const& point = travelRoute[routeIndex];
-                    AutoWowDungeonPath::ProbeResult const probe = AutoWowDungeonPath::Probe(
+                    AutoWowDungeonPath::ProbeResult const probe = ProbeLeg(
                         member, point.x, point.y, point.z);
                     recoveryCandidates.push_back({routeIndex, point.mapId == map->GetId(),
                         probe.safe, ProbeReachedStoredDestination(probe), probe.pathLength,
@@ -2935,7 +2971,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 // becomes the temporary final cached point and the encounter is rescanned after
                 // physical arrival. Closed doors therefore stop at the door; unproven elevators,
                 // portals, and jumps remain rejected by DungeonPathSafety.
-                AutoWowDungeonPath::ProbeResult const prepared = AutoWowDungeonPath::Probe(
+                AutoWowDungeonPath::ProbeResult const prepared = ProbeLeg(
                     bot, goal.finalX, goal.finalY, goal.finalZ);
                 float endpointMovement = 0.0f;
                 if (!prepared.path.empty())
@@ -3008,7 +3044,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     }
                     else if (WorldPosition(bot).distance(firstPosition) > TravelArrivalRadius)
                     {
-                        AutoWowDungeonPath::ProbeResult const probe = AutoWowDungeonPath::Probe(
+                        AutoWowDungeonPath::ProbeResult const probe = ProbeLeg(
                             bot, first.point.GetPositionX(), first.point.GetPositionY(),
                             first.point.GetPositionZ());
                         if (!probe.safe || !ProbeReachedStoredDestination(probe))
@@ -3030,7 +3066,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                                 AutoWowDungeonPath::ProbeResult candidateProbe;
                                 if (sameMapWalk)
                                 {
-                                    candidateProbe = AutoWowDungeonPath::Probe(bot,
+                                    candidateProbe = ProbeLeg(bot,
                                         candidatePoint.point.GetPositionX(),
                                         candidatePoint.point.GetPositionY(),
                                         candidatePoint.point.GetPositionZ());
@@ -3331,7 +3367,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {
                 DungeonNavigatorRoutePoint const& point = travelRoute[index];
                 AutoWowDungeonPath::ProbeResult const probe =
-                    AutoWowDungeonPath::Probe(bot, point.x, point.y, point.z);
+                    ProbeLeg(bot, point.x, point.y, point.z);
                 bool const destinationReached = ProbeReachedStoredDestination(probe);
                 reconnectCandidates.push_back(
                     {probe.safe, destinationReached, probe.pathLength});

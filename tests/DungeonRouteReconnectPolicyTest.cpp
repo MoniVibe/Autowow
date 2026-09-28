@@ -989,7 +989,7 @@ TEST(DungeonNavigatorConvoySourceContract,
     EXPECT_NE(convoy.find("recovery=convoy_backward_reanchor"), std::string::npos);
     EXPECT_NE(convoy.find("ConvoyBackwardReanchorPointLimit"), std::string::npos);
     EXPECT_NE(convoy.find("ConvoyBackwardReanchorBackoffMs"), std::string::npos);
-    EXPECT_NE(convoy.find("AutoWowDungeonPath::Probe(\n                        member"),
+    EXPECT_NE(convoy.find("ProbeLeg(\n                        member"),
         std::string::npos);
     EXPECT_NE(convoy.find("AutoWowDungeonWalkAction walk(plan.memberAI)"), std::string::npos);
     EXPECT_EQ(convoy.find("AutoWowDungeonWalkAction walk(botAI)"), std::string::npos);
@@ -1025,7 +1025,7 @@ TEST(DungeonNavigatorConvoySourceContract,
     EXPECT_NE(source.find("recovery=convoy_post_combat_route_reset"), std::string::npos);
     EXPECT_NE(source.find("CanPostCombatRejoin"), std::string::npos);
     EXPECT_NE(source.find("recovery=convoy_post_combat_rejoin"), std::string::npos);
-    EXPECT_NE(source.find("AutoWowDungeonPath::Probe(\n                member, bot->GetPositionX()"),
+    EXPECT_NE(source.find("ProbeLeg(\n                member, bot->GetPositionX()"),
         std::string::npos);
     EXPECT_EQ(source.find("member->TeleportTo("), std::string::npos);
 }
