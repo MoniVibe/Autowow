@@ -284,6 +284,7 @@ struct Candidate
     std::int32_t x = 0;
     std::int32_t y = 0;
     bool groupQuest = false;  // a group quest in its log or offered in its zone at its level
+    bool canTank = false;     // PlanRecruit with RequireTank: warrior, paladin, or druid with a bear form
 };
 
 struct FormParams
@@ -473,6 +474,7 @@ struct RecruitParams
     std::uint32_t minSize = 4;
     std::uint32_t maxSize = 5;
     std::uint32_t walkYards = 6000;
+    bool requireTank = false;  // AutoWow.Dungeon.RequireTank
 };
 
 inline bool InWalkRange(Candidate const& c, EntranceSpot const& e, std::uint32_t yards)
@@ -487,15 +489,19 @@ inline bool InWalkRange(Candidate const& c, EntranceSpot const& e, std::uint32_t
 // class (tanks are preferred, not required: probe parties cleared with dps-heavy rosters). Roster: the best
 // healer (HealRank), then the best tank among the rest (TankRank), then dps up to MaxSize; every pick prefers a
 // bot in walk range of the entrance, then the higher level, then the lower guid. Leader = the tank, else the
-// highest level.
+// highest level. RequireTank (S71: 9/9 recruited runs with a tank completed, 15/15 without failed): a window
+// also needs a tank-capable candidate (Candidate::canTank) other than its healer; the tank is picked first,
+// then the healer among the rest. `why` (optional): "no_window" (no MinSize window with a healer) or "no_tank"
+// (such windows exist, none with a tank) when there is no plan, else "".
 inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::vector<DungeonDef> const& defs,
-                        std::vector<EntranceSpot> const& entrances, RecruitParams const& p)
+                        std::vector<EntranceSpot> const& entrances, RecruitParams const& p, char const** why = nullptr)
 {
     std::sort(cands.begin(), cands.end(), [](Candidate const& a, Candidate const& b) { return a.guid < b.guid; });
     std::uint32_t const minSize = std::max<std::uint32_t>(p.minSize, 2);
     std::uint32_t const maxSize = std::min<std::uint32_t>(std::max(p.maxSize, minSize), 5);
     std::size_t best = defs.size();
     std::uint32_t bestLo = 0, bestHi = 0, bestCount = 0;
+    bool windowSeen = false;
     for (std::size_t di = 0; di < defs.size() && di < entrances.size(); ++di)
     {
         DungeonDef const& d = defs[di];
@@ -504,15 +510,23 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
         for (std::uint32_t lo = d.minLevel; lo <= std::min<std::uint32_t>(d.maxLevel, 255); ++lo)
         {
             std::uint32_t const hi = std::min(lo + p.levelSpread, d.maxLevel);
-            std::uint32_t count = 0;
-            bool healer = false;
+            std::uint32_t count = 0, tanks = 0, heals = 0, both = 0;
             for (Candidate const& c : cands)
                 if (c.team == team && c.level >= lo && c.level <= hi)
                 {
                     ++count;
-                    healer = healer || HealRank(c.cls);
+                    bool const h = HealRank(c.cls) != 0;
+                    heals += h;
+                    tanks += c.canTank;
+                    both += h && c.canTank;
                 }
-            if (count >= minSize && healer && count > bestCount)
+            if (count < minSize || !heals)
+                continue;
+            windowSeen = true;
+            // A tank and a healer that are two bots (one hybrid cannot be both).
+            if (p.requireTank && (!tanks || (tanks == 1 && heals == 1 && both == 1)))
+                continue;
+            if (count > bestCount)
             {
                 best = di;
                 bestLo = lo;
@@ -522,6 +536,8 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
         }
     }
     Plan plan;
+    if (why)
+        *why = best != defs.size() ? "" : windowSeen ? "no_tank" : "no_window";
     if (best == defs.size())
         return plan;
     EntranceSpot const& e = entrances[best];
@@ -540,15 +556,15 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
     };
     std::vector<std::size_t> pick;
     std::vector<Role> roles;
+    // rankOf(candidate index): lower = preferred, 0 = cannot fill the role.
     auto take = [&](auto rankOf, Role role)
     {
         std::size_t sel = cands.size();
         for (std::size_t i : pool)
         {
-            if (!rankOf(cands[i].cls) || std::find(pick.begin(), pick.end(), i) != pick.end())
+            if (!rankOf(i) || std::find(pick.begin(), pick.end(), i) != pick.end())
                 continue;
-            if (sel == cands.size() || rankOf(cands[i].cls) < rankOf(cands[sel].cls) ||
-                (rankOf(cands[i].cls) == rankOf(cands[sel].cls) && better(i, sel)))
+            if (sel == cands.size() || rankOf(i) < rankOf(sel) || (rankOf(i) == rankOf(sel) && better(i, sel)))
                 sel = i;
         }
         if (sel != cands.size())
@@ -557,8 +573,17 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
             roles.push_back(role);
         }
     };
-    take(HealRank, Role::Healer);
-    take(TankRank, Role::Tank);
+    auto healRank = [&](std::size_t i) { return HealRank(cands[i].cls); };
+    if (p.requireTank)
+    {
+        take([&](std::size_t i) { return cands[i].canTank ? TankRank(cands[i].cls) : 0u; }, Role::Tank);
+        take(healRank, Role::Healer);
+    }
+    else
+    {
+        take(healRank, Role::Healer);
+        take([&](std::size_t i) { return TankRank(cands[i].cls); }, Role::Tank);
+    }
     std::vector<std::size_t> rest;
     for (std::size_t i : pool)
         if (std::find(pick.begin(), pick.end(), i) == pick.end())
@@ -869,7 +894,9 @@ inline bool gEnabled = false;   // AutoWow.Party.Enable
 inline bool gDungeons = false;  // AutoWow.Dungeon.Enable (needs Party.Enable)
 inline bool gRoles = false;     // AutoWow.Party.Roles
 inline bool gRecruit = false;   // AutoWow.Dungeon.Recruit (needs Dungeon.Enable)
+inline bool gRecruitWalk = false;  // AutoWow.Dungeon.RecruitStragglerWalk (needs Recruit)
 }
+inline bool RecruitWalkEnabled() { return detail::gRecruitWalk; }
 inline bool Enabled() { return detail::gEnabled; }
 inline bool RolesEnabled() { return detail::gRoles; }
 
@@ -888,6 +915,8 @@ void WorldUpdate(std::uint32_t diff);
 void CombatUpdate(PlayerbotAI* botAI);
 // Roster size of the bot's cohort party (0 = none) and whether that party was formed for a dungeon.
 std::uint32_t PartySize(std::uint32_t guid, bool* dungeonParty = nullptr);
+// True when `guid` is a member of a recruited dungeon party (AutoWow.Dungeon.Recruit); any thread.
+bool InRecruitedParty(std::uint32_t guid);
 // True when `guid` leads a cohort party; fills its order.
 bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out);
 // One Approach walk tick of the leader (stuck = WalkLeg reported no progress).

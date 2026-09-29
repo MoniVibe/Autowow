@@ -3470,6 +3470,14 @@ AutoWow.Dungeon.Recruit = 0
 AutoWow.Dungeon.RecruitIntervalMs = 600000
 AutoWow.Dungeon.RecruitCooldownMs = 2700000
 AutoWow.Dungeon.RecruitMaxParties = 1
+# RequireTank = 1: a recruit window also needs a tank-capable bot (warrior, paladin, or druid knowing Bear / Dire
+# Bear Form) besides its healer; the tank is picked first and gets role tank (Party.Roles: tank strategy, i.e.
+# defensive stance / righteous fury / bear form). None free: no party, [Party] recruit log why=no_tank.
+# RecruitStragglerWalk = 1: in a recruited party the dungeon navigator walks an idle out-of-combat member beyond
+# the cohesion radius to the leader on ordinary legs too (the gate row straggler walk, recovery=gate_party_walk
+# leg=route) instead of waiting blocked=party_cohesion.
+AutoWow.Dungeon.RequireTank = 0
+AutoWow.Dungeon.RecruitStragglerWalk = 0
 
 # Dungeon navigator convoy V2 (DungeonNavigatorConvoyPolicy.h; default 0 = V1 unchanged). A follower whose
 # assigned trailing route slot is unreachable settles on the furthest reachable route point at or below it that

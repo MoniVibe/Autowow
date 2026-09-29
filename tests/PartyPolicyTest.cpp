@@ -358,8 +358,59 @@ TEST(PartyPolicyTest, RecruitWindowKeepsLevelSpreadInsideTheBand)
     // Same count in both dungeons: the first listed.
     std::vector<Candidate> const tie = {R(1, 38, kPriest), R(2, 38, kRogue), R(3, 39, kMage), R(4, 39, kHunter)};
     EXPECT_EQ(PlanRecruit(tie, kHorde, defs, Known(2), RecruitParams{}).dungeonMap, 47u);
+    char const* why = nullptr;
+    PlanRecruit({R(1, 38, kPriest)}, kHorde, defs, Known(2), RecruitParams{}, &why);
+    EXPECT_STREQ(why, "no_window");
     // Deterministic: input order does not matter.
     std::vector<Candidate> rev(cands.rbegin(), cands.rend());
     EXPECT_EQ(PlanRecruit(rev, kHorde, defs, Known(2), RecruitParams{}).guids, pl.guids);
+}
+
+Candidate T(Candidate c)  // tank-capable (the runtime's warrior / paladin / bear-form druid)
+{
+    c.canTank = true;
+    return c;
+}
+
+TEST(PartyPolicyTest, RecruitRequireTankNeedsATankBesidesTheHealer)
+{
+    std::vector<DungeonDef> const defs = ParseDungeons("47:30:40:AH");
+    RecruitParams req;
+    req.requireTank = true;
+    char const* why = nullptr;
+
+    // Priest + dps: flag off forms healer-only; RequireTank refuses with no_tank.
+    std::vector<Candidate> cands = {R(1, 31, kPriest), R(2, 31, kRogue), R(3, 31, kMage), R(4, 31, kHunter)};
+    EXPECT_EQ(PlanRecruit(cands, kHorde, defs, Known(1), RecruitParams{}).guids.size(), 4u);
+    EXPECT_TRUE(PlanRecruit(cands, kHorde, defs, Known(1), req, &why).guids.empty());
+    EXPECT_STREQ(why, "no_tank");
+
+    // A druid without a bear form (canTank false) is no tank.
+    cands.push_back(R(5, 31, kDruid));
+    EXPECT_TRUE(PlanRecruit(cands, kHorde, defs, Known(1), req).guids.empty());
+
+    // A lone paladin cannot both tank and heal.
+    std::vector<Candidate> pal = {T(R(1, 31, kPaladin)), R(2, 31, kRogue), R(3, 31, kMage), R(4, 31, kHunter)};
+    EXPECT_TRUE(PlanRecruit(pal, kHorde, defs, Known(1), req, &why).guids.empty());
+    EXPECT_STREQ(why, "no_tank");
+    // With a priest: the paladin tanks, the priest heals, the paladin leads.
+    pal.push_back(R(6, 31, kPriest));
+    Plan pl = PlanRecruit(pal, kHorde, defs, Known(1), req, &why);
+    EXPECT_STREQ(why, "");
+    ASSERT_EQ(pl.guids.size(), 5u);
+    EXPECT_EQ(pl.guids.front(), 1u);
+    EXPECT_EQ(pl.roles.front(), Role::Tank);
+    EXPECT_EQ(pl.roles.back(), Role::Healer);
+    EXPECT_EQ(pl.leader, 1u);
+
+    // Tank first by rank (warrior 1 < paladin 2 < druid 3): two hybrids split the roles, the paladin tanks and
+    // the druid heals; a warrior then tanks and the druid still heals.
+    std::vector<Candidate> hy = {T(R(1, 31, kDruid)), T(R(2, 31, kPaladin)), R(3, 31, kRogue), R(4, 31, kMage)};
+    pl = PlanRecruit(hy, kHorde, defs, Known(1), req);
+    EXPECT_EQ(pl.roles, (std::vector<Role>{Role::Healer, Role::Tank, Role::Dps, Role::Dps}));
+    hy.push_back(T(R(5, 31, kWarrior)));
+    pl = PlanRecruit(hy, kHorde, defs, Known(1), req);
+    EXPECT_EQ(pl.roles, (std::vector<Role>{Role::Healer, Role::Dps, Role::Dps, Role::Dps, Role::Tank}));
+    EXPECT_EQ(pl.leader, 5u);
 }
 }  // namespace
