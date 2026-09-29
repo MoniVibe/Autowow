@@ -3484,6 +3484,10 @@ AutoWow.Dungeon.RecruitStragglerWalk = 0
 # party, within RecruitCooldownMs, paused by another runtime, in a group this registry does not own. The recruit
 # log line counts every reason per faction (out={...}) and the tank-capable bots taken/total (tanks=a/b).
 AutoWow.Dungeon.RecruitWidePool = 0
+# RecruitTankOverLevel = N > 0: when a recruit window has no tank of its own, a recruitable tank-capable bot above
+# the window up to N levels over the dungeon's max level fills the tank slot (closest level first; in-window tanks
+# always go first). The recruit line logs tank_dlvl (tank level minus the dungeon max; none = no tank).
+AutoWow.Dungeon.RecruitTankOverLevel = 0
 
 # Dungeon navigator convoy V2 (DungeonNavigatorConvoyPolicy.h; default 0 = V1 unchanged). A follower whose
 # assigned trailing route slot is unreachable settles on the furthest reachable route point at or below it that

@@ -308,6 +308,7 @@ struct Plan
     std::uint32_t leader = 0;
     Reason reason = Reason::None;
     std::uint32_t dungeonMap = 0;
+    std::int32_t tankDelta = 0;  // PlanRecruit: the tank's level minus the dungeon's max level (no tank: 0)
 };
 
 inline bool Near(Candidate const& a, Candidate const& b, std::uint32_t hubYards)
@@ -478,7 +479,14 @@ struct RecruitParams
     std::uint32_t maxSize = 5;
     std::uint32_t walkYards = 6000;
     bool requireTank = false;  // AutoWow.Dungeon.RequireTank
+    std::uint32_t tankOverLevel = 0;  // AutoWow.Dungeon.RecruitTankOverLevel
 };
+
+// A tank candidate above the window [.., hi] up to TankOverLevel levels over the dungeon's max level (0 = off).
+inline bool OverLevelTank(Candidate const& c, std::uint32_t hi, DungeonDef const& d, RecruitParams const& p)
+{
+    return p.tankOverLevel && c.level > hi && c.level <= d.maxLevel + p.tankOverLevel;
+}
 
 inline bool InWalkRange(Candidate const& c, EntranceSpot const& e, std::uint32_t yards)
 {
@@ -495,7 +503,10 @@ inline bool InWalkRange(Candidate const& c, EntranceSpot const& e, std::uint32_t
 // highest level. RequireTank (S71: 9/9 recruited runs with a tank completed, 15/15 without failed): a window
 // also needs a tank-capable candidate (Candidate::canTank) other than its healer; the tank is picked first,
 // then the healer among the rest. `why` (optional): "no_window" (no MinSize window with a healer) or "no_tank"
-// (such windows exist, none with a tank) when there is no plan, else "".
+// (such windows exist, none with a tank) when there is no plan, else "". TankOverLevel N > 0: when the window
+// has no tank of its own, a tank-capable candidate above the window up to N levels over the dungeon's max level
+// fills the tank slot (S74: the free Alliance tanks are L63-66, over every listed band); the lowest level first,
+// then TankRank, walk range, guid. It does not count toward the window size.
 inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::vector<DungeonDef> const& defs,
                         std::vector<EntranceSpot> const& entrances, RecruitParams const& p, char const** why = nullptr)
 {
@@ -513,7 +524,7 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
         for (std::uint32_t lo = d.minLevel; lo <= std::min<std::uint32_t>(d.maxLevel, 255); ++lo)
         {
             std::uint32_t const hi = std::min(lo + p.levelSpread, d.maxLevel);
-            std::uint32_t count = 0, tanks = 0, heals = 0, both = 0;
+            std::uint32_t count = 0, tanks = 0, heals = 0, both = 0, over = 0;
             for (Candidate const& c : cands)
                 if (c.team == team && c.level >= lo && c.level <= hi)
                 {
@@ -523,11 +534,14 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
                     tanks += c.canTank;
                     both += h && c.canTank;
                 }
+                else if (c.team == team && c.canTank && OverLevelTank(c, hi, d, p))
+                    ++over;
             if (count < minSize || !heals)
                 continue;
             windowSeen = true;
-            // A tank and a healer that are two bots (one hybrid cannot be both).
-            if (p.requireTank && (!tanks || (tanks == 1 && heals == 1 && both == 1)))
+            // A tank and a healer that are two bots (one hybrid cannot be both); an over-level tank is never
+            // the window's healer.
+            if (p.requireTank && !over && (!tanks || (tanks == 1 && heals == 1 && both == 1)))
                 continue;
             if (count > bestCount)
             {
@@ -577,15 +591,54 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
         }
     };
     auto healRank = [&](std::size_t i) { return HealRank(cands[i].cls); };
-    if (p.requireTank)
+    auto tankRank = [&](std::size_t i)
+    { return !p.requireTank || cands[i].canTank ? TankRank(cands[i].cls) : 0u; };
+    // RequireTank with a tank and a healer that are two window bots: the tank first. Otherwise the healer first
+    // (the window's only tank-capable bot may be its only healer; an over-level tank then fills the slot).
+    std::uint32_t tanks = 0, heals = 0, both = 0;
+    for (std::size_t i : pool)
     {
-        take([&](std::size_t i) { return cands[i].canTank ? TankRank(cands[i].cls) : 0u; }, Role::Tank);
+        bool const h = HealRank(cands[i].cls) != 0;
+        heals += h;
+        tanks += cands[i].canTank;
+        both += h && cands[i].canTank;
+    }
+    if (p.requireTank && tanks && !(tanks == 1 && heals == 1 && both == 1))
+    {
+        take(tankRank, Role::Tank);
         take(healRank, Role::Healer);
     }
     else
     {
         take(healRank, Role::Healer);
-        take([&](std::size_t i) { return TankRank(cands[i].cls); }, Role::Tank);
+        take(tankRank, Role::Tank);
+    }
+    // TankOverLevel: no tank in the window -> the closest-level over-level tank.
+    if (std::find(roles.begin(), roles.end(), Role::Tank) == roles.end())
+    {
+        std::size_t sel = cands.size();
+        for (std::size_t i = 0; i < cands.size(); ++i)
+        {
+            Candidate const& c = cands[i];
+            if (c.team != team || !c.canTank || !OverLevelTank(c, bestHi, defs[best], p))
+                continue;
+            if (sel == cands.size())
+            {
+                sel = i;
+                continue;
+            }
+            Candidate const& b = cands[sel];
+            if (c.level != b.level ? c.level < b.level
+                : TankRank(c.cls) != TankRank(b.cls) ? TankRank(c.cls) < TankRank(b.cls)
+                                                     : better(i, sel))
+                sel = i;
+        }
+        if (sel != cands.size())
+        {
+            // Tank first: it takes a roster slot ahead of the dps.
+            pick.insert(pick.begin(), sel);
+            roles.insert(roles.begin(), Role::Tank);
+        }
     }
     std::vector<std::size_t> rest;
     for (std::size_t i : pool)
@@ -612,6 +665,9 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
     plan.leader = plan.guids[ChooseLeader(ms, plan.roles)];
     plan.reason = Reason::Dungeon;
     plan.dungeonMap = defs[best].map;
+    for (std::size_t i = 0; i < plan.roles.size(); ++i)
+        if (plan.roles[i] == Role::Tank)
+            plan.tankDelta = std::int32_t(ms[i].level) - std::int32_t(defs[best].maxLevel);
     return plan;
 }
 

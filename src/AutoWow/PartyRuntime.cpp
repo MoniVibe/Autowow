@@ -1191,9 +1191,10 @@ void Recruit(std::uint64_t now)
             continue;
         char const* why = "";
         Plan const pl = PlanRecruit(cands, team, gDungeons, spots, gParams.recruit, &why);
-        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={} why={} tanks={}/{} wide={}{}", team,
-                 eligible, pl.dungeonMap, pl.guids.size(), why, tanksTaken[team], tanks[team], wide,
-                 RecruitOutFields(outs[team]));
+        bool const tanked = std::find(pl.roles.begin(), pl.roles.end(), Role::Tank) != pl.roles.end();
+        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={} why={} tanks={}/{} wide={} "
+                 "tank_dlvl={}{}", team, eligible, pl.dungeonMap, pl.guids.size(), why, tanksTaken[team], tanks[team],
+                 wide, tanked ? std::to_string(pl.tankDelta) : std::string("none"), RecruitOutFields(outs[team]));
         if (pl.guids.empty())
             continue;
         // RecruitWidePool: leave the formation party, drop the zone trip (an errand resumes or times out later).
@@ -1260,6 +1261,7 @@ void LoadConfig()
         p.recruit.requireTank = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RequireTank", false);
         detail::gRecruitWalk = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitStragglerWalk", false);
         p.recruitWidePool = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitWidePool", false);
+        p.recruit.tankOverLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.RecruitTankOverLevel", 0);
     }
     gDungeons = ParseDungeons(sConfigMgr->GetOption<std::string>(
         "AutoWow.Dungeon.List", "389:13:18:H,36:17:26:A,43:17:24:AH,33:18:25:AH,48:20:30:AH,34:22:30:A"));
