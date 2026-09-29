@@ -372,6 +372,34 @@ Candidate T(Candidate c)  // tank-capable (the runtime's warrior / paladin / bea
     return c;
 }
 
+TEST(PartyPolicyTest, RecruitWidePoolTakesOnlyPullableBusyBots)
+{
+    // Without the wide pool only free bots; with it also questing / grinding / errand / zone trip / party.
+    for (std::size_t i = 0; i < std::size_t(RecruitOut::Count); ++i)
+    {
+        RecruitOut const o = RecruitOut(i);
+        EXPECT_EQ(RecruitTakes(o, false), o == RecruitOut::Free) << RecruitOutName(o);
+    }
+    for (RecruitOut o : {RecruitOut::Free, RecruitOut::Party, RecruitOut::Combat, RecruitOut::ZoneMove,
+                         RecruitOut::Errand})
+        EXPECT_TRUE(RecruitTakes(o, true)) << RecruitOutName(o);
+    for (RecruitOut o : {RecruitOut::Escort, RecruitOut::Instance, RecruitOut::Flight, RecruitOut::Dead,
+                         RecruitOut::Supply, RecruitOut::Squad, RecruitOut::Run, RecruitOut::Cooldown,
+                         RecruitOut::Paused, RecruitOut::Group})
+        EXPECT_FALSE(RecruitTakes(o, true)) << RecruitOutName(o);
+    EXPECT_FALSE(RecruitTakes(RecruitOut::Count, true));
+
+    std::uint32_t counts[std::size_t(RecruitOut::Count)] = {};
+    EXPECT_EQ(RecruitOutFields(counts), " out={}");
+    counts[std::size_t(RecruitOut::Free)] = 9;
+    counts[std::size_t(RecruitOut::Combat)] = 3;
+    counts[std::size_t(RecruitOut::ZoneMove)] = 1;
+    counts[std::size_t(RecruitOut::Supply)] = 1;
+    EXPECT_EQ(RecruitOutFields(counts), " out={free=9,supply=1,combat=3,zone_move=1}");
+    EXPECT_STREQ(RecruitOutName(RecruitOut::Errand), "errand");
+    EXPECT_STREQ(DisbandName(Disband::Recruited), "recruited");
+}
+
 TEST(PartyPolicyTest, RecruitRequireTankNeedsATankBesidesTheHealer)
 {
     std::vector<DungeonDef> const defs = ParseDungeons("47:30:40:AH");
