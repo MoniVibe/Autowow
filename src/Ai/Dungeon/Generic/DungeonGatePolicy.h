@@ -29,6 +29,7 @@ enum class Kind : std::uint8_t
     LootGo,     // open the chest GO and autostore item doneValue into the navigating bot's bags
     UseItemOnGo,  // the party member holding keyItem uses it on the GO (CMSG_USE_ITEM)
     AreaTrigger,  // send CMSG_AREATRIGGER entry from the row position (headless bots never emit it)
+    Prerequisite,  // no action: until doneWhen the encounter is set aside (its boss is not there to fight yet)
 };
 
 enum class DoneWhen : std::uint8_t
@@ -151,6 +152,30 @@ inline constexpr Step Steps[] = {
         DoneWhen::InstanceData, 10, 5, 0, false, 60000},
     {109, 0, 5, Kind::UseGo, 148835, 28114, -443.417f, 53.8312f, -148.74f, 10.0f, 0, 1,
         DoneWhen::InstanceData, 10, 6, 0, false, 60000},
+    // Sunken Temple: Dreamscythe (idx1) and Weaver (idx2) spawn in phase 2 and their SAI shows them only once
+    // TYPE_JAMMAL_AN (1) is DONE (3); Shade of Eranikus (idx8) is NOT_SELECTABLE until Jammal'an dies and his SAI
+    // drops the immunity under the same condition. Until then those encounters are set aside, not walked to.
+    {109, 1, 0, Kind::Prerequisite, 5721, 239020, -453.45f, 137.17f, -90.75f, 10.0f, 0, 1,
+        DoneWhen::InstanceData, 1, 3, 0, false, 60000},
+    {109, 2, 0, Kind::Prerequisite, 5720, 239021, -458.84f, 127.7f, -91.57f, 10.0f, 0, 1,
+        DoneWhen::InstanceData, 1, 3, 0, false, 60000},
+    // Sunken Temple: Jammal'an (idx3) is IMMUNE_TO_PC and behind forcefield 149431 until DATA_DEFENDER_KILLED (11)
+    // reaches 6: the six balcony trolls (Mijan, Zul'Lor, Zolo, Gasher, Loro, Hukku; SAI on death set data 11), in the
+    // walk order of route leg (109, 3).
+    {109, 3, 0, Kind::KillSet, 5717, 39847, -406.189f, 131.068f, -66.9138f, 15.0f, 0, 1,
+        DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
+    {109, 3, 1, Kind::KillSet, 5716, 34522, -467.396f, 165.997f, -66.7027f, 15.0f, 0, 1,
+        DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
+    {109, 3, 2, Kind::KillSet, 5712, 39843, -528.646f, 130.163f, -66.7533f, 15.0f, 0, 1,
+        DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
+    {109, 3, 3, Kind::KillSet, 5713, 39844, -527.969f, 59.4516f, -66.7188f, 15.0f, 0, 1,
+        DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
+    {109, 3, 4, Kind::KillSet, 5714, 39845, -466.655f, 24.4261f, -66.7908f, 15.0f, 0, 1,
+        DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
+    {109, 3, 5, Kind::KillSet, 5715, 39846, -405.506f, 60.4569f, -67.0678f, 15.0f, 0, 1,
+        DoneWhen::CreaturesDead, 0, 0, 0, false, 300000},
+    {109, 8, 0, Kind::Prerequisite, 5709, 39842, -658.379f, -35.7623f, -90.8352f, 10.0f, 0, 1,
+        DoneWhen::InstanceData, 1, 3, 0, false, 60000},
     // Razorfen Downs: Gong 148917 summons group 1, 2, 3 on GetData(148917) == 0, 1, 2; it is
     // unselectable while a wave lives and the data advances when the wave dies. Use 3 brings
     // Tuten'kash (idx0) and leaves the gong unselectable.
@@ -206,6 +231,7 @@ inline char const* KindName(Kind kind)
         case Kind::LootGo: return "loot_go";
         case Kind::UseItemOnGo: return "use_item_on_go";
         case Kind::AreaTrigger: return "area_trigger";
+        case Kind::Prerequisite: return "prerequisite";
     }
     return "unknown";
 }
@@ -262,6 +288,22 @@ bool KeyBlocked(std::vector<Step> const& rows, std::vector<StepRuntime> const& r
         if (isDone(index))
             continue;
         return rows[index].keyItem && !bypassKeys && !holdsKey(rows[index].keyItem);
+    }
+    return false;
+}
+
+// The encounter's first unfinished row (same contract as KeyBlocked) is a Prerequisite: its boss is not fightable
+// yet, so the navigator sets it aside for now. Unlike a key-blocked encounter it still counts toward a full clear.
+template <typename IsDone>
+bool PrerequisitePending(std::vector<Step> const& rows, std::vector<StepRuntime> const& runtime, IsDone&& isDone)
+{
+    for (std::size_t index = 0; index < rows.size(); ++index)
+    {
+        if (index < runtime.size() && (runtime[index].done || runtime[index].skipped))
+            continue;
+        if (isDone(index))
+            continue;
+        return rows[index].kind == Kind::Prerequisite;
     }
     return false;
 }
