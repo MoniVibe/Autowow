@@ -211,3 +211,23 @@ swim moves leader and followers across the pool; stragglers walk on the RFK dire
 - Probe scoring: DungeonProbePolicy::ClearableMask still counts set-aside encounters (Lost Dwarves for Alliance,
   Ironaya without the staff), so such runs end `stuck` after the last reachable boss. Changing the score is outside
   this lane.
+
+## Lane dgates6 status, 2026-09-29 (S69 Sunken Temple)
+- Stall (0/7, stuck at -371,54 next=0): travel nodes end on the entrance ledge (z -129), 20 yd above the statue ring;
+  the first statue row logged `approach_travel_nodes` and the route `blocked=unsupported_transition`. Offline: the
+  ring, pit and balconies are one navmesh region, but every goal-to-goal path is either steep for the slope check or
+  longer than PathGenerator's 74 smoothed points.
+- Script facts (instance_sunken_temple + SAI + conditions): Atal'alarion (phase 2) shows at DATA_STATUES (10) == 6;
+  Jammal'an is IMMUNE_TO_PC behind forcefield 149431 until DATA_DEFENDER_KILLED (11) == 6 (balcony trolls
+  5712..5717, SAI on death); Dreamscythe/Weaver (phase 2) show and Shade of Eranikus loses NOT_SELECTABLE/immunity
+  only once TYPE_JAMMAL_AN (1) == DONE. Eranikus is therefore fightable after Jammal'an: not set aside. Avatar of
+  Hakkar has no static spawn (already outside the clearable mask).
+- Fix: `DungeonRoute::RouteTo` cuts an encounter's leg at its goal, so one leg serves the encounter's gate rows walked
+  in order and then its boss. Legs (ConvoyV2, 155 points): idx0 entrance -> statues 148830..148835 -> Atal'alarion
+  (65); idx3 Atal'alarion -> Mijan, Zul'Lor, Zolo, Gasher, Loro, Hukku -> Jammal'an (61); then idx1 Dreamscythe (11),
+  idx2 Weaver (2), idx5 Morphaz (9), idx6 Hazzas (2), idx8 Eranikus (5). Detour corridor corners (pit: ground|water),
+  greedily thinned; all 148 consecutive pairs replay complete without the slope check and dip at most 1 yd.
+- Gate rows: six KillSet balcony trolls for idx3; new kind `Prerequisite` (no action) for idx1/2/8 until
+  TYPE_JAMMAL_AN DONE: the encounter is set aside (`gate_unavailable=prerequisite`) but, unlike key_blocked /
+  friendly_credit, stays in the probe's clearable mask.
+- Needs in-game proof: statue use on the walk, trolls on the balconies (LOS/approach), the pit descent, forcefield open.
