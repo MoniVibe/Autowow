@@ -30,6 +30,7 @@
 #include "MoveSplineInit.h"
 #include "Map.h"
 #include "ObjectMgr.h"
+#include "PartyPolicy.h"
 #include "Pet.h"
 #include "Player.h"
 #include "PlayerbotAIConfig.h"
@@ -2143,6 +2144,16 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {
                 LOG_INFO("playerbots",
                     "[DungeonNavigator] bot={} map={} recovery=gate_party_walk member={} distance={}",
+                    bot->GetName(), map->GetId(), member->GetName(), leaderDistance);
+                return false;
+            }
+            // AutoWow.Dungeon.RecruitStragglerWalk: a recruited cohort party walks its idle straggler on ordinary
+            // legs too (S71: 353 out-of-combat party_cohesion blocks at 45+ yd).
+            if (AutoWowParty::RecruitWalkEnabled() &&
+                AutoWowParty::InRecruitedParty(bot->GetGUID().GetCounter()) && WalkStragglerToNavigator(bot, member))
+            {
+                LOG_INFO("playerbots",
+                    "[DungeonNavigator] bot={} map={} recovery=gate_party_walk member={} distance={} leg=route",
                     bot->GetName(), map->GetId(), member->GetName(), leaderDistance);
                 return false;
             }

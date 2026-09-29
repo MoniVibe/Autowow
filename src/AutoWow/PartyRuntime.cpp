@@ -153,6 +153,7 @@ std::unordered_map<std::uint32_t, std::uint64_t> gRecruitReadyMs;  // guid -> ea
 std::map<std::uint32_t, std::uint32_t> gClearable;                 // dungeon map -> clearable bits (world thread)
 
 constexpr std::uint32_t kSuperviseMs = 1000;
+constexpr std::uint32_t kBearForm = 5487, kDireBearForm = 9634;
 constexpr std::uint32_t kCastSpacingMs = 1000;
 constexpr char const* kFollowerNc = "+follow,-new rpg,-grind,-move random";
 
@@ -1114,6 +1115,9 @@ void Recruit(std::uint64_t now)
         c.zone = bot->GetZoneId();
         c.x = Yd(bot->GetPositionX());
         c.y = Yd(bot->GetPositionY());
+        // AutoWow.Dungeon.RequireTank: warrior, paladin, or a druid that knows Bear / Dire Bear Form.
+        c.canTank = c.cls == kWarrior || c.cls == kPaladin ||
+                    (c.cls == kDruid && (bot->HasSpell(kBearForm) || bot->HasSpell(kDireBearForm)));
         cands.push_back(c);
     }
     std::vector<EntranceSpot> spots;
@@ -1129,9 +1133,10 @@ void Recruit(std::uint64_t now)
             std::count_if(cands.begin(), cands.end(), [team](Candidate const& c) { return c.team == team; }));
         if (active[team] >= gParams.recruitMaxParties)
             continue;
-        Plan const pl = PlanRecruit(cands, team, gDungeons, spots, gParams.recruit);
-        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={}", team, eligible, pl.dungeonMap,
-                 pl.guids.size());
+        char const* why = "";
+        Plan const pl = PlanRecruit(cands, team, gDungeons, spots, gParams.recruit, &why);
+        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={} why={}", team, eligible,
+                 pl.dungeonMap, pl.guids.size(), why);
         if (pl.guids.empty())
             continue;
         Party party;
@@ -1187,6 +1192,8 @@ void LoadConfig()
         p.recruit.minSize = p.form.dungeonMinSize;
         p.recruit.maxSize = p.form.maxSize;
         p.recruit.walkYards = p.maxWalkYards;
+        p.recruit.requireTank = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RequireTank", false);
+        detail::gRecruitWalk = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitStragglerWalk", false);
     }
     gDungeons = ParseDungeons(sConfigMgr->GetOption<std::string>(
         "AutoWow.Dungeon.List", "389:13:18:H,36:17:26:A,43:17:24:AH,33:18:25:AH,48:20:30:AH,34:22:30:A"));
@@ -1258,6 +1265,13 @@ std::uint32_t PartySize(std::uint32_t guid, bool* dungeonParty)
     if (dungeonParty)
         *dungeonParty = p.why == Reason::Dungeon;
     return std::uint32_t(p.slots.size());
+}
+
+bool InRecruitedParty(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gOf.find(guid);
+    return it != gOf.end() && gParties.at(it->second).recruited;
 }
 
 bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out)
