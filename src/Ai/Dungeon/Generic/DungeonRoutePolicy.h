@@ -353,6 +353,35 @@ inline constexpr Point Points[] = {
     {109, 8, 2, -662.5f, 17.0f, -90.3f},
     {109, 8, 3, -660.0f, -14.9f, -90.3f},
     {109, 8, 4, -658.379f, -35.7623f, -90.8352f},  // Shade of Eranikus 39842
+    // Razorfen Downs, Mordresh Fire Eye (idx1, spawn 87187) from Tuten'kash's gong, then Glutton (idx2, spawn 87242).
+    // S69/S70: after Tuten'kash the leader's route to Mordresh was either a short prepared corridor (the runs that
+    // completed) or, from a few yards over, a 62-point travel-node route whose first node lies on the lower level
+    // (2470,914, z 27; incomplete from the gong ledge): the leader looped on route_index=0 prefixes at (2500,836) and
+    // the followers' slot was unreachable (convoy_shared_regroup_terminal). Detour ground corridor, thinned; every
+    // pair replays complete without the slope check. Leg 2 ends where leg 3 starts.
+    {129, 1, 0, 2552.44f, 856.98f, 51.49f},  // Gong 148917 (Tuten'kash)
+    {129, 1, 1, 2522.8f, 844.9f, 48.8f},
+    {129, 1, 2, 2492.3f, 817.1f, 45.58f},
+    {129, 1, 3, 2496.0f, 789.3f, 39.71f},
+    {129, 1, 4, 2508.3f, 759.7f, 40.39f},
+    {129, 1, 5, 2515.2f, 726.7f, 41.58f},
+    {129, 1, 6, 2502.4f, 697.1f, 51.98f},
+    {129, 1, 7, 2471.5f, 680.5f, 59.98f},
+    {129, 1, 8, 2466.62f, 671.44f, 63.47f},  // Mordresh Fire Eye 87187
+    {129, 2, 0, 2466.62f, 671.44f, 63.47f},  // Mordresh Fire Eye 87187
+    {129, 2, 1, 2471.5f, 680.5f, 59.98f},
+    {129, 2, 2, 2502.4f, 697.1f, 51.98f},
+    {129, 2, 3, 2517.3f, 736.3f, 41.31f},
+    {129, 2, 4, 2487.5f, 749.3f, 45.04f},
+    {129, 2, 5, 2457.3f, 781.3f, 46.11f},
+    {129, 2, 6, 2447.7f, 824.0f, 44.51f},
+    {129, 2, 7, 2451.2f, 855.8f, 39.68f},
+    {129, 2, 8, 2460.8f, 886.1f, 30.11f},
+    {129, 2, 9, 2464.5f, 903.5f, 27.98f},
+    {129, 2, 10, 2467.3f, 935.4f, 24.91f},
+    {129, 2, 11, 2469.1f, 956.0f, 25.58f},
+    {129, 2, 12, 2468.8f, 988.0f, 25.21f},
+    {129, 2, 13, 2468.7f, 1006.8f, 23.8f},  // Glutton 87242, leg 3 starts here
     // Razorfen Downs, Amnennar the Coldbringer (idx3, spawn 87209): from Glutton's spawn (8567) south, up onto
     // the bramble spiral and round it to Amnennar's top (z 55). S68: both probe parties stalled at the travel-node
     // end below it (2364,904, z 29) with blocked=unsupported_transition; the full path is a 95-poly corridor whose

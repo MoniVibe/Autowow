@@ -230,14 +230,26 @@ TEST(DungeonRoutePolicy, DirectStepGuards)
 
 TEST(DungeonRoutePolicy, RazorfenDownsAmnennarLegClimbsTheSpiral)
 {
-    // Amnennar the Coldbringer, idx3 (spawn 87209); no earlier Razorfen Downs leg.
-    EXPECT_TRUE(RouteFor(129, 2).empty());
+    // No leg for Tuten'kash (idx0, gong rows); Mordresh (idx1) from the gong, Glutton (idx2), Amnennar (idx3).
+    EXPECT_TRUE(RouteFor(129, 0).empty());
+    std::vector<std::size_t> const mordresh = RouteFor(129, 1);
+    ASSERT_FALSE(mordresh.empty());
+    EXPECT_LT(Distance(Points[mordresh.front()], 2552.44f, 856.984f, 51.495f), 0.01f);  // gong 148917
+    EXPECT_TRUE(EndsAt(mordresh, 2466.62f, 671.443f, 63.4694f));
+    // S70 stall point (2500,836): enters the leg on the gong ledge, not the 62-point travel-node route below.
+    std::size_t const s70 = NearestPoint(mordresh, 2500.4f, 836.9f, 46.2f);
+    ASSERT_NE(s70, NoPoint);
+    EXPECT_LE(s70, 2u);
+    EXPECT_TRUE(EndsAt(RouteFor(129, 2), 2468.71f, 1006.83f, 23.7573f));  // Glutton
     std::vector<std::size_t> const rows = RouteFor(129, 3);
-    ASSERT_EQ(rows.size(), 23u);
     EXPECT_TRUE(EndsAt(rows, 2403.37f, 960.93f, 55.1437f));
-    // Starts at Glutton's spawn (8567); a party at the S68 kill point enters there, not mid-spiral.
-    EXPECT_LT(Distance(Points[rows.front()], 2468.7f, 1006.8f, 23.8f), 0.01f);
-    EXPECT_EQ(NearestPoint(rows, 2463.0f, 1019.0f, 24.0f), 0u);
+    // Leg 3 starts at Glutton's spawn (8567); a party at the S68 kill point enters there (the later of the
+    // two equal points, leg 3's first), not mid-spiral.
+    std::size_t const atGlutton = NearestPoint(rows, 2463.0f, 1019.0f, 24.0f);
+    ASSERT_NE(atGlutton, NoPoint);
+    EXPECT_EQ(Points[rows[atGlutton]].encounterIdx, 3u);
+    EXPECT_EQ(Points[rows[atGlutton]].pointOrder, 0u);
+    EXPECT_EQ(RouteFor(129, 3).size() - RouteFor(129, 2).size(), 23u);
     for (std::size_t row : rows)
         EXPECT_FALSE(Points[row].direct) << row;
 }
