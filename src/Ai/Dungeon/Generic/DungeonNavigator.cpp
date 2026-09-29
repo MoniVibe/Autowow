@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
 #include <cstddef>
 #include <limits>
 #include <list>
@@ -2397,9 +2398,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                 rows.push_back(DungeonGate::Steps[row]);
                 runtime.push_back(gateRuntime[row]);
             }
+            auto const isDone = [&](std::size_t index) { return gateStepDone(rows[index]); };
+            if (DungeonGate::PrerequisitePending(rows, runtime, isDone))
+                return "prerequisite";
             bool const blocked = DungeonGate::KeyBlocked(rows, runtime, GateBypassKeys(),
-                [&](uint32 itemId) { return gateItemHolder(itemId) != nullptr; },
-                [&](std::size_t index) { return gateStepDone(rows[index]); });
+                [&](uint32 itemId) { return gateItemHolder(itemId) != nullptr; }, isDone);
             return blocked ? "key_blocked" : nullptr;
         }
         FactionTemplateEntry const* botFaction = bot->GetFactionTemplateEntry();
@@ -2556,7 +2559,8 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             if (char const* reason = gateUnavailable(encounterIndex, records))
             {
                 facts.prerequisites = DungeonEncounterSelection::GateState::Blocked;
-                if (encounterIndex < 32)
+                // A pending prerequisite only defers the encounter; the probe still scores it.
+                if (encounterIndex < 32 && std::strcmp(reason, "prerequisite") != 0)
                     unavailableMask |= 1u << encounterIndex;
                 if (gateUnavailableLogged.insert(encounterIndex).second)
                     LOG_INFO("playerbots", "[DungeonNavigator] bot={} map={} encounter={} gate_unavailable={}",
@@ -2814,6 +2818,9 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
                     return attacked;
                 }
                 case DungeonGate::Kind::EnterArea:
+                    logGate(row, "wait", false);
+                    return false;
+                case DungeonGate::Kind::Prerequisite:
                     logGate(row, "wait", false);
                     return false;
                 case DungeonGate::Kind::AreaTrigger:
@@ -3089,9 +3096,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
         bool const cachedRoute = travelRouteInitialized &&
             travelRouteEncounterId == selection.selected.encounterId && travelRouteSpawnId == goal.spawnId &&
             travelRouteMapId == map->GetId() && travelRouteInstanceId == map->GetInstanceId();
-        curatedRows = DungeonRoute::RouteFor(map->GetId(), selection.selected.encounterId);
-        if (!DungeonRoute::EndsAt(curatedRows, goal.x, goal.y, goal.z))
-            curatedRows.clear();
+        curatedRows = DungeonRoute::RouteTo(map->GetId(), selection.selected.encounterId, goal.x, goal.y, goal.z);
         curatedEntry = DungeonRoute::EntryStart(curatedRows, DungeonRoute::NearestPoint(curatedRows,
             bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ()));
         uint32 const leaderGuid = bot->GetGUID().GetCounter();

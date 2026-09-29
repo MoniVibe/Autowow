@@ -39,9 +39,27 @@ TEST(DungeonRoutePolicy, TableIsOrderedContiguousAndFinite)
             Point const& previous = Points[i - 1];
             EXPECT_LT(std::tie(previous.mapId, previous.encounterIdx, previous.pointOrder),
                 std::tie(point.mapId, point.encounterIdx, point.pointOrder)) << i;
-            // A leg continues where the previous leg of the map ends.
-            if (previous.mapId == point.mapId)
+            if (previous.mapId == point.mapId && previous.encounterIdx == point.encounterIdx)
+            {
                 EXPECT_LE(Distance(previous, point.x, point.y, point.z), MaximumPointSpacing) << i;
+            }
+            else if (previous.mapId == point.mapId)
+            {
+                // A leg starts where another leg of the map ends (the walk order need not be the index order:
+                // Sunken Temple walks idx3 before idx1).
+                bool joined = false;
+                for (std::size_t j = 0; j + 1 < std::size(Points); ++j)
+                {
+                    Point const& end = Points[j];
+                    bool const legEnd = Points[j + 1].mapId != end.mapId || Points[j + 1].encounterIdx != end.encounterIdx;
+                    if (end.mapId == point.mapId && end.encounterIdx != point.encounterIdx && legEnd &&
+                        Distance(end, point.x, point.y, point.z) <= MaximumPointSpacing)
+                    {
+                        joined = true;
+                    }
+                }
+                EXPECT_TRUE(joined) << i;
+            }
         }
         if (point.direct)
         {
@@ -221,6 +239,67 @@ TEST(DungeonRoutePolicy, RazorfenDownsAmnennarLegClimbsTheSpiral)
     EXPECT_LT(Distance(Points[rows.front()], 2468.7f, 1006.8f, 23.8f), 0.01f);
     EXPECT_EQ(NearestPoint(rows, 2463.0f, 1019.0f, 24.0f), 0u);
     for (std::size_t row : rows)
+        EXPECT_FALSE(Points[row].direct) << row;
+}
+
+TEST(DungeonRoutePolicy, RouteToCutsALegAtItsGoal)
+{
+    // A goal at a leg's end: the same rows as RouteFor (every earlier leg).
+    std::vector<std::size_t> const smite = RouteFor(36, 3);
+    EXPECT_EQ(RouteTo(36, 3, -22.8471f, -797.283f, 20.3745f), smite);
+    // A goal on no point of the encounter's own leg: none (the Gunpowder chest).
+    EXPECT_TRUE(RouteTo(36, 3, -106.409f, -617.284f, 13.8495f).empty());
+    // A point of an earlier leg is not a goal of this one (Mr. Smite's point on the route to Cookie).
+    EXPECT_TRUE(RouteTo(36, 4, -22.8471f, -797.283f, 20.3745f).empty());
+}
+
+TEST(DungeonRoutePolicy, SunkenTempleLegsWalkTheGateRowsInOrder)
+{
+    // Statues 148830..148835 (the idx0 gate rows, in use order), then Atal'alarion (34521) at leg 0's end.
+    struct Goal { float x, y, z; };
+    Goal const statues[] = {{-515.553f, 95.2582f, -148.74f}, {-419.849f, 94.4837f, -148.74f},
+        {-491.4f, 135.97f, -148.74f}, {-491.491f, 53.4818f, -148.74f}, {-443.855f, 136.101f, -148.74f},
+        {-443.417f, 53.8312f, -148.74f}, {-480.4f, 96.5663f, -189.73f}};
+    std::size_t last = 0;
+    for (Goal const& goal : statues)
+    {
+        std::vector<std::size_t> const rows = RouteTo(109, 0, goal.x, goal.y, goal.z);
+        ASSERT_FALSE(rows.empty()) << goal.x;
+        EXPECT_GT(rows.size(), last) << goal.x;  // each goal lies further along the leg
+        EXPECT_EQ(Points[rows.back()].encounterIdx, 0u);
+        last = rows.size();
+    }
+    EXPECT_EQ(last, RouteFor(109, 0).size());
+    // Starts at the instance entrance (areatrigger_teleport 446), where S69 parties entered.
+    EXPECT_LT(Distance(Points[RouteFor(109, 0).front()], -319.2f, 99.9f, -131.9f), 0.01f);
+
+    // Balcony trolls (idx3 gate rows, in row order), then Jammal'an (39737) at leg 3's end.
+    Goal const trolls[] = {{-406.189f, 131.068f, -66.9138f}, {-467.396f, 165.997f, -66.7027f},
+        {-528.646f, 130.163f, -66.7533f}, {-527.969f, 59.4516f, -66.7188f}, {-466.655f, 24.4261f, -66.7908f},
+        {-405.506f, 60.4569f, -67.0678f}, {-425.894f, -86.0747f, -88.224f}};
+    last = 0;
+    for (Goal const& goal : trolls)
+    {
+        std::vector<std::size_t> const rows = RouteTo(109, 3, goal.x, goal.y, goal.z);
+        ASSERT_FALSE(rows.empty()) << goal.x;
+        EXPECT_GT(rows.size(), last) << goal.x;
+        last = rows.size();
+    }
+    EXPECT_EQ(last, RouteFor(109, 3).size());
+    // The leader at Atal'alarion enters leg 3 at its first point (the tie with leg 0's end keeps the later point).
+    std::vector<std::size_t> const toMijan = RouteTo(109, 3, -406.189f, 131.068f, -66.9138f);
+    std::size_t const entry = NearestPoint(toMijan, -480.4f, 96.5663f, -189.73f);
+    ASSERT_NE(entry, NoPoint);
+    EXPECT_EQ(Points[toMijan[entry]].encounterIdx, 3u);
+    EXPECT_EQ(Points[toMijan[entry]].pointOrder, 0u);
+
+    // After Jammal'an: Dreamscythe, Weaver, Morphaz, Hazzas, Shade of Eranikus each end their leg.
+    struct Boss { std::uint32_t encounter; float x, y, z; };
+    Boss const bosses[] = {{1, -453.45f, 137.17f, -90.75f}, {2, -458.84f, 127.7f, -91.57f},
+        {5, -667.59f, 103.111f, -90.8313f}, {6, -667.359f, 80.803f, -90.8326f}, {8, -658.379f, -35.7623f, -90.8352f}};
+    for (Boss const& boss : bosses)
+        EXPECT_TRUE(EndsAt(RouteFor(109, boss.encounter), boss.x, boss.y, boss.z)) << boss.encounter;
+    for (std::size_t row : RouteFor(109, 8))
         EXPECT_FALSE(Points[row].direct) << row;
 }
 

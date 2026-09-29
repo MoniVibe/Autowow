@@ -264,6 +264,41 @@ TEST(DungeonGatePolicy, UldamanIronayaNeedsTheStaffAndZumrahTheTrigger)
     EXPECT_STREQ(KindName(Kind::AreaTrigger), "area_trigger");
 }
 
+TEST(DungeonGatePolicy, PrerequisiteRowsDeferTheirEncounter)
+{
+    Step wait = Row(0);
+    wait.kind = Kind::Prerequisite;
+    auto notDone = [](std::size_t) { return false; };
+    EXPECT_TRUE(PrerequisitePending(std::vector<Step>{wait}, {}, notDone));
+    EXPECT_FALSE(PrerequisitePending(std::vector<Step>{wait}, {}, [](std::size_t) { return true; }));
+    EXPECT_FALSE(PrerequisitePending(std::vector<Step>{Row(1), wait}, {}, notDone));  // an action row comes first
+    EXPECT_FALSE(PrerequisitePending(std::vector<Step>{}, {}, notDone));
+    EXPECT_FALSE(CountsUses(Kind::Prerequisite));
+    EXPECT_STREQ(KindName(Kind::Prerequisite), "prerequisite");
+
+    // Sunken Temple: the dragons and Eranikus wait for Jammal'an (TYPE_JAMMAL_AN 1 == DONE 3); Jammal'an waits for
+    // the six balcony trolls.
+    for (std::uint32_t encounter : {1u, 2u, 8u})
+    {
+        std::vector<std::size_t> const rows = StepsFor(109, encounter);
+        ASSERT_EQ(rows.size(), 1u) << encounter;
+        EXPECT_EQ(Steps[rows[0]].kind, Kind::Prerequisite);
+        EXPECT_EQ(Steps[rows[0]].doneWhen, DoneWhen::InstanceData);
+        EXPECT_EQ(Steps[rows[0]].doneData, 1u);
+        EXPECT_EQ(Steps[rows[0]].doneValue, 3u);
+    }
+    std::vector<std::size_t> const trolls = StepsFor(109, 3);
+    ASSERT_EQ(trolls.size(), 6u);
+    for (std::size_t row : trolls)
+    {
+        EXPECT_EQ(Steps[row].kind, Kind::KillSet);
+        EXPECT_TRUE(Steps[row].spawnGuid);
+        EXPECT_GE(Steps[row].entry, 5712u);
+        EXPECT_LE(Steps[row].entry, 5717u);
+        EXPECT_EQ(Steps[row].doneWhen, DoneWhen::CreaturesDead);
+    }
+}
+
 TEST(DungeonGatePolicy, PerScanGateLogsAreRateLimited)
 {
     EXPECT_TRUE(ShouldLog(false, 0));
