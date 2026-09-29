@@ -3478,6 +3478,12 @@ AutoWow.Dungeon.RecruitMaxParties = 1
 # leg=route) instead of waiting blocked=party_cohesion.
 AutoWow.Dungeon.RequireTank = 0
 AutoWow.Dungeon.RecruitStragglerWalk = 0
+# RecruitWidePool = 1: a bot that is only fighting (questing / grinding), on an errand, on a zone trip (cancelled)
+# or in a formation party outside a dungeon run (dissolved, party disband `recruited`) can be recruited too.
+# Always excluded: mid escort, on an instance map, on a flight / teleport, dead, supply role, squad, in a recruited
+# party, within RecruitCooldownMs, paused by another runtime, in a group this registry does not own. The recruit
+# log line counts every reason per faction (out={...}) and the tank-capable bots taken/total (tanks=a/b).
+AutoWow.Dungeon.RecruitWidePool = 0
 
 # Dungeon navigator convoy V2 (DungeonNavigatorConvoyPolicy.h; default 0 = V1 unchanged). A follower whose
 # assigned trailing route slot is unreachable settles on the furthest reachable route point at or below it that

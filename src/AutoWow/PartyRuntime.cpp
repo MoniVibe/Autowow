@@ -70,6 +70,7 @@ struct Params
     std::uint32_t recruitIntervalMs = 600000;
     std::uint64_t recruitCooldownMs = 2700000;
     std::uint32_t recruitMaxParties = 1;  // per faction at once
+    bool recruitWidePool = false;         // AutoWow.Dungeon.RecruitWidePool
     RecruitParams recruit;
 };
 
@@ -1018,27 +1019,63 @@ void Supervise(std::uint32_t id, std::uint64_t now)
 }
 
 // ---- recruitment (world thread, AutoWow.Dungeon.Recruit) ------------------------------------------------
-// A cohort bot free for a dungeon: Form's eligibility without its distance / rejoin rules (independent, alive,
-// ungrouped, out of combat, on a continent, not busy with a zone graduation, an errand, a supply role, the
-// oracle, a probe or a squad), not on a flight or an escort, and past its recruit cooldown.
-bool Recruitable(Player* bot, PlayerbotAI* ai, std::uint64_t now)
+// A cohort bot's recruit standing (RecruitOut, first match); Count = not a cohort bot (not independent, a real
+// player, oracle-managed or a probe bot). `pid`: the formation party of RecruitOut::Party. Without the wide pool
+// RecruitOut::Free is exactly the dparty eligibility (independent, alive, ungrouped, out of combat, on a
+// continent, not on a zone trip / errand / supply role / flight / escort / squad, past its cooldown).
+RecruitOut Classify(Player* bot, PlayerbotAI* ai, std::uint64_t now, std::uint32_t* pid)
 {
-    if (!ai || !bot->IsInWorld() || !ai->IsAutoWowIndependentParty() || ai->IsRealPlayer() || ai->IsAutoWowPaused() ||
-        bot->GetGroup() || !bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() || bot->IsBeingTeleported() ||
-        bot->InBattleground() || !bot->GetMap() || bot->GetMap()->Instanceable())
-        return false;
     std::uint32_t const g = bot->GetGUID().GetCounter();
-    if (AutoWowOracleRuntime::IsManagedBot(g) || AutoWowDungeonProbe::IsProbeBot(g) ||
-        (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(g)) ||
-        (AutoWowErrands::Enabled() && AutoWowErrands::Active(g)) ||
-        (AutoWowSupply::Enabled() && AutoWowSupply::ActiveRoleOf(bot).role != AutoWowSupply::Role::None))
-        return false;
+    if (!ai || !bot->IsInWorld() || !ai->IsAutoWowIndependentParty() || ai->IsRealPlayer() ||
+        AutoWowOracleRuntime::IsManagedBot(g) || AutoWowDungeonProbe::IsProbeBot(g))
+        return RecruitOut::Count;
+    bool squad = false, inRun = false, cooling = false;
+    std::uint32_t party = 0;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        squad = gSquadGuids.count(g) > 0;
+        if (auto const it = gOf.find(g); it != gOf.end())
+        {
+            Party const& p = gParties.at(it->second);
+            party = it->second;
+            inRun = p.recruited || p.phase != Phase::None || p.why == Reason::Squad;
+        }
+        auto const ready = gRecruitReadyMs.find(g);
+        cooling = ready != gRecruitReadyMs.end() && now < ready->second;
+    }
+    if (squad)
+        return RecruitOut::Squad;
+    if (AutoWowSupply::Enabled() && AutoWowSupply::ActiveRoleOf(bot).role != AutoWowSupply::Role::None)
+        return RecruitOut::Supply;
+    if (inRun)
+        return RecruitOut::Run;
+    if (bot->InBattleground() || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return RecruitOut::Instance;
     if (auto const* quest = std::get_if<NewRpgInfo::DoQuest>(&ai->rpgInfo.data);
         quest && quest->objectiveRuntime.phase == QuestActionPhase::EscortEvent)
-        return false;
-    std::lock_guard<std::mutex> guard(gLock);
-    auto const ready = gRecruitReadyMs.find(g);
-    return !gOf.count(g) && !gSquadGuids.count(g) && (ready == gRecruitReadyMs.end() || now >= ready->second);
+        return RecruitOut::Escort;
+    if (bot->IsInFlight() || bot->IsBeingTeleported())
+        return RecruitOut::Flight;
+    if (!bot->IsAlive())
+        return RecruitOut::Dead;
+    if (cooling)
+        return RecruitOut::Cooldown;
+    if (ai->IsAutoWowPaused())
+        return RecruitOut::Paused;
+    if (party)
+    {
+        *pid = party;
+        return RecruitOut::Party;
+    }
+    if (bot->GetGroup())
+        return RecruitOut::Group;
+    if (bot->IsInCombat())
+        return RecruitOut::Combat;
+    if (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(g))
+        return RecruitOut::ZoneMove;
+    if (AutoWowErrands::Enabled() && AutoWowErrands::Active(g))
+        return RecruitOut::Errand;
+    return RecruitOut::Free;
 }
 
 // A recruited party starts its run at once. Everyone on the entrance's map within MaxWalkYards: the Approach
@@ -1101,11 +1138,32 @@ void Recruit(std::uint64_t now)
             if (party.recruited && party.team < 3)
                 ++active[party.team];
     }
+    bool const wide = gParams.recruitWidePool;
+    std::uint32_t outs[3][std::size_t(RecruitOut::Count)] = {};
+    std::uint32_t tanks[3] = {}, tanksTaken[3] = {};
+    std::map<std::uint32_t, std::uint32_t> pullParty;  // guid -> formation party dissolved if it is recruited
+    std::unordered_set<std::uint32_t> zoneMovers;       // zone trips cancelled if recruited
     std::vector<Candidate> cands;
     for (auto const& [guid, bot] : ObjectAccessor::GetPlayers())
     {
-        if (!Recruitable(bot, AiOf(bot), now))
+        std::uint32_t pid = 0;
+        RecruitOut const o = Classify(bot, AiOf(bot), now, &pid);
+        if (o == RecruitOut::Count)
             continue;
+        std::uint8_t const t = TeamOf(bot);
+        ++outs[t][std::size_t(o)];
+        std::uint32_t const cls = bot->getClass();
+        // AutoWow.Dungeon.RequireTank: warrior, paladin, or a druid that knows Bear / Dire Bear Form.
+        bool const canTank = cls == kWarrior || cls == kPaladin ||
+                             (cls == kDruid && (bot->HasSpell(kBearForm) || bot->HasSpell(kDireBearForm)));
+        tanks[t] += canTank;
+        if (!RecruitTakes(o, wide))
+            continue;
+        tanksTaken[t] += canTank;
+        if (o == RecruitOut::Party)
+            pullParty[guid.GetCounter()] = pid;
+        if (o == RecruitOut::ZoneMove)
+            zoneMovers.insert(guid.GetCounter());
         Candidate c;
         c.guid = guid.GetCounter();
         c.level = bot->GetLevel();
@@ -1115,9 +1173,7 @@ void Recruit(std::uint64_t now)
         c.zone = bot->GetZoneId();
         c.x = Yd(bot->GetPositionX());
         c.y = Yd(bot->GetPositionY());
-        // AutoWow.Dungeon.RequireTank: warrior, paladin, or a druid that knows Bear / Dire Bear Form.
-        c.canTank = c.cls == kWarrior || c.cls == kPaladin ||
-                    (c.cls == kDruid && (bot->HasSpell(kBearForm) || bot->HasSpell(kDireBearForm)));
+        c.canTank = canTank;
         cands.push_back(c);
     }
     std::vector<EntranceSpot> spots;
@@ -1135,10 +1191,19 @@ void Recruit(std::uint64_t now)
             continue;
         char const* why = "";
         Plan const pl = PlanRecruit(cands, team, gDungeons, spots, gParams.recruit, &why);
-        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={} why={}", team, eligible,
-                 pl.dungeonMap, pl.guids.size(), why);
+        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={} why={} tanks={}/{} wide={}{}", team,
+                 eligible, pl.dungeonMap, pl.guids.size(), why, tanksTaken[team], tanks[team], wide,
+                 RecruitOutFields(outs[team]));
         if (pl.guids.empty())
             continue;
+        // RecruitWidePool: leave the formation party, drop the zone trip (an errand resumes or times out later).
+        for (std::uint32_t const g : pl.guids)
+        {
+            if (auto const it = pullParty.find(g); it != pullParty.end())
+                Dissolve(it->second, Disband::Recruited, now);  // no-op when already dissolved
+            if (zoneMovers.count(g))
+                AutoWowZoneProgression::CancelTrip(g, now);
+        }
         Party party;
         party.recruited = true;
         party.team = team;
@@ -1194,6 +1259,7 @@ void LoadConfig()
         p.recruit.walkYards = p.maxWalkYards;
         p.recruit.requireTank = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RequireTank", false);
         detail::gRecruitWalk = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitStragglerWalk", false);
+        p.recruitWidePool = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitWidePool", false);
     }
     gDungeons = ParseDungeons(sConfigMgr->GetOption<std::string>(
         "AutoWow.Dungeon.List", "389:13:18:H,36:17:26:A,43:17:24:AH,33:18:25:AH,48:20:30:AH,34:22:30:A"));

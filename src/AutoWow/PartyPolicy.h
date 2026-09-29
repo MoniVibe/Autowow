@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -88,7 +89,8 @@ enum class Disband : std::uint8_t
     MaxAge,
     TooSmall,
     Disabled,
-    Stalled  // AutoWow.Unstick.V2: group-quest party without quest progress for StallMs, or its leader gave up
+    Stalled,  // AutoWow.Unstick.V2: group-quest party without quest progress for StallMs, or its leader gave up
+    Recruited  // AutoWow.Dungeon.RecruitWidePool: a member was recruited into a dungeon party
 };
 
 inline constexpr char const* DisbandName(Disband d)
@@ -104,6 +106,7 @@ inline constexpr char const* DisbandName(Disband d)
         case Disband::TooSmall: return "too_small";
         case Disband::Disabled: return "disabled";
         case Disband::Stalled: return "stalled";
+        case Disband::Recruited: return "recruited";
         case Disband::None: return "none";
     }
     return "none";
@@ -610,6 +613,56 @@ inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::ve
     plan.reason = Reason::Dungeon;
     plan.dungeonMap = defs[best].map;
     return plan;
+}
+
+// Why a cohort bot is not recruitable at a sweep (the runtime classifies, first match in this order; the recruit
+// log counts every reason). Wire-stable log names; append only before Count.
+enum class RecruitOut : std::uint8_t
+{
+    Free = 0,
+    Escort,    // mid escort event
+    Instance,  // on an instance / battleground map (mid-dungeon)
+    Flight,    // on a taxi or being teleported
+    Dead,
+    Supply,    // supply artisan / rep role
+    Squad,     // AutoWow.Squad roster
+    Run,       // in a recruited party, or a formation party mid dungeon run
+    Cooldown,  // within RecruitCooldownMs of its last recruited run
+    Paused,    // another runtime holds the bot (AutoWow pause)
+    Group,     // a core group this registry does not own
+    // Pullable with AutoWow.Dungeon.RecruitWidePool (excluded without it):
+    Party,     // a formation party (group quest / proximity dungeon) not in a run: dissolved when recruited
+    Combat,    // questing / grinding fight
+    ZoneMove,  // zone graduation trip: cancelled when recruited
+    Errand,    // vendor / auction / trainer / mail trip
+    Count
+};
+
+inline constexpr char const* RecruitOutName(RecruitOut o)
+{
+    constexpr char const* names[] = {"free", "escort", "instance", "flight", "dead", "supply", "squad", "run",
+                                     "cooldown", "paused", "group", "party", "combat", "zone_move", "errand"};
+    return std::size_t(o) < std::size(names) ? names[std::size_t(o)] : "unknown";
+}
+
+// Recruitable: free, or (wide pool) only questing / grinding / on an errand, a zone trip or in a formation party.
+inline constexpr bool RecruitTakes(RecruitOut o, bool widePool)
+{
+    return o == RecruitOut::Free || (widePool && o >= RecruitOut::Party && o < RecruitOut::Count);
+}
+
+// " out={free=9,combat=3,...}" (non-zero counts, enum order) for the recruit log line.
+inline std::string RecruitOutFields(std::uint32_t const (&counts)[std::size_t(RecruitOut::Count)])
+{
+    std::string out = " out={";
+    bool first = true;
+    for (std::size_t i = 0; i < std::size_t(RecruitOut::Count); ++i)
+        if (counts[i])
+        {
+            out += (first ? "" : ",") + std::string(RecruitOutName(RecruitOut(i))) + "=" + std::to_string(counts[i]);
+            first = false;
+        }
+    return out + "}";
 }
 
 // ---- keeping a party ---------------------------------------------------------------------------------
