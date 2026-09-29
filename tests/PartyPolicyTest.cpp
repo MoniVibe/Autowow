@@ -265,5 +265,101 @@ TEST(PartyPolicyTest, LedgerFieldsAreStable)
               "\"members\":[62955]");
     EXPECT_STREQ(DisbandName(Disband::DungeonDone), "dungeon_done");
     EXPECT_STREQ(RunEventName(RunEvent::BossKilled), "boss_killed");
+    EXPECT_STREQ(RunEventName(RunEvent::Summary), "summary");
+    EXPECT_EQ(RunSummaryFields(2, 3, false, true, 4),
+              ",\"bosses\":2,\"total\":3,\"completed\":0,\"wipes\":1,\"deaths\":4,\"recruit\":1");
+}
+
+// ---- recruitment (AutoWow.Dungeon.Recruit) ----
+// A candidate anywhere in the world (map 1 = Kalimdor, x/y integer yards).
+Candidate R(std::uint32_t guid, std::uint32_t level, std::uint32_t cls, std::int32_t x = 0, std::uint32_t map = 1,
+            std::uint8_t team = kHorde)
+{
+    Candidate c = C(guid, level, cls, 0, team);
+    c.map = map;
+    c.x = x;
+    return c;
+}
+
+std::vector<EntranceSpot> Known(std::size_t n) { return std::vector<EntranceSpot>(n, EntranceSpot{1, 0, 0, true}); }
+
+TEST(PartyPolicyTest, RecruitPicksTheDungeonWithMostEligibleBots)
+{
+    // WC 19..26 holds 3 horde bots, RFK 30..40 holds 5; alliance bots never count for the horde.
+    std::vector<DungeonDef> const defs = ParseDungeons("43:19:26:AH,47:30:40:AH");
+    std::vector<Candidate> const cands = {
+        R(1, 20, kPriest), R(2, 21, kRogue), R(3, 22, kMage),
+        R(10, 31, kShaman), R(11, 32, kRogue), R(12, 33, kMage), R(13, 31, kWarlock), R(14, 32, kHunter),
+        R(20, 20, kPriest, 0, 1, kAlliance), R(21, 20, kRogue, 0, 1, kAlliance), R(22, 20, kMage, 0, 1, kAlliance)};
+    RecruitParams p;
+    Plan const horde = PlanRecruit(cands, kHorde, defs, Known(2), p);
+    EXPECT_EQ(horde.reason, Reason::Dungeon);
+    EXPECT_EQ(horde.dungeonMap, 47u);
+    EXPECT_EQ(horde.guids, (std::vector<std::uint32_t>{10, 11, 12, 13, 14}));
+    // Three alliance bots are below MinSize 4.
+    EXPECT_TRUE(PlanRecruit(cands, kAlliance, defs, Known(2), p).guids.empty());
+
+    // An unknown entrance takes the dungeon out: WC is left, with 3 bots: none.
+    std::vector<EntranceSpot> spots = Known(2);
+    spots[1].known = false;
+    EXPECT_TRUE(PlanRecruit(cands, kHorde, defs, spots, p).guids.empty());
+    // MinSize 3 then takes WC.
+    p.minSize = 3;
+    EXPECT_EQ(PlanRecruit(cands, kHorde, defs, spots, p).dungeonMap, 43u);
+}
+
+TEST(PartyPolicyTest, RecruitNeedsAHealerCapableClass)
+{
+    std::vector<DungeonDef> const defs = ParseDungeons("47:30:40:AH");
+    std::vector<Candidate> cands = {R(1, 31, kWarrior), R(2, 31, kRogue), R(3, 31, kMage), R(4, 31, kWarlock),
+                                    R(5, 31, kHunter)};
+    EXPECT_TRUE(PlanRecruit(cands, kHorde, defs, Known(1), RecruitParams{}).guids.empty());
+    cands.push_back(R(6, 32, kDruid));  // a lone druid heals; the warrior still tanks
+    Plan const pl = PlanRecruit(cands, kHorde, defs, Known(1), RecruitParams{});
+    ASSERT_EQ(pl.guids.size(), 5u);
+    EXPECT_EQ(pl.guids.back(), 6u);
+    EXPECT_EQ(pl.roles.back(), Role::Healer);
+    EXPECT_EQ(pl.roles.front(), Role::Tank);
+    EXPECT_EQ(pl.leader, 1u);  // the tank leads
+}
+
+TEST(PartyPolicyTest, RecruitRosterPrefersHealerTankThenWalkRangeLevelGuid)
+{
+    std::vector<DungeonDef> const defs = ParseDungeons("209:44:54:AH");
+    std::vector<EntranceSpot> const spots = {EntranceSpot{1, 0, 0, true}};
+    RecruitParams p;
+    p.walkYards = 1000;
+    std::vector<Candidate> const cands = {
+        R(1, 48, kPriest, 5000),  // a priest out of walk range, higher level
+        R(2, 46, kPriest, 100),   // a priest in walk range: heals
+        R(3, 47, kDruid, 100),    // tank rank 3
+        R(4, 45, kWarrior, 9000), // tank rank 1 wins over walk range
+        R(5, 48, kRogue, 9000),   // dps: walk range first, then level, then guid
+        R(6, 45, kMage, 200),
+        R(7, 45, kWarlock, 300, 0),  // another continent: out of walk range
+        R(8, 44, kHunter, 50)};
+    Plan const pl = PlanRecruit(cands, kHorde, defs, spots, p);
+    // Healer 2, tank 4, then in-range dps by level: 3 (47), 6 (45), 8 (44).
+    EXPECT_EQ(pl.guids, (std::vector<std::uint32_t>{2, 3, 4, 6, 8}));
+    EXPECT_EQ(pl.roles, (std::vector<Role>{Role::Healer, Role::Dps, Role::Tank, Role::Dps, Role::Dps}));
+    EXPECT_EQ(pl.leader, 4u);
+    EXPECT_EQ(pl.dungeonMap, 209u);
+}
+
+TEST(PartyPolicyTest, RecruitWindowKeepsLevelSpreadInsideTheBand)
+{
+    // Band 30..40, spread 4: [30..34] holds 3, [35..39] holds 4 -> the higher window; ties keep list order.
+    std::vector<DungeonDef> const defs = ParseDungeons("47:30:40:AH,129:37:46:AH");
+    std::vector<Candidate> const cands = {R(1, 30, kPriest), R(2, 31, kRogue), R(3, 32, kMage),
+                                          R(4, 36, kShaman), R(5, 37, kRogue), R(6, 38, kMage), R(7, 39, kHunter)};
+    Plan const pl = PlanRecruit(cands, kHorde, defs, Known(2), RecruitParams{});
+    EXPECT_EQ(pl.dungeonMap, 47u);  // RFD's [37..41] holds 3 (4 is 36): RFK's window wins
+    EXPECT_EQ(pl.guids, (std::vector<std::uint32_t>{4, 5, 6, 7}));
+    // Same count in both dungeons: the first listed.
+    std::vector<Candidate> const tie = {R(1, 38, kPriest), R(2, 38, kRogue), R(3, 39, kMage), R(4, 39, kHunter)};
+    EXPECT_EQ(PlanRecruit(tie, kHorde, defs, Known(2), RecruitParams{}).dungeonMap, 47u);
+    // Deterministic: input order does not matter.
+    std::vector<Candidate> rev(cands.rbegin(), cands.rend());
+    EXPECT_EQ(PlanRecruit(rev, kHorde, defs, Known(2), RecruitParams{}).guids, pl.guids);
 }
 }  // namespace

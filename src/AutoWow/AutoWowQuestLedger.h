@@ -77,7 +77,9 @@
 //   - `dungeon` (AutoWow.Dungeon.Enable): one line per run event. reason = entered|boss_killed|completed|
 //     wiped|abandoned|approach_gave_up|stage_failed|portal_fallback. Trailing: pid, dmap, inst (instance id,
 //     0 before entry), enc (encounter index for boss_killed, else -1), mask / all (completed / all
-//     DungeonEncounter bits), dur_ms (since the approach started), members.
+//     DungeonEncounter bits), dur_ms (since the approach started), members. AutoWow.Dungeon.Recruit: the
+//     `formed` party row adds recruit (1), and a released recruited party writes reason `summary` with all =
+//     the clearable bits and bosses, total, completed (0|1), wipes (0|1), deaths, recruit (1).
 //   - `contract` (event 18; AutoWow.Contracts.Enable): one line per hunt contract issued and one when it
 //     ends (ContractsPolicy.h). reason = issued|done|expired|abandoned; quest is 0; lvl/zone/x/y the bot's.
 //     Trailing: issuer (faction_board), cid (run-scoped contract id, never reused), amap, ax, ay (anchor
