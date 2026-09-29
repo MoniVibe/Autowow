@@ -3457,6 +3457,19 @@ AutoWow.Dungeon.InsideTimeoutMs = 3600000
 AutoWow.Dungeon.ExitTimeoutMs = 120000
 AutoWow.Dungeon.CooldownMs = 3600000
 AutoWow.Dungeon.PortalFallback = 0
+# Recruit = 1 (needs Dungeon.Enable; default 0 = formation above only): every RecruitIntervalMs, per faction with
+# fewer than RecruitMaxParties recruited parties, the listed dungeon whose band holds the most free cohort bots
+# anywhere in one LevelSpread window (MinSize at least, one healer-capable class required, a tank preferred)
+# gets a party: best healer, best tank, then dps (walk range to the entrance first, then level) up to MaxSize.
+# Free = ungrouped, alive, out of combat, not in a zone graduation / errand / supply role / flight / escort,
+# past RecruitCooldownMs since its last recruited run. Everyone within MaxWalkYards of the entrance on its map:
+# the walk above; else the whole party takes a logged portal to the entrance (ledger `dungeon` portal_fallback,
+# `contaminated` party_recruit_portal). One run, then released (party disband dungeon_done) with a `dungeon`
+# summary row. Completion ignores encounters with no static spawn or set aside by the navigator.
+AutoWow.Dungeon.Recruit = 0
+AutoWow.Dungeon.RecruitIntervalMs = 600000
+AutoWow.Dungeon.RecruitCooldownMs = 2700000
+AutoWow.Dungeon.RecruitMaxParties = 1
 
 # Dungeon navigator convoy V2 (DungeonNavigatorConvoyPolicy.h; default 0 = V1 unchanged). A follower whose
 # assigned trailing route slot is unreachable settles on the furthest reachable route point at or below it that

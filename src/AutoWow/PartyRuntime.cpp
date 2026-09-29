@@ -23,6 +23,7 @@
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
+#include "DungeonNavigator.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
 #include "Group.h"
@@ -65,6 +66,11 @@ struct Params
     std::uint64_t runCooldownMs = 3600000;
     bool portalFallback = false;
     bool disbandOrphans = true;
+    // AutoWow.Dungeon.Recruit
+    std::uint32_t recruitIntervalMs = 600000;
+    std::uint64_t recruitCooldownMs = 2700000;
+    std::uint32_t recruitMaxParties = 1;  // per faction at once
+    RecruitParams recruit;
 };
 
 struct Entrance
@@ -110,6 +116,14 @@ struct Party
     // AutoWow.Unstick.V2: fold of the members' quest logs and since when it held (0 = not looked yet).
     std::uint64_t questSig = 0;
     std::uint64_t questSinceMs = 0;
+    // AutoWow.Dungeon.Recruit (state v3): one run, then released; run summary counters.
+    bool recruited = false;
+    std::uint8_t team = 0;
+    std::uint32_t unavailable = 0;  // encounters the leader's navigator set aside (not clearable by this party)
+    std::uint32_t deaths = 0;
+    std::uint32_t deadBits = 0;     // slot index bit = that member is dead now
+    bool wiped = false;
+    bool completed = false;
 };
 
 struct QuestOffer
@@ -134,6 +148,9 @@ std::uint32_t gNextId = 1;
 std::unordered_set<std::uint32_t> gSquadGuids;  // AutoWow.Squad rosters (EnsureSquad), bounded by its config
 std::uint32_t gSinceForm = 0;
 std::uint32_t gSinceSupervise = 0;
+std::uint32_t gSinceRecruit = 0;
+std::unordered_map<std::uint32_t, std::uint64_t> gRecruitReadyMs;  // guid -> earliest next recruit (gLock)
+std::map<std::uint32_t, std::uint32_t> gClearable;                 // dungeon map -> clearable bits (world thread)
 
 constexpr std::uint32_t kSuperviseMs = 1000;
 constexpr std::uint32_t kCastSpacingMs = 1000;
@@ -300,6 +317,19 @@ void Dissolve(std::uint32_t id, Disband why, std::uint64_t now)
                      p.leader, p.why, p.dungeonMap, now - p.formedMs));
     LOG_INFO("playerbots", "[Party] pid={} disbanded reason={} group_disbanded={}", p.id, DisbandName(why),
              group && exact);
+    if (p.recruited)
+    {
+        // AutoWow.Dungeon.Recruit: the run's summary row, and a cooldown so questing is not starved.
+        std::uint32_t const all = p.allMask & ~p.unavailable;
+        Emit(p, true, RunEventName(RunEvent::Summary),
+             DungeonFields(p.id, p.dungeonMap, p.instance, -1, p.mask, all,
+                           p.runStartMs && now >= p.runStartMs ? now - p.runStartMs : 0, Guids(p)) +
+                 RunSummaryFields(AutoWowDungeonProbe::Bits(p.mask & all), AutoWowDungeonProbe::Bits(all), p.completed,
+                                  p.wiped, p.deaths));
+        std::lock_guard<std::mutex> guard(gLock);
+        for (Slot const& s : p.slots)
+            gRecruitReadyMs[s.guid] = now + gParams.recruitCooldownMs;
+    }
 }
 
 // A bot-only ordinary group of at most five that no cohort party owns: every member online, a playerbot
@@ -379,6 +409,86 @@ bool SendStrandeeHome(Player* bot, PlayerbotAI* ai)
     return true;
 }
 
+// Core group, registry entry, follower / role modes and the ledger `formed` row of a plan (Form, Recruit).
+// `party` carries any preset fields; returns the new party id, 0 = not formed.
+std::uint32_t Materialize(Plan const& pl, Party party, std::uint64_t now)
+{
+    Player* leader = Find(pl.leader);
+    PlayerbotAI* leaderAI = AiOf(leader);
+    if (!leaderAI)
+        return 0;
+    party.leader = pl.leader;
+    party.why = pl.reason;
+    party.dungeonMap = pl.dungeonMap;
+    party.formedMs = now;
+    std::vector<Player*> bots;
+    for (std::size_t i = 0; i < pl.guids.size(); ++i)
+    {
+        Player* bot = Find(pl.guids[i]);
+        PlayerbotAI* ai = AiOf(bot);
+        if (!ai)
+            break;
+        Slot s;
+        s.guid = pl.guids[i];
+        s.cls = bot->getClass();
+        s.role = pl.roles[i];
+        s.combat0 = ai->GetStrategies(BOT_STATE_COMBAT);
+        s.nonCombat0 = ai->GetStrategies(BOT_STATE_NON_COMBAT);
+        party.slots.push_back(std::move(s));
+        bots.push_back(bot);
+    }
+    if (bots.size() != pl.guids.size())
+        return 0;
+
+    // Core group: the bridge CreateParty idiom (bot-only, ordinary party).
+    Group* group = new Group;
+    if (!group->Create(leader))
+    {
+        delete group;
+        return 0;
+    }
+    sGroupMgr->AddGroup(group);
+    bool ok = true;
+    for (Player* bot : bots)
+        if (bot != leader && !group->AddMember(bot))
+            ok = false;
+    if (!ok)
+    {
+        group->Disband();
+        return 0;
+    }
+    group->SetLootMethod(NEED_BEFORE_GREED);
+    group->SetLootThreshold(ITEM_QUALITY_UNCOMMON);
+
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        party.id = gNextId++;
+        for (Slot const& s : party.slots)
+            gOf[s.guid] = party.id;
+        gParties[party.id] = party;
+    }
+    for (std::size_t i = 0; i < bots.size(); ++i)
+    {
+        PlayerbotAI* ai = AiOf(bots[i]);
+        ai->SetAutoWowIndependentParty(true);  // native group maintenance leaves the roster alone
+        if (bots[i] == leader)
+        {
+            ai->SetMaster(nullptr);
+            ai->ChangeStrategy("-follow", BOT_STATE_NON_COMBAT);
+        }
+        ApplyMode(party, party.slots[i], bots[i], ai, true);
+    }
+    std::vector<Role> roles;
+    for (Slot const& s : party.slots)
+        roles.push_back(s.role);
+    Emit(party, false, "formed",
+         PartyFields(party.id, pl.guids, roles, party.leader, party.why, party.dungeonMap, 0) +
+             (party.recruited ? ",\"recruit\":1" : ""));
+    LOG_INFO("playerbots", "[Party] pid={} formed why={} leader={} members={} dmap={}", party.id,
+             ReasonName(party.why), leader->GetName(), pl.guids.size(), party.dungeonMap);
+    return party.id;
+}
+
 // ---- formation ------------------------------------------------------------------------------------------
 void Form(std::uint64_t now)
 {
@@ -454,78 +564,7 @@ void Form(std::uint64_t now)
                 pl.dungeonMap = 0;
             }
         }
-        Player* leader = Find(pl.leader);
-        PlayerbotAI* leaderAI = AiOf(leader);
-        if (!leaderAI)
-            continue;
-        Party party;
-        party.leader = pl.leader;
-        party.why = pl.reason;
-        party.dungeonMap = pl.dungeonMap;
-        party.formedMs = now;
-        std::vector<Player*> bots;
-        for (std::size_t i = 0; i < pl.guids.size(); ++i)
-        {
-            Player* bot = Find(pl.guids[i]);
-            PlayerbotAI* ai = AiOf(bot);
-            if (!ai)
-                break;
-            Slot s;
-            s.guid = pl.guids[i];
-            s.cls = bot->getClass();
-            s.role = pl.roles[i];
-            s.combat0 = ai->GetStrategies(BOT_STATE_COMBAT);
-            s.nonCombat0 = ai->GetStrategies(BOT_STATE_NON_COMBAT);
-            party.slots.push_back(std::move(s));
-            bots.push_back(bot);
-        }
-        if (bots.size() != pl.guids.size())
-            continue;
-
-        // Core group: the bridge CreateParty idiom (bot-only, ordinary party).
-        Group* group = new Group;
-        if (!group->Create(leader))
-        {
-            delete group;
-            continue;
-        }
-        sGroupMgr->AddGroup(group);
-        bool ok = true;
-        for (Player* bot : bots)
-            if (bot != leader && !group->AddMember(bot))
-                ok = false;
-        if (!ok)
-        {
-            group->Disband();
-            continue;
-        }
-        group->SetLootMethod(NEED_BEFORE_GREED);
-        group->SetLootThreshold(ITEM_QUALITY_UNCOMMON);
-
-        {
-            std::lock_guard<std::mutex> guard(gLock);
-            party.id = gNextId++;
-            for (Slot const& s : party.slots)
-                gOf[s.guid] = party.id;
-            gParties[party.id] = party;
-        }
-        for (std::size_t i = 0; i < bots.size(); ++i)
-        {
-            PlayerbotAI* ai = AiOf(bots[i]);
-            ai->SetAutoWowIndependentParty(true);  // native group maintenance leaves the roster alone
-            if (bots[i] == leader)
-            {
-                ai->SetMaster(nullptr);
-                ai->ChangeStrategy("-follow", BOT_STATE_NON_COMBAT);
-            }
-            ApplyMode(party, party.slots[i], bots[i], ai, true);
-        }
-        std::vector<Role> roles;
-        for (Slot const& s : party.slots)
-            roles.push_back(s.role);
-        Emit(party, false, "formed", PartyFields(party.id, pl.guids, roles, party.leader, party.why, party.dungeonMap, 0));
-        LOG_INFO("playerbots", "[Party] pid={} formed why={} leader={} members={} dmap={}", party.id,
-                 ReasonName(party.why), leader->GetName(), pl.guids.size(), party.dungeonMap);
+        Materialize(pl, Party{}, now);
     }
 }
 
@@ -554,6 +593,34 @@ void SetPhase(Party& p, Phase ph, std::uint64_t now)
     p.phaseMs = now;
     p.stagePortalDone = false;
     p.missingSinceMs = 0;
+}
+
+// AutoWow.Dungeon.Recruit: the dungeon's clearable encounter bits, as the probe runner scores them
+// (DungeonProbeRuntime.cpp): a kill-credit encounter counts only when its creature has a static spawn on the map
+// (a script-summoned boss such as RFK Grubbis can never be reached). Cached per map.
+std::uint32_t ClearableOf(std::uint32_t map)
+{
+    if (auto const it = gClearable.find(map); it != gClearable.end())
+        return it->second;
+    std::vector<AutoWowDungeonProbe::EncounterRecord> records;
+    if (DungeonEncounterList const* list = sObjectMgr->GetDungeonEncounterList(map, DUNGEON_DIFFICULTY_NORMAL))
+    {
+        std::unordered_set<std::uint32_t> credits, spawned;
+        for (DungeonEncounter const* enc : *list)
+            if (enc->creditType == ENCOUNTER_CREDIT_KILL_CREATURE)
+                credits.insert(enc->creditEntry);
+        for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
+            if (data.mapid == map)
+                for (std::uint32_t id : {data.id, data.id2, data.id3})
+                    if (id && credits.count(id))
+                        spawned.insert(id);
+        for (DungeonEncounter const* enc : *list)
+        {
+            bool const kill = enc->creditType == ENCOUNTER_CREDIT_KILL_CREATURE;
+            records.push_back({enc->dbcEntry->encounterIndex, kill, kill && spawned.count(enc->creditEntry) > 0});
+        }
+    }
+    return gClearable[map] = AutoWowDungeonProbe::ClearableMask(records);
 }
 
 // Step through an entrance trigger like a client does (the stock DungeonTransition waits for the whole
@@ -599,6 +666,8 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
         if (DungeonEncounterList const* list = sObjectMgr->GetDungeonEncounterList(p.dungeonMap, DUNGEON_DIFFICULTY_NORMAL))
             for (DungeonEncounter const* enc : *list)
                 p.allMask |= 1u << enc->dbcEntry->encounterIndex;
+        if (p.recruited)
+            p.allMask &= ClearableOf(p.dungeonMap);
         InstanceMap* im = leader->GetMap()->ToInstanceMap();
         InstanceScript* script = im ? im->GetInstanceScript() : nullptr;
         p.mask = script ? script->GetCompletedEncounterMask() : 0;
@@ -734,6 +803,7 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
             }
             if (!anyAlive)
             {
+                p.wiped = true;
                 EmitRun(p, RunEvent::Wiped, -1, now);
                 EndRun(p, now);
                 return Disband::None;
@@ -754,8 +824,13 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                 p.mask |= 1u << enc;
                 EmitRun(p, RunEvent::BossKilled, std::int32_t(enc), now);
             }
-            if (AllEncountersDone(p.mask, p.allMask))
+            // Recruited runs: the encounters the leader's navigator set aside (friendly credit, key blocked) do not
+            // hold the completion, as in the probe runner (0 for every other party).
+            if (p.recruited)
+                p.unavailable = GetDungeonNavigatorUnavailableMask(p.leader, p.dungeonMap, p.instance) & p.allMask;
+            if (AllEncountersDone(p.mask, p.allMask & ~p.unavailable))
             {
+                p.completed = true;
                 EmitRun(p, RunEvent::Completed, -1, now);
                 SetPhase(p, Phase::Exit, now);
             }
@@ -805,6 +880,13 @@ void Supervise(std::uint32_t id, std::uint64_t now)
     }
     if (p.why == Reason::Squad)
         return;  // EnsureSquad owns it
+    // A recruited party's gather portal crosses maps: a member in transit is out of the world for a moment and
+    // must not read as offline (every other teleport of this runtime stays on one map).
+    if (p.recruited)
+        for (Slot const& s : p.slots)
+            if (Player* b = ObjectAccessor::FindConnectedPlayer(ObjectGuid::Create<HighGuid::Player>(s.guid));
+                b && (!b->IsInWorld() || b->IsBeingTeleported()))
+                return;
     std::vector<Player*> bots;
     Player* leader = nullptr;
     Group* group = nullptr;
@@ -834,8 +916,19 @@ void Supervise(std::uint32_t id, std::uint64_t now)
     f.inDungeonRun = p.phase != Phase::None;
 
     Disband why = Disband::None;
+    if (p.recruited && f.online == f.size && f.inDungeonRun)
+        for (std::size_t i = 0; i < bots.size() && i < 32; ++i)
+        {
+            std::uint32_t const bit = 1u << i;
+            bool const dead = !bots[i]->IsAlive();
+            if (dead && !(p.deadBits & bit))
+                ++p.deaths;
+            p.deadBits = dead ? p.deadBits | bit : p.deadBits & ~bit;
+        }
     if (f.online == f.size && f.inDungeonRun)
         why = RunStep(p, bots, leader, now);
+    if (p.recruited && why == Disband::None && f.inDungeonRun && p.phase == Phase::None)
+        why = Disband::DungeonDone;  // one run per recruitment: released after completion, wipe or give-up
     if (f.online == f.size && !f.inDungeonRun)
     {
         // Separation from the leader (followers follow; a long gap means someone is stuck or dead far away).
@@ -922,6 +1015,132 @@ void Supervise(std::uint32_t id, std::uint64_t now)
         Dissolve(id, why, now);
     }
 }
+
+// ---- recruitment (world thread, AutoWow.Dungeon.Recruit) ------------------------------------------------
+// A cohort bot free for a dungeon: Form's eligibility without its distance / rejoin rules (independent, alive,
+// ungrouped, out of combat, on a continent, not busy with a zone graduation, an errand, a supply role, the
+// oracle, a probe or a squad), not on a flight or an escort, and past its recruit cooldown.
+bool Recruitable(Player* bot, PlayerbotAI* ai, std::uint64_t now)
+{
+    if (!ai || !bot->IsInWorld() || !ai->IsAutoWowIndependentParty() || ai->IsRealPlayer() || ai->IsAutoWowPaused() ||
+        bot->GetGroup() || !bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() || bot->IsBeingTeleported() ||
+        bot->InBattleground() || !bot->GetMap() || bot->GetMap()->Instanceable())
+        return false;
+    std::uint32_t const g = bot->GetGUID().GetCounter();
+    if (AutoWowOracleRuntime::IsManagedBot(g) || AutoWowDungeonProbe::IsProbeBot(g) ||
+        (AutoWowZoneProgression::Enabled() && AutoWowZoneProgression::Active(g)) ||
+        (AutoWowErrands::Enabled() && AutoWowErrands::Active(g)) ||
+        (AutoWowSupply::Enabled() && AutoWowSupply::ActiveRoleOf(bot).role != AutoWowSupply::Role::None))
+        return false;
+    if (auto const* quest = std::get_if<NewRpgInfo::DoQuest>(&ai->rpgInfo.data);
+        quest && quest->objectiveRuntime.phase == QuestActionPhase::EscortEvent)
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const ready = gRecruitReadyMs.find(g);
+    return !gOf.count(g) && !gSquadGuids.count(g) && (ready == gRecruitReadyMs.end() || now >= ready->second);
+}
+
+// A recruited party starts its run at once. Everyone on the entrance's map within MaxWalkYards: the Approach
+// walk (leader walks, followers follow; ApproachTimeoutMs / stuck ticks then the ordinary portal fallback).
+// Otherwise (another continent, beyond walk range) the whole party takes a logged portal to the entrance (owner
+// ruling: portals are an acceptable logged travel fallback; ledger `dungeon` portal_fallback and `contaminated`
+// party_recruit_portal), then Stage.
+void StartRecruitRun(std::uint32_t id, std::uint64_t now)
+{
+    Party p;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        auto const it = gParties.find(id);
+        if (it == gParties.end())
+            return;
+        p = it->second;
+    }
+    Entrance const e = gEntrances.at(p.dungeonMap);  // PlanRecruit only picks dungeons with a known entrance
+    std::vector<Player*> bots;
+    bool walk = true;
+    for (Slot const& s : p.slots)
+        if (Player* bot = Find(s.guid))
+        {
+            bots.push_back(bot);
+            walk = walk && bot->GetMapId() == e.map && bot->GetExactDist2d(e.x, e.y) <= float(gParams.maxWalkYards);
+        }
+    p.runStartMs = now;
+    p.stuckTicks = 0;
+    p.approachGaveUp = false;
+    p.instance = p.mask = p.allMask = 0;
+    if (walk)
+        SetPhase(p, Phase::Approach, now);
+    else
+    {
+        EmitRun(p, RunEvent::PortalFallback, -1, now);
+        for (Player* bot : bots)
+        {
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "party_recruit_portal");
+            bot->TeleportTo(e.map, e.x, e.y, e.z, bot->GetOrientation());
+        }
+        SetPhase(p, Phase::Stage, now);
+        for (Player* bot : bots)
+            if (bot->GetGUID().GetCounter() != p.leader)
+                AiOf(bot)->ChangeStrategy("-follow", BOT_STATE_NON_COMBAT);
+    }
+    LOG_INFO("playerbots", "[Party] pid={} recruit run map={} gather={}", p.id, p.dungeonMap, walk ? "walk" : "portal");
+    std::lock_guard<std::mutex> guard(gLock);
+    if (auto const it = gParties.find(id); it != gParties.end())
+        it->second = p;
+}
+
+// Per faction below RecruitMaxParties active recruited parties: plan (PlanRecruit) and form one party.
+void Recruit(std::uint64_t now)
+{
+    std::uint32_t active[3] = {};
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        for (auto const& [id, party] : gParties)
+            if (party.recruited && party.team < 3)
+                ++active[party.team];
+    }
+    std::vector<Candidate> cands;
+    for (auto const& [guid, bot] : ObjectAccessor::GetPlayers())
+    {
+        if (!Recruitable(bot, AiOf(bot), now))
+            continue;
+        Candidate c;
+        c.guid = guid.GetCounter();
+        c.level = bot->GetLevel();
+        c.cls = bot->getClass();
+        c.team = TeamOf(bot);
+        c.map = bot->GetMapId();
+        c.zone = bot->GetZoneId();
+        c.x = Yd(bot->GetPositionX());
+        c.y = Yd(bot->GetPositionY());
+        cands.push_back(c);
+    }
+    std::vector<EntranceSpot> spots;
+    for (DungeonDef const& d : gDungeons)
+    {
+        auto const e = gEntrances.find(d.map);
+        spots.push_back(e == gEntrances.end() ? EntranceSpot{}
+                                              : EntranceSpot{e->second.map, Yd(e->second.x), Yd(e->second.y), true});
+    }
+    for (std::uint8_t const team : {kAlliance, kHorde})
+    {
+        std::uint32_t const eligible = std::uint32_t(
+            std::count_if(cands.begin(), cands.end(), [team](Candidate const& c) { return c.team == team; }));
+        if (active[team] >= gParams.recruitMaxParties)
+            continue;
+        Plan const pl = PlanRecruit(cands, team, gDungeons, spots, gParams.recruit);
+        LOG_INFO("playerbots", "[Party] recruit team={} eligible={} dmap={} members={}", team, eligible, pl.dungeonMap,
+                 pl.guids.size());
+        if (pl.guids.empty())
+            continue;
+        Party party;
+        party.recruited = true;
+        party.team = team;
+        if (std::uint32_t const id = Materialize(pl, party, now))
+            StartRecruitRun(id, now);
+    }
+}
 }  // namespace
 
 // ---- public ---------------------------------------------------------------------------------------------
@@ -958,6 +1177,17 @@ void LoadConfig()
     p.runCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.CooldownMs", 3600000);
     p.portalFallback = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.PortalFallback", false);
     p.disbandOrphans = sConfigMgr->GetOption<bool>("AutoWow.Party.DisbandOrphans", true);
+    detail::gRecruit = detail::gDungeons && sConfigMgr->GetOption<bool>("AutoWow.Dungeon.Recruit", false);
+    if (detail::gRecruit)
+    {
+        p.recruitIntervalMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.RecruitIntervalMs", 600000);
+        p.recruitCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.RecruitCooldownMs", 2700000);
+        p.recruitMaxParties = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.RecruitMaxParties", 1);
+        p.recruit.levelSpread = p.form.levelSpread;
+        p.recruit.minSize = p.form.dungeonMinSize;
+        p.recruit.maxSize = p.form.maxSize;
+        p.recruit.walkYards = p.maxWalkYards;
+    }
     gDungeons = ParseDungeons(sConfigMgr->GetOption<std::string>(
         "AutoWow.Dungeon.List", "389:13:18:H,36:17:26:A,43:17:24:AH,33:18:25:AH,48:20:30:AH,34:22:30:A"));
     if (!detail::gEnabled)
@@ -992,6 +1222,8 @@ void WorldUpdate(std::uint32_t diff)
 {
     gSinceSupervise += diff;
     gSinceForm += diff;
+    if (detail::gRecruit)
+        gSinceRecruit += diff;
     if (gSinceSupervise < kSuperviseMs)
         return;
     gSinceSupervise = 0;
@@ -1004,6 +1236,11 @@ void WorldUpdate(std::uint32_t diff)
     }
     for (std::uint32_t id : ids)
         Supervise(id, now);
+    if (detail::gRecruit && gSinceRecruit >= gParams.recruitIntervalMs)
+    {
+        gSinceRecruit = 0;
+        Recruit(now);
+    }
     if (gSinceForm >= gParams.checkIntervalMs)
     {
         gSinceForm = 0;

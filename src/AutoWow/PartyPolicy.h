@@ -33,7 +33,8 @@ class PlayerbotAI;
 // Value-only (no world access, no floats in decisions, no RNG); stable orders (guid ascending).
 namespace AutoWowParty
 {
-inline constexpr std::uint8_t kStateVersion = 2;  // 2: Party.questSig / questSinceMs (AutoWow.Unstick.V2)
+// 2: Party.questSig / questSinceMs (AutoWow.Unstick.V2); 3: Party recruit fields (AutoWow.Dungeon.Recruit)
+inline constexpr std::uint8_t kStateVersion = 3;
 
 // Wire-stable (ledger `roles`); append only.
 enum class Role : std::uint8_t
@@ -452,6 +453,140 @@ inline std::vector<Plan> FormParties(std::vector<Candidate> cands, FormParams co
     return plans;
 }
 
+// ---- recruitment (AutoWow.Dungeon.Recruit) --------------------------------------------------------------
+// FormParties needs MinSize bots of one faction sharing a zone / HubYards, a level window, a tank and a healer
+// and a first-listed bracketing dungeon whose entrance is on their continent; a cohort spread over two
+// continents almost never offers that (S62..S70 ledgers: 0 dungeon parties). Recruitment instead picks, per
+// faction and sweep, the listed dungeon with the most eligible bots anywhere, and the runtime gathers them at
+// its entrance (a walk when everyone is in walk range, else a logged portal).
+struct EntranceSpot  // same order as the dungeon list
+{
+    std::uint32_t map = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    bool known = false;
+};
+
+struct RecruitParams
+{
+    std::uint32_t levelSpread = 4;
+    std::uint32_t minSize = 4;
+    std::uint32_t maxSize = 5;
+    std::uint32_t walkYards = 6000;
+};
+
+inline bool InWalkRange(Candidate const& c, EntranceSpot const& e, std::uint32_t yards)
+{
+    std::int64_t const dx = c.x - e.x, dy = c.y - e.y;
+    return c.map == e.map && dx * dx + dy * dy <= std::int64_t(yards) * yards;
+}
+
+// The recruit plan for `team` (empty guids = none). Over the listed dungeons open to the team with a known
+// entrance and every level window [lo, lo + LevelSpread] inside a dungeon's band, the window holding the most
+// candidates wins (ties: list order, then the lower window); it needs MinSize candidates and a healer-capable
+// class (tanks are preferred, not required: probe parties cleared with dps-heavy rosters). Roster: the best
+// healer (HealRank), then the best tank among the rest (TankRank), then dps up to MaxSize; every pick prefers a
+// bot in walk range of the entrance, then the higher level, then the lower guid. Leader = the tank, else the
+// highest level.
+inline Plan PlanRecruit(std::vector<Candidate> cands, std::uint8_t team, std::vector<DungeonDef> const& defs,
+                        std::vector<EntranceSpot> const& entrances, RecruitParams const& p)
+{
+    std::sort(cands.begin(), cands.end(), [](Candidate const& a, Candidate const& b) { return a.guid < b.guid; });
+    std::uint32_t const minSize = std::max<std::uint32_t>(p.minSize, 2);
+    std::uint32_t const maxSize = std::min<std::uint32_t>(std::max(p.maxSize, minSize), 5);
+    std::size_t best = defs.size();
+    std::uint32_t bestLo = 0, bestHi = 0, bestCount = 0;
+    for (std::size_t di = 0; di < defs.size() && di < entrances.size(); ++di)
+    {
+        DungeonDef const& d = defs[di];
+        if (!(d.teams & team) || !entrances[di].known)
+            continue;
+        for (std::uint32_t lo = d.minLevel; lo <= std::min<std::uint32_t>(d.maxLevel, 255); ++lo)
+        {
+            std::uint32_t const hi = std::min(lo + p.levelSpread, d.maxLevel);
+            std::uint32_t count = 0;
+            bool healer = false;
+            for (Candidate const& c : cands)
+                if (c.team == team && c.level >= lo && c.level <= hi)
+                {
+                    ++count;
+                    healer = healer || HealRank(c.cls);
+                }
+            if (count >= minSize && healer && count > bestCount)
+            {
+                best = di;
+                bestLo = lo;
+                bestHi = hi;
+                bestCount = count;
+            }
+        }
+    }
+    Plan plan;
+    if (best == defs.size())
+        return plan;
+    EntranceSpot const& e = entrances[best];
+    std::vector<std::size_t> pool;
+    for (std::size_t i = 0; i < cands.size(); ++i)
+        if (cands[i].team == team && cands[i].level >= bestLo && cands[i].level <= bestHi)
+            pool.push_back(i);
+    auto better = [&](std::size_t a, std::size_t b)
+    {
+        bool const wa = InWalkRange(cands[a], e, p.walkYards), wb = InWalkRange(cands[b], e, p.walkYards);
+        if (wa != wb)
+            return wa;
+        if (cands[a].level != cands[b].level)
+            return cands[a].level > cands[b].level;
+        return cands[a].guid < cands[b].guid;
+    };
+    std::vector<std::size_t> pick;
+    std::vector<Role> roles;
+    auto take = [&](auto rankOf, Role role)
+    {
+        std::size_t sel = cands.size();
+        for (std::size_t i : pool)
+        {
+            if (!rankOf(cands[i].cls) || std::find(pick.begin(), pick.end(), i) != pick.end())
+                continue;
+            if (sel == cands.size() || rankOf(cands[i].cls) < rankOf(cands[sel].cls) ||
+                (rankOf(cands[i].cls) == rankOf(cands[sel].cls) && better(i, sel)))
+                sel = i;
+        }
+        if (sel != cands.size())
+        {
+            pick.push_back(sel);
+            roles.push_back(role);
+        }
+    };
+    take(HealRank, Role::Healer);
+    take(TankRank, Role::Tank);
+    std::vector<std::size_t> rest;
+    for (std::size_t i : pool)
+        if (std::find(pick.begin(), pick.end(), i) == pick.end())
+            rest.push_back(i);
+    std::sort(rest.begin(), rest.end(), better);
+    for (std::size_t i = 0; i < rest.size() && pick.size() < maxSize; ++i)
+    {
+        pick.push_back(rest[i]);
+        roles.push_back(Role::Dps);
+    }
+    // Guid ascending, roles alongside.
+    std::vector<std::size_t> order(pick.size());
+    for (std::size_t i = 0; i < order.size(); ++i)
+        order[i] = i;
+    std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return cands[pick[a]].guid < cands[pick[b]].guid; });
+    std::vector<Member> ms;
+    for (std::size_t i : order)
+    {
+        plan.guids.push_back(cands[pick[i]].guid);
+        plan.roles.push_back(roles[i]);
+        ms.push_back({cands[pick[i]].guid, cands[pick[i]].level, cands[pick[i]].cls});
+    }
+    plan.leader = plan.guids[ChooseLeader(ms, plan.roles)];
+    plan.reason = Reason::Dungeon;
+    plan.dungeonMap = defs[best].map;
+    return plan;
+}
+
 // ---- keeping a party ---------------------------------------------------------------------------------
 struct KeepFacts
 {
@@ -651,7 +786,8 @@ enum class RunEvent : std::uint8_t
     Abandoned,
     ApproachGaveUp,
     StageFailed,
-    PortalFallback
+    PortalFallback,
+    Summary  // AutoWow.Dungeon.Recruit: one row when a recruited party is released
 };
 
 inline constexpr char const* RunEventName(RunEvent e)
@@ -666,6 +802,7 @@ inline constexpr char const* RunEventName(RunEvent e)
         case RunEvent::ApproachGaveUp: return "approach_gave_up";
         case RunEvent::StageFailed: return "stage_failed";
         case RunEvent::PortalFallback: return "portal_fallback";
+        case RunEvent::Summary: return "summary";
     }
     return "unknown";
 }
@@ -715,12 +852,23 @@ inline std::string DungeonFields(std::uint32_t id, std::uint32_t map, std::uint3
            GuidList(guids);
 }
 
+// Extra trailing fields of a recruited run's `summary` row (after DungeonFields): bosses / total over the
+// clearable encounters, completed and wiped as 0|1, member deaths during the run.
+inline std::string RunSummaryFields(std::uint32_t bosses, std::uint32_t total, bool completed, bool wiped,
+                                    std::uint32_t deaths)
+{
+    return ",\"bosses\":" + std::to_string(bosses) + ",\"total\":" + std::to_string(total) + ",\"completed\":" +
+           (completed ? "1" : "0") + ",\"wipes\":" + (wiped ? "1" : "0") + ",\"deaths\":" + std::to_string(deaths) +
+           ",\"recruit\":1";
+}
+
 // ---- runtime (AutoWow/PartyRuntime.cpp, leader walk in NewRpgParty.cpp) ------------------------------
 namespace detail
 {
 inline bool gEnabled = false;   // AutoWow.Party.Enable
 inline bool gDungeons = false;  // AutoWow.Dungeon.Enable (needs Party.Enable)
 inline bool gRoles = false;     // AutoWow.Party.Roles
+inline bool gRecruit = false;   // AutoWow.Dungeon.Recruit (needs Dungeon.Enable)
 }
 inline bool Enabled() { return detail::gEnabled; }
 inline bool RolesEnabled() { return detail::gRoles; }
