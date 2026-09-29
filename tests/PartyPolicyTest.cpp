@@ -400,6 +400,44 @@ TEST(PartyPolicyTest, RecruitWidePoolTakesOnlyPullableBusyBots)
     EXPECT_STREQ(DisbandName(Disband::Recruited), "recruited");
 }
 
+TEST(PartyPolicyTest, RecruitTankOverLevelFillsAMissingTankAfterInBandTanks)
+{
+    std::vector<DungeonDef> const defs = ParseDungeons("129:37:46:AH");  // RFD, max 46
+    RecruitParams req;
+    req.requireTank = true;
+    char const* why = nullptr;
+    std::vector<Candidate> cands = {R(1, 44, kPriest), R(2, 45, kRogue), R(3, 45, kMage), R(4, 46, kHunter),
+                                    T(R(5, 64, kWarrior)), T(R(6, 66, kWarrior)), T(R(7, 30, kWarrior))};
+    // Off (0): the L64 / L66 warriors are over the band: no tank.
+    EXPECT_TRUE(PlanRecruit(cands, kHorde, defs, Known(1), req, &why).guids.empty());
+    EXPECT_STREQ(why, "no_tank");
+    // 17 over max 46 = 63: still none.
+    req.tankOverLevel = 17;
+    EXPECT_TRUE(PlanRecruit(cands, kHorde, defs, Known(1), req).guids.empty());
+    // 20: the closest over-level warrior (64) tanks and leads; the window still fills the other four slots.
+    req.tankOverLevel = 20;
+    Plan pl = PlanRecruit(cands, kHorde, defs, Known(1), req, &why);
+    EXPECT_STREQ(why, "");
+    EXPECT_EQ(pl.guids, (std::vector<std::uint32_t>{1, 2, 3, 4, 5}));
+    EXPECT_EQ(pl.roles, (std::vector<Role>{Role::Healer, Role::Dps, Role::Dps, Role::Dps, Role::Tank}));
+    EXPECT_EQ(pl.leader, 5u);
+    EXPECT_EQ(pl.tankDelta, 18);
+
+    // An in-band tank goes first: a L45 paladin tanks (delta -1), the over-level warriors stay out.
+    cands.push_back(T(R(8, 45, kPaladin)));
+    pl = PlanRecruit(cands, kHorde, defs, Known(1), req);
+    EXPECT_EQ(pl.leader, 8u);
+    EXPECT_EQ(pl.tankDelta, -1);
+    EXPECT_EQ(std::count(pl.guids.begin(), pl.guids.end(), 5u), 0);
+
+    // The window's only healer is a paladin: it heals, the over-level warrior tanks.
+    std::vector<Candidate> pal = {T(R(1, 44, kPaladin)), R(2, 45, kRogue), R(3, 45, kMage), R(4, 46, kHunter),
+                                  T(R(5, 60, kWarrior))};
+    pl = PlanRecruit(pal, kHorde, defs, Known(1), req);
+    EXPECT_EQ(pl.roles, (std::vector<Role>{Role::Healer, Role::Dps, Role::Dps, Role::Dps, Role::Tank}));
+    EXPECT_EQ(pl.tankDelta, 14);
+}
+
 TEST(PartyPolicyTest, RecruitRequireTankNeedsATankBesidesTheHealer)
 {
     std::vector<DungeonDef> const defs = ParseDungeons("47:30:40:AH");
