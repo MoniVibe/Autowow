@@ -231,3 +231,14 @@ swim moves leader and followers across the pool; stragglers walk on the RFK dire
   TYPE_JAMMAL_AN DONE: the encounter is set aside (`gate_unavailable=prerequisite`) but, unlike key_blocked /
   friendly_credit, stays in the probe's clearable mask.
 - Needs in-game proof: statue use on the walk, trolls on the balconies (LOS/approach), the pit descent, forcefield open.
+
+## Lane dgates7 status, 2026-09-29 (S70 Razorfen Downs regression)
+- Both S70 runs (and one S69 run) stalled at (2500,836) with next=1 (Mordresh) after the Tuten'kash gong. The
+  completed runs got a short prepared corridor (8-16 route points) toward Mordresh; the stalled ones, from a few
+  yards over, got a 62-point travel-node route whose first node lies on the lower level (2470,914, z 27; slope probe
+  incomplete from the gong ledge). The leader looped on `route_index=0` prepared prefixes and the followers' route
+  slot was unreachable: `convoy_shared_regroup_terminal` latched and the leader then waited silently.
+- Fix: ConvoyV2 curated legs (129,1) gong -> Mordresh (9 points) and (129,2) Mordresh -> Glutton (14 points, ends
+  where leg 3 starts). All pairs replay complete without the slope check.
+- Not changed: a latched shared-regroup terminal still waits without a straggler walk (only the gate-goal cohesion
+  branch walks stragglers).
