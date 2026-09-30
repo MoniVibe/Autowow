@@ -71,6 +71,7 @@ struct Params
     std::uint64_t recruitCooldownMs = 2700000;
     std::uint32_t recruitMaxParties = 1;  // per faction at once
     bool recruitWidePool = false;         // AutoWow.Dungeon.RecruitWidePool
+    std::uint64_t recruitGatherPortalMs = 0;  // AutoWow.Dungeon.RecruitGatherPortalMs (0 = off)
     RecruitParams recruit;
 };
 
@@ -125,6 +126,10 @@ struct Party
     std::uint32_t deadBits = 0;     // slot index bit = that member is dead now
     bool wiped = false;
     bool completed = false;
+    // AutoWow.Dungeon.RecruitGatherPortalMs: the gather start (Stage reached, 0 = not yet) and the members the
+    // gather portal already moved (guids).
+    std::uint64_t gatherMs = 0;
+    std::vector<std::uint32_t> gatherPortaled;
 };
 
 struct QuestOffer
@@ -789,8 +794,15 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
                     !ai->HasStrategy("follow", BOT_STATE_NON_COMBAT))
                     ai->ChangeStrategy("+follow", BOT_STATE_NON_COMBAT);
             }
-            bool const missing = std::any_of(bots.begin(), bots.end(), [&p](Player* b)
-                                             { return !b->IsAlive() || b->GetMapId() != p.dungeonMap; });
+            // RecruitGatherPortalMs: a member outside counts as missing only once its gather portal was tried.
+            bool const gather = p.recruited && gParams.recruitGatherPortalMs;
+            bool const missing = std::any_of(bots.begin(), bots.end(), [&p, gather](Player* b)
+            {
+                return !b->IsAlive() ||
+                       (b->GetMapId() != p.dungeonMap &&
+                        (!gather || std::find(p.gatherPortaled.begin(), p.gatherPortaled.end(),
+                                              std::uint32_t(b->GetGUID().GetCounter())) != p.gatherPortaled.end()));
+            });
             if (!missing)
                 p.missingSinceMs = 0;
             else if (!p.missingSinceMs)
@@ -869,6 +881,109 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
     return Disband::None;
 }
 
+// AutoWow.Dungeon.RecruitGatherPortalMs (recruited parties in a run): drop members that cannot come, portal the
+// ones not arrived GatherPortalMs after the gather start (Stage). False = the run was given up (logged).
+bool RecruitGather(Party& p, std::uint64_t now)
+{
+    if (p.phase == Phase::None || p.phase == Phase::Exit)
+        return true;
+    if (!p.gatherMs && (p.phase == Phase::Stage || p.phase == Phase::Inside))
+        p.gatherMs = now;
+    bool const deadline = p.gatherMs && now >= p.gatherMs + gParams.recruitGatherPortalMs;
+    Entrance const e = gEntrances.at(p.dungeonMap);
+    std::vector<std::pair<std::uint32_t, char const*>> drops;
+    for (Slot const& s : p.slots)
+    {
+        Player* bot = Find(s.guid);
+        GatherFacts f;
+        f.online = bot != nullptr;
+        if (bot)
+        {
+            f.alive = bot->IsAlive();
+            f.inDungeon = bot->GetMapId() == p.dungeonMap;
+            f.arrived = f.inDungeon || (bot->GetMapId() == e.map &&
+                                        bot->GetExactDist2d(e.x, e.y) <= float(gParams.stageYards));
+            f.portaled = std::find(p.gatherPortaled.begin(), p.gatherPortaled.end(), s.guid) != p.gatherPortaled.end();
+        }
+        // The leader stays unless it is offline (then the run is given up below).
+        switch (s.guid == p.leader && f.online ? GatherAct::None : DecideGather(f, deadline))
+        {
+            case GatherAct::Drop:
+                drops.emplace_back(s.guid, f.online ? "dead_elsewhere" : "offline");
+                break;
+            case GatherAct::Portal:
+            {
+                p.gatherPortaled.push_back(s.guid);
+                bool const taxi = bot->IsInFlight();
+                if (taxi)
+                {
+                    // End the taxi cleanly (as Player::TeleportTo does) before the portal.
+                    bot->GetMotionMaster()->MovementExpired();
+                    bot->CleanupAfterTaxiFlight();
+                }
+                if (PlayerbotAI* ai = AiOf(bot))
+                    ai->rpgInfo.ChangeToIdle();  // a pending flight-travel status must not resume
+                if (AutoWowQuestLedger::Enabled())
+                    AutoWowQuestLedger::Emit(bot, AutoWowQuestLedger::Event::Contaminated, 0, "party_recruit_gather_portal");
+                LOG_INFO("playerbots", "[Party] pid={} gather portal member={} map={} yd={} taxi={} after_ms={}", p.id,
+                         bot->GetName(), bot->GetMapId(),
+                         bot->GetMapId() == e.map ? std::int64_t(bot->GetExactDist2d(e.x, e.y)) : -1, taxi,
+                         now - p.gatherMs);
+                bot->TeleportTo(e.map, e.x, e.y, e.z, bot->GetOrientation());
+                break;
+            }
+            case GatherAct::None:
+                break;
+        }
+    }
+    if (drops.empty())
+        return true;
+    std::vector<Role> before, after;
+    bool leaderDropped = false;
+    for (Slot const& s : p.slots)
+    {
+        before.push_back(s.role);
+        bool const dropped = std::any_of(drops.begin(), drops.end(), [&s](auto const& d) { return d.first == s.guid; });
+        leaderDropped = leaderDropped || (dropped && s.guid == p.leader);
+        if (!dropped)
+            after.push_back(s.role);
+    }
+    if (leaderDropped || !KeepAfterDrop(before, after))
+    {
+        LOG_INFO("playerbots", "[Party] pid={} recruit gather abandon why={} dropped={}", p.id,
+                 leaderDropped ? "leader_gone" : "roles_short", drops.size());
+        EmitRun(p, RunEvent::Abandoned, -1, now);
+        if (p.phase == Phase::Inside)
+            SetPhase(p, Phase::Exit, now);
+        else
+            EndRun(p, now);
+        return false;
+    }
+    Group* group = nullptr;
+    if (Player* leader = Find(p.leader))
+        group = leader->GetGroup();
+    for (auto const& [guid, why] : drops)
+    {
+        auto const it = std::find_if(p.slots.begin(), p.slots.end(), [g = guid](Slot const& s) { return s.guid == g; });
+        if (Player* bot = Find(guid))
+            if (PlayerbotAI* ai = AiOf(bot))
+                Restore(*it, bot, ai);
+        if (group)
+            group->RemoveMember(ObjectGuid::Create<HighGuid::Player>(guid));
+        LOG_INFO("playerbots", "[Party] pid={} recruit gather dropped member={} why={} left={}", p.id, guid, why,
+                 p.slots.size() - 1);
+        Emit(p, false, "dropped",
+             ",\"pid\":" + std::to_string(p.id) + ",\"member\":" + std::to_string(guid) + ",\"drop\":\"" + why +
+                 "\",\"left\":" + std::to_string(p.slots.size() - 1));
+        p.slots.erase(it);
+        std::lock_guard<std::mutex> guard(gLock);
+        gOf.erase(guid);
+        gLeftMs[guid] = now;
+        gRecruitReadyMs[guid] = now + gParams.recruitCooldownMs;
+    }
+    return true;
+}
+
 // ---- supervision ----------------------------------------------------------------------------------------
 void Supervise(std::uint32_t id, std::uint64_t now)
 {
@@ -889,6 +1004,25 @@ void Supervise(std::uint32_t id, std::uint64_t now)
             if (Player* b = ObjectAccessor::FindConnectedPlayer(ObjectGuid::Create<HighGuid::Player>(s.guid));
                 b && (!b->IsInWorld() || b->IsBeingTeleported()))
                 return;
+    if (p.recruited && gParams.recruitGatherPortalMs)
+    {
+        bool const keep = RecruitGather(p, now);
+        {
+            std::lock_guard<std::mutex> guard(gLock);
+            if (auto const it = gParties.find(id); it != gParties.end())
+            {
+                // The leader thread only writes the approach fields; keep its latest values.
+                p.stuckTicks = it->second.stuckTicks;
+                p.approachGaveUp = p.approachGaveUp || it->second.approachGaveUp;
+                it->second = p;
+            }
+        }
+        if (!keep && p.phase == Phase::None)
+        {
+            Dissolve(id, Disband::DungeonDone, now);  // given up before entry: released like any recruited run
+            return;
+        }
+    }
     std::vector<Player*> bots;
     Player* leader = nullptr;
     Group* group = nullptr;
@@ -1261,6 +1395,7 @@ void LoadConfig()
         p.recruit.requireTank = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RequireTank", false);
         detail::gRecruitWalk = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitStragglerWalk", false);
         p.recruitWidePool = sConfigMgr->GetOption<bool>("AutoWow.Dungeon.RecruitWidePool", false);
+        p.recruitGatherPortalMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.RecruitGatherPortalMs", 0);
         p.recruit.tankOverLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Dungeon.RecruitTankOverLevel", 0);
     }
     gDungeons = ParseDungeons(sConfigMgr->GetOption<std::string>(

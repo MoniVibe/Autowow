@@ -438,6 +438,37 @@ TEST(PartyPolicyTest, RecruitTankOverLevelFillsAMissingTankAfterInBandTanks)
     EXPECT_EQ(pl.tankDelta, 14);
 }
 
+TEST(PartyPolicyTest, RecruitGatherPortalsLateMembersAndDropsThoseWhoCannotCome)
+{
+    GatherFacts f;  // online, alive, outside, not arrived, not portaled
+    EXPECT_EQ(DecideGather(f, false), GatherAct::None);    // within GatherPortalMs: wait
+    EXPECT_EQ(DecideGather(f, true), GatherAct::Portal);   // S75: stuck at a flight path -> portal once
+    f.portaled = true;
+    EXPECT_EQ(DecideGather(f, true), GatherAct::None);     // tried: the missing-member grace decides now
+    f = GatherFacts{};
+    f.arrived = true;
+    EXPECT_EQ(DecideGather(f, true), GatherAct::None);
+    f = GatherFacts{};
+    f.online = false;
+    EXPECT_EQ(DecideGather(f, false), GatherAct::Drop);    // offline: drop at once
+    f = GatherFacts{};
+    f.alive = false;
+    EXPECT_EQ(DecideGather(f, false), GatherAct::None);
+    EXPECT_EQ(DecideGather(f, true), GatherAct::Drop);     // dead outside the dungeon after the deadline
+    f.inDungeon = true;
+    f.arrived = true;
+    EXPECT_EQ(DecideGather(f, true), GatherAct::None);     // dead inside: the healer / grace decide
+
+    std::vector<Role> const five = {Role::Tank, Role::Healer, Role::Dps, Role::Dps, Role::Dps};
+    EXPECT_TRUE(KeepAfterDrop(five, {Role::Tank, Role::Healer, Role::Dps, Role::Dps}));  // run with 4
+    EXPECT_TRUE(KeepAfterDrop(five, {Role::Tank, Role::Healer, Role::Dps}));
+    EXPECT_FALSE(KeepAfterDrop(five, {Role::Tank, Role::Healer}));                     // too few
+    EXPECT_FALSE(KeepAfterDrop(five, {Role::Healer, Role::Dps, Role::Dps, Role::Dps}));  // tank gone
+    EXPECT_FALSE(KeepAfterDrop(five, {Role::Tank, Role::Dps, Role::Dps, Role::Dps}));    // healer gone
+    // A party that never had a tank only keeps its healer.
+    EXPECT_TRUE(KeepAfterDrop({Role::Healer, Role::Dps, Role::Dps, Role::Dps}, {Role::Healer, Role::Dps, Role::Dps}));
+}
+
 TEST(PartyPolicyTest, RecruitRequireTankNeedsATankBesidesTheHealer)
 {
     std::vector<DungeonDef> const defs = ParseDungeons("47:30:40:AH");
