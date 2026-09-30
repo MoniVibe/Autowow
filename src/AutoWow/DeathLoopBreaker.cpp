@@ -400,6 +400,15 @@ bool MarkDangerArea(std::uint32_t botGuid, std::uint32_t map, std::int32_t x, st
     return true;
 }
 
+bool RelocationPending(std::uint32_t botGuid)
+{
+    if (!Enabled())
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState const* s = Find(botGuid);
+    return s && s->relocate;
+}
+
 bool TakeRelocation(std::uint32_t botGuid)
 {
     if (!Enabled())
@@ -409,7 +418,26 @@ bool TakeRelocation(std::uint32_t botGuid)
     if (!s || !s->relocate)
         return false;
     s->relocate = false;
+    s->relocationBlock = RelocationBlock::None;
     return true;
+}
+
+bool NoteRelocationBlock(std::uint32_t botGuid, RelocationBlock reason)
+{
+    if (!Enabled())
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState* s = Find(botGuid);
+    return s && s->relocate && NoteRelocationBlock(*s, reason);
+}
+
+bool CompleteEscapeArrival(std::uint32_t botGuid, bool arrived)
+{
+    if (!Enabled() || !arrived)
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState* s = Find(botGuid);
+    return s && ClearObservedEscapeArrival(*s, true);
 }
 
 bool TakeQuestDeferral(std::uint32_t botGuid, std::uint32_t questId)

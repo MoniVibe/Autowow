@@ -228,13 +228,114 @@ TEST(DeathLoopBreaker, AcceptedHardEscapeClearsSourceStateButPreservesDangerAndC
     EXPECT_TRUE(IsDangerous(s, 530, -2570, 3917, 2000));
 }
 
+// Value-level caller-seam proof: this cannot instantiate a live Player, but NewRpgAction uses this same
+// helper to install the RPG trip before releasing the SafeRevive and DeathLoop runtime requests.
+TEST(DeathLoopBreaker, CoOwnedRelocationSurvivesBlockedRetriesAndReleasesAfterTripInstall)
+{
+    bool safePending = true;
+    bool deathPending = true;
+    int sequence = 0;
+    int installOrder = 0;
+    int safeOrder = 0;
+    int deathOrder = 0;
+    auto accept = [&](RelocationAttempt attempt, bool fallbackAccepted)
+    {
+        RelocationOwners const owners{safePending, deathPending};
+        return AcceptRelocationOwners(
+            owners, attempt, fallbackAccepted, [&] { installOrder = ++sequence; },
+            [&]
+            {
+                safePending = false;
+                safeOrder = ++sequence;
+            },
+            [&]
+            {
+                deathPending = false;
+                deathOrder = ++sequence;
+            });
+    };
+
+    EXPECT_FALSE(accept(RelocationAttempt::TemporaryBlocked, false));
+    EXPECT_TRUE(safePending);
+    EXPECT_TRUE(deathPending);
+    EXPECT_EQ(sequence, 0);
+
+    EXPECT_FALSE(accept(RelocationAttempt::NoRoute, false));
+    EXPECT_TRUE(safePending);
+    EXPECT_TRUE(deathPending);
+    EXPECT_EQ(sequence, 0);
+
+    EXPECT_TRUE(accept(RelocationAttempt::Started, false));
+    EXPECT_FALSE(safePending);
+    EXPECT_FALSE(deathPending);
+    EXPECT_EQ(installOrder, 1);
+    EXPECT_EQ(safeOrder, 2);
+    EXPECT_EQ(deathOrder, 3);
+
+    safePending = true;
+    deathPending = true;
+    sequence = installOrder = safeOrder = deathOrder = 0;
+    EXPECT_TRUE(accept(RelocationAttempt::NoRoute, true));
+    EXPECT_FALSE(safePending);
+    EXPECT_FALSE(deathPending);
+    EXPECT_EQ(installOrder, 1);
+    EXPECT_EQ(safeOrder, 2);
+    EXPECT_EQ(deathOrder, 3);
+}
+
+TEST(DeathLoopBreaker, RelocationBlockDiagnosticChangesOnlyWithTheReason)
+{
+    BotState s;
+    EXPECT_TRUE(NoteRelocationBlock(s, RelocationBlock::Combat));
+    EXPECT_FALSE(NoteRelocationBlock(s, RelocationBlock::Combat));
+    EXPECT_TRUE(NoteRelocationBlock(s, RelocationBlock::Flight));
+    EXPECT_TRUE(NoteRelocationBlock(s, RelocationBlock::NoRoute));
+    EXPECT_FALSE(NoteRelocationBlock(s, RelocationBlock::NoRoute));
+    EXPECT_TRUE(NoteRelocationBlock(s, RelocationBlock::None));
+    EXPECT_FALSE(NoteRelocationBlock(s, RelocationBlock::None));
+}
+
+TEST(DeathLoopBreaker, ObservedEscapeArrivalClearsSourceEpisodeButPreservesDangerAndCooldown)
+{
+    BotState s;
+    DeathSample center;
+    RecordDeath(s, At(1000, -1243, 5866, 530), 1800000, 60, center);
+    s.pendingKillerLevel = 71;
+    s.lastKillerLevel = 71;
+    s.relocate = true;
+    s.hard.active = true;
+    s.hard.hearthTried = true;
+    s.hard.retryAtMs = 4567;
+    s.hard.cooldownUntilMs = 987654;
+    MarkDanger(s, center, 60, 1000, 3601000);
+
+    EXPECT_FALSE(ClearObservedEscapeArrival(s, false));
+    EXPECT_EQ(s.deathCount, 1U);
+    EXPECT_TRUE(s.relocate);
+    EXPECT_TRUE(s.hard.active);
+
+    EXPECT_TRUE(ClearObservedEscapeArrival(s, true));
+    EXPECT_EQ(s.deathCount, 0U);
+    EXPECT_FALSE(s.relocate);
+    EXPECT_EQ(s.pendingKillerLevel, 0U);
+    EXPECT_EQ(s.lastKillerLevel, 0U);
+    EXPECT_FALSE(s.hard.active);
+    EXPECT_FALSE(s.hard.hearthTried);
+    EXPECT_EQ(s.hard.retryAtMs, 0U);
+    EXPECT_EQ(s.hard.cooldownUntilMs, 987654U);
+    EXPECT_TRUE(IsDangerous(s, 530, -1243, 5866, 2000));
+}
+
 TEST(DeathLoopBreaker, RuntimeQueriesAreInertWhenDisabled)
 {
     ASSERT_FALSE(Enabled());
     EXPECT_FALSE(EscapeEnabled());
     EXPECT_FALSE(WantsSpiritHealer(112));
     EXPECT_FALSE(IsDangerous(112, 0, -7988.0f, -2371.0f));
+    EXPECT_FALSE(RelocationPending(112));
     EXPECT_FALSE(TakeRelocation(112));
+    EXPECT_FALSE(NoteRelocationBlock(112, RelocationBlock::Combat));
+    EXPECT_FALSE(CompleteEscapeArrival(112, true));
     EXPECT_FALSE(TakeQuestDeferral(112, 4183));
     EXPECT_EQ(RecentDeaths(112U), 0U);
 }

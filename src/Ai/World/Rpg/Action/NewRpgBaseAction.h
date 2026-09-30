@@ -7,6 +7,8 @@
 #ifndef PLAYERBOTS_NEWRPGBASEACTION_H
 #define PLAYERBOTS_NEWRPGBASEACTION_H
 
+#include <cstdint>
+
 #include "LastMovementValue.h"
 #include "MovementActions.h"
 #include "NewRpgInfo.h"
@@ -22,6 +24,11 @@ namespace AutoWowErrands
 {
 struct BotState;
 struct Stop;
+}
+
+namespace AutoWowDeathLoop
+{
+enum class RelocationAttempt : std::uint8_t;
 }
 
 struct POIInfo
@@ -130,6 +137,9 @@ protected:
     // to the nearest level-appropriate hub (ledger zone_move reason death_loop). False: not movable / no
     // hub (caller keeps the flight relocation). Caller checks both flags.
     bool DeathLoopEscape();
+    // Detailed form used by relocation owners: a temporary native movement exclusion retains ownership,
+    // while NoRoute permits the existing flight fallback. DeathLoopEscape keeps the historical bool API.
+    AutoWowDeathLoop::RelocationAttempt TryDeathLoopEscape();
     // AutoWow.Errands.Enable (ErrandsPolicy.h): town run of an independent bot (sell, repair, restock,
     // train, bind, flight path; real gold) and the way back. True when it consumed the tick. Caller
     // checks the flag.

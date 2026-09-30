@@ -233,7 +233,9 @@ inline Params gParams;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
 inline bool V2Enabled() { return detail::gEnabled && detail::gV2; }
-// V2: the relocation owed after a forced spirit-healer res (consumed once; false with V2 off).
+// V2: non-consuming inspection and consuming acceptance of the relocation owed after a forced
+// spirit-healer resurrection. Both are false with V2 off.
+bool RelocationPending(std::uint32_t botGuid);
 bool TakeRelocation(std::uint32_t botGuid);
 
 // World-space target of this death's plan (plan != None).

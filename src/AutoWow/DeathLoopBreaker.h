@@ -74,6 +74,77 @@ struct HardState
     std::uint64_t nextCheckMs = 0;      // runtime throttle
 };
 
+// Result of trying to install the configured zone-progression escape. TemporaryBlocked keeps all
+// relocation ownership for a later tick; NoRoute permits the caller to try the existing taxi fallback.
+enum class RelocationAttempt : std::uint8_t
+{
+    Started = 0,
+    TemporaryBlocked = 1,
+    NoRoute = 2
+};
+
+// State-change diagnostic for a pending relocation. Append only: values may appear in native logs.
+enum class RelocationBlock : std::uint8_t
+{
+    None = 0,
+    Dead = 1,
+    Flight = 2,
+    Combat = 3,
+    Controlled = 4,
+    Oracle = 5,
+    NoMap = 6,
+    Instance = 7,
+    Errand = 8,
+    NoRoute = 9
+};
+
+inline constexpr char const* RelocationBlockName(RelocationBlock reason)
+{
+    switch (reason)
+    {
+        case RelocationBlock::None: return "none";
+        case RelocationBlock::Dead: return "dead";
+        case RelocationBlock::Flight: return "flight";
+        case RelocationBlock::Combat: return "combat";
+        case RelocationBlock::Controlled: return "controlled";
+        case RelocationBlock::Oracle: return "oracle";
+        case RelocationBlock::NoMap: return "no_map";
+        case RelocationBlock::Instance: return "instance";
+        case RelocationBlock::Errand: return "errand";
+        case RelocationBlock::NoRoute: return "no_route";
+    }
+    return "none";
+}
+
+inline bool ShouldConsumeRelocation(RelocationAttempt attempt, bool fallbackAccepted)
+{
+    return attempt == RelocationAttempt::Started ||
+           (attempt == RelocationAttempt::NoRoute && fallbackAccepted);
+}
+
+// Snapshot of the two runtimes that can co-own one relocation. Acceptance installs the trip first,
+// then releases exactly the owners observed for that decision; blocked and rejected attempts do neither.
+struct RelocationOwners
+{
+    bool safeRevive = false;
+    bool deathLoop = false;
+    [[nodiscard]] bool Any() const { return safeRevive || deathLoop; }
+};
+
+template <typename Install, typename TakeSafeRevive, typename TakeDeathLoop>
+inline bool AcceptRelocationOwners(RelocationOwners owners, RelocationAttempt attempt, bool fallbackAccepted,
+                                   Install install, TakeSafeRevive takeSafeRevive, TakeDeathLoop takeDeathLoop)
+{
+    if (!ShouldConsumeRelocation(attempt, fallbackAccepted))
+        return false;
+    install();
+    if (owners.safeRevive)
+        takeSafeRevive();
+    if (owners.deathLoop)
+        takeDeathLoop();
+    return true;
+}
+
 // Per-bot state. deaths[0..deathCount) is oldest first.
 struct BotState
 {
@@ -86,8 +157,17 @@ struct BotState
     std::uint32_t deferQuest = 0;          // Oracle-managed quest to defer at the next Oracle pass
     bool restPending = false;              // V2: spirit-healer res taken, full rest before any pull
     std::uint32_t lastKillerLevel = 0;     // HardEscape: killer level of the latest death
+    RelocationBlock relocationBlock = RelocationBlock::None; // last native block reason; log on change
     HardState hard;                        // HardEscape (3)
 };
+
+inline bool NoteRelocationBlock(BotState& s, RelocationBlock reason)
+{
+    if (s.relocationBlock == reason)
+        return false;
+    s.relocationBlock = reason;
+    return true;
+}
 
 // A relocation is handed to the existing party survival escape only on its first admission. The party
 // runtime is the authority for whether the bot belongs to a tracked open-world group-quest party; its
@@ -108,6 +188,20 @@ inline bool ClearAcceptedEscapeSource(BotState& s, bool accepted)
     s.pendingKillerLevel = 0;
     s.lastKillerLevel = 0;
     s.relocate = false;
+    s.relocationBlock = RelocationBlock::None;
+    return true;
+}
+
+// A completed death-loop zone trip is stronger evidence than cast/start acceptance: clear the source
+// hard episode as well. Its cooldown and all marked danger areas remain authoritative.
+inline bool ClearObservedEscapeArrival(BotState& s, bool arrived)
+{
+    if (!arrived)
+        return false;
+    ClearAcceptedEscapeSource(s, true);
+    s.hard.active = false;
+    s.hard.hearthTried = false;
+    s.hard.retryAtMs = 0;
     return true;
 }
 
@@ -450,8 +544,13 @@ bool IsDangerous(std::uint32_t botGuid, std::uint32_t map, float x, float y);
 // rules). False with the flag off or the bot untracked.
 bool MarkDangerArea(std::uint32_t botGuid, std::uint32_t map, std::int32_t x, std::int32_t y, std::uint32_t radius,
                     std::uint64_t durationMs);
-// Consumes the pending relocation (one attempt per escalation).
+// Non-consuming inspection and consuming acceptance of one relocation attempt per escalation.
+bool RelocationPending(std::uint32_t botGuid);
 bool TakeRelocation(std::uint32_t botGuid);
+// Records a native block reason only when it changes; false with the feature off or no tracked state.
+bool NoteRelocationBlock(std::uint32_t botGuid, RelocationBlock reason);
+// Clears obsolete source recovery only after an observed death-loop arrival. Failed arrival is inert.
+bool CompleteEscapeArrival(std::uint32_t botGuid, bool arrived);
 // Deaths of this bot within WindowMs of now (0 with the flag off). Escape portal rule input.
 std::uint32_t RecentDeaths(std::uint32_t botGuid);
 // Consumes the pending Oracle deferral when it names questId.

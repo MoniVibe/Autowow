@@ -298,6 +298,12 @@ TEST(SafeReviveV2, RespawnSoonWindow)
     EXPECT_FALSE(AutoWowSafeRevive::RespawnSoon(0, 1000));     // none scheduled
 }
 
+TEST(SafeReviveV2, RelocationInspectionIsInertWhenDisabled)
+{
+    EXPECT_FALSE(AutoWowSafeRevive::RelocationPending(62989));
+    EXPECT_FALSE(AutoWowSafeRevive::TakeRelocation(62989));
+}
+
 TEST(RestSafe, CandidatesRingAtThirtyThenSixtyYards)
 {
     Point const here = P(-9000, 400);

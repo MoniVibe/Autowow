@@ -425,15 +425,41 @@ static void EmitMove(Player* bot, AutoWowZoneProgression::BotState const& s, Aut
              TriggerName(s.trigger), ModeName(s.mode), now - s.startMs);
 }
 
-// Independent, open-world, idle-able bot that zone progression may move.
-static bool Movable(Player* bot, PlayerbotAI* botAI)
+// Independent, open-world, idle-able bot that zone progression may move. Keep the predicate and the
+// relocation diagnostic sourced from one classifier so an exclusion can never become permission.
+static AutoWowDeathLoop::RelocationBlock MovementBlock(Player* bot, PlayerbotAI* botAI)
 {
     uint32 const guid = bot->GetGUID().GetCounter();
-    if (!bot->IsAlive() || bot->IsInFlight() || bot->IsInCombat() || !botAI->IsAutoWowIndependentParty() ||
-        AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable())
-        return false;
+    if (!bot->IsAlive())
+        return AutoWowDeathLoop::RelocationBlock::Dead;
+    if (bot->IsInFlight())
+        return AutoWowDeathLoop::RelocationBlock::Flight;
+    if (bot->IsInCombat())
+        return AutoWowDeathLoop::RelocationBlock::Combat;
+    if (!botAI->IsAutoWowIndependentParty())
+        return AutoWowDeathLoop::RelocationBlock::Controlled;
+    if (AutoWowOracleRuntime::IsManagedBot(guid))
+        return AutoWowDeathLoop::RelocationBlock::Oracle;
+    if (!bot->GetMap())
+        return AutoWowDeathLoop::RelocationBlock::NoMap;
+    if (bot->GetMap()->Instanceable())
+        return AutoWowDeathLoop::RelocationBlock::Instance;
     // AutoWow.Errands: a town run under way owns the bot (flag off: never true).
-    return !(AutoWowErrands::Enabled() && AutoWowErrands::Active(guid));
+    if (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid))
+        return AutoWowDeathLoop::RelocationBlock::Errand;
+    return AutoWowDeathLoop::RelocationBlock::None;
+}
+
+static bool Movable(Player* bot, PlayerbotAI* botAI)
+{
+    return MovementBlock(bot, botAI) == AutoWowDeathLoop::RelocationBlock::None;
+}
+
+static void NoteEscapeBlock(Player* bot, AutoWowDeathLoop::RelocationBlock reason)
+{
+    if (AutoWowDeathLoop::NoteRelocationBlock(bot->GetGUID().GetCounter(), reason))
+        LOG_INFO("playerbots", "[DeathLoop] bot={} relocate_pending reason={}", bot->GetName(),
+                 AutoWowDeathLoop::RelocationBlockName(reason));
 }
 
 // AutoWow.DeathLoop.EscapeViaZoneProgression: start a death_loop trip to the nearest level-appropriate hub
@@ -499,23 +525,37 @@ static bool StartEscape(Player* bot, AutoWowZoneProgression::BotState& s, AutoWo
     return true;
 }
 
-bool NewRpgBaseAction::DeathLoopEscape()
+AutoWowDeathLoop::RelocationAttempt NewRpgBaseAction::TryDeathLoopEscape()
 {
+    using AutoWowDeathLoop::RelocationAttempt;
     uint32 const guid = bot->GetGUID().GetCounter();
-    if (!Movable(bot, botAI))
-        return false;
+    AutoWowDeathLoop::RelocationBlock const block = MovementBlock(bot, botAI);
+    if (block != AutoWowDeathLoop::RelocationBlock::None)
+    {
+        NoteEscapeBlock(bot, block);
+        return RelocationAttempt::TemporaryBlocked;
+    }
     std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
     AutoWowZoneProgression::BotState s = AutoWowZoneProgression::LoadState(guid);
     bool const transports = AutoWowTransports::Enabled();
     AutoWowTransports::ChainState chain =
         transports ? AutoWowZoneProgression::LoadChain(guid) : AutoWowTransports::ChainState{};
     if (!StartEscape(bot, s, chain, now, transports))
-        return false;
+    {
+        NoteEscapeBlock(bot, AutoWowDeathLoop::RelocationBlock::NoRoute);
+        return RelocationAttempt::NoRoute;
+    }
     AutoWowZoneProgression::StoreState(guid, s);
     if (transports)
         AutoWowZoneProgression::StoreChain(guid, chain);
+    NoteEscapeBlock(bot, AutoWowDeathLoop::RelocationBlock::None);
     botAI->rpgInfo.ChangeToIdle();
-    return true;
+    return RelocationAttempt::Started;
+}
+
+bool NewRpgBaseAction::DeathLoopEscape()
+{
+    return TryDeathLoopEscape() == AutoWowDeathLoop::RelocationAttempt::Started;
 }
 
 bool NewRpgBaseAction::ZoneProgressionStep()
@@ -539,7 +579,12 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     bool const transports = AutoWowTransports::Enabled();
     AutoWowTransports::ChainState chain = transports ? LoadChain(guid) : AutoWowTransports::ChainState{};
 
-    auto finish = [&](bool arrived) { EmitMove(bot, s, chain, now, arrived, transports); };
+    auto finish = [&](bool arrived)
+    {
+        EmitMove(bot, s, chain, now, arrived, transports);
+        if (arrived && s.trigger == Trigger::DeathLoop)
+            AutoWowDeathLoop::CompleteEscapeArrival(guid, true);
+    };
 
     // AutoWow.DeathLoop.EscapeViaZoneProgression: a bot whose zone bracket starts more than
     // RelocateLevelMargin above it escapes to the nearest level hub even without an escalated death.

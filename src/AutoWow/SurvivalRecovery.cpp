@@ -470,6 +470,15 @@ void ClearRestPending(std::uint32_t botGuid)
         s->restPending = false;
 }
 
+bool RelocationPending(std::uint32_t botGuid)
+{
+    if (!V2Enabled())
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    ReviveState const* s = Find(gRevive, botGuid);
+    return s && s->relocate;
+}
+
 bool TakeRelocation(std::uint32_t botGuid)
 {
     if (!V2Enabled())
