@@ -98,6 +98,24 @@ function Join-NativeCommandLine {
     return (($Arguments | ForEach-Object { ConvertTo-NativeCommandLineArgument -Value $_ }) -join ' ')
 }
 
+function Invoke-WslCommand {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = 'wsl.exe'
+    $startInfo.Arguments = Join-NativeCommandLine -Arguments $Arguments
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw 'Could not start wsl.exe.' }
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    [pscustomobject]@{ exit_code = $process.ExitCode; stdout = $stdout.Result; stderr = $stderr.Result }
+}
+
 function Test-WslProcessIdentity {
     param(
         [Parameter(Mandatory)][int]$LinuxPid,
@@ -109,9 +127,10 @@ function Test-WslProcessIdentity {
         return [bool](& $TestHooks['AuthIdentityMatches'] $LinuxPid $ExpectedBinary $ExpectedConfig)
     }
     $identityScript = 'pid="$1"; expected="$(readlink -f -- "$2")" || exit 1; actual="$(readlink -f -- "/proc/$pid/exe")" || exit 1; [ "$actual" = "$expected" ] || exit 1; arg1="$(tr ''\000'' ''\n'' < "/proc/$pid/cmdline" | sed -n ''2p'')"; arg2="$(tr ''\000'' ''\n'' < "/proc/$pid/cmdline" | sed -n ''3p'')"; [ "$arg1" = "-c" ] && [ "$arg2" = "$3" ]'
-    & wsl.exe -d $WslDistro -u root -- sh -c $identityScript 'autowow-auth-identity' `
-        $LinuxPid $ExpectedBinary $ExpectedConfig *> $null
-    return $LASTEXITCODE -eq 0
+    $result = Invoke-WslCommand -Arguments @(
+        '-d', $WslDistro, '-u', 'root', '--exec', 'sh', '-c', $identityScript,
+        'autowow-auth-identity', [string]$LinuxPid, $ExpectedBinary, $ExpectedConfig)
+    return $result.exit_code -eq 0
 }
 
 function Test-WslAuthPidExists {
@@ -119,7 +138,7 @@ function Test-WslAuthPidExists {
     if ($TestHooks -and $TestHooks.ContainsKey('AuthPidExists')) {
         return [bool](& $TestHooks['AuthPidExists'] $LinuxPid)
     }
-    & wsl.exe -d $WslDistro -u root -- test -d "/proc/$LinuxPid" *> $null
+    & wsl.exe -d $WslDistro -u root --exec test -d "/proc/$LinuxPid" *> $null
     return $LASTEXITCODE -eq 0
 }
 
@@ -133,8 +152,10 @@ function Test-WslAuthReady {
     if (-not (Test-WslProcessIdentity -LinuxPid $LinuxPid -ExpectedBinary $ExpectedBinary `
         -ExpectedConfig $ExpectedConfig)) { return $false }
     $listenScript = 'ss -H -ltnp 2>/dev/null | grep -E '':3724[[:space:]]'' | grep -F "pid=$1," >/dev/null'
-    & wsl.exe -d $WslDistro -u root -- sh -c $listenScript 'autowow-auth-listen' $LinuxPid *> $null
-    return $LASTEXITCODE -eq 0
+    $result = Invoke-WslCommand -Arguments @(
+        '-d', $WslDistro, '-u', 'root', '--exec', 'sh', '-c', $listenScript,
+        'autowow-auth-listen', [string]$LinuxPid)
+    return $result.exit_code -eq 0
 }
 
 function Stop-OwnedWslAuth {
@@ -150,7 +171,7 @@ function Stop-OwnedWslAuth {
         throw 'Recorded WSL authserver PID is alive but its executable or config does not match; refusing to signal it.'
     }
     Invoke-Phase1Boundary -Name 'SignalAuth' -Arguments @('TERM', $LinuxPid) -ProductionAction {
-        & wsl.exe -d $WslDistro -u root -- kill -TERM $LinuxPid 2>$null
+        & wsl.exe -d $WslDistro -u root --exec kill -TERM $LinuxPid 2>$null
     }
     $stopDeadline = (Get-Date).AddSeconds(15)
     do {
@@ -168,7 +189,7 @@ function Stop-OwnedWslAuth {
             throw 'WSL authserver PID identity changed before force cleanup; refusing a force kill.'
         }
         Invoke-Phase1Boundary -Name 'SignalAuth' -Arguments @('KILL', $LinuxPid) -ProductionAction {
-            & wsl.exe -d $WslDistro -u root -- kill -KILL $LinuxPid 2>$null
+            & wsl.exe -d $WslDistro -u root --exec kill -KILL $LinuxPid 2>$null
         }
         Start-Sleep -Seconds 1
         if (Test-WslAuthPidExists -LinuxPid $LinuxPid) {
@@ -204,7 +225,7 @@ Invoke-Phase1Boundary -Name 'Preflight' -ProductionAction {
     if (Get-Process -Name worldserver -ErrorAction SilentlyContinue) {
         throw 'A Windows worldserver is still running; refusing dual startup.'
     }
-    $linuxWorldserver = (& wsl.exe -d $WslDistro -u root -- pgrep -x worldserver 2>$null)
+    $linuxWorldserver = (& wsl.exe -d $WslDistro -u root --exec pgrep -x worldserver 2>$null)
     if ($LASTEXITCODE -eq 0 -and $linuxWorldserver) {
         throw "A WSL worldserver is already running (pid $linuxWorldserver)."
     }
@@ -218,15 +239,15 @@ Invoke-Phase1Boundary -Name 'Preflight' -ProductionAction {
         if (Get-Process -Name authserver -ErrorAction SilentlyContinue) {
             throw 'A Windows authserver is running; refusing dual auth startup.'
         }
-        $linuxAuthserver = (& wsl.exe -d $WslDistro -u root -- pgrep -x authserver 2>$null)
+        $linuxAuthserver = (& wsl.exe -d $WslDistro -u root --exec pgrep -x authserver 2>$null)
         if ($LASTEXITCODE -eq 0 -and $linuxAuthserver) {
             throw "A WSL authserver is already running (pid $linuxAuthserver)."
         }
-        & wsl.exe -d $WslDistro -u root -- test -r $AuthserverBinary
+        & wsl.exe -d $WslDistro -u root --exec test -r $AuthserverBinary
         if ($LASTEXITCODE -ne 0) { throw 'The requested WSL authserver binary is not readable.' }
-        & wsl.exe -d $WslDistro -u root -- test -x $AuthserverBinary
+        & wsl.exe -d $WslDistro -u root --exec test -x $AuthserverBinary
         if ($LASTEXITCODE -ne 0) { throw 'The requested WSL authserver binary is not executable.' }
-        & wsl.exe -d $WslDistro -u root -- test -r $AuthserverConfig
+        & wsl.exe -d $WslDistro -u root --exec test -r $AuthserverConfig
         if ($LASTEXITCODE -ne 0) { throw 'The requested WSL authserver config is not readable.' }
     }
     else {
@@ -238,7 +259,7 @@ Invoke-Phase1Boundary -Name 'Preflight' -ProductionAction {
     }
 
     foreach ($linuxPath in @($binary, $config, '/usr/local/etc/modules/playerbots.conf')) {
-        & wsl.exe -d $WslDistro -u root -- test -r $linuxPath
+        & wsl.exe -d $WslDistro -u root --exec test -r $linuxPath
         if ($LASTEXITCODE -ne 0) { throw "Missing WSL runtime prerequisite: $linuxPath" }
     }
 }
@@ -275,7 +296,7 @@ try {
         $wslAuth = Invoke-Phase1Boundary -Name 'StartAuth' -ProductionAction {
             $authLaunchScript = 'umask 077; printf ''%s\n'' "$$" > "$3"; exec "$1" -c "$2"'
             $authArguments = Join-NativeCommandLine -Arguments @(
-                '-d', $WslDistro, '-u', 'root', '--', 'sh', '-c', $authLaunchScript,
+                '-d', $WslDistro, '-u', 'root', '--exec', 'sh', '-c', $authLaunchScript,
                 'autowow-auth-launch', $AuthserverBinary, $AuthserverConfig, $authLaunchPidFile)
             Start-Process -FilePath 'wsl.exe' -ArgumentList $authArguments `
                 -RedirectStandardOutput $authStdout -RedirectStandardError $authStderr `
@@ -307,9 +328,9 @@ try {
                 if ($wslAuth.HasExited) {
                     throw "WSL authserver wrapper exited with code $($wslAuth.ExitCode). See authserver WSL logs."
                 }
-                $pidText = (& wsl.exe -d $WslDistro -u root -- cat $authLaunchPidFile 2>$null)
+                $pidText = (& wsl.exe -d $WslDistro -u root --exec cat $authLaunchPidFile 2>$null)
             } while ([string]::IsNullOrWhiteSpace($pidText) -and (Get-Date) -lt $pidDeadline)
-            & wsl.exe -d $WslDistro -u root -- rm -f $authLaunchPidFile 2>$null
+            & wsl.exe -d $WslDistro -u root --exec rm -f $authLaunchPidFile 2>$null
             if ([string]::IsNullOrWhiteSpace($pidText) -or $pidText.Trim() -notmatch '^\d+$') {
                 throw 'WSL authserver did not publish a valid owned Linux PID.'
             }
@@ -339,7 +360,7 @@ try {
 
     $world = Invoke-Phase1Boundary -Name 'StartWorld' -ProductionAction {
         Start-Process -FilePath 'wsl.exe' `
-            -ArgumentList @('-d',$WslDistro,'-u','root','--',$binary,'-c',$config) `
+            -ArgumentList @('-d',$WslDistro,'-u','root','--exec',$binary,'-c',$config) `
             -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden -PassThru
     }
 
@@ -399,7 +420,7 @@ try {
 catch {
     $startupError = $_
     Invoke-Phase1Boundary -Name 'StopWorld' -ProductionAction {
-        & wsl.exe -d $WslDistro -u root -- pkill -TERM -x worldserver 2>$null
+        & wsl.exe -d $WslDistro -u root --exec pkill -TERM -x worldserver 2>$null
         if ($world -and -not $world.HasExited) {
             Stop-Process -InputObject $world -Force -ErrorAction SilentlyContinue
         }
@@ -407,7 +428,7 @@ catch {
     if ($useWslAuth) {
         try {
             if ($authLinuxPid -le 0) {
-                $ownedPidText = (& wsl.exe -d $WslDistro -u root -- cat $authLaunchPidFile 2>$null)
+                $ownedPidText = (& wsl.exe -d $WslDistro -u root --exec cat $authLaunchPidFile 2>$null)
                 if (-not [string]::IsNullOrWhiteSpace($ownedPidText) -and $ownedPidText.Trim() -match '^\d+$') {
                     $authLinuxPid = [int]$ownedPidText.Trim()
                     if ($state) {
@@ -432,7 +453,7 @@ catch {
                 }
             }
             Invoke-Phase1Boundary -Name 'RemoveAuthPidFile' -ProductionAction {
-                & wsl.exe -d $WslDistro -u root -- rm -f $authLaunchPidFile 2>$null
+                & wsl.exe -d $WslDistro -u root --exec rm -f $authLaunchPidFile 2>$null
             }
         }
         catch {

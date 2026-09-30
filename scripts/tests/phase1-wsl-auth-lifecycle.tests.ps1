@@ -5,6 +5,19 @@ BeforeAll {
     $script:ScriptsRoot = Split-Path -Parent $PSScriptRoot
     $script:StartScript = Join-Path $script:ScriptsRoot 'start-phase1-wsl-worldserver.ps1'
     $script:StopScript = Join-Path $script:ScriptsRoot 'stop-phase1-wsl-worldserver.ps1'
+    $script:StartSource = Get-Content -LiteralPath $script:StartScript -Raw
+    $script:StopSource = Get-Content -LiteralPath $script:StopScript -Raw
+
+    $tokens = $null
+    $errors = $null
+    $startTree = [Management.Automation.Language.Parser]::ParseFile($script:StartScript, [ref]$tokens, [ref]$errors)
+    foreach ($functionName in @('ConvertTo-NativeCommandLineArgument', 'Join-NativeCommandLine', 'Invoke-WslCommand')) {
+        $functionAst = $startTree.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName
+        }, $true)
+        . ([scriptblock]::Create($functionAst.Extent.Text))
+    }
 
     function Write-RuntimeState {
         param(
@@ -57,6 +70,44 @@ BeforeAll {
         $state.auth_linux_pid | Should Be 303
         $state.auth_binary | Should Be '/exact/build/authserver'
         $state.auth_config | Should Be '/exact/runtime/authserver.conf'
+    }
+
+    It 'preserves sh positional arguments through the native WSL exec transport' {
+        $stdout = Join-Path $TestDrive 'wsl-argv-stdout.txt'
+        $stderr = Join-Path $TestDrive 'wsl-argv-stderr.txt'
+        $probeScript = 'printf ''arg0=<%s> arg1=<%s> arg2=<%s> arg3=<%s> pid=<%s>\n'' "$0" "$1" "$2" "$3" "$$"'
+        $arguments = Join-NativeCommandLine -Arguments @(
+            '-d', 'Ubuntu-24.04', '-u', 'root', '--exec', 'sh', '-c', $probeScript,
+            'autowow-argv-sentinel', 'value one', 'value two', '/tmp/path with spaces')
+
+        $probe = Start-Process -FilePath 'wsl.exe' -ArgumentList $arguments `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
+            -WindowStyle Hidden -Wait -PassThru
+
+        $probe.ExitCode | Should Be 0
+        ([System.IO.File]::ReadAllText($stderr)).Trim() | Should Be ''
+        ([System.IO.File]::ReadAllText($stdout)).Trim() | Should Match `
+            '^arg0=<autowow-argv-sentinel> arg1=<value one> arg2=<value two> arg3=</tmp/path with spaces> pid=<\d+>$'
+        $script:StartSource | Should Match '''--exec'', ''sh'', ''-c'', \$authLaunchScript'
+        $script:StartSource | Should Not Match '-u root -- sh -c'
+        $script:StopSource | Should Not Match '-u root -- sh -c'
+    }
+
+    It 'preserves exact identity and listener PID arguments through native WSL exec probes' {
+        $identityScript = 'pid="$1"; expected="$(readlink -f -- "$2")" || exit 1; actual="$(readlink -f -- "/proc/$pid/exe")" || exit 1; [ "$actual" = "$expected" ] || exit 1; arg1="$(tr ''\000'' ''\n'' < "/proc/$pid/cmdline" | sed -n ''2p'')"; arg2="$(tr ''\000'' ''\n'' < "/proc/$pid/cmdline" | sed -n ''3p'')"; [ "$arg1" = "-c" ] && [ "$arg2" = "$3" ]'
+        $identityOuter = 'sh -c "$1" autowow-auth-identity "$$" /bin/sh "$2"; good=$?; if sh -c "$1" autowow-auth-identity "$$" /bin/sh wrong-config; then wrong_config=1; else wrong_config=0; fi; if sh -c "$1" autowow-auth-identity "$(( $$ + 1 ))" /bin/sh "$2"; then wrong_pid=1; else wrong_pid=0; fi; [ "$good" -eq 0 ] && [ "$wrong_config" -eq 0 ] && [ "$wrong_pid" -eq 0 ]'
+        $identityResult = Invoke-WslCommand -Arguments @(
+            '-d', 'Ubuntu-24.04', '-u', 'root', '--exec', 'sh', '-c', $identityOuter,
+            'autowow-identity-sentinel', $identityScript, $identityOuter)
+        $identityResult.exit_code | Should Be 0
+
+        $listenerPython = 'import socket,sys,time;s=socket.socket();s.bind(("127.0.0.1",0));s.listen(1);open(sys.argv[1],"w").write(str(s.getsockname()[1]));time.sleep(10)'
+        $listenScript = 'ss -H -ltnp 2>/dev/null | grep -E ":$2[[:space:]]" | grep -F "pid=$1," >/dev/null'
+        $listenerOuter = 'tmp="/tmp/autowow-listener-$$"; python3 -c "$1" "$tmp" & listener=$!; i=0; while [ ! -s "$tmp" ] && [ "$i" -lt 100 ]; do i=$((i+1)); sleep .02; done; port=$(cat "$tmp"); good=1; i=0; while [ "$good" -ne 0 ] && [ "$i" -lt 100 ]; do i=$((i+1)); sh -c "$2" autowow-auth-listen "$listener" "$port"; good=$?; [ "$good" -eq 0 ] || sleep .02; done; if sh -c "$2" autowow-auth-listen "$((listener+1))" "$port"; then wrong=1; else wrong=0; fi; rm -f "$tmp"; kill -TERM "$listener" 2>/dev/null; wait "$listener" 2>/dev/null; [ "$good" -eq 0 ] && [ "$wrong" -eq 0 ]'
+        $listenerResult = Invoke-WslCommand -Arguments @(
+            '-d', 'Ubuntu-24.04', '-u', 'root', '--exec', 'sh', '-c', $listenerOuter,
+            'autowow-listener-sentinel', $listenerPython, $listenScript)
+        $listenerResult.exit_code | Should Be 0
     }
 
     It 'keeps Windows-auth mode on the existing relay then world path' {

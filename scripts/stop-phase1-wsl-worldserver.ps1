@@ -44,10 +44,56 @@ function Test-StateProperty {
     return $null -ne $InputObject.PSObject.Properties[$Name]
 }
 
+function ConvertTo-NativeCommandLineArgument {
+    param([Parameter(Mandatory)][string]$Value)
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') { $backslashes++; continue }
+        if ($character -eq '"') {
+            [void]$builder.Append((('\' * (($backslashes * 2) + 1)) -join ''))
+            [void]$builder.Append('"')
+            $backslashes = 0
+            continue
+        }
+        if ($backslashes) { [void]$builder.Append((('\' * $backslashes) -join '')) }
+        [void]$builder.Append($character)
+        $backslashes = 0
+    }
+    if ($backslashes) { [void]$builder.Append((('\' * ($backslashes * 2)) -join '')) }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Join-NativeCommandLine {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    return (($Arguments | ForEach-Object { ConvertTo-NativeCommandLineArgument -Value $_ }) -join ' ')
+}
+
+function Invoke-WslCommand {
+    param([Parameter(Mandatory)][string[]]$Arguments)
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = 'wsl.exe'
+    $startInfo.Arguments = Join-NativeCommandLine -Arguments $Arguments
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) { throw 'Could not start wsl.exe.' }
+    $stdout = $process.StandardOutput.ReadToEndAsync()
+    $stderr = $process.StandardError.ReadToEndAsync()
+    $process.WaitForExit()
+    [pscustomobject]@{ exit_code = $process.ExitCode; stdout = $stdout.Result; stderr = $stderr.Result }
+}
+
 function Test-WslPidExists {
     param([Parameter(Mandatory)][int]$LinuxPid)
     return [bool](Invoke-StopBoundary -Name 'PidExists' -Arguments @($LinuxPid) -ProductionAction {
-        & wsl.exe -d $script:RuntimeDistro -u root -- test -d "/proc/$LinuxPid" *> $null
+        & wsl.exe -d $script:RuntimeDistro -u root --exec test -d "/proc/$LinuxPid" *> $null
         $LASTEXITCODE -eq 0
     })
 }
@@ -62,9 +108,10 @@ function Test-WslProcessIdentity {
     return [bool](Invoke-StopBoundary -Name 'IdentityMatches' `
         -Arguments @($LinuxPid, $ExpectedBinary, $ExpectedConfig) -ProductionAction {
             $identityScript = 'pid="$1"; expected="$(readlink -f -- "$2")" || exit 1; actual="$(readlink -f -- "/proc/$pid/exe")" || exit 1; [ "$actual" = "$expected" ] || exit 1; arg1="$(tr ''\000'' ''\n'' < "/proc/$pid/cmdline" | sed -n ''2p'')"; arg2="$(tr ''\000'' ''\n'' < "/proc/$pid/cmdline" | sed -n ''3p'')"; [ "$arg1" = "-c" ] && [ "$arg2" = "$3" ]'
-            & wsl.exe -d $script:RuntimeDistro -u root -- sh -c $identityScript 'autowow-auth-identity' `
-                $LinuxPid $ExpectedBinary $ExpectedConfig *> $null
-            $LASTEXITCODE -eq 0
+            $result = Invoke-WslCommand -Arguments @(
+                '-d', $script:RuntimeDistro, '-u', 'root', '--exec', 'sh', '-c', $identityScript,
+                'autowow-auth-identity', [string]$LinuxPid, $ExpectedBinary, $ExpectedConfig)
+            $result.exit_code -eq 0
         })
 }
 
@@ -98,7 +145,7 @@ function Stop-ExactWslAuth {
     }
 
     Invoke-StopBoundary -Name 'SignalAuth' -Arguments @('TERM', $LinuxPid) -ProductionAction {
-        & wsl.exe -d $script:RuntimeDistro -u root -- kill -TERM $LinuxPid 2>$null
+        & wsl.exe -d $script:RuntimeDistro -u root --exec kill -TERM $LinuxPid 2>$null
     }
     $deadline = (Get-Date).AddSeconds(30)
     do {
@@ -112,7 +159,7 @@ function Stop-ExactWslAuth {
 
     if ($exists) {
         Invoke-StopBoundary -Name 'SignalAuth' -Arguments @('KILL', $LinuxPid) -ProductionAction {
-            & wsl.exe -d $script:RuntimeDistro -u root -- kill -KILL $LinuxPid 2>$null
+            & wsl.exe -d $script:RuntimeDistro -u root --exec kill -KILL $LinuxPid 2>$null
         }
         Start-Sleep -Seconds 1
         if (Test-WslPidExists -LinuxPid $LinuxPid) {
@@ -132,15 +179,15 @@ $script:RuntimeDistro = if ($state -and (Test-StateProperty -InputObject $state 
     -not [string]::IsNullOrWhiteSpace([string]$state.distro)) { [string]$state.distro } else { $WslDistro }
 
 Invoke-StopBoundary -Name 'StopWorld' -ProductionAction {
-    & wsl.exe -d $script:RuntimeDistro -u root -- pkill -TERM -x worldserver 2>$null
+    & wsl.exe -d $script:RuntimeDistro -u root --exec pkill -TERM -x worldserver 2>$null
     $deadline = (Get-Date).AddSeconds(30)
     do {
         Start-Sleep -Milliseconds 500
-        & wsl.exe -d $script:RuntimeDistro -u root -- pgrep -x worldserver *> $null
+        & wsl.exe -d $script:RuntimeDistro -u root --exec pgrep -x worldserver *> $null
         $running = $LASTEXITCODE -eq 0
     } while ($running -and (Get-Date) -lt $deadline)
     if ($running) {
-        & wsl.exe -d $script:RuntimeDistro -u root -- pkill -KILL -x worldserver 2>$null
+        & wsl.exe -d $script:RuntimeDistro -u root --exec pkill -KILL -x worldserver 2>$null
         Start-Sleep -Seconds 1
     }
 }
