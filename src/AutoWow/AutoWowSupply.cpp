@@ -116,6 +116,8 @@ struct TeamState
     std::array<std::uint32_t, kTierCount> wants{};
     // cloth_gear on the bag house (TierTick): the cloth its open orders still lack per tier (GearClothShort).
     std::array<std::uint32_t, kTierCount> gearCloth{};
+    // RouteBagExtra (TierTick): donor room per tier for its extra reagent (ExtraRoom; 0 off).
+    std::array<std::uint32_t, kTierCount> extraRooms{};
 };
 struct LineState
 {
@@ -400,6 +402,17 @@ void GrantXp(Player* p, std::uint32_t xp, std::uint32_t oid, std::uint32_t item,
     EmitLine(line, p, Reason::Xp, oid, item, count, xp, 0, Low(p));
 }
 
+// The items a bag-house donation carries (a row each): the tier cloths, plus (RouteBagExtra) the tiers' extra reagents.
+std::vector<std::uint32_t> BagEntries()
+{
+    std::vector<std::uint32_t> out(std::begin(kTierCloth), std::end(kTierCloth));
+    if (detail::gParams.routeBagExtra)
+        for (Tier const& t : kTiers)
+            if (t.extra && std::find(out.begin(), out.end(), t.extra) == out.end())
+                out.push_back(t.extra);
+    return out;
+}
+
 // World thread: mail a donation (cloth to the bag house, or a catalog line's routed reagents to its house; one
 // row per entry) and release the held stacks.
 class DonateOperation : public PlayerbotOperation
@@ -423,9 +436,7 @@ public:
             std::uint32_t const gid = AutoWowGuilds::HouseGuildId(house, alliance_);
             std::uint32_t const rep = gid ? AutoWowGuilds::RepOf(gid) : 0;
             // Tiers route wool and silk too; off, only linen stacks are ever picked, so the extra rows stay 0.
-            std::vector<std::uint32_t> const entries = bags ? std::vector<std::uint32_t>(std::begin(kTierCloth),
-                                                                                         std::end(kTierCloth))
-                                                            : gLineRoute[static_cast<std::size_t>(line_)];
+            std::vector<std::uint32_t> const entries = bags ? BagEntries() : gLineRoute[static_cast<std::size_t>(line_)];
             std::vector<std::uint32_t> units(entries.size(), 0);
             for (std::uint32_t const g : guids_)
                 if (Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g)))
@@ -461,9 +472,7 @@ private:
         std::size_t const li = static_cast<std::size_t>(line_), t = T(alliance_);
         std::uint32_t const gid = AutoWowGuilds::HouseGuildId(bags ? gBagHouse : gLineHouse[li], alliance_);
         std::uint32_t const rep = gid ? AutoWowGuilds::RepOf(gid) : 0;
-        std::vector<std::uint32_t> const entries = bags ? std::vector<std::uint32_t>(std::begin(kTierCloth),
-                                                                                     std::end(kTierCloth))
-                                                        : gLineRoute[li];
+        std::vector<std::uint32_t> const entries = bags ? BagEntries() : gLineRoute[li];
         std::vector<bool> takes(entries.size(), false);
         std::uint32_t art = 0;
         {
@@ -1096,8 +1105,19 @@ void TierTick(bool alliance, bool overlord)
         }
     }
 
+    // RouteBagExtra: each tier's extra reagent (Heavy Leather) the wanted bags the house cloth makes still lack.
+    if (p.routeBagExtra)
+        for (std::size_t i = 0; i < kTierCount; ++i)
+        {
+            Tier const& tier = kTiers[i];
+            ts.extraRooms[i] = ExtraRoom(tier, art && art->HasSpell(tier.bagSpell), ts.wants[i],
+                                         BagsFrom(tier.recipe, house(tier.cloth), house(tier.bolt)),
+                                         tier.extra ? house(tier.extra) : 0, RepReady(rep));
+        }
+
     std::lock_guard<std::mutex> guard(gLock);
     TeamState& out = gTeams[t];
+    out.extraRooms = ts.extraRooms;
     out.orderId = ts.orderId;
     out.remaining = ts.remaining;
     out.clothRooms = ts.clothRooms;
@@ -1706,6 +1726,7 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
     std::uint32_t const reach = ReachSkill(cap, art->GetLevel());
     std::vector<bool> blocked(G.tierCount, false);
     std::vector<SkillupOption> options;
+    std::vector<bool> owns(G.tierCount, false);  // GearSkillupRestock: of the line's own skill
     for (std::size_t i = 0; i < G.tierCount; ++i)
     {
         LineTier const& tier = G.tiers[i];
@@ -1714,6 +1735,7 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
         SkillLineAbilityMapBounds const b = sSpellMgr->GetSkillLineAbilityMapBounds(tier.spell);
         for (auto it = b.first; it != b.second && !own; ++it)
             own = it->second->SkillLine == L.skillLine;
+        owns[i] = own;
         std::uint64_t cost = 0;  // one cast's reagents at their vendor value
         for (Reagent const& r : tier.reagents)
             if (r.item)
@@ -1725,6 +1747,22 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
     std::vector<GearOrder> out;
     if (skill < cap)
         out = PlanGearSkillup(G, need, skill, options, p.skillupCasts);
+    // GearSkillupRestock: every option stocked (none picked) -> again without the stock gate, sized past the artisan's own
+    // finished units of the pick.
+    if (out.empty() && skill < cap && p.gearSkillupRestock)
+    {
+        std::vector<std::uint32_t> mine(G.tierCount, 0);
+        for (std::size_t i = 0; i < G.tierCount; ++i)
+        {
+            options[i].known = known[i] && owns[i];
+            mine[i] = CastUnits(HeldUnits(art, G.tiers[i].product), GearYield(line, static_cast<std::uint8_t>(i)));
+        }
+        out = PlanGearSkillupRestock(G, need, skill, options, mine, p.skillupCasts);
+        if (!out.empty())
+            LOG_INFO("playerbots", "[Supply] gear bootstrap restock line={} team={} artisan={} skillup={} units={} mine={}",
+                     L.name, alliance ? "alliance" : "horde", Low(art), G.tiers[out.front().recipe].spell,
+                     out.front().units, mine[out.front().recipe]);
+    }
     LOG_INFO("playerbots", "[Supply] gear bootstrap line={} team={} artisan={} skill={}/{} reach={} blocked={} "
              "top_recipe={} consumer={} skillup={} casts={}", L.name, alliance ? "alliance" : "horde", Low(art), skill,
              cap, reach, need.size(), need.empty() ? 0 : G.tiers[need.front().recipe].spell,
@@ -2421,6 +2459,9 @@ void LoadConfig()
     p.ammoTarget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.AmmoTarget", 1000);
     p.gearBootstrap = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearBootstrap", false);
     p.engGuns = sConfigMgr->GetOption<bool>("AutoWow.Supply.EngGuns", false);
+    p.routeBagExtra = sConfigMgr->GetOption<bool>("AutoWow.Supply.RouteBagExtra", false);
+    p.gearStockSell = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearStockSell", false);
+    p.gearSkillupRestock = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearSkillupRestock", false);
     gPriority.clear();
     std::string const priority = sConfigMgr->GetOption<std::string>("AutoWow.Supply.PriorityGuids", "");
     if (!ParseGuids(priority, gPriority))
@@ -2821,6 +2862,10 @@ void LoadConfig()
     if (p.demandOnly)
         LOG_INFO("server.loading", "[Supply] demand only: consumer-first skill-ups, surplus sales are `waste`, "
                  "order / deliver rows name their consumer");
+    if (p.routeBagExtra || p.gearStockSell || p.gearSkillupRestock)
+        LOG_INFO("server.loading", "[Supply] craft flow: route_bag_extra={} (needs tiers {}) gear_stock_sell={} "
+                 "(keep {}) gear_skillup_restock={}", p.routeBagExtra, p.tiers, p.gearStockSell, p.repStockPerItem,
+                 p.gearSkillupRestock);
     for (std::size_t li = 0; li < kLineCount; ++li)
         if (kCatalog[li].tierCount && LineOn(kCatalog[li].id))
             LOG_INFO("server.loading", "[Supply] line {} on: house={} artisan A={} H={} learn={} routed={} "
@@ -3042,6 +3087,39 @@ static void RouteRaw(Player* bot)
     }
 }
 
+// Errand sell stop (RouteBagExtra): a cohort adventurer mails the bag tiers' extra reagent (Heavy Leather) to the bag
+// house rep, each tier within its own room (ExtraRoom); the stacks are held back from this stop's sales. Mirrors
+// RouteRaw; a Donate row per item ("line":"bags").
+static void RouteBagExtra(Player* bot)
+{
+    std::uint32_t const guid = Low(bot);
+    bool const alliance = bot->GetTeamId() == TEAM_ALLIANCE;
+    if (!AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid) || IsRole(bot))
+        return;
+    std::array<std::uint32_t, kTierCount> rooms{};
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        rooms = gTeams[T(alliance)].extraRooms;
+    }
+    std::vector<std::vector<Stack>> stacks;
+    for (std::size_t i = 0; i < kTierCount; ++i)
+        stacks.push_back(kTiers[i].extra ? LooseStacks(bot, kTiers[i].extra) : std::vector<Stack>{});
+    RoutePlan plan = PlanRoute(stacks, std::vector<std::uint32_t>(rooms.begin(), rooms.end()));
+    if (plan.picks.empty())
+        return;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        std::array<std::uint32_t, kTierCount>& live = gTeams[T(alliance)].extraRooms;
+        if (gHeld.size() + plan.picks.size() > kMaxHeld)
+            return;
+        for (std::size_t i = 0; i < kTierCount; ++i)
+            live[i] -= std::min(live[i], plan.units[i]);
+        gHeld.insert(plan.picks.begin(), plan.picks.end());
+    }
+    PlayerbotWorldThreadProcessor::instance().QueueOperation(
+        std::make_unique<DonateOperation>(bot->GetGUID(), alliance, std::move(plan.picks)));
+}
+
 void RouteCloth(Player* bot)
 {
     Params const& p = detail::gParams;
@@ -3054,6 +3132,8 @@ void RouteCloth(Player* bot)
         RouteRaw(bot);
     if (!LineOn(Line::Bags))
         return;
+    if (p.tiers && p.routeBagExtra)
+        RouteBagExtra(bot);
     std::uint32_t const guid = Low(bot);
     bool const alliance = bot->GetTeamId() == TEAM_ALLIANCE;
     if (p.tiers)

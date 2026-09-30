@@ -3143,6 +3143,26 @@ AutoWow.Supply.MailPickup = 0
 AutoWow.Supply.MailPickupYards = 40
 AutoWow.Supply.MailRunMs = 1800000
 
+# Craft flow (lane craftflow; soak-s75-full-r1, 2.3 h: gathering boomed, crafting made 26 casts). All off by default; off =
+# the chain exactly as above.
+# RouteBagExtra (needs Tiers): at the errand sell stop a cohort adventurer mails a bag tier's extra reagent (Small Silk
+#   Pack: Heavy Leather 4234, 2 per pack) to the bag house rep, within the room of the packs members want that the house
+#   cloth makes (min(want, packs from the silk / bolts held) x 2 - Heavy Leather held; known recipe, rep ready). S75:
+#   92 / 86 packs wanted, 214 / 209 silk held, 1 / 0 Heavy Leather: no silk pack was made. Rows: `supply` donate
+#   "line":"bags" item 4234.
+# GearStockSell: a gear line rep (cloth_gear / leather_gear / eng house) vendors its finished pieces beyond RepStockPerItem
+#   per recipe (the lowest item guids stay; shot sells for 0 and stays) at the vendor near home. S75: the Horde Tanners
+#   rep's 40 slots held 28 unwanted pieces (bootstrap skill-ups, rep stock), 37 mails with 95 Light Leather sat untaken
+#   and its artisan (25 Fine Leather Belt orders) was never fed. Rows: `supply` waste (DemandOnly; else surplus) op
+#   vendor, item 0, count = pieces; "[Supply] gear stock sale" log.
+# GearSkillupRestock (needs GearBootstrap): when every skill-up option is stocked (house holds SkillupCasts casts), the
+#   cheapest known non-grey one anyway, ordered past the artisan's own finished units. S75: both Tinkers artisans sat at
+#   engineering 46 / 49 (Rough Boomstick needs 50) holding 10 Copper Bolts each, the reps 20 casts of Light Shot:
+#   skillup=0 in all 96 bootstrap scans. "[Supply] gear bootstrap restock" log.
+AutoWow.Supply.RouteBagExtra = 0
+AutoWow.Supply.GearStockSell = 0
+AutoWow.Supply.GearSkillupRestock = 0
+
 # Market (lane U). RandomSellers: a random bot (not cohort, not a role) that is idle / wandering within SellerYards of
 #   a faction auctioneer (every SellerScanMs) walks there and lists its own `ah`-usage loot (trade goods, reagents,
 #   gems, greens; not soulbound) with the AutoWow.Trade pricing (undercut the lowest buyout, floor FloorPct of vendor,

@@ -573,7 +573,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 8u);
+    EXPECT_EQ(kStateVersion, 9u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -1542,6 +1542,68 @@ TEST(SupplyOutfitGear, FloorReasonsWire)
     EXPECT_EQ(static_cast<int>(Reason::WeaponFloor), 17);
     EXPECT_EQ(static_cast<int>(Reason::FoodFloor), 18);
     EXPECT_EQ(static_cast<int>(Reason::Grant), 19);
+}
+
+// Lane craftflow (soak S75): Heavy Leather for the silk packs members want (A: 92 wanted, 214 silk = 17 packs, 1 held).
+TEST(SupplyCraftFlow, ExtraRoomIsWhatTheWantedPacksTheClothMakesLack)
+{
+    Tier const& silk = kTiers[2];
+    ASSERT_EQ(silk.extra, 4234u);
+    ASSERT_EQ(silk.extraPerBag, 2u);
+    std::uint32_t const packs = BagsFrom(silk.recipe, 214, 0);
+    EXPECT_EQ(packs, 17u);                                  // 4 silk a bolt, 3 bolts a pack
+    EXPECT_EQ(ExtraRoom(silk, true, 92, packs, 1, true), 33u);  // 17 packs x 2 - 1
+    EXPECT_EQ(ExtraRoom(silk, true, 5, packs, 1, true), 9u);    // fewer wanted than the cloth makes
+    EXPECT_EQ(ExtraRoom(silk, true, 92, packs, 40, true), 0u);  // enough held
+    EXPECT_EQ(ExtraRoom(silk, false, 92, packs, 0, true), 0u);  // recipe unknown
+    EXPECT_EQ(ExtraRoom(silk, true, 92, packs, 0, false), 0u);  // rep not ready
+    EXPECT_EQ(ExtraRoom(silk, true, 0, packs, 0, true), 0u);    // nobody wants a pack
+    EXPECT_EQ(ExtraRoom(kTiers[0], true, 92, 50, 0, true), 0u);  // linen: no extra reagent
+    Params const p;
+    EXPECT_FALSE(p.routeBagExtra);
+    EXPECT_FALSE(p.gearStockSell);
+    EXPECT_FALSE(p.gearSkillupRestock);
+}
+
+// S75 Horde Tanners rep: boots x10, cloaks x13, gloves x4 in 40 slots; keep RepStockPerItem (2) of each, sell the rest.
+TEST(SupplyCraftFlow, GearStockSaleKeepsTheLowestGuidsPerRecipeAndSkipsUnsellable)
+{
+    std::uint8_t const boots = 1, cloak = 2, shot = 3;
+    std::vector<GearPiece> const pieces = {
+        {boots, 30, 29}, {boots, 10, 29}, {boots, 20, 29}, {cloak, 15, 34}, {cloak, 5, 34},
+        {shot, 40, 0},   {shot, 41, 0},   {shot, 42, 0},
+    };
+    EXPECT_EQ(PlanGearStockSale(pieces, 2), (std::vector<std::uint32_t>{30}));  // boots 10 / 20 stay, cloaks within keep
+    EXPECT_EQ(PlanGearStockSale(pieces, 1), (std::vector<std::uint32_t>{15, 20, 30}));  // ascending guid; shot never
+    EXPECT_EQ(PlanGearStockSale(pieces, 0), (std::vector<std::uint32_t>{5, 10, 15, 20, 30}));
+    EXPECT_TRUE(PlanGearStockSale({}, 2).empty());
+}
+
+// S75 Tinkers: engineering 46, Rough Boomstick (50) blocked for a gun need; bolts (10 held at the artisan) and light shot
+// (20 casts at the rep) both stocked, so the gated options pick nothing; the restock picks bolts past the artisan's 10.
+TEST(SupplyCraftFlow, SkillupRestockPassesTheStockGate)
+{
+    RecipeTable const g = EngGunsTable();
+    std::uint8_t const powder = TierOf(g, 4357), light = TierOf(g, 8067), bolts = TierOf(g, 4359), gun = TierOf(g, 4362);
+    std::vector<GearNeed> const blocked = {{62962, gun, 17, kNoPriority, 380}};
+    // Costs as BootstrapGearOrder sums them from the world DB: powder 4 (stone), light shot 4 + 10, bolts 10 (a bar).
+    std::vector<SkillupOption> gated = {{3918, powder, false, true, 40, true, 4, true},
+                                        {3920, light, false, false, 60, true, 14, true},   // 20 casts held
+                                        {3922, bolts, false, false, 60, true, 10, true}};  // 10 held
+    EXPECT_TRUE(PlanGearSkillup(g, blocked, 46, gated, 10).empty());  // the S75 dead end (powder grey at 40)
+    std::vector<SkillupOption> any = gated;
+    any[1].known = any[2].known = true;
+    std::vector<std::uint32_t> mine(g.tierCount, 0);
+    mine[bolts] = 10;
+    std::vector<GearOrder> const o = PlanGearSkillupRestock(g, blocked, 46, any, mine, 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, bolts);        // cheaper than light shot
+    EXPECT_EQ(o[0].units, 10u + 10u);     // its own 10 count against the order: 10 more casts
+    EXPECT_EQ(o[0].consumer, 62962u);
+    EXPECT_TRUE(PlanGearSkillupRestock(g, blocked, 60, any, mine, 10).empty());  // learnable (and grey): it ends
+    std::vector<GearNeed> const heavy = {{62962, TierOf(g, 8068), kAmmoSlot, kNoPriority, 380}};  // Heavy Shot 75
+    EXPECT_TRUE(PlanGearSkillupRestock(g, heavy, 60, any, mine, 10).empty());  // bolts / light shot grey at 60
+    EXPECT_TRUE(PlanGearSkillupRestock(g, {}, 46, any, mine, 10).empty());       // nothing blocked
 }
 
 }  // namespace
