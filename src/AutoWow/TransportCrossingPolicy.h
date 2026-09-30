@@ -89,6 +89,54 @@ inline std::vector<AutoWowZoneProgression::Route> ExtraRoutes()
     };
 }
 
+// AutoWow.ZoneProgression.Outland: the chain of every Outland entry route (OutlandRoutes), appended to the
+// crossing table. The last crossing is always the Dark Portal (areatrigger 4354: AreaTrigger.dbc box at
+// -11909,-3209,-15; areatrigger_teleport lands on the Stair of Destiny, map 530 -248,922,84). Before it, by
+// the source continent (Portal to Blasted Lands = gameobject spawns 195141 / 195142, spell 65728 / 65729
+// lands at spell_target_position 0 -11708,-3168,-5):
+//   EK south / Horde EK: walk to the Dark Portal (the Undercity portal needs the elevators: not taken).
+//   Alliance EK north of Loch Modan: the Ironforge portal.
+//   Horde Kalimdor: the Orgrimmar portal.
+//   Alliance Kalimdor: the Moonspray Auberdine -> Rut'theran (DefaultCrossings row reversed), areatrigger 542
+//   up to Darnassus (radius 10, target 9945,2617,1316), then the Darnassus portal (Teldrassil: portal only).
+inline std::vector<Crossing> OutlandCrossings()
+{
+    using AutoWowZoneProgression::HubSource;
+    std::uint32_t const to = AutoWowZoneProgression::kHellfireZone;
+    std::vector<Crossing> out;
+    for (std::uint32_t team : {1u, 2u})
+        for (HubSource const& s : AutoWowZoneProgression::OutlandEntryZones(team))
+        {
+            std::uint32_t seq = 0;
+            auto add = [&](Crossing c)
+            {
+                c.team = team;
+                c.from = s.zone;
+                c.to = to;
+                c.seq = seq++;
+                out.push_back(c);
+            };
+            bool const ekNorth = s.map == 0 && team == 1 &&
+                                 (s.zone == 1 || s.zone == 11 || s.zone == 28 || s.zone == 38 || s.zone == 45 ||
+                                  s.zone == 47 || s.zone == 139 || s.zone == 267 || s.zone == 1537);
+            if (ekNorth)
+                add({0, 0, 0, 0, Via::GameObject, 195141, 0, -4606, -929, 501, 0, 0, 0, -11708, -3168, -5, 0, 0});
+            if (s.map == 1 && team == 2)
+                add({0, 0, 0, 0, Via::GameObject, 195142, 1, 1473, -4216, 59, 0, 0, 0, -11708, -3168, -5, 0, 0});
+            if (s.map == 1 && team == 1)
+            {
+                if (s.zone != 141 && s.zone != 1657)  // Teldrassil / Darnassus: already on the island
+                {
+                    add({0, 0, 0, 0, Via::Transport, 176244, 1, 6577, 775, 6, 6595, 770, 1, 8558, 1014, 6, 8534, 1018});
+                    add({0, 0, 0, 0, Via::AreaTrigger, 542, 1, 8799, 970, 30, 0, 0, 1, 9945, 2617, 1316, 0, 0});
+                }
+                add({0, 0, 0, 0, Via::GameObject, 195141, 1, 9662, 2510, 1332, 0, 0, 0, -11708, -3168, -5, 0, 0});
+            }
+            add({0, 0, 0, 0, Via::AreaTrigger, 4354, 0, -11909, -3209, -15, 0, 0, 530, -248, 922, 84, 0, 0});
+        }
+    return out;
+}
+
 // Config override AutoWow.Transports.Crossings: ';'-separated rows of 18 integers
 // "team,from,to,seq,via,object,map,x,y,z,stopX,stopY,exitMap,exitX,exitY,exitZ,exitStopX,exitStopY".
 // Replaces the built-in table. False (out untouched) on any malformed row.

@@ -197,4 +197,58 @@ TEST(Transports, LegLogAndLedgerField)
         full.Open(k % 2 ? Leg::Walk : Leg::Transport, k * 10);
     EXPECT_EQ(full.count, kMaxLegs);
 }
+
+// AutoWow.ZoneProgression.Outland: every Outland entry route has a chain that starts on the source continent,
+// runs in seq order and ends through the Dark Portal into map 530.
+TEST(Transports, EveryOutlandEntryRouteEndsAtTheDarkPortal)
+{
+    std::vector<Crossing> const table = OutlandCrossings();
+    std::size_t entries = 0;
+    for (AutoWowZoneProgression::Route const& r : AutoWowZoneProgression::OutlandRoutes())
+    {
+        if (!AutoWowZoneProgression::IsOutlandEntry(r))
+            continue;
+        ++entries;
+        std::vector<Crossing> const chain = ChainFor(table, r.team, r.from, r.to);
+        ASSERT_FALSE(chain.empty()) << r.team << " " << r.from;
+        for (std::uint32_t k = 0; k < chain.size(); ++k)
+        {
+            EXPECT_EQ(chain[k].seq, k);
+            if (k)
+            {
+                EXPECT_EQ(chain[k].map, chain[k - 1].exitMap);  // each leg starts where the last one landed
+            }
+        }
+        EXPECT_EQ(chain.back().via, Via::AreaTrigger);
+        EXPECT_EQ(chain.back().object, 4354u);
+        EXPECT_EQ(chain.back().exitMap, 530u);
+        for (Crossing const& x : chain)
+            EXPECT_EQ(x.team, r.team);
+    }
+    EXPECT_GT(entries, 30u);
+
+    // Horde Silithus: Orgrimmar portal, Dark Portal. Alliance Silithus: Moonspray, Rut'theran trigger,
+    // Darnassus portal, Dark Portal. Alliance EPL: Ironforge portal first. Horde EPL / Alliance Duskwood: walk.
+    std::vector<Crossing> c = ChainFor(table, 2, 1377, 3483);
+    ASSERT_EQ(c.size(), 2u);
+    EXPECT_EQ(c[0].object, 195142u);
+    EXPECT_EQ(c[0].map, 1u);
+    c = ChainFor(table, 1, 1377, 3483);
+    ASSERT_EQ(c.size(), 4u);
+    EXPECT_EQ(c[0].via, Via::Transport);
+    EXPECT_EQ(c[0].object, 176244u);
+    EXPECT_EQ(c[1].object, 542u);
+    EXPECT_EQ(c[2].object, 195141u);
+    EXPECT_EQ(ChainFor(table, 1, 1657, 3483).size(), 2u);  // Darnassus: portal, Dark Portal
+    c = ChainFor(table, 1, 139, 3483);
+    ASSERT_EQ(c.size(), 2u);
+    EXPECT_EQ(c[0].object, 195141u);
+    EXPECT_EQ(c[0].map, 0u);
+    EXPECT_EQ(ChainFor(table, 2, 139, 3483).size(), 1u);
+    EXPECT_EQ(ChainFor(table, 1, 10, 3483).size(), 1u);
+    // A Darnassus bot standing at the portal joins the chain there.
+    EXPECT_EQ(StartLeg(ChainFor(table, 1, 1377, 3483), 1, 9660, 2505, 300), 2u);
+    // The Outland chain uses the crossing machine unchanged: flight still wins, else chain.
+    EXPECT_EQ(SelectMode(false, false, true, true), Mode::Chain);
+}
 }  // namespace
