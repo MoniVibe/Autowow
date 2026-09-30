@@ -89,6 +89,28 @@ struct BotState
     HardState hard;                        // HardEscape (3)
 };
 
+// A relocation is handed to the existing party survival escape only on its first admission. The party
+// runtime is the authority for whether the bot belongs to a tracked open-world group-quest party; its
+// request set coalesces duplicate map-thread notifications. Oracle bots keep their lease-owned lifecycle.
+inline bool ShouldRequestPartyEscape(bool v2, bool oracleManaged, bool wasPending, bool isPending)
+{
+    return v2 && !oracleManaged && !wasPending && isPending;
+}
+
+// DoSpecificAction("hearthstone") returning true means the use request was accepted; it does not prove
+// arrival. Once accepted, stale source-zone recovery state must not be reinterpreted at the bind point.
+// Danger areas and the hard-escape episode/cooldown deliberately survive this reset.
+inline bool ClearAcceptedEscapeSource(BotState& s, bool accepted)
+{
+    if (!accepted)
+        return false;
+    s.deathCount = 0;
+    s.pendingKillerLevel = 0;
+    s.lastKillerLevel = 0;
+    s.relocate = false;
+    return true;
+}
+
 // Wire-stable ledger reason names; append only.
 enum class Trigger : std::uint8_t
 {

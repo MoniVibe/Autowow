@@ -191,6 +191,43 @@ TEST(DeathLoopBreaker, V2DefaultsOff)
     EXPECT_FALSE(RestPending(62964));
 }
 
+TEST(DeathLoopBreaker, V2RequestsPartyEscapeOnlyForFirstNonOracleRelocationAdmission)
+{
+    EXPECT_TRUE(ShouldRequestPartyEscape(true, false, false, true));
+    EXPECT_FALSE(ShouldRequestPartyEscape(true, false, true, true));   // already pending: coalesce
+    EXPECT_FALSE(ShouldRequestPartyEscape(true, false, false, false)); // no relocation admitted
+    EXPECT_FALSE(ShouldRequestPartyEscape(false, false, false, true)); // V2 owns this handoff
+    EXPECT_FALSE(ShouldRequestPartyEscape(true, true, false, true));   // Oracle owns its lifecycle
+}
+
+TEST(DeathLoopBreaker, AcceptedHardEscapeClearsSourceStateButPreservesDangerAndCooldown)
+{
+    BotState s;
+    DeathSample center;
+    RecordDeath(s, At(1000, -2570, 3917, 530), 1800000, 60, center);
+    s.pendingKillerLevel = 64;
+    s.lastKillerLevel = 64;
+    s.relocate = true;
+    s.hard.active = true;
+    s.hard.cooldownUntilMs = 987654;
+    MarkDanger(s, center, 60, 1000, 3601000);
+
+    EXPECT_FALSE(ClearAcceptedEscapeSource(s, false));
+    EXPECT_EQ(s.deathCount, 1U);
+    EXPECT_TRUE(s.relocate);
+    EXPECT_EQ(s.pendingKillerLevel, 64U);
+    EXPECT_TRUE(IsDangerous(s, 530, -2570, 3917, 2000));
+
+    EXPECT_TRUE(ClearAcceptedEscapeSource(s, true));
+    EXPECT_EQ(s.deathCount, 0U);
+    EXPECT_FALSE(s.relocate);
+    EXPECT_EQ(s.pendingKillerLevel, 0U);
+    EXPECT_EQ(s.lastKillerLevel, 0U);
+    EXPECT_TRUE(s.hard.active);
+    EXPECT_EQ(s.hard.cooldownUntilMs, 987654U);
+    EXPECT_TRUE(IsDangerous(s, 530, -2570, 3917, 2000));
+}
+
 TEST(DeathLoopBreaker, RuntimeQueriesAreInertWhenDisabled)
 {
     ASSERT_FALSE(Enabled());

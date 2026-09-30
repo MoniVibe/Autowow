@@ -102,11 +102,13 @@ void HandleDeath(Player* bot)
     DeathSample const death{nowMs, bot->GetMapId(), Yards(bot->GetPositionX()), Yards(bot->GetPositionY())};
     std::uint32_t const botLevel = bot->GetLevel();
     std::uint32_t const zoneMinLevel = sTravelMgr.GetZoneBracketLow(bot->GetZoneId());
+    bool const oracleManaged = AutoWowOracleRuntime::IsManagedBot(botGuid);
 
     std::uint32_t clusterDeaths = 0;
     std::uint32_t killerLevel = 0;
     DeathSample center;
     Decision decision;
+    bool requestPartyEscape = false;
     {
         std::lock_guard<std::mutex> guard(gLock);
         BotState* s = FindOrCreate(botGuid);
@@ -120,6 +122,7 @@ void HandleDeath(Player* bot)
         decision = Evaluate(p, clusterDeaths, botLevel, killerLevel, zoneMinLevel);
         if (!decision.Escalate())
             return;
+        bool const relocationWasPending = s->relocate;
         s->spiritHealer = true;
         s->relocate = decision.relocate;
         s->deferQuest = 0;
@@ -130,13 +133,13 @@ void HandleDeath(Player* bot)
             decision.relocate = true;
             s->relocate = true;
         }
+        requestPartyEscape = ShouldRequestPartyEscape(V2Enabled(), oracleManaged, relocationWasPending, s->relocate);
     }
 
     // The quest the bot was working when it died there. Oracle-managed quests are deferred by the Oracle
     // pass itself (lease release + its `deferred` line); ordinary New-RPG quests are deferred here and the
     // RPG status is dropped so the bot does not resume the route back into the danger area.
     std::uint32_t deferredQuest = 0;
-    bool const oracleManaged = AutoWowOracleRuntime::IsManagedBot(botGuid);
     if (auto const* doQuest = std::get_if<NewRpgInfo::DoQuest>(&ai->rpgInfo.data); doQuest && doQuest->questId)
     {
         deferredQuest = doQuest->questId;
@@ -155,6 +158,10 @@ void HandleDeath(Player* bot)
     if (AutoWowQuestLedger::Enabled())
         AutoWowQuestLedger::EmitDeathLoop(bot, deferredQuest, TriggerName(decision.trigger),
                                           LedgerFields(clusterDeaths, killerLevel, zoneMinLevel, decision, center, p));
+    // PartyRuntime admits only tracked open-world group-quest parties and coalesces by party id. Retiring that
+    // party restores New-RPG, which owns consumption of the already-admitted relocation after resurrection.
+    if (requestPartyEscape)
+        AutoWowParty::RequestSurvivalLeave(botGuid);
     LOG_INFO("playerbots",
              "[DeathLoop] bot={} trigger={} deaths={} lvl={} klvl={} zone={} zlow={} relocate={} quest={} oracle={} "
              "danger=({},{},{}) r={} cool_ms={}",
@@ -226,12 +233,21 @@ void HardEscapeTick(Player* bot)
     bool ok = false;
     if (action == HardAction::Hearth)
     {
+        // UseItemAction's true result means the use packet was accepted for handling / cast start. Arrival is
+        // not synchronously observable here; an interruption after acceptance remains recoverable only through
+        // later deaths or another hard condition.
         ok = ai->DoSpecificAction("hearthstone", Event("autowow hard escape"), true);
         LOG_INFO("playerbots", "[HardEscape] bot={} action=hearth ok={} lvl={} zone={} zlow={} deaths={} klvl={} "
                  "stuck_ms={} home_zone={}",
                  bot->GetName(), ok, level, zone, zoneLow, deaths, killerLevel, stuckMs, homeZone);
         if (ok)
         {
+            {
+                std::lock_guard<std::mutex> guard(gLock);
+                if (BotState* s = Find(guid))
+                    ClearAcceptedEscapeSource(*s, true);
+            }
+            AutoWowZoneProgression::CancelTrip(guid, nowMs);
             AutoWowParty::RequestSurvivalLeave(guid);
             return;
         }
@@ -261,9 +277,7 @@ void HardEscapeTick(Player* bot)
             std::lock_guard<std::mutex> guard(gLock);
             if (BotState* s = Find(guid))
             {
-                s->deathCount = 0;
-                s->lastKillerLevel = 0;
-                s->relocate = false;
+                ClearAcceptedEscapeSource(*s, true);
             }
         }
         AutoWowZoneProgression::CancelTrip(guid, nowMs);
