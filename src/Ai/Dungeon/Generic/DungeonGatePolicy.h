@@ -200,6 +200,71 @@ inline std::uint32_t GoalId(std::size_t row)
     return GoalIdBase | static_cast<std::uint32_t>(row + 1);
 }
 
+// Dungeon wings with no navmesh link between them (offline region query over the p1data mmaps): a party inside one
+// wing can never reach another wing's encounters in that instance, so those are set aside (gate_unavailable=
+// other_wing) and left out of the probe's clearable mask. Anchors are the wing's entrances and boss spawns; a party
+// belongs to the wing of the anchor nearest its leader (the table's first on a tie).
+struct WingAnchor
+{
+    std::uint32_t mapId;
+    std::uint32_t encounterMask;  // the wing's encounter indices
+    float x;
+    float y;
+    float z;
+};
+
+// Dire Maul (429): East (Zevrim 0, Hydrospawn 1, Lethtendris 2, Alzzin 3; entrances areatrigger_teleport 3183-3185)
+// is one region (1614 polys); West and North (4..15, joined by the courtyard; entrances 3186, 3187, 3189) another
+// (2849 polys). S75: the probe enters East and was scored against all 16.
+constexpr std::uint32_t DireMaulEast = 0x000Fu;
+constexpr std::uint32_t DireMaulWestNorth = 0xFFF0u;
+inline constexpr WingAnchor WingAnchors[] = {
+    {429, DireMaulEast, 44.4f, -154.8f, -2.7f},
+    {429, DireMaulEast, -201.1f, -328.7f, -2.7f},
+    {429, DireMaulEast, 9.3f, -837.1f, -32.5f},
+    {429, DireMaulEast, -34.983f, -448.0f, -37.8785f},
+    {429, DireMaulEast, 4.57887f, -438.407f, -59.954f},
+    {429, DireMaulEast, -5.45062f, -441.126f, 16.4179f},
+    {429, DireMaulEast, 274.844f, -427.251f, -119.962f},
+    {429, DireMaulWestNorth, -63.0f, 159.9f, -3.5f},
+    {429, DireMaulWestNorth, 31.6f, 159.4f, -3.5f},
+    {429, DireMaulWestNorth, 255.2f, -16.1f, -2.6f},
+    {429, DireMaulWestNorth, -84.35f, 543.96f, 28.62f},
+    {429, DireMaulWestNorth, -38.08f, 812.44f, -29.45f},
+    {429, DireMaulWestNorth, 14.39f, 475.85f, -23.3f},
+    {429, DireMaulWestNorth, 33.14f, 575.55f, -4.31f},
+    {429, DireMaulWestNorth, 132.63f, 625.91f, -48.38f},
+    {429, DireMaulWestNorth, 356.8f, 258.31f, 11.65f},
+    {429, DireMaulWestNorth, 410.71f, -3.15f, -24.56f},
+    {429, DireMaulWestNorth, 491.23f, 97.39f, -2.5f},
+    {429, DireMaulWestNorth, 550.38f, 533.72f, -25.32f},
+    {429, DireMaulWestNorth, 627.59f, 481.72f, 29.46f},
+    {429, DireMaulWestNorth, 828.07f, 480.75f, 37.32f},
+    {429, DireMaulWestNorth, 833.99f, 489.54f, 37.4f},
+};
+
+// The encounter lies in another wing than the one (x, y, z) is in; false for maps without wings.
+inline bool OtherWing(std::uint32_t mapId, std::uint32_t encounterIdx, float x, float y, float z)
+{
+    WingAnchor const* nearest = nullptr;
+    float best = 0.0f;
+    for (WingAnchor const& anchor : WingAnchors)
+    {
+        if (anchor.mapId != mapId)
+            continue;
+        float const dx = anchor.x - x;
+        float const dy = anchor.y - y;
+        float const dz = anchor.z - z;
+        float const distance = dx * dx + dy * dy + dz * dz;
+        if (!nearest || distance < best)
+        {
+            nearest = &anchor;
+            best = distance;
+        }
+    }
+    return nearest && encounterIdx < 32 && !(nearest->encounterMask >> encounterIdx & 1u);
+}
+
 inline bool MapHasSteps(std::uint32_t mapId)
 {
     for (Step const& step : Steps)

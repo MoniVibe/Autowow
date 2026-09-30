@@ -299,6 +299,30 @@ TEST(DungeonGatePolicy, PrerequisiteRowsDeferTheirEncounter)
     }
 }
 
+TEST(DungeonGatePolicy, DireMaulWingsSetAsideTheOtherWing)
+{
+    // Inside East (S75 stall on Lethtendris's ledge, Zevrim's shrine, Alzzin): West/North (4..15) are other-wing.
+    struct Pos { float x, y, z; };
+    Pos const east[] = {{-13.341f, -450.982f, 16.404f}, {-34.983f, -448.0f, -37.8785f}, {274.844f, -427.251f, -119.962f},
+        {44.4f, -154.8f, -2.7f}, {236.5f, -282.7f, -56.5f}, {266.0f, -335.7f, -57.0f}};
+    for (Pos const& p : east)
+    {
+        for (std::uint32_t encounter = 0; encounter < 16; ++encounter)
+            EXPECT_EQ(OtherWing(429, encounter, p.x, p.y, p.z), encounter >= 4) << p.x << " " << encounter;
+    }
+    // Inside West/North (King Gordok, Immol'thar, the North entrance): East (0..3) is other-wing.
+    Pos const westNorth[] = {{828.07f, 480.75f, 37.32f}, {-38.08f, 812.44f, -29.45f}, {255.2f, -16.1f, -2.6f}};
+    for (Pos const& p : westNorth)
+    {
+        for (std::uint32_t encounter = 0; encounter < 16; ++encounter)
+            EXPECT_EQ(OtherWing(429, encounter, p.x, p.y, p.z), encounter < 4) << p.x << " " << encounter;
+    }
+    // Maps without wings never set anything aside.
+    EXPECT_FALSE(OtherWing(349, 7, 0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(DireMaulEast & DireMaulWestNorth, 0u);
+    EXPECT_EQ(DireMaulEast | DireMaulWestNorth, 0xFFFFu);
+}
+
 TEST(DungeonGatePolicy, PerScanGateLogsAreRateLimited)
 {
     EXPECT_TRUE(ShouldLog(false, 0));
