@@ -6,6 +6,7 @@
 
 #include "LootObjectStack.h"
 #include "GatherScalePolicy.h"
+#include "GatheringSafetyPolicy.h"
 #include "LootMgr.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
@@ -294,9 +295,8 @@ bool LootObject::IsLootPossible(Player* bot)
 
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(bot);
     if (!botAI)
-    {
         return false;
-    }
+
     if (reqItem && !bot->HasItemCount(reqItem, 1))
         return false;
 
@@ -320,6 +320,18 @@ bool LootObject::IsLootPossible(Player* bot)
     // A bot has no client, so make the same call the server makes for one.
     if (go && go->HasFlag(GAMEOBJECT_FLAGS, GO_FLAG_INTERACT_COND) && !go->ActivateToQuest(bot))
         return false;
+
+    // Prevent autonomous bots from retrying a gather source indefinitely when their bags are too full.
+    bool const gatheringObject = skillId == SKILL_HERBALISM || skillId == SKILL_MINING ||
+                                 skillId == SKILL_SKINNING || skillId == SKILL_ENGINEERING;
+    if (AutoWowGather::EvaluateGatherBagAdmission(gatheringObject, botAI->HasGameClientMaster()) ==
+        AutoWowGather::GatherBagAdmission::CheckCapacity)
+    {
+        uint8 const bagUsage = botAI->GetAiObjectContext()->GetValue<uint8>("bag space")->Get();
+
+        if (!AutoWowGather::HasGatherBagCapacity(bagUsage))
+            return false;
+    }
 
     if (skillId == SKILL_NONE)
         return true;

@@ -737,3 +737,16 @@ TEST(WorkerGatherSafetyRegression, ExistingSkillToolAndNearestSelectionBehaviorR
     profile.herbalismSkill = 0;
     EXPECT_FALSE(AutoWowGather::SelectCandidate(candidates, profile, cooldowns, 1000).has_value());
 }
+
+TEST(GatherBagAdmissionPolicy, ChecksOnlyAutonomousGatheringAndRejectsAboveEightyPercent)
+{
+    EXPECT_EQ(AutoWowGather::EvaluateGatherBagAdmission(true, false),
+              AutoWowGather::GatherBagAdmission::CheckCapacity);
+    EXPECT_TRUE(AutoWowGather::HasGatherBagCapacity(80));
+    EXPECT_FALSE(AutoWowGather::HasGatherBagCapacity(81));
+
+    EXPECT_EQ(AutoWowGather::EvaluateGatherBagAdmission(true, true),
+              AutoWowGather::GatherBagAdmission::Admit);
+    EXPECT_EQ(AutoWowGather::EvaluateGatherBagAdmission(false, false),
+              AutoWowGather::GatherBagAdmission::Admit);
+}

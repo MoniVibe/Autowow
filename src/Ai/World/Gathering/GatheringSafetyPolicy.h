@@ -143,6 +143,24 @@ inline char const* CandidateLeaseReason(CandidateLeaseEvent event)
     }
 }
 
+enum class GatherBagAdmission : std::uint8_t
+{
+    Admit = 0,
+    CheckCapacity
+};
+
+inline GatherBagAdmission EvaluateGatherBagAdmission(bool gatheringSource, bool hasGameClientMaster)
+{
+    return gatheringSource && !hasGameClientMaster
+               ? GatherBagAdmission::CheckCapacity
+               : GatherBagAdmission::Admit;
+}
+
+inline bool HasGatherBagCapacity(std::uint8_t bagUsagePercent)
+{
+    return bagUsagePercent <= 80;
+}
+
 enum class LiquidContact : std::uint8_t
 {
     NoWater = 0,

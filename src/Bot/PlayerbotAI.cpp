@@ -3855,13 +3855,17 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     {
         LootObject loot = *aiObjectContext->GetValue<LootObject>("loot target");
         GameObject* go = GetGameObject(loot.guid);
-        if (go && go->isSpawned())
+        // Use the loot-target object if it exists and is spawned, and either no item was given or the item is its key.
+        if (go && go->isSpawned() && (!itemTarget || itemTarget->GetEntry() == loot.reqItem))
         {
             WorldPacket packetgouse(CMSG_GAMEOBJ_USE, 8);
             packetgouse << loot.guid;
             bot->GetSession()->HandleGameObjectUseOpcode(packetgouse);
             targets.SetGOTarget(go);
             faceTo = go;
+            if (itemTarget && spellInfo->Effects[0].Effect == SPELL_EFFECT_OPEN_LOCK &&
+                itemTarget->GetEntry() == loot.reqItem)
+                spell->m_CastItem = itemTarget;
         }
         else if (itemTarget)
         {
