@@ -1,84 +1,76 @@
-<p align="center">
-    <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README.md">English</a>
-    |
-    <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README_CN.md">中文</a>
-    |
-    <a href="https://github.com/mod-playerbots/mod-playerbots/blob/master/README_ES.md">Español</a>
-</p>
+# AutoWow
 
+**Azeroth that keeps going: persistent bot adventurers, professions, supply chains, and coordinated groups.**
 
-<div align="center">
-  <img src="banner.png" alt="Playerbots Banner" width="700px">
-</div>
+AutoWow is an experimental fork of **Playerbots for AzerothCore**, focused on what happens over a character's whole journey. We want bots to build a life in the world: pursue quests, travel between zones, learn professions, gather materials, make useful goods, maintain their equipment, form parties, and tackle dungeons together.
 
-<div align="center">
-    <img src="https://github.com/mod-playerbots/mod-playerbots/actions/workflows/macos_build.yml/badge.svg">
-    <img src="https://github.com/mod-playerbots/mod-playerbots/actions/workflows/core_build.yml/badge.svg">
-    <img src="https://github.com/mod-playerbots/mod-playerbots/actions/workflows/windows_build.yml/badge.svg">
-</div>
+The fun is watching those systems meet. A gatherer brings back materials, a crafter turns them into bags or potions, and adventurers use those supplies on their next trip. When someone gets stuck, we want to understand why and improve the actual gameplay loop.
 
-# Playerbots Module
-`mod-playerbots` is an [AzerothCore](https://www.azerothcore.org/) module that adds player-like bots to a server. The project is based off [IKE3's Playerbots](https://github.com/ike3/mangosbot).
+This repository contains the native C++ module. The `ops` branch holds companion scripts, runbooks, contracts, and experiment reports.
 
-Features include:
+## How this builds on Playerbots
 
-- The ability to log in alt characters as bots, allowing players to interact with their other characters, form parties, level up, and more
-- Random bots that wander through the world, complete quests, and otherwise behave like players, simulating the MMO experience
-- Bots capable of running most raids and battlegrounds
-- Highly configurable settings to define how bots behave
-- Excellent performance, even when running thousands of bots
+Playerbots already supplies the foundation: bot characters, combat strategies, questing, travel, group behavior, and extensive dungeon and raid work. AutoWow builds on that work with persistent progression and coordination systems of its own.
 
-We also have a **[Discord server](https://discord.gg/NQm5QShwf9)** where you can discuss the project, ask questions, and get involved in the community!
-
-## Installation
-
-Supported platforms are Ubuntu, Windows, and macOS. Other Linux distributions may work, but may not receive support.
-
-> **Important:** All `mod-playerbots` installations require a custom fork of AzerothCore: [mod-playerbots/azerothcore-wotlk (Playerbot branch)](https://github.com/mod-playerbots/azerothcore-wotlk/tree/Playerbot). The standard AzerothCore repository will **not** work.
-
-### Quick Start
-
-```bash
-git clone https://github.com/mod-playerbots/azerothcore-wotlk.git --branch=Playerbot
-cd azerothcore-wotlk/modules
-git clone https://github.com/mod-playerbots/mod-playerbots.git --branch=master
-```
-
-Then build the server following the platform-specific instructions in our **[Installation Guide](https://github.com/mod-playerbots/mod-playerbots/wiki/Installation-Guide)**.
-
-> **Testing branch:** A `test-staging` branch is available with the latest features and fixes before they are merged into `master`. To use it, clone with `--branch=test-staging` instead. Note that this branch may contain unstable or breaking changes — use it at your own risk and only if you are comfortable troubleshooting issues.
-
-### Detailed Guides
-
-| Guide | Description |
+| AutoWow focus | What we're adding and exploring |
 |---|---|
-| **[Installation Guide](https://github.com/mod-playerbots/mod-playerbots/wiki/Installation-Guide)** | Full step-by-step instructions for clean installs, migrating from existing AzerothCore, Docker setup, adding modules, and updating |
-| **[Troubleshooting](https://github.com/mod-playerbots/mod-playerbots/wiki/Troubleshooting)** | Solutions to the most common build errors, database issues, configuration mistakes, crashes, and platform-specific problems |
+| Persistent adventurers | Cohorts, quest scheduling, zone progression, and recovery from blocked work |
+| Everyday upkeep | Trips for bags, repairs, food, water, ammunition, trainers, and riding/mount purchases |
+| Professions and supply | Gathering detours, profession training, crafting, profession-house guilds, material routing, and orders for useful goods |
+| Groups with a purpose | Party formation, role-aware dungeon recruitment, group travel, encounter routes, and prerequisite gates |
+| Observable decisions | Progress ledgers, combat telemetry, a local control bridge, and bounded executor/ownership policies |
 
-For additional references, see the [AzerothCore Installation Guide](https://www.azerothcore.org/wiki/installation) and [Installing a Module](https://www.azerothcore.org/wiki/installing-a-module) pages.
+These systems are at different stages of development. Source availability does not mean every combination has passed a live-world test.
 
-## Documentation
+## Current snapshot
 
-The [Playerbots Wiki](https://github.com/mod-playerbots/mod-playerbots/wiki) contains an extensive overview of AddOns, commands, raids with programmed bot strategies, and recommended performance configurations. Please note that documentation may be incomplete or out-of-date in some sections, and contributions are welcome.
+Source inventory at `599c0346` (September 30, 2026):
 
-Bots are controlled via chat commands. For larger bot groups, this can be cumbersome. Because of this, community members have developed client AddOns to allow controlling bots through the in-game UI. We recommend you check out their projects listed in the [AddOns and Submodules](https://github.com/mod-playerbots/mod-playerbots/wiki/Playerbot-Addons-and-Sub%E2%80%90Modules) page.
+| Measure | Count / scope |
+|---|---|
+| Dedicated AutoWow source/header files | **143** directly under `src/AutoWow/` |
+| C++ test source files | **118**, also registered in the module's CMake test configuration |
+| AutoWow configuration entries | **528** in `conf/playerbots.conf.dist` |
+| New Outland progression ladder | Level **58-70**, opt-in; no Northrend ladder yet |
 
-## Contributing
+Those are repository counts, not a test-pass total or a performance benchmark. AutoWow also changes existing Playerbots code outside `src/AutoWow/`.
 
-This project is still under development. We encourage anyone to make contributions, anything from pull requests to reporting issues. If you encounter any errors or experience crashes, we encourage you [report them as GitHub issues](https://github.com/mod-playerbots/mod-playerbots/issues/new?template=bug_report.md). Your valuable feedback will help us improve this project collaboratively.
+A recorded **September 22 zone-scout experiment** used six scouts with **5x PvE XP, 1.5x player movement, and doubled eligible quest drops capped at 100**. Its report records seven newly saved quest rewards and level gains for four scouts, alongside stalled quests, deaths, and unsupported objectives. It also records **116/116 native checks across seven named suites** for that earlier deployed build. Those results do not validate today's entire source tree. See the [experiment report on `ops`](https://github.com/MoniVibe/Autowow/blob/ops/docs/ZONE_SCOUT_STATUS_20260922.md).
 
-If you make coding contributions, `mod-playerbots` complies with the [C++ Code Standards](https://www.azerothcore.org/wiki/cpp-code-standards) established by AzerothCore. Each Pull Request must include all test scenarios the author performed, along with their results, to demonstrate that the changes were properly verified.
+## What to expect
 
-We recommend joining the [Discord server](https://discord.gg/NQm5QShwf9) to make your contributions to the project easier, as a lot of active support is carried out through this server.
+**Active development.** Many AutoWow systems and recent additions are disabled by default. Read the comments in [the configuration template](conf/playerbots.conf.dist), enable a small set of related features, and validate them on a test realm before expanding.
 
-Please click on the "⭐" button to stay up to date and help us gain more visibility on GitHub!
+**Travel and recovery depend on the profile.** Some experiments enforce physical travel and no teleport recovery; other optional systems permit portal fallbacks or treasury-funded purchases. Report the exact flags when comparing results.
 
-## Acknowledgements
+**Native gameplay execution.** AutoWow runs inside the Playerbots C++ module. The Oracle-named components are planning, ownership, and executor machinery; optional external advisor tooling lives separately. That tooling does not establish that every bot action uses an LLM.
 
-`mod-playerbots` is based on [ZhengPeiRu21/mod-playerbots](https://github.com/ZhengPeiRu21/mod-playerbots) and [celguar/mangosbot-bots](https://github.com/celguar/mangosbot-bots). We extend our gratitude to [@ZhengPeiRu21](https://github.com/ZhengPeiRu21) and [@celguar](https://github.com/celguar) for their continued efforts in maintaining the module.
+**Uneven content coverage.** Quest objectives, movement, death recovery, economy behavior, and dungeon coordination still need broader live validation. Implemented routes and policies are not a claim of complete quest, dungeon, raid, or endgame coverage.
 
-Also, a thank you to the many contributors who've helped build this project:
+## Getting started
 
-<a href="https://github.com/mod-playerbots/mod-playerbots/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=mod-playerbots/mod-playerbots" />
-</a>
+You need a compatible **Playerbots-enabled AzerothCore WotLK server**, its databases, and the game data required by that server. This repository is a server module, not a standalone game or a packaged one-click realm.
+
+Use the [preserved upstream README](README_PLAYERBOTS.md) for the foundation and upstream installation references. Its clone commands install upstream Playerbots; use this fork as the module when evaluating AutoWow. Some AutoWow features also require matching core patches described on the [`ops` branch](https://github.com/MoniVibe/Autowow/tree/ops/core-patches).
+
+Start with a small roster and one feature family. Capture the module/core revisions, enabled settings, and observed results. Experimental settings can change progression, money flow, and recovery behavior, so keep backups of your test realm.
+
+## Contribute, experiment, or just follow along
+
+We're interested in people who enjoy bot worlds, server engineering, automation, and the strange stories that emerge when systems interact.
+
+Useful contributions include:
+
+- Reproduce a stuck quest, travel failure, death loop, or inventory problem.
+- Improve a specific quest objective, dungeon route, profession recipe path, or recovery policy.
+- Test a small roster over time and share both progress and failures.
+- Make setup, feature profiles, and experiment reports easier to follow.
+- Share clips or stories of bots doing something interesting; observations help choose what to build next.
+
+Open an issue or pull request with **what you expected, what happened, the module/core revisions, the relevant flags, and a short reproduction**. For runtime results, include roster size, duration, rates, and hardware when relevant. Remove credentials and private configuration from logs. Code changes should include relevant checks and their actual results.
+
+## Credits and license
+
+AutoWow owes its foundation to [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots), AzerothCore, and the earlier Playerbots projects acknowledged in the [upstream README](README_PLAYERBOTS.md). Their existing capabilities and contributor history remain theirs.
+
+The repository includes the **GNU General Public License v2**; see [LICENSE](LICENSE) and individual source notices.
