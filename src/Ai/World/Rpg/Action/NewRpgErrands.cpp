@@ -35,6 +35,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "QuestTravelWalk.h"
 #include "Trainer.h"
 #include "TravelMgr.h"
 #include "TradePolicy.h"
@@ -822,6 +823,16 @@ LegInput TownLeg(Player* bot, Town const& t, std::uint8_t team)
     return in;
 }
 
+// A town walk starts only with an exact complete local proof or a fresh reachable TravelMgr prefix.
+// The latter retains long waypoint-routed towns without treating a local detour as town connectivity.
+bool TownWalkRouteAvailable(Player* bot, Town const& t)
+{
+    WorldPosition const dest(t.map, float(t.x), float(t.y), float(t.z));
+    if (AutoWowQuestGiverTravel::SelectCompleteWalkProbe(bot, dest))
+        return true;
+    return AutoWowQuestGiverTravel::SelectTravelMgrWalkProbe(bot, dest).has_value();
+}
+
 // Known taxi node of the bot's team nearest (x, y) on `map`, other than `exclude`. 0 = none.
 uint32 NearestKnownNode(Player* bot, uint32 map, std::int32_t x, std::int32_t y, uint32 exclude)
 {
@@ -945,7 +956,9 @@ bool TownTeachesPlan(Player* bot, Town const& t, std::uint8_t team)
 // the hearth town. Zones far above the bot's level are skipped unless reached by hearthstone.
 // `trainOnly` (AutoWow.Professions.TrainRuns): only towns that teach the bot a planned rank now count.
 // `auctionOnly` (AutoWow.Gear.AuctionUpgrades): only towns with a usable auctioneer count.
-Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly = false, bool auctionOnly = false)
+Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, WalkBackoffTable& walkBackoffs,
+                       std::uint64_t nowMs, std::uint32_t needs, bool trainOnly = false,
+                       bool auctionOnly = false)
 {
     Params const& p = detail::gParams;
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
@@ -987,15 +1000,31 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly 
     if (hearthTown && std::none_of(nearby.begin(), nearby.end(), [&](auto const& e) { return e.second == hearthTown; }))
         nearby.emplace_back(0, hearthTown);
     std::uint32_t const level = bot->GetLevel();
+    std::uint32_t const sourceZone = bot->GetZoneId();
+    std::size_t walkCandidates = 0;
     std::vector<Candidate> cands;
     for (auto const& [d2, t] : nearby)
     {
-        LegInput const in = TownLeg(bot, *t, team);
-        Leg const l = ChooseLeg(p, in);
+        LegInput in = TownLeg(bot, *t, team);
+        Leg l = ChooseLeg(p, in);
         auto const bracket = sPlayerbotAIConfig.zoneBrackets.find(t->zone);
         std::uint32_t const low = bracket == sPlayerbotAIConfig.zoneBrackets.end() ? 0 : bracket->second.first;
         if (l != Leg::Hearth && ZoneTooHigh(p, level, low))
             continue;
+        if (l == Leg::Walk)
+        {
+            bool const withinProbeBudget = walkCandidates++ < kWalkBackoffs;
+            bool const held = TownWalkBackedOff(walkBackoffs, t->id, sourceZone, needs, nowMs);
+            bool const probeAvailable = withinProbeBudget && !held;
+            in.walkRouteAvailable = probeAvailable && TownWalkRouteAvailable(bot, *t);
+            if (!in.walkRouteAvailable && !held && probeAvailable)
+            {
+                RememberTownWalkFailure(walkBackoffs, t->id, sourceZone, needs, nowMs, nowMs + p.cooldownMs);
+                LOG_INFO("playerbots", "[Errands] bot={} walk_denied town={} source_zone={} needs={} retry_ms={}",
+                         bot->GetName(), t->id, sourceZone, needs, p.cooldownMs);
+            }
+            l = ChooseLeg(p, in);  // a denied walk may still use a known taxi
+        }
         std::uint32_t const cost = LegCostMs(p, l, in);
         cands.push_back({t->id, l, detour ? DetourCostMs(cost, hasAuction(*t), p.auctionDetourMs) : cost});
     }
@@ -1164,6 +1193,9 @@ bool StartMountRun(Player* bot, BotState& s, std::uint64_t now, std::uint8_t tea
     s.town = site->id;
     s.needs = NeedRiding;
     s.leg = s.travelLeg = leg;
+    s.walkAdmitted = false;  // mount-site walks use the same one-shot runtime admission
+    s.townWalkAttempted = false;
+    s.walkSourceZone = 0;
     s.startMs = s.phaseMs = s.legMs = now;
     s.backMap = bot->GetMapId();
     s.backX = Yd(bot->GetPositionX());
@@ -1260,9 +1292,36 @@ bool NewRpgBaseAction::ErrandsStep()
     std::uint8_t const team = TeamOf(bot);
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
 
+    auto retireTownWalk = [&](Town const& target)
+    {
+        WalkGoalKey const expected{target.map, target.x, target.y, target.z};
+        bool const moveFarActive = info.moveFarPos != WorldPosition();
+        TravelIntentPolicy::Point const moveFarPoint =
+            TravelIntentPolicy::MakePoint(info.moveFarPos.GetMapId(), info.moveFarPos.GetPositionX(),
+                                          info.moveFarPos.GetPositionY(), info.moveFarPos.GetPositionZ());
+        WalkGoalKey const moveFar{moveFarPoint.mapId, moveFarPoint.x, moveFarPoint.y, moveFarPoint.z};
+        TravelIntentPolicy::Intent const& intent = info.travelIntent;
+        WalkGoalKey const intentGoal{intent.goal.mapId, intent.goal.x, intent.goal.y, intent.goal.z};
+        if (!OwnsTownWalkGoal(expected, moveFarActive, moveFar, intent.active, intentGoal))
+            return false;
+
+        bot->StopMoving();
+        bot->GetMotionMaster()->Clear();
+        AI_VALUE(LastMovement&, "last movement").clear();
+        info.travelIntent = {};
+        info.SetMoveFarTo(WorldPosition());
+        return true;
+    };
+
     auto finish = [&]()
     {
         Town const* town = FindTown(s.town);
+        if (ShouldRememberTownWalkFailure(s.outcome, s.townWalkAttempted) && town)
+        {
+            RememberTownWalkFailure(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now,
+                                    now + p.cooldownMs);
+            retireTownWalk(*town);
+        }
         std::uint64_t const returnMs = s.phase == Phase::Return && now >= s.phaseMs ? now - s.phaseMs : 0;
         if (AutoWowQuestLedger::Enabled())
             AutoWowQuestLedger::EmitErrand(bot, OutcomeName(s.outcome),
@@ -1363,7 +1422,9 @@ bool NewRpgBaseAction::ErrandsStep()
         bool const trainOnly = a.urgent == NeedProfTrain;
         // A run only the auction gear asked for goes to a town with an auctioneer.
         bool const auctionOnly = a.urgent == NeedAhGear;
-        Town const* town = ChooseTown(bot, team, leg, trainOnly, auctionOnly);
+        Town const* town =
+            ChooseTown(bot, team, leg, s.walkBackoffs, now, a.needs, trainOnly, auctionOnly);
+        StoreState(guid, s);  // retain failures; nextCheckMs bounds a no-town decision to one per check window
         if (trainOnly)
             LOG_INFO("playerbots", "[Professions] train_due bot={} level={} town={}", bot->GetName(), bot->GetLevel(),
                      town ? town->id : 0);
@@ -1380,6 +1441,9 @@ bool NewRpgBaseAction::ErrandsStep()
         s.needs = a.needs & serves;
         s.leg = leg;
         s.travelLeg = leg;
+        s.walkAdmitted = leg == Leg::Walk;  // ChooseTown already proved this first walk handoff
+        s.townWalkAttempted = false;
+        s.walkSourceZone = leg == Leg::Walk ? bot->GetZoneId() : 0;
         s.startMs = s.phaseMs = s.legMs = now;
         s.backMap = bot->GetMapId();
         s.backX = bx;
@@ -1412,6 +1476,9 @@ bool NewRpgBaseAction::ErrandsStep()
             {
                 s.leg = Leg::Walk;  // landed (or the taxi failed) short of the destination: walk the rest
                 s.legIssued = false;
+                s.walkAdmitted = false;
+                s.townWalkAttempted = false;
+                s.walkSourceZone = 0;
             }
             else
             {
@@ -1426,10 +1493,23 @@ bool NewRpgBaseAction::ErrandsStep()
                 }
                 ++s.reissues;
                 s.leg = Leg::Walk;
+                s.walkAdmitted = false;
+                s.townWalkAttempted = false;
+                s.walkSourceZone = 0;
             }
         }
-        if (s.leg == Leg::Walk && WalkLeg(dest))
-            ++s.reissues;  // stuck: the no-progress window of the no-teleport mover
+        if (s.phase == Phase::Travel && s.leg == Leg::Walk && !s.walkAdmitted)
+        {
+            StoreState(guid, s);
+            return true;  // the next tick performs the one-shot town admission before any local segment
+        }
+        if (s.leg == Leg::Walk)
+        {
+            if (s.phase == Phase::Travel)
+                s.townWalkAttempted = true;
+            if (WalkLeg(dest))
+                ++s.reissues;  // stuck: the no-progress window of the no-teleport mover
+        }
         StoreState(guid, s);
         return true;
     };
@@ -1530,8 +1610,29 @@ bool NewRpgBaseAction::ErrandsStep()
             StoreState(guid, s);
             return true;
         }
+        if (s.leg == Leg::Walk && !s.walkAdmitted)
+        {
+            s.walkSourceZone = bot->GetZoneId();  // capture the origin before any town-bound walk segment
+            bool const held = TownWalkBackedOff(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now);
+            if (!held && TownWalkRouteAvailable(bot, *town))
+            {
+                s.walkAdmitted = true;
+            }
+            else
+            {
+                RememberTownWalkFailure(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now,
+                                        now + p.cooldownMs);
+                retireTownWalk(*town);
+                s.reissues = p.maxReissues + 1;  // enter the existing finite rescue/give-up path now
+                LOG_INFO("playerbots", "[Errands] bot={} walk_denied_active town={} source_zone={} needs={} held={}",
+                         bot->GetName(), town->id, s.walkSourceZone, s.needs, held);
+            }
+            StoreState(guid, s);
+        }
         if (LegExhausted(p, s, now, p.travelTimeoutMs))
         {
+            if (s.townWalkAttempted)
+                retireTownWalk(*town);
             // AutoWow.Travel.Safe: one rescue leg per run (ErrandsPolicy RescueLeg) before giving up.
             if (sPlayerbotAIConfig.autoWowTravelSafe && !s.rescued)
             {
@@ -1549,9 +1650,14 @@ bool NewRpgBaseAction::ErrandsStep()
                 if (rescue != Leg::None)
                 {
                     if (rescue == Leg::Hearth)
+                    {
                         s.town = hearthTown->id;
+                        s.townWalkAttempted = false;
+                        s.walkSourceZone = 0;
+                    }
                     s.leg = s.travelLeg = rescue;
                     s.legIssued = false;
+                    s.walkAdmitted = false;
                     s.reissues = 0;
                     s.phaseMs = s.legMs = now;
                     LOG_INFO("playerbots", "[Errands] bot={} rescue leg={} town={} at ({},{})", bot->GetName(),
@@ -1568,6 +1674,9 @@ bool NewRpgBaseAction::ErrandsStep()
             // (Re)choose: at start the hearth may fail, a flight may be gone.
             s.leg = ChooseLeg(p, TownLeg(bot, *town, team));
             s.legIssued = false;
+            s.walkAdmitted = false;
+            s.townWalkAttempted = false;
+            s.walkSourceZone = 0;
             if (s.leg == Leg::None)
                 ++s.reissues;
             else
@@ -1601,6 +1710,9 @@ bool NewRpgBaseAction::ErrandsStep()
                 {
                     ++s.reissues;
                     s.leg = Leg::None;
+                    s.walkAdmitted = false;
+                    s.townWalkAttempted = false;
+                    s.walkSourceZone = 0;
                 }
                 StoreState(guid, s);
                 return true;
@@ -1613,6 +1725,9 @@ bool NewRpgBaseAction::ErrandsStep()
                 ++s.reissues;
                 s.leg = Leg::None;
                 s.legIssued = false;
+                s.walkAdmitted = false;
+                s.townWalkAttempted = false;
+                s.walkSourceZone = 0;
             }
             StoreState(guid, s);
             return true;
@@ -1640,6 +1755,9 @@ bool NewRpgBaseAction::ErrandsStep()
             s.phaseMs = s.legMs = now;
             s.leg = Leg::None;
             s.legIssued = false;
+            s.walkAdmitted = false;
+            s.townWalkAttempted = false;
+            s.walkSourceZone = 0;
             s.reissues = 0;
             StoreState(guid, s);
             return true;

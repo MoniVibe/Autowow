@@ -191,6 +191,30 @@ TEST(Errands, LegChoice)
     EXPECT_EQ(ChooseLeg(p, in), Leg::None);  // never hearth off the bot's continent
 }
 
+TEST(Errands, WalkAdmissionRetainsLongRouteAndTaxiFallback)
+{
+    Params p;
+    LegInput in;
+    in.walkYards = 3000;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Walk);  // a fresh long TravelMgr prefix authorizes the walk
+
+    in.walkRouteAvailable = false;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::None);
+    in.flight = true;
+    in.fmYards = 50;
+    in.flyYards = 2800;
+    in.tailYards = 30;
+    EXPECT_EQ(ChooseLeg(p, in), Leg::Flight);  // denied walk does not suppress the known taxi
+}
+
+TEST(Errands, DeniedCheapestTownFallsBackToReachableTown)
+{
+    std::vector<Candidate> const c = {{10, Leg::None, 1}, {20, Leg::Walk, 2000}};
+    Candidate const* best = PickTown(c);
+    ASSERT_NE(best, nullptr);
+    EXPECT_EQ(best->town, 20U);
+}
+
 TEST(Errands, LegCosts)
 {
     Params p;
@@ -493,6 +517,58 @@ TEST(Errands, PlanStopsTradeStopsLastAndMailboxIdSpaceDisjoint)
 }
 
 // ---- state + ledger ----------------------------------------------------------------------------------------
+TEST(Errands, WalkBackoffMatchesTownZoneNeedAndExpires)
+{
+    WalkBackoffTable table{};
+    RememberTownWalkFailure(table, 46341, 148, NeedProfTrain, 100, 1000);
+    EXPECT_TRUE(TownWalkBackedOff(table, 46341, 148, NeedProfTrain, 999));
+    EXPECT_FALSE(TownWalkBackedOff(table, 46341, 148, NeedBags, 999));
+    EXPECT_FALSE(TownWalkBackedOff(table, 46341, 141, NeedProfTrain, 999));
+    EXPECT_FALSE(TownWalkBackedOff(table, 46341, 148, NeedProfTrain, 1000));
+
+    RememberTownWalkFailure(table, 46341, 148, NeedBags, 200, 1200);
+    EXPECT_TRUE(TownWalkBackedOff(table, 46341, 148, NeedProfTrain | NeedBags, 1100));
+    EXPECT_EQ(table[0].needs, std::uint32_t(NeedProfTrain | NeedBags));
+    EXPECT_EQ(table[0].retryUntilMs, 1200U);
+
+    RememberTownWalkFailure(table, 46341, 148, NeedFood, 1200, 2000);
+    EXPECT_FALSE(TownWalkBackedOff(table, 46341, 148, NeedProfTrain, 1300));
+    EXPECT_TRUE(TownWalkBackedOff(table, 46341, 148, NeedFood, 1300));
+}
+
+TEST(Errands, WalkBackoffReplacementIsFixedAndDeterministic)
+{
+    WalkBackoffTable table{};
+    for (std::size_t i = 0; i < table.size(); ++i)
+        RememberTownWalkFailure(table, std::uint32_t(100 + i), 148, NeedProfTrain, 10,
+                                1000 + i);
+    RememberTownWalkFailure(table, 999, 148, NeedBags, 10, 2000);
+    EXPECT_EQ(table[0].town, 999U);  // earliest expiry is replaced; array order breaks ties
+    EXPECT_EQ(table.size(), kWalkBackoffs);
+}
+
+TEST(Errands, TownWalkGoalCleanupRequiresExactOwnedGoal)
+{
+    WalkGoalKey const town{1, 10127, 2224, 1328};
+    WalkGoalKey const unrelated{1, 9000, 2000, 10};
+    EXPECT_TRUE(OwnsTownWalkGoal(town, true, town, false, {}));
+    EXPECT_TRUE(OwnsTownWalkGoal(town, false, {}, true, town));
+    EXPECT_TRUE(OwnsTownWalkGoal(town, true, town, true, town));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, true, unrelated, false, {}));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, false, {}, true, unrelated));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, true, town, true, unrelated));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, true, unrelated, true, town));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, false, town, false, town));
+}
+
+TEST(Errands, OnlyAttemptedTravelWalkFailureIsRemembered)
+{
+    EXPECT_TRUE(ShouldRememberTownWalkFailure(Outcome::TravelGaveUp, true));
+    EXPECT_FALSE(ShouldRememberTownWalkFailure(Outcome::TravelGaveUp, false));
+    EXPECT_FALSE(ShouldRememberTownWalkFailure(Outcome::Done, true));
+    EXPECT_FALSE(ShouldRememberTownWalkFailure(Outcome::ReturnGaveUp, true));
+}
+
 TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
 {
     Params p;
@@ -503,12 +579,14 @@ TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
     s.spent = 500;
     s.sellerRetry.count = 1;
     s.sellerRetry.spawns[0] = 77;
+    RememberTownWalkFailure(s.walkBackoffs, 46341, 148, NeedProfTrain, 100, 5000);
     BotState const n = AfterRun(p, s, 1000);
     EXPECT_EQ(n.phase, Phase::None);
     EXPECT_EQ(n.town, 0U);
     EXPECT_EQ(n.spent, 0U);
     EXPECT_EQ(n.lastClassTrainLevel, 24U);
     EXPECT_EQ(n.sellerRetry.count, 0U);
+    EXPECT_TRUE(TownWalkBackedOff(n.walkBackoffs, 46341, 148, NeedProfTrain, 1000));
     EXPECT_EQ(n.cooldownUntilMs, 1000U + p.cooldownMs);
     EXPECT_EQ(n.version, kStateVersion);
 }
@@ -606,7 +684,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 10U);
+    EXPECT_EQ(s.version, kStateVersion);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);

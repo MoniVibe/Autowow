@@ -31,7 +31,7 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 10;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 11;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
                                                   // 7: nextTrainRunMs (Professions.TrainRuns);
@@ -39,6 +39,7 @@ inline constexpr std::uint8_t kStateVersion = 10;  // 2: sellUntilMs / sellRetry
                                                   // 9: lastAhGearLevel / ahGearItems (Gear.AuctionUpgrades);
                                                   // 10: nextMountMs / mountGrantMs / rideTier / rideLearn /
                                                   //     mountItem (Errands.Mounts)
+                                                  // 11: walk admission / bounded town walk backoff
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -606,7 +607,8 @@ inline constexpr char const* LegName(Leg leg)
 struct LegInput
 {
     bool sameMap = true;
-    std::uint32_t walkYards = 0;   // straight line bot -> destination
+    std::uint32_t walkYards = 0;      // straight line bot -> destination
+    bool walkRouteAvailable = true;   // exact complete path or fresh reachable TravelMgr prefix
     bool hearthHere = false;       // hearthstone bound within TownRadius of the destination (same map)
     bool hearthReady = false;      // hearthstone in bags, spell off cooldown
     bool flight = false;           // taxi path from the nearest flight master to a known node there
@@ -643,7 +645,7 @@ struct LegInput
     if (in.hearthHere && in.hearthReady && in.walkYards > p.hearthMinYards)
         return Leg::Hearth;
     bool const canFly = in.flight && in.walkYards >= p.flightMinYards;
-    bool const canWalk = in.walkYards <= p.maxWalkYards;
+    bool const canWalk = in.walkRouteAvailable && in.walkYards <= p.maxWalkYards;
     if (canFly && (!canWalk || LegCostMs(p, Leg::Flight, in) < LegCostMs(p, Leg::Walk, in)))
         return Leg::Flight;
     return canWalk ? Leg::Walk : Leg::None;
@@ -1204,6 +1206,93 @@ inline std::string MountLedgerFields(std::uint32_t site, std::uint8_t tier, char
 }
 
 // ---- per-bot state -----------------------------------------------------------------------------------
+inline constexpr std::size_t kWalkBackoffs = 8;
+
+struct WalkBackoff
+{
+    std::uint32_t town = 0;          // stable Town::id (innkeeper spawn guid)
+    std::uint32_t sourceZone = 0;    // zone where this town walk was admitted / denied
+    std::uint32_t needs = 0;         // only overlapping needs are held
+    std::uint64_t retryUntilMs = 0;
+};
+
+using WalkBackoffTable = std::array<WalkBackoff, kWalkBackoffs>;
+
+[[nodiscard]] inline bool WalkBackoffMatches(WalkBackoff const& b, std::uint32_t town,
+                                             std::uint32_t sourceZone, std::uint32_t needs,
+                                             std::uint64_t nowMs)
+{
+    return b.town == town && b.sourceZone == sourceZone && nowMs < b.retryUntilMs && (b.needs & needs) != 0;
+}
+
+[[nodiscard]] inline bool TownWalkBackedOff(WalkBackoffTable const& table, std::uint32_t town,
+                                            std::uint32_t sourceZone, std::uint32_t needs,
+                                            std::uint64_t nowMs)
+{
+    return std::any_of(table.begin(), table.end(), [&](WalkBackoff const& b)
+                       { return WalkBackoffMatches(b, town, sourceZone, needs, nowMs); });
+}
+
+// One entry per town/source-zone pair. Repeated failures combine need bits and extend the hold.
+// New pairs use the first empty/expired slot, otherwise the entry expiring first (array order breaks ties).
+inline void RememberTownWalkFailure(WalkBackoffTable& table, std::uint32_t town,
+                                    std::uint32_t sourceZone, std::uint32_t needs,
+                                    std::uint64_t nowMs, std::uint64_t retryUntilMs)
+{
+    if (!town || !needs || retryUntilMs <= nowMs)
+        return;
+
+    for (WalkBackoff& b : table)
+        if (b.town == town && b.sourceZone == sourceZone)
+        {
+            if (nowMs < b.retryUntilMs)
+            {
+                b.needs |= needs;
+                b.retryUntilMs = std::max(b.retryUntilMs, retryUntilMs);
+            }
+            else
+                b = {town, sourceZone, needs, retryUntilMs};
+            return;
+        }
+
+    std::size_t replace = table.size();
+    for (std::size_t i = 0; i < table.size(); ++i)
+        if (!table[i].town || nowMs >= table[i].retryUntilMs)
+        {
+            replace = i;
+            break;
+        }
+    if (replace == table.size())
+        for (std::size_t i = 0; i < table.size(); ++i)
+            if (replace == table.size() || table[i].retryUntilMs < table[replace].retryUntilMs)
+                replace = i;
+
+    table[replace] = {town, sourceZone, needs, retryUntilMs};
+}
+
+struct WalkGoalKey
+{
+    std::uint32_t map = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+};
+
+[[nodiscard]] inline bool SameWalkGoal(WalkGoalKey const& a, WalkGoalKey const& b)
+{
+    return a.map == b.map && a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+// Motion can be retired only when the current MoveFarTo or committed intent still owns this exact town goal.
+[[nodiscard]] inline bool OwnsTownWalkGoal(WalkGoalKey const& expected, bool moveFarActive,
+                                           WalkGoalKey const& moveFar, bool intentActive,
+                                           WalkGoalKey const& intent)
+{
+    return (moveFarActive || intentActive) &&
+           (!moveFarActive || SameWalkGoal(expected, moveFar)) &&
+           (!intentActive || SameWalkGoal(expected, intent));
+}
+
 enum class Phase : std::uint8_t
 {
     None = 0,     // assessing needs
@@ -1233,6 +1322,11 @@ inline constexpr char const* OutcomeName(Outcome o)
     return "done";
 }
 
+[[nodiscard]] inline bool ShouldRememberTownWalkFailure(Outcome outcome, bool townWalkAttempted)
+{
+    return outcome == Outcome::TravelGaveUp && townWalkAttempted;
+}
+
 struct BotState
 {
     std::uint8_t version = kStateVersion;
@@ -1240,6 +1334,7 @@ struct BotState
     std::uint64_t nextCheckMs = 0;
     std::uint64_t cooldownUntilMs = 0;
     std::uint32_t lastClassTrainLevel = 0;  // survives runs (not restarts)
+    WalkBackoffTable walkBackoffs{};        // survives runs, process-memory only
     // run
     std::uint32_t town = 0;                 // Town::id
     std::uint32_t needs = 0;
@@ -1248,6 +1343,9 @@ struct BotState
     Leg travelLeg = Leg::None;              // last leg that moved the bot toward the town
     bool legIssued = false;                 // flight handed to the flight status / hearth cast requested
     bool hearthUsed = false;
+    bool walkAdmitted = false;              // route handoff checked for the current town-bound walk leg
+    bool townWalkAttempted = false;          // a town-bound WalkLeg was called in this run
+    std::uint32_t walkSourceZone = 0;        // captured before that walk moves across a zone boundary
     std::uint32_t reissues = 0;
     std::uint64_t startMs = 0;
     std::uint64_t phaseMs = 0;              // current phase start
@@ -1325,6 +1423,7 @@ struct BotState
 {
     BotState next;
     next.lastClassTrainLevel = s.lastClassTrainLevel;
+    next.walkBackoffs = s.walkBackoffs;
     next.lastGearLevel = s.lastGearLevel;
     next.nextOutfitMs = s.nextOutfitMs;
     next.nextMailMs = s.nextMailMs;
