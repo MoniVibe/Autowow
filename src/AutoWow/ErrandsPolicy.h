@@ -31,7 +31,7 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 11;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 12;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
                                                   // 7: nextTrainRunMs (Professions.TrainRuns);
@@ -40,6 +40,7 @@ inline constexpr std::uint8_t kStateVersion = 11;  // 2: sellUntilMs / sellRetry
                                                   // 10: nextMountMs / mountGrantMs / rideTier / rideLearn /
                                                   //     mountItem (Errands.Mounts)
                                                   // 11: walk admission / bounded town walk backoff
+                                                  // 12: exact prepared walk segment provenance
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -608,7 +609,7 @@ struct LegInput
 {
     bool sameMap = true;
     std::uint32_t walkYards = 0;      // straight line bot -> destination
-    bool walkRouteAvailable = true;   // exact complete path or fresh reachable TravelMgr prefix
+    bool walkRouteAvailable = true;   // exact prepared proof, with any TravelMgr route certified all-walk
     bool hearthHere = false;       // hearthstone bound within TownRadius of the destination (same map)
     bool hearthReady = false;      // hearthstone in bags, spell off cooldown
     bool flight = false;           // taxi path from the nearest flight master to a known node there
@@ -1283,14 +1284,122 @@ struct WalkGoalKey
     return a.map == b.map && a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
-// Motion can be retired only when the current MoveFarTo or committed intent still owns this exact town goal.
-[[nodiscard]] inline bool OwnsTownWalkGoal(WalkGoalKey const& expected, bool moveFarActive,
-                                           WalkGoalKey const& moveFar, bool intentActive,
-                                           WalkGoalKey const& intent)
+struct WalkGoalOwner
 {
-    return (moveFarActive || intentActive) &&
-           (!moveFarActive || SameWalkGoal(expected, moveFar)) &&
-           (!intentActive || SameWalkGoal(expected, intent));
+    bool active = false;
+    WalkGoalKey goal{};
+};
+
+enum class PreparedWalkProofKind : std::uint8_t
+{
+    None,
+    Direct,
+    TravelMgr
+};
+
+struct PreparedWalkSegment
+{
+    bool active = false;
+    WalkGoalKey goal{};            // requested town / return destination
+    WalkGoalKey endpoint{};        // exact endpoint handed to WalkPrepared
+    std::uint32_t sourceMap = 0;   // live source map of this one segment
+    std::uint32_t sourceZone = 0;  // live source of this one segment
+    std::uint32_t splineId = 0;    // native spline identity created by WalkPrepared
+    PreparedWalkProofKind proof = PreparedWalkProofKind::None;
+};
+
+enum class PreparedWalkAction : std::uint8_t
+{
+    ContinueExact,
+    ExecuteFresh,
+    WaitForConflict,
+    Deny
+};
+
+enum class ErrandsStartHandoff : std::uint8_t
+{
+    RetireFinishedPredecessor,
+    WaitForActivePredecessor
+};
+
+// Errands may replace stale scheduler metadata only after the predecessor's actual native movement
+// has stopped. Waiting happens before due/cooldown windows are consumed.
+[[nodiscard]] inline ErrandsStartHandoff DecideErrandsStartHandoff(
+    bool botMoving, bool nativeSplineActive)
+{
+    return botMoving || nativeSplineActive
+        ? ErrandsStartHandoff::WaitForActivePredecessor
+        : ErrandsStartHandoff::RetireFinishedPredecessor;
+}
+
+struct PreparedWalkFacts
+{
+    WalkGoalKey requestedGoal{};
+    std::uint32_t sourceMap = 0;
+    std::uint32_t sourceZone = 0;
+    bool movementActive = false;
+    WalkGoalKey movementEndpoint{};
+    bool nativeSplineActive = false;
+    std::uint32_t nativeSplineId = 0;
+    WalkGoalKey nativeSplineEndpoint{};
+    bool ownershipConflict = false;
+    PreparedWalkProofKind freshProof = PreparedWalkProofKind::None;
+};
+
+// Reuse is allowed only while the exact prepared segment is still the live normal-priority move
+// from the same source toward the same final goal. Every stale record must consume a fresh proof;
+// unrelated movement is left alone and bounded by the enclosing leg timeout.
+[[nodiscard]] inline PreparedWalkAction DecidePreparedWalk(
+    PreparedWalkSegment const& segment, PreparedWalkFacts const& facts)
+{
+    if (facts.ownershipConflict)
+        return PreparedWalkAction::WaitForConflict;
+    if (segment.active && SameWalkGoal(segment.goal, facts.requestedGoal) &&
+        segment.sourceMap == facts.sourceMap && segment.sourceZone == facts.sourceZone &&
+        facts.movementActive && SameWalkGoal(segment.endpoint, facts.movementEndpoint) &&
+        facts.nativeSplineActive && segment.splineId == facts.nativeSplineId &&
+        SameWalkGoal(segment.endpoint, facts.nativeSplineEndpoint))
+        return PreparedWalkAction::ContinueExact;
+    return facts.freshProof == PreparedWalkProofKind::None
+        ? PreparedWalkAction::Deny
+        : PreparedWalkAction::ExecuteFresh;
+}
+
+// Cleanup may stop motion only when every active source agrees on the same final goal and an active
+// prepared source still matches the exact LastMovement endpoint it created. Any conflicting source vetoes.
+[[nodiscard]] inline bool OwnsTownWalkGoal(
+    WalkGoalKey const& expected, WalkGoalOwner const& moveFar, WalkGoalOwner const& intent,
+    PreparedWalkSegment const& prepared, bool movementActive, WalkGoalKey const& movementEndpoint,
+    bool nativeSplineActive, std::uint32_t nativeSplineId, WalkGoalKey const& nativeSplineEndpoint)
+{
+    bool const preparedMotion = prepared.active && (movementActive || nativeSplineActive);
+    if (!moveFar.active && !intent.active && !preparedMotion)
+        return false;
+    if ((moveFar.active && !SameWalkGoal(expected, moveFar.goal)) ||
+        (intent.active && !SameWalkGoal(expected, intent.goal)) ||
+        (preparedMotion && !SameWalkGoal(expected, prepared.goal)))
+        return false;
+
+    // An active native spline is safe to stop only when this prepared record created that exact
+    // spline. Matching old MoveFar/intent goals cannot confer ownership on a newer spline.
+    if (nativeSplineActive &&
+        (!prepared.active || prepared.splineId != nativeSplineId ||
+         !SameWalkGoal(prepared.endpoint, nativeSplineEndpoint)))
+        return false;
+
+    // Active LastMovement metadata must also identify a proven source. Prepared motion owns its
+    // segment endpoint; a legacy MoveFar/intent owner may own only the exact final goal.
+    if (movementActive)
+    {
+        if (prepared.active)
+        {
+            if (!SameWalkGoal(prepared.endpoint, movementEndpoint))
+                return false;
+        }
+        else if ((!moveFar.active && !intent.active) || !SameWalkGoal(expected, movementEndpoint))
+            return false;
+    }
+    return true;
 }
 
 enum class Phase : std::uint8_t
@@ -1343,9 +1452,10 @@ struct BotState
     Leg travelLeg = Leg::None;              // last leg that moved the bot toward the town
     bool legIssued = false;                 // flight handed to the flight status / hearth cast requested
     bool hearthUsed = false;
-    bool walkAdmitted = false;              // route handoff checked for the current town-bound walk leg
-    bool townWalkAttempted = false;          // a town-bound WalkLeg was called in this run
-    std::uint32_t walkSourceZone = 0;        // captured before that walk moves across a zone boundary
+    PreparedWalkSegment preparedWalk{};     // exact proof/execution segment; never reused after it stops
+    bool townWalkAttempted = false;          // a town-bound prepared spline started in this run
+    std::uint32_t walkSourceZone = 0;        // live source of the latest town-bound prepared segment
+    std::uint64_t walkRetryMs = 0;           // transient WalkPrepared rejection probe cooldown
     std::uint32_t reissues = 0;
     std::uint64_t startMs = 0;
     std::uint64_t phaseMs = 0;              // current phase start

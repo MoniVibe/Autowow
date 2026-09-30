@@ -8,6 +8,7 @@
 #include "QuestGiverTravelPolicy.h"
 #include "QuestGiverTravelFeedback.h"
 #include "QuestGiverTravelLifecycle.h"
+#include "QuestTravelWalk.h"
 #include "AutonomousRpgTravelPolicy.h"
 
 #include <gtest/gtest.h>
@@ -655,6 +656,54 @@ TEST(QuestGiverTravelPolicyTest, TravelMgrReanchorHonorsFiniteScanCap)
     ASSERT_TRUE(selected.has_value());
     EXPECT_EQ(*selected, kMaxTravelMgrReanchorScanPoints - 1U);
     EXPECT_EQ(candidates[*selected].routeIndex, kMaxTravelMgrReanchorScanPoints - 1U);
+}
+
+TEST(QuestGiverTravelPolicyTest, ErrandsTopologyAcceptsOnlyBoundedSameMapAllWalkRouteToExactTown)
+{
+    using namespace AutoWowQuestGiverTravel;
+    WorldPosition const town(1, 300.0f, 40.0f, 12.0f);
+    std::vector<PathNodePoint> const route{
+        {WorldPosition(1, 0.0f, 0.0f, 10.0f), NODE_PREPATH, 0},
+        {WorldPosition(1, 150.0f, 20.0f, 11.0f), NODE_NODE, 0},
+        {town, NODE_PATH, 0}};
+
+    EXPECT_EQ(ClassifyErrandsWalkTopology(route, town), ErrandsWalkTopology::AllWalk);
+    EXPECT_EQ(ClassifyErrandsWalkTopology(route, town, 2U), ErrandsWalkTopology::TooLong);
+}
+
+TEST(QuestGiverTravelPolicyTest, ErrandsTopologyRejectsReachablePrefixBeforeTransportOrMapBoundary)
+{
+    using namespace AutoWowQuestGiverTravel;
+    WorldPosition const town(1, 300.0f, 40.0f, 12.0f);
+    std::vector<PathNodePoint> transportRoute{
+        {WorldPosition(1, 0.0f, 0.0f, 10.0f), NODE_PREPATH, 0},
+        {WorldPosition(1, 100.0f, 10.0f, 10.0f), NODE_PATH, 0},
+        {WorldPosition(1, 120.0f, 12.0f, 10.0f), NODE_TRANSPORT, 176310},
+        {town, NODE_PATH, 0}};
+    EXPECT_EQ(ClassifyErrandsWalkTopology(transportRoute, town), ErrandsWalkTopology::Transition);
+
+    transportRoute[2] = {WorldPosition(0, 120.0f, 12.0f, 10.0f), NODE_PATH, 0};
+    EXPECT_EQ(ClassifyErrandsWalkTopology(transportRoute, town), ErrandsWalkTopology::MapChange);
+}
+
+TEST(QuestGiverTravelPolicyTest, ErrandsTopologyRejectsRouteThatDoesNotReachExactTown)
+{
+    using namespace AutoWowQuestGiverTravel;
+    WorldPosition const town(1, 300.0f, 40.0f, 12.0f);
+    std::vector<PathNodePoint> const localPrefix{
+        {WorldPosition(1, 0.0f, 0.0f, 10.0f), NODE_PREPATH, 0},
+        {WorldPosition(1, 100.0f, 10.0f, 10.0f), NODE_PATH, 0}};
+
+    EXPECT_EQ(ClassifyErrandsWalkTopology(localPrefix, town), ErrandsWalkTopology::WrongEndpoint);
+
+    std::vector<PathNodePoint> wrongElevation = localPrefix;
+    wrongElevation.back().point = WorldPosition(1, 300.0f, 40.0f, 30.0f);
+    EXPECT_EQ(ClassifyErrandsWalkTopology(wrongElevation, town), ErrandsWalkTopology::WrongEndpoint);
+
+    std::vector<PathNodePoint> malformed = localPrefix;
+    malformed.back().point = WorldPosition(
+        1, std::numeric_limits<float>::quiet_NaN(), 40.0f, 12.0f);
+    EXPECT_EQ(ClassifyErrandsWalkTopology(malformed, town), ErrandsWalkTopology::InvalidCoordinates);
 }
 
 TEST(QuestGiverTravelPolicyTest, TravelMgrReanchorTieBreaksByDirectThenPathLength)

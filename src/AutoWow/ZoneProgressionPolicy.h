@@ -419,6 +419,18 @@ inline void AddOutland(std::vector<Route>& routes)
 // (Chebyshev spacing, integer interpolation, a excluded, b included); zoneAt(x, y) -> zone id (0 = none),
 // danger(zone) -> too high for the bot. Samples in skipZone (the zone the bot already stands in) never count.
 inline constexpr std::uint32_t kDangerStepYards = 50;
+inline constexpr float kHubArrivalYards = 15.0f;
+
+// Runtime arrival and same-zone fallback admission share the same exact 2D hub radius. Being in the
+// destination zone alone never means the trip arrived.
+[[nodiscard]] inline bool AtRouteHub(Route const& route, std::uint32_t map, float x, float y)
+{
+    if (map != route.map)
+        return false;
+    float const dx = float(route.x) - x;
+    float const dy = float(route.y) - y;
+    return dx * dx + dy * dy < kHubArrivalYards * kHubArrivalYards;
+}
 
 template <class ZoneAt, class Danger>
 [[nodiscard]] inline bool SegmentCrossesDanger(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by,
@@ -474,6 +486,51 @@ template <class Crosses>
         if (!c.sameMap)
             return c.route;
     return fit.empty() ? nullptr : fit.front().route;
+}
+
+// Death-loop-only last resort after the existing picker found no cross-zone hub: choose the nearest
+// faction/level-fitting hub in the current zone and map, outside the arrival radius. This composition is
+// used by StartEscape; ordinary level/no-quest routing keeps using PickRoute. Hub routes repeat for many
+// source zones, so matching nonzero inn identities or exact coordinates are evaluated once in table order.
+// Unlike PickSafeEscapeRoute, an unsafe candidate is never returned as a fallback.
+template <class Unsafe>
+[[nodiscard]] inline Route const* PickEscapeOrSafeSameZoneHub(Route const* crossZoneHub,
+                                                              std::vector<Route> const& routes,
+                                                              std::uint32_t team, std::uint32_t level,
+                                                              std::uint32_t zone, std::uint32_t map, std::int32_t x,
+                                                              std::int32_t y, Unsafe const& unsafe)
+{
+    if (crossZoneHub)
+        return crossZoneHub;
+    struct Candidate
+    {
+        Route const* route;
+        std::int64_t dist2;
+    };
+    std::vector<Candidate> fit;
+    for (Route const& r : routes)
+    {
+        if (r.to != zone || r.map != map || (r.team != 0 && r.team != team) || level < r.minLevel ||
+            level > r.maxLevel || AtRouteHub(r, map, float(x), float(y)))
+            continue;
+        bool const duplicate = std::any_of(fit.begin(), fit.end(), [&](Candidate const& c)
+        {
+            Route const& seen = *c.route;
+            return (r.inn && r.inn == seen.inn) ||
+                   (r.map == seen.map && r.x == seen.x && r.y == seen.y && r.z == seen.z);
+        });
+        if (duplicate)
+            continue;
+        std::int64_t const dx = std::int64_t(r.x) - x;
+        std::int64_t const dy = std::int64_t(r.y) - y;
+        fit.push_back(Candidate{&r, dx * dx + dy * dy});
+    }
+    std::stable_sort(fit.begin(), fit.end(),
+                     [](Candidate const& a, Candidate const& b) { return a.dist2 < b.dist2; });
+    for (Candidate const& c : fit)
+        if (!unsafe(*c.route))
+            return c.route;
+    return nullptr;
 }
 
 // Wire-stable ledger reason names; append only.
@@ -700,6 +757,8 @@ inline void BeginEscape(BotState& s, Route const& hub, std::uint32_t zone, std::
     s.phase = Phase::Travel;
     s.route = hub;
     s.route.from = zone;
+    if (s.route.to == zone)
+        s.route.crossing = false;
     s.trigger = Trigger::DeathLoop;
     s.fromZone = zone;
     s.startMs = nowMs;
@@ -708,6 +767,16 @@ inline void BeginEscape(BotState& s, Route const& hub, std::uint32_t zone, std::
     s.mode = portal ? Mode::Portal : Mode::Unreachable;
     s.roadJoined = false;
     s.wp = 0;
+}
+
+// A same-zone death-loop trip is still travelling until it reaches the hub coordinates. Other trips
+// keep the established destination-zone check that governs their portal fallback.
+[[nodiscard]] inline bool PortalFallbackDestinationReached(BotState const& s, std::uint32_t zone, std::uint32_t map,
+                                                            float x, float y)
+{
+    if (s.trigger == Trigger::DeathLoop && s.fromZone == s.route.to)
+        return AtRouteHub(s.route, map, x, y);
+    return zone == s.route.to;
 }
 
 // True when the travel leg is spent: past the timeout or out of reissues.

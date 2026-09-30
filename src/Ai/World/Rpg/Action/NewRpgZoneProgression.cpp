@@ -491,30 +491,42 @@ static bool StartEscape(Player* bot, AutoWowZoneProgression::BotState& s, AutoWo
     std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
     std::int32_t const bx = static_cast<std::int32_t>(std::floor(bot->GetPositionX()));
     std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
+    Map* const map = bot->GetMap();
+    std::uint32_t const level = bot->GetLevel();
+    std::uint32_t const zone = bot->GetZoneId();
+    std::uint32_t const margin = AutoWowDeathLoop::detail::gHardParams.walkZoneMargin;
+    auto const zoneAt = [map](std::int32_t x, std::int32_t y)
+    { return AutoWowDeathLoop::ZoneAt(map, float(x), float(y)); };
+    auto const danger = [level, margin](std::uint32_t z)
+    { return AutoWowDeathLoop::Overshoot(AutoWowDeathLoop::ZoneMinLevel(z), level, margin); };
+    auto const crossesDanger = [&](Route const& r)
+    { return SegmentCrossesDanger(bx, by, r.x, r.y, kDangerStepYards, zone, zoneAt, danger); };
     Route const* hub = nullptr;
     if (AutoWowDeathLoop::HardEscapeEnabled())
     {
         // AutoWow.Survival.HardEscape (1): the nearest hub whose straight line crosses no zone bracketed
         // more than WalkZoneMargin above the bot (the bot's own zone excepted).
-        Map* const map = bot->GetMap();
-        std::uint32_t const level = bot->GetLevel();
-        std::uint32_t const zone = bot->GetZoneId();
-        std::uint32_t const margin = AutoWowDeathLoop::detail::gHardParams.walkZoneMargin;
-        auto const zoneAt = [map](std::int32_t x, std::int32_t y)
-        { return AutoWowDeathLoop::ZoneAt(map, float(x), float(y)); };
-        auto const danger = [level, margin](std::uint32_t z)
-        { return AutoWowDeathLoop::Overshoot(AutoWowDeathLoop::ZoneMinLevel(z), level, margin); };
-        hub = PickSafeEscapeRoute(detail::gRoutes, team, level, zone, bot->GetMapId(), bx, by,
-                                  [&](Route const& r)
-                                  { return SegmentCrossesDanger(bx, by, r.x, r.y, kDangerStepYards, zone, zoneAt, danger); });
+        hub = PickSafeEscapeRoute(detail::gRoutes, team, level, zone, bot->GetMapId(), bx, by, crossesDanger);
     }
     // AutoWow.DeathLoop.V2: back toward the lowest level band that fits, not the nearest same-level hub.
     else
         hub = AutoWowDeathLoop::V2Enabled()
                   ? PickLowEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by)
                   : PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by);
+    Route const* const crossZoneHub = hub;
+    std::uint32_t const guid = bot->GetGUID().GetCounter();
+    hub = PickEscapeOrSafeSameZoneHub(crossZoneHub, detail::gRoutes, team, level, zone, bot->GetMapId(), bx, by,
+                                      [&](Route const& r)
+                                      {
+                                          return crossesDanger(r) ||
+                                                 AutoWowDeathLoop::IsDangerous(guid, r.map, float(r.x), float(r.y));
+                                      });
+    bool const sameZoneFallback = !crossZoneHub && hub != nullptr;
     if (!hub)
         return false;
+    if (sameZoneFallback)
+        LOG_INFO("playerbots", "[DeathLoop] bot={} same_zone_fallback zone={} hub=({}, {}) lvl={}", bot->GetName(),
+                 zone, hub->x, hub->y, level);
     if (s.phase != Phase::None)
         EmitMove(bot, s, chain, now, false, transports);
     BeginEscape(s, *hub, bot->GetZoneId(), now, portal);
@@ -691,7 +703,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
 
     if (s.phase == Phase::Travel)
     {
-        if (bot->GetMapId() == s.route.map && bot->GetExactDist2d(target.GetPositionX(), target.GetPositionY()) < 15.0f)
+        if (AtRouteHub(s.route, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()))
         {
             // At the hub inn: bind the hearthstone there (the innkeeper's own effect), then the flight master.
             if (Creature* inn = bot->FindNearestCreature(s.route.inn, 30.0f))
@@ -721,7 +733,9 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             bool const allowed = AutoWowTransports::detail::gParams.mode != AutoWowTransports::TransportMode::Real;
             // AutoWow.ZoneProgression.Outland: an entry trip's chain portals like a walk, on OutlandPortalAfterMs.
             bool const entry = OutlandEnabled() && IsOutlandEntry(s.route);
-            bool const start = PortalFallback(allowed, FallbackMode(s.mode, entry), bot->GetZoneId() == s.route.to,
+            bool const reached = PortalFallbackDestinationReached(s, bot->GetZoneId(), bot->GetMapId(),
+                                                                   bot->GetPositionX(), bot->GetPositionY());
+            bool const start = PortalFallback(allowed, FallbackMode(s.mode, entry), reached,
                                               s.reissues, p.maxReissues, now >= s.startMs ? now - s.startMs : 0,
                                               entry ? p.outlandPortalAfterMs : p.portalAfterMs);
             if (start || (s.mode == Mode::Portal && s.reissues <= p.maxReissues))

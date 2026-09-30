@@ -34,6 +34,102 @@ struct QuestWalkProbeSelection
     QuestWalkProbeDiagnostics diagnostics{};
 };
 
+// Errands may use a TravelMgr segment only when the route graph reaches the exact same-map town
+// without a portal, transport, taxi, teleport, or map boundary. This certifies graph topology; the
+// returned ProbeResult separately certifies the one live-source segment that will actually execute.
+inline constexpr std::size_t kMaxErrandsWalkRoutePoints = 2048U;
+inline constexpr float kErrandsWalkRouteEndpointTolerance = 2.5f;
+
+enum class ErrandsWalkProofKind : std::uint8_t
+{
+    None,
+    Direct,
+    TravelMgr
+};
+
+enum class ErrandsWalkTopology : std::uint8_t
+{
+    None,
+    Direct,
+    AllWalk,
+    Empty,
+    TooLong,
+    MapChange,
+    Transition,
+    InvalidCoordinates,
+    WrongEndpoint
+};
+
+inline char const* ErrandsWalkProofKindName(ErrandsWalkProofKind kind)
+{
+    switch (kind)
+    {
+        case ErrandsWalkProofKind::Direct: return "direct";
+        case ErrandsWalkProofKind::TravelMgr: return "travel_mgr";
+        case ErrandsWalkProofKind::None: default: return "none";
+    }
+}
+
+inline char const* ErrandsWalkTopologyName(ErrandsWalkTopology topology)
+{
+    switch (topology)
+    {
+        case ErrandsWalkTopology::Direct: return "direct";
+        case ErrandsWalkTopology::AllWalk: return "all_walk";
+        case ErrandsWalkTopology::Empty: return "empty";
+        case ErrandsWalkTopology::TooLong: return "too_long";
+        case ErrandsWalkTopology::MapChange: return "map_change";
+        case ErrandsWalkTopology::Transition: return "transition";
+        case ErrandsWalkTopology::InvalidCoordinates: return "invalid_coordinates";
+        case ErrandsWalkTopology::WrongEndpoint: return "wrong_endpoint";
+        case ErrandsWalkTopology::None: default: return "none";
+    }
+}
+
+inline ErrandsWalkTopology ClassifyErrandsWalkTopology(
+    std::vector<PathNodePoint> const& route, WorldPosition const& destination,
+    std::size_t maximumPoints = kMaxErrandsWalkRoutePoints)
+{
+    if (route.empty())
+        return ErrandsWalkTopology::Empty;
+    if (maximumPoints == 0U || route.size() > maximumPoints)
+        return ErrandsWalkTopology::TooLong;
+
+    auto finite = [](WorldPosition const& point)
+    {
+        return std::isfinite(point.GetPositionX()) && std::isfinite(point.GetPositionY()) &&
+               std::isfinite(point.GetPositionZ());
+    };
+    if (!finite(destination))
+        return ErrandsWalkTopology::InvalidCoordinates;
+
+    for (PathNodePoint const& node : route)
+    {
+        if (!finite(node.point))
+            return ErrandsWalkTopology::InvalidCoordinates;
+        if (node.point.GetMapId() != destination.GetMapId())
+            return ErrandsWalkTopology::MapChange;
+        if (node.type != NODE_PREPATH && node.type != NODE_PATH && node.type != NODE_NODE)
+            return ErrandsWalkTopology::Transition;
+    }
+
+    WorldPosition const& endpoint = route.back().point;
+    float const dx = endpoint.GetPositionX() - destination.GetPositionX();
+    float const dy = endpoint.GetPositionY() - destination.GetPositionY();
+    float const dz = endpoint.GetPositionZ() - destination.GetPositionZ();
+    if (std::sqrt(dx * dx + dy * dy + dz * dz) > kErrandsWalkRouteEndpointTolerance)
+        return ErrandsWalkTopology::WrongEndpoint;
+    return ErrandsWalkTopology::AllWalk;
+}
+
+struct ErrandsWalkProbeSelection
+{
+    std::optional<AutoWowDungeonPath::ProbeResult> probe;
+    ErrandsWalkProofKind kind = ErrandsWalkProofKind::None;
+    ErrandsWalkTopology topology = ErrandsWalkTopology::None;
+    std::uint32_t routePointCount = 0;
+};
+
 // Estimate the remaining distance to the exact destination along the already selected TravelMgr
 // walk prefix. This is deliberately a polyline measure, not a new path search: it lets a route
 // that initially bends around terrain prove forward progress while retaining the route's exact
@@ -103,26 +199,17 @@ inline std::optional<AutoWowDungeonPath::ProbeResult> SelectCompleteWalkProbe(
     return probe;
 }
 
-// TravelMgr can retain a route whose first stored point is stale or unreachable from the bot's
-// current position. Re-anchor only within the bounded same-map walk prefix. Every candidate is
-// freshly probed from the live start, and the returned path is the exact fresh path that the caller
-// must execute. Transition nodes and map changes remain hard boundaries.
-inline std::optional<AutoWowDungeonPath::ProbeResult> SelectTravelMgrWalkProbe(
-    Player* bot, WorldPosition const& destination)
+// Select one freshly probed segment from this exact TravelMgr route. Keeping the route as an
+// argument lets errands certify the complete graph topology and derive its executable segment from
+// the same immutable route snapshot. Quest callers retain their existing public selector below.
+inline std::optional<AutoWowDungeonPath::ProbeResult> SelectTravelMgrWalkProbeFromRoute(
+    Player* bot, WorldPosition const& destination, WorldPosition const& start,
+    std::vector<PathNodePoint> const& route)
 {
     TravelMgrDiagnostics diagnostics;
     diagnostics.unattachedStartAllowed = true;
     if (!bot || !bot->IsInWorld() || bot->GetMapId() != destination.GetMapId())
         return std::nullopt;
-
-    WorldPosition const start(bot);
-    TravelPath segmented = TravelNodeMap::getFullPath(start, destination, bot, true);
-    if (segmented.empty())
-    {
-        diagnostics.reason = TravelMgrDiagnosticReason::RouteEmpty;
-        RecordTravelMgrDiagnostics(bot->GetGUID().GetCounter(), diagnostics);
-        return std::nullopt;
-    }
 
     // Quest travel is already gated by a fresh complete probe and WalkPrepared. It may therefore
     // use a longer bounded graph segment than the generic re-anchor selector's 150 yd default;
@@ -139,7 +226,6 @@ inline std::optional<AutoWowDungeonPath::ProbeResult> SelectTravelMgrWalkProbe(
 
     std::vector<TravelMgrReanchorCandidateFacts> candidates;
     std::vector<std::optional<AutoWowDungeonPath::ProbeResult>> preparedProbes;
-    std::vector<PathNodePoint> const route = segmented.getPath();
     diagnostics.pathPointCount = static_cast<std::uint32_t>(route.size());
     if (route.empty())
     {
@@ -281,6 +367,67 @@ inline std::optional<AutoWowDungeonPath::ProbeResult> SelectTravelMgrWalkProbe(
         : TravelMgrDiagnosticReason::Accepted;
     RecordTravelMgrDiagnostics(bot->GetGUID().GetCounter(), diagnostics);
     return std::move(preparedProbes[*selected]);
+}
+
+// TravelMgr can retain a route whose first stored point is stale or unreachable from the bot's
+// current position. Re-anchor only within the bounded same-map walk prefix. Every candidate is
+// freshly probed from the live start, and the returned path is the exact fresh path that the caller
+// must execute. Transition nodes and map changes remain hard boundaries.
+inline std::optional<AutoWowDungeonPath::ProbeResult> SelectTravelMgrWalkProbe(
+    Player* bot, WorldPosition const& destination)
+{
+    if (!bot || !bot->IsInWorld() || bot->GetMapId() != destination.GetMapId())
+        return std::nullopt;
+
+    WorldPosition const start(bot);
+    TravelPath segmented = TravelNodeMap::getFullPath(start, destination, bot, true);
+    if (segmented.empty())
+    {
+        TravelMgrDiagnostics diagnostics;
+        diagnostics.unattachedStartAllowed = true;
+        diagnostics.reason = TravelMgrDiagnosticReason::RouteEmpty;
+        RecordTravelMgrDiagnostics(bot->GetGUID().GetCounter(), diagnostics);
+        return std::nullopt;
+    }
+    return SelectTravelMgrWalkProbeFromRoute(bot, destination, start, segmented.getPath());
+}
+
+// Errands-specific admission. Existing quest selection intentionally remains unchanged: errands
+// additionally require the complete TravelMgr graph to be same-map/all-walk, and return the exact
+// fresh probe that the caller must hand directly to WalkPrepared.
+inline ErrandsWalkProbeSelection SelectErrandsWalkProbe(Player* bot, WorldPosition const& destination)
+{
+    ErrandsWalkProbeSelection selection;
+    if (!bot || !bot->IsInWorld() || bot->GetMapId() != destination.GetMapId())
+        return selection;
+
+    selection.probe = SelectCompleteWalkProbe(bot, destination);
+    if (selection.probe)
+    {
+        selection.kind = ErrandsWalkProofKind::Direct;
+        selection.topology = ErrandsWalkTopology::Direct;
+        return selection;
+    }
+
+    WorldPosition const start(bot);
+    TravelPath segmented = TravelNodeMap::getFullPath(start, destination, bot, true);
+    if (segmented.empty())
+    {
+        selection.topology = ErrandsWalkTopology::Empty;
+        return selection;
+    }
+
+    std::vector<PathNodePoint> const route = segmented.getPath();
+    selection.routePointCount = static_cast<std::uint32_t>(
+        std::min<std::size_t>(route.size(), std::numeric_limits<std::uint32_t>::max()));
+    selection.topology = ClassifyErrandsWalkTopology(route, destination);
+    if (selection.topology != ErrandsWalkTopology::AllWalk)
+        return selection;
+
+    selection.probe = SelectTravelMgrWalkProbeFromRoute(bot, destination, start, route);
+    if (selection.probe)
+        selection.kind = ErrandsWalkProofKind::TravelMgr;
+    return selection;
 }
 
 // TravelMgr may return a valid graph route whose first usable graph point is behind a local

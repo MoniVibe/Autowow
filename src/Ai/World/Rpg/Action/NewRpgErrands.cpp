@@ -16,6 +16,7 @@
 #include "Bag.h"
 #include "Config.h"
 #include "Creature.h"
+#include "DungeonPathWalkAction.h"
 #include "ErrandsPolicy.h"
 #include "GameObject.h"
 #include "GameTime.h"
@@ -823,16 +824,6 @@ LegInput TownLeg(Player* bot, Town const& t, std::uint8_t team)
     return in;
 }
 
-// A town walk starts only with an exact complete local proof or a fresh reachable TravelMgr prefix.
-// The latter retains long waypoint-routed towns without treating a local detour as town connectivity.
-bool TownWalkRouteAvailable(Player* bot, Town const& t)
-{
-    WorldPosition const dest(t.map, float(t.x), float(t.y), float(t.z));
-    if (AutoWowQuestGiverTravel::SelectCompleteWalkProbe(bot, dest))
-        return true;
-    return AutoWowQuestGiverTravel::SelectTravelMgrWalkProbe(bot, dest).has_value();
-}
-
 // Known taxi node of the bot's team nearest (x, y) on `map`, other than `exclude`. 0 = none.
 uint32 NearestKnownNode(Player* bot, uint32 map, std::int32_t x, std::int32_t y, uint32 exclude)
 {
@@ -956,10 +947,12 @@ bool TownTeachesPlan(Player* bot, Town const& t, std::uint8_t team)
 // the hearth town. Zones far above the bot's level are skipped unless reached by hearthstone.
 // `trainOnly` (AutoWow.Professions.TrainRuns): only towns that teach the bot a planned rank now count.
 // `auctionOnly` (AutoWow.Gear.AuctionUpgrades): only towns with a usable auctioneer count.
-Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, WalkBackoffTable& walkBackoffs,
-                       std::uint64_t nowMs, std::uint32_t needs, bool trainOnly = false,
-                       bool auctionOnly = false)
+Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg,
+                       std::optional<AutoWowQuestGiverTravel::ErrandsWalkProbeSelection>& selectedWalk,
+                       WalkBackoffTable& walkBackoffs, std::uint64_t nowMs, std::uint32_t needs,
+                       bool trainOnly = false, bool auctionOnly = false)
 {
+    selectedWalk.reset();
     Params const& p = detail::gParams;
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
     std::vector<std::pair<std::int64_t, Town const*>> nearby;
@@ -1003,10 +996,12 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, WalkBackoffTabl
     std::uint32_t const sourceZone = bot->GetZoneId();
     std::size_t walkCandidates = 0;
     std::vector<Candidate> cands;
+    std::vector<AutoWowQuestGiverTravel::ErrandsWalkProbeSelection> walkSelections;
     for (auto const& [d2, t] : nearby)
     {
         LegInput in = TownLeg(bot, *t, team);
         Leg l = ChooseLeg(p, in);
+        AutoWowQuestGiverTravel::ErrandsWalkProbeSelection walkSelection;
         auto const bracket = sPlayerbotAIConfig.zoneBrackets.find(t->zone);
         std::uint32_t const low = bracket == sPlayerbotAIConfig.zoneBrackets.end() ? 0 : bracket->second.first;
         if (l != Leg::Hearth && ZoneTooHigh(p, level, low))
@@ -1016,22 +1011,32 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, WalkBackoffTabl
             bool const withinProbeBudget = walkCandidates++ < kWalkBackoffs;
             bool const held = TownWalkBackedOff(walkBackoffs, t->id, sourceZone, needs, nowMs);
             bool const probeAvailable = withinProbeBudget && !held;
-            in.walkRouteAvailable = probeAvailable && TownWalkRouteAvailable(bot, *t);
+            if (probeAvailable)
+                walkSelection = AutoWowQuestGiverTravel::SelectErrandsWalkProbe(
+                    bot, WorldPosition(t->map, float(t->x), float(t->y), float(t->z)));
+            in.walkRouteAvailable = walkSelection.probe.has_value();
             if (!in.walkRouteAvailable && !held && probeAvailable)
             {
                 RememberTownWalkFailure(walkBackoffs, t->id, sourceZone, needs, nowMs, nowMs + p.cooldownMs);
-                LOG_INFO("playerbots", "[Errands] bot={} walk_denied town={} source_zone={} needs={} retry_ms={}",
-                         bot->GetName(), t->id, sourceZone, needs, p.cooldownMs);
+                LOG_INFO("playerbots", "[Errands] bot={} walk_denied town={} source_zone={} needs={} retry_ms={} "
+                         "proof={} topology={} route_points={}", bot->GetName(), t->id, sourceZone, needs,
+                         p.cooldownMs, AutoWowQuestGiverTravel::ErrandsWalkProofKindName(walkSelection.kind),
+                         AutoWowQuestGiverTravel::ErrandsWalkTopologyName(walkSelection.topology),
+                         walkSelection.routePointCount);
             }
             l = ChooseLeg(p, in);  // a denied walk may still use a known taxi
         }
         std::uint32_t const cost = LegCostMs(p, l, in);
         cands.push_back({t->id, l, detour ? DetourCostMs(cost, hasAuction(*t), p.auctionDetourMs) : cost});
+        walkSelections.push_back(std::move(walkSelection));
     }
     Candidate const* best = PickTown(cands);
     if (!best)
         return nullptr;
+    std::size_t const bestIndex = static_cast<std::size_t>(best - cands.data());
     leg = best->leg;
+    if (leg == Leg::Walk && bestIndex < walkSelections.size() && walkSelections[bestIndex].probe)
+        selectedWalk = std::move(walkSelections[bestIndex]);
     return FindTown(best->town);
 }
 
@@ -1193,7 +1198,7 @@ bool StartMountRun(Player* bot, BotState& s, std::uint64_t now, std::uint8_t tea
     s.town = site->id;
     s.needs = NeedRiding;
     s.leg = s.travelLeg = leg;
-    s.walkAdmitted = false;  // mount-site walks use the same one-shot runtime admission
+    s.preparedWalk = {};
     s.townWalkAttempted = false;
     s.walkSourceZone = 0;
     s.startMs = s.phaseMs = s.legMs = now;
@@ -1291,25 +1296,58 @@ bool NewRpgBaseAction::ErrandsStep()
     NewRpgInfo& info = botAI->rpgInfo;
     std::uint8_t const team = TeamOf(bot);
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
+    std::optional<AutoWowQuestGiverTravel::ErrandsWalkProbeSelection> pendingWalk;
 
-    auto retireTownWalk = [&](Town const& target)
+    auto nativeSplineActive = [&]()
     {
-        WalkGoalKey const expected{target.map, target.x, target.y, target.z};
+        return bot->movespline && bot->movespline->Initialized() && !bot->movespline->Finalized();
+    };
+    auto retireFinishedPredecessor = [&]()
+    {
+        if (DecideErrandsStartHandoff(bot->isMoving(), nativeSplineActive()) ==
+            ErrandsStartHandoff::WaitForActivePredecessor)
+            return false;
+        info.SetMoveFarTo(WorldPosition());
+        info.travelIntent = {};
+        AI_VALUE(LastMovement&, "last movement").clear();
+        return true;
+    };
+
+    auto retireWalk = [&](WalkGoalKey const& expected)
+    {
         bool const moveFarActive = info.moveFarPos != WorldPosition();
         TravelIntentPolicy::Point const moveFarPoint =
             TravelIntentPolicy::MakePoint(info.moveFarPos.GetMapId(), info.moveFarPos.GetPositionX(),
                                           info.moveFarPos.GetPositionY(), info.moveFarPos.GetPositionZ());
-        WalkGoalKey const moveFar{moveFarPoint.mapId, moveFarPoint.x, moveFarPoint.y, moveFarPoint.z};
+        WalkGoalOwner const moveFar{
+            moveFarActive, {moveFarPoint.mapId, moveFarPoint.x, moveFarPoint.y, moveFarPoint.z}};
         TravelIntentPolicy::Intent const& intent = info.travelIntent;
-        WalkGoalKey const intentGoal{intent.goal.mapId, intent.goal.x, intent.goal.y, intent.goal.z};
-        if (!OwnsTownWalkGoal(expected, moveFarActive, moveFar, intent.active, intentGoal))
+        WalkGoalOwner const intentOwner{
+            intent.active, {intent.goal.mapId, intent.goal.x, intent.goal.y, intent.goal.z}};
+        LastMovement& movement = AI_VALUE(LastMovement&, "last movement");
+        WalkGoalKey const movementEndpoint{
+            movement.lastMoveToMapId, Yd(movement.lastMoveToX), Yd(movement.lastMoveToY),
+            Yd(movement.lastMoveToZ)};
+        bool const movementActive = movement.msTime != 0 &&
+            (bot->isMoving() || IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL));
+        bool const nativeSplineActive = bot->movespline && bot->movespline->Initialized() &&
+            !bot->movespline->Finalized();
+        std::uint32_t const nativeSplineId = nativeSplineActive ? bot->movespline->GetId() : 0;
+        G3D::Vector3 const nativeEnd = nativeSplineActive
+            ? bot->movespline->FinalDestination()
+            : G3D::Vector3();
+        WalkGoalKey const nativeEndpoint{
+            bot->GetMapId(), Yd(nativeEnd.x), Yd(nativeEnd.y), Yd(nativeEnd.z)};
+        if (!OwnsTownWalkGoal(expected, moveFar, intentOwner, s.preparedWalk, movementActive,
+                              movementEndpoint, nativeSplineActive, nativeSplineId, nativeEndpoint))
             return false;
 
         bot->StopMoving();
         bot->GetMotionMaster()->Clear();
-        AI_VALUE(LastMovement&, "last movement").clear();
+        movement.clear();
         info.travelIntent = {};
         info.SetMoveFarTo(WorldPosition());
+        s.preparedWalk = {};
         return true;
     };
 
@@ -1320,8 +1358,10 @@ bool NewRpgBaseAction::ErrandsStep()
         {
             RememberTownWalkFailure(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now,
                                     now + p.cooldownMs);
-            retireTownWalk(*town);
+            retireWalk({town->map, town->x, town->y, town->z});
         }
+        if (s.phase == Phase::Return)
+            retireWalk({s.backMap, s.backX, s.backY, s.backZ});
         std::uint64_t const returnMs = s.phase == Phase::Return && now >= s.phaseMs ? now - s.phaseMs : 0;
         if (AutoWowQuestLedger::Enabled())
             AutoWowQuestLedger::EmitErrand(bot, OutcomeName(s.outcome),
@@ -1376,6 +1416,11 @@ bool NewRpgBaseAction::ErrandsStep()
 
     if (s.phase == Phase::None)
     {
+        // Do not consume a due/check window while an admitted quest/grind spline still owns motion.
+        // Once it has actually finished, a committed errand run retires only its stale scheduler metadata.
+        if (DecideErrandsStartHandoff(bot->isMoving(), nativeSplineActive()) ==
+            ErrandsStartHandoff::WaitForActivePredecessor)
+            return false;
         if (now < s.nextCheckMs || now < s.cooldownUntilMs)
             return false;
         s.nextCheckMs = now + p.checkIntervalMs;
@@ -1389,7 +1434,10 @@ bool NewRpgBaseAction::ErrandsStep()
                 return false;
         // AutoWow.Errands.Mounts: a paid-for riding rank / mount goes before the town needs (next tick travels).
         if (p.mounts && StartMountRun(bot, s, now, team))
+        {
+            retireFinishedPredecessor();
             return true;
+        }
         Assessment const a = AssessBot(bot, s, now);
         if (a.urgent & NeedTool)
         {
@@ -1422,8 +1470,8 @@ bool NewRpgBaseAction::ErrandsStep()
         bool const trainOnly = a.urgent == NeedProfTrain;
         // A run only the auction gear asked for goes to a town with an auctioneer.
         bool const auctionOnly = a.urgent == NeedAhGear;
-        Town const* town =
-            ChooseTown(bot, team, leg, s.walkBackoffs, now, a.needs, trainOnly, auctionOnly);
+        Town const* town = ChooseTown(
+            bot, team, leg, pendingWalk, s.walkBackoffs, now, a.needs, trainOnly, auctionOnly);
         StoreState(guid, s);  // retain failures; nextCheckMs bounds a no-town decision to one per check window
         if (trainOnly)
             LOG_INFO("playerbots", "[Professions] train_due bot={} level={} town={}", bot->GetName(), bot->GetLevel(),
@@ -1436,12 +1484,13 @@ bool NewRpgBaseAction::ErrandsStep()
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));
         if (!ShouldRun(a.needs & serves, a.urgent & serves))
             return false;
+        retireFinishedPredecessor();
         s.phase = Phase::Travel;
         s.town = town->id;
         s.needs = a.needs & serves;
         s.leg = leg;
         s.travelLeg = leg;
-        s.walkAdmitted = leg == Leg::Walk;  // ChooseTown already proved this first walk handoff
+        s.preparedWalk = {};
         s.townWalkAttempted = false;
         s.walkSourceZone = leg == Leg::Walk ? bot->GetZoneId() : 0;
         s.startMs = s.phaseMs = s.legMs = now;
@@ -1476,7 +1525,7 @@ bool NewRpgBaseAction::ErrandsStep()
             {
                 s.leg = Leg::Walk;  // landed (or the taxi failed) short of the destination: walk the rest
                 s.legIssued = false;
-                s.walkAdmitted = false;
+                s.preparedWalk = {};
                 s.townWalkAttempted = false;
                 s.walkSourceZone = 0;
             }
@@ -1493,22 +1542,160 @@ bool NewRpgBaseAction::ErrandsStep()
                 }
                 ++s.reissues;
                 s.leg = Leg::Walk;
-                s.walkAdmitted = false;
+                s.preparedWalk = {};
                 s.townWalkAttempted = false;
                 s.walkSourceZone = 0;
             }
         }
-        if (s.phase == Phase::Travel && s.leg == Leg::Walk && !s.walkAdmitted)
-        {
-            StoreState(guid, s);
-            return true;  // the next tick performs the one-shot town admission before any local segment
-        }
         if (s.leg == Leg::Walk)
         {
-            if (s.phase == Phase::Travel)
-                s.townWalkAttempted = true;
-            if (WalkLeg(dest))
-                ++s.reissues;  // stuck: the no-progress window of the no-teleport mover
+            WalkGoalKey const requested{
+                dest.GetMapId(), Yd(dest.GetPositionX()), Yd(dest.GetPositionY()), Yd(dest.GetPositionZ())};
+            LastMovement& movement = AI_VALUE(LastMovement&, "last movement");
+            WalkGoalKey const movementEndpoint{
+                movement.lastMoveToMapId, Yd(movement.lastMoveToX), Yd(movement.lastMoveToY),
+                Yd(movement.lastMoveToZ)};
+            bool const nativeSplineActive = bot->movespline && bot->movespline->Initialized() &&
+                !bot->movespline->Finalized();
+            std::uint32_t const nativeSplineId = nativeSplineActive ? bot->movespline->GetId() : 0;
+            G3D::Vector3 const nativeEnd = nativeSplineActive
+                ? bot->movespline->FinalDestination()
+                : G3D::Vector3();
+            WalkGoalKey const nativeEndpoint{
+                bot->GetMapId(), Yd(nativeEnd.x), Yd(nativeEnd.y), Yd(nativeEnd.z)};
+
+            bool const moveFarActive = info.moveFarPos != WorldPosition();
+            WalkGoalKey const moveFarGoal{
+                info.moveFarPos.GetMapId(), Yd(info.moveFarPos.GetPositionX()),
+                Yd(info.moveFarPos.GetPositionY()), Yd(info.moveFarPos.GetPositionZ())};
+            TravelIntentPolicy::Intent const& intent = info.travelIntent;
+            WalkGoalKey const intentGoal{intent.goal.mapId, intent.goal.x, intent.goal.y, intent.goal.z};
+            bool const preparedNativeExact = s.preparedWalk.active && nativeSplineActive &&
+                s.preparedWalk.splineId == nativeSplineId &&
+                SameWalkGoal(s.preparedWalk.endpoint, nativeEndpoint);
+            bool const ownershipConflict =
+                (moveFarActive && !SameWalkGoal(requested, moveFarGoal)) ||
+                (intent.active && !SameWalkGoal(requested, intentGoal)) ||
+                (nativeSplineActive && !preparedNativeExact) ||
+                (movement.msTime != 0 && s.preparedWalk.active &&
+                 !SameWalkGoal(s.preparedWalk.endpoint, movementEndpoint));
+
+            PreparedWalkFacts facts;
+            facts.requestedGoal = requested;
+            facts.sourceMap = bot->GetMapId();
+            facts.sourceZone = bot->GetZoneId();
+            facts.movementActive = movement.msTime != 0;
+            facts.movementEndpoint = movementEndpoint;
+            facts.nativeSplineActive = nativeSplineActive;
+            facts.nativeSplineId = nativeSplineId;
+            facts.nativeSplineEndpoint = nativeEndpoint;
+            facts.ownershipConflict = ownershipConflict;
+            PreparedWalkAction action = DecidePreparedWalk(s.preparedWalk, facts);
+            if (action == PreparedWalkAction::ContinueExact ||
+                action == PreparedWalkAction::WaitForConflict)
+            {
+                StoreState(guid, s);
+                return true;
+            }
+
+            // A source/goal discontinuity invalidates the record. Stop only the exact native spline
+            // created by this record; unrelated movement already returned through WaitForConflict.
+            if (preparedNativeExact &&
+                (movement.msTime == 0 || SameWalkGoal(s.preparedWalk.endpoint, movementEndpoint)))
+            {
+                bot->StopMoving();
+                bot->GetMotionMaster()->Clear();
+                movement.clear();
+            }
+            s.preparedWalk = {};
+            if (now < s.walkRetryMs)
+            {
+                StoreState(guid, s);
+                return true;
+            }
+
+            AutoWowQuestGiverTravel::ErrandsWalkProbeSelection selection;
+            if (pendingWalk)
+            {
+                selection = std::move(*pendingWalk);
+                pendingWalk.reset();
+            }
+            else
+                selection = AutoWowQuestGiverTravel::SelectErrandsWalkProbe(bot, dest);
+
+            auto proofKind = [](AutoWowQuestGiverTravel::ErrandsWalkProofKind kind)
+            {
+                switch (kind)
+                {
+                    case AutoWowQuestGiverTravel::ErrandsWalkProofKind::Direct:
+                        return PreparedWalkProofKind::Direct;
+                    case AutoWowQuestGiverTravel::ErrandsWalkProofKind::TravelMgr:
+                        return PreparedWalkProofKind::TravelMgr;
+                    case AutoWowQuestGiverTravel::ErrandsWalkProofKind::None:
+                    default: return PreparedWalkProofKind::None;
+                }
+            };
+            facts.freshProof = proofKind(selection.kind);
+            action = DecidePreparedWalk({}, facts);
+            if (action != PreparedWalkAction::ExecuteFresh || !selection.probe ||
+                selection.probe->path.empty())
+            {
+                if (s.phase == Phase::Travel)
+                {
+                    s.walkSourceZone = bot->GetZoneId();
+                    RememberTownWalkFailure(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now,
+                                            now + p.cooldownMs);
+                    s.reissues = p.maxReissues + 1;
+                }
+                else
+                    ++s.reissues;
+                LOG_INFO("playerbots", "[Errands] bot={} walk_denied_active town={} source_zone={} needs={} "
+                         "proof={} topology={} route_points={}", bot->GetName(), town->id, bot->GetZoneId(),
+                         s.needs, AutoWowQuestGiverTravel::ErrandsWalkProofKindName(selection.kind),
+                         AutoWowQuestGiverTravel::ErrandsWalkTopologyName(selection.topology),
+                         selection.routePointCount);
+                StoreState(guid, s);
+                return true;
+            }
+
+            G3D::Vector3 const endpoint = selection.probe->path.back();
+            WalkGoalKey const endpointKey{
+                bot->GetMapId(), Yd(endpoint.x), Yd(endpoint.y), Yd(endpoint.z)};
+            std::uint32_t const sourceMap = bot->GetMapId();
+            std::uint32_t const sourceZone = bot->GetZoneId();
+            AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason rejectReason =
+                AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::None;
+            bool const accepted = AutoWowDungeonWalkAction(botAI).WalkPrepared(*selection.probe, &rejectReason);
+            bool const startedSpline = accepted &&
+                rejectReason == AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::Accepted &&
+                bot->movespline && bot->movespline->Initialized() && !bot->movespline->Finalized();
+            if (startedSpline)
+            {
+                s.preparedWalk = {
+                    true, requested, endpointKey, sourceMap, sourceZone, bot->movespline->GetId(),
+                    proofKind(selection.kind)};
+                s.walkRetryMs = 0;
+                if (s.phase == Phase::Travel)
+                {
+                    s.townWalkAttempted = true;
+                    s.walkSourceZone = sourceZone;
+                }
+            }
+            else if (accepted)
+                s.preparedWalk = {};  // already at this segment endpoint; next tick re-probes from live source
+            else if (rejectReason == AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::DuplicateMove ||
+                     rejectReason == AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::WaitingForLastMove ||
+                     rejectReason == AutoWowQuestGiverTravel::QuestWalkPreparedRejectReason::MovementNotAllowed)
+                s.walkRetryMs = now + 1000;
+            else
+                ++s.reissues;
+            LOG_INFO("playerbots", "[Errands] bot={} walk_prepared town={} accepted={} reject={} proof={} "
+                     "topology={} route_points={} endpoint=({},{},{},{}) spline={}", bot->GetName(), town->id,
+                     accepted, AutoWowQuestGiverTravel::QuestWalkPreparedRejectReasonName(rejectReason),
+                     AutoWowQuestGiverTravel::ErrandsWalkProofKindName(selection.kind),
+                     AutoWowQuestGiverTravel::ErrandsWalkTopologyName(selection.topology),
+                     selection.routePointCount, endpointKey.map, endpointKey.x, endpointKey.y, endpointKey.z,
+                     startedSpline ? bot->movespline->GetId() : 0);
         }
         StoreState(guid, s);
         return true;
@@ -1518,6 +1705,7 @@ bool NewRpgBaseAction::ErrandsStep()
     {
         if (bot->GetMapId() == town->map && Dist2(bx, by, town->x, town->y) <= arrive2)
         {
+            retireWalk({town->map, town->x, town->y, town->z});
             // Arrived: plan the batch (ErrandsPolicy PlanStops).
             s.travelMs = now - s.startMs;
             s.durBefore = EquippedDurabilityPct(bot);
@@ -1529,6 +1717,8 @@ bool NewRpgBaseAction::ErrandsStep()
                 s.plan = PlanRide(*town, s.rideLearn, s.mountItem != 0, k < kMountSites ? kSites[k].vendor : 0);
                 s.stop = 0;
                 s.phase = Phase::Errands;
+                s.preparedWalk = {};
+                s.walkRetryMs = 0;
                 s.phaseMs = s.legMs = now;
                 s.reissues = 0;
                 LOG_INFO("playerbots", "[Mounts] bot={} arrived site={} ms={} stops={} leg={}", bot->GetName(), town->id,
@@ -1602,6 +1792,8 @@ bool NewRpgBaseAction::ErrandsStep()
             s.buyItems = in.buyItems;
             s.stop = 0;
             s.phase = Phase::Errands;
+            s.preparedWalk = {};
+            s.walkRetryMs = 0;
             s.phaseMs = s.legMs = now;
             s.reissues = 0;
             LOG_INFO("playerbots", "[Errands] bot={} arrived town={} ms={} stops={} leg={} hearth={}", bot->GetName(),
@@ -1610,29 +1802,10 @@ bool NewRpgBaseAction::ErrandsStep()
             StoreState(guid, s);
             return true;
         }
-        if (s.leg == Leg::Walk && !s.walkAdmitted)
-        {
-            s.walkSourceZone = bot->GetZoneId();  // capture the origin before any town-bound walk segment
-            bool const held = TownWalkBackedOff(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now);
-            if (!held && TownWalkRouteAvailable(bot, *town))
-            {
-                s.walkAdmitted = true;
-            }
-            else
-            {
-                RememberTownWalkFailure(s.walkBackoffs, town->id, s.walkSourceZone, s.needs, now,
-                                        now + p.cooldownMs);
-                retireTownWalk(*town);
-                s.reissues = p.maxReissues + 1;  // enter the existing finite rescue/give-up path now
-                LOG_INFO("playerbots", "[Errands] bot={} walk_denied_active town={} source_zone={} needs={} held={}",
-                         bot->GetName(), town->id, s.walkSourceZone, s.needs, held);
-            }
-            StoreState(guid, s);
-        }
         if (LegExhausted(p, s, now, p.travelTimeoutMs))
         {
             if (s.townWalkAttempted)
-                retireTownWalk(*town);
+                retireWalk({town->map, town->x, town->y, town->z});
             // AutoWow.Travel.Safe: one rescue leg per run (ErrandsPolicy RescueLeg) before giving up.
             if (sPlayerbotAIConfig.autoWowTravelSafe && !s.rescued)
             {
@@ -1657,7 +1830,8 @@ bool NewRpgBaseAction::ErrandsStep()
                     }
                     s.leg = s.travelLeg = rescue;
                     s.legIssued = false;
-                    s.walkAdmitted = false;
+                    s.preparedWalk = {};
+                    s.walkRetryMs = 0;
                     s.reissues = 0;
                     s.phaseMs = s.legMs = now;
                     LOG_INFO("playerbots", "[Errands] bot={} rescue leg={} town={} at ({},{})", bot->GetName(),
@@ -1672,17 +1846,27 @@ bool NewRpgBaseAction::ErrandsStep()
         if (s.leg == Leg::None)
         {
             // (Re)choose: at start the hearth may fail, a flight may be gone.
-            s.leg = ChooseLeg(p, TownLeg(bot, *town, team));
+            LegInput in = TownLeg(bot, *town, team);
+            if (ChooseLeg(p, in) == Leg::Walk)
+            {
+                pendingWalk = AutoWowQuestGiverTravel::SelectErrandsWalkProbe(bot, innPos);
+                in.walkRouteAvailable = pendingWalk->probe.has_value();
+            }
+            s.leg = ChooseLeg(p, in);
             s.legIssued = false;
-            s.walkAdmitted = false;
+            s.preparedWalk = {};
+            s.walkRetryMs = 0;
             s.townWalkAttempted = false;
             s.walkSourceZone = 0;
             if (s.leg == Leg::None)
                 ++s.reissues;
             else
                 s.travelLeg = s.leg;
-            StoreState(guid, s);
-            return true;
+            if (s.leg == Leg::None)
+            {
+                StoreState(guid, s);
+                return true;
+            }
         }
         if (s.leg == Leg::Hearth)
         {
@@ -1710,7 +1894,8 @@ bool NewRpgBaseAction::ErrandsStep()
                 {
                     ++s.reissues;
                     s.leg = Leg::None;
-                    s.walkAdmitted = false;
+                    s.preparedWalk = {};
+                    s.walkRetryMs = 0;
                     s.townWalkAttempted = false;
                     s.walkSourceZone = 0;
                 }
@@ -1725,7 +1910,8 @@ bool NewRpgBaseAction::ErrandsStep()
                 ++s.reissues;
                 s.leg = Leg::None;
                 s.legIssued = false;
-                s.walkAdmitted = false;
+                s.preparedWalk = {};
+                s.walkRetryMs = 0;
                 s.townWalkAttempted = false;
                 s.walkSourceZone = 0;
             }
@@ -1755,7 +1941,8 @@ bool NewRpgBaseAction::ErrandsStep()
             s.phaseMs = s.legMs = now;
             s.leg = Leg::None;
             s.legIssued = false;
-            s.walkAdmitted = false;
+            s.preparedWalk = {};
+            s.walkRetryMs = 0;
             s.townWalkAttempted = false;
             s.walkSourceZone = 0;
             s.reissues = 0;
@@ -1875,12 +2062,19 @@ bool NewRpgBaseAction::ErrandsStep()
             in.flyYards = Yards(fx, fy, Yd(node->x), Yd(node->y));
             in.tailYards = Yards(Yd(node->x), Yd(node->y), s.backX, s.backY);
         }
+        if (ChooseLeg(p, in) == Leg::Walk)
+        {
+            pendingWalk = AutoWowQuestGiverTravel::SelectErrandsWalkProbe(bot, back);
+            in.walkRouteAvailable = pendingWalk->probe.has_value();
+        }
         s.leg = ChooseLeg(p, in);
         s.legIssued = false;
         if (s.leg == Leg::None)
+        {
             ++s.reissues;
-        StoreState(guid, s);
-        return true;
+            StoreState(guid, s);
+            return true;
+        }
     }
     return legTick(back, backNode);
 }

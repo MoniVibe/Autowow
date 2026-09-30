@@ -550,15 +550,105 @@ TEST(Errands, WalkBackoffReplacementIsFixedAndDeterministic)
 TEST(Errands, TownWalkGoalCleanupRequiresExactOwnedGoal)
 {
     WalkGoalKey const town{1, 10127, 2224, 1328};
+    WalkGoalKey const segmentEnd{1, 10020, 2190, 1300};
     WalkGoalKey const unrelated{1, 9000, 2000, 10};
-    EXPECT_TRUE(OwnsTownWalkGoal(town, true, town, false, {}));
-    EXPECT_TRUE(OwnsTownWalkGoal(town, false, {}, true, town));
-    EXPECT_TRUE(OwnsTownWalkGoal(town, true, town, true, town));
-    EXPECT_FALSE(OwnsTownWalkGoal(town, true, unrelated, false, {}));
-    EXPECT_FALSE(OwnsTownWalkGoal(town, false, {}, true, unrelated));
-    EXPECT_FALSE(OwnsTownWalkGoal(town, true, town, true, unrelated));
-    EXPECT_FALSE(OwnsTownWalkGoal(town, true, unrelated, true, town));
-    EXPECT_FALSE(OwnsTownWalkGoal(town, false, town, false, town));
+    PreparedWalkSegment const prepared{
+        true, town, segmentEnd, 1, 148, 77, PreparedWalkProofKind::TravelMgr};
+    EXPECT_TRUE(OwnsTownWalkGoal(town, {true, town}, {}, {}, false, {}, false, 0, {}));
+    EXPECT_TRUE(OwnsTownWalkGoal(town, {}, {true, town}, {}, false, {}, false, 0, {}));
+    EXPECT_TRUE(OwnsTownWalkGoal(
+        town, {true, town}, {true, town}, prepared, true, segmentEnd, true, 77, segmentEnd));
+    EXPECT_TRUE(OwnsTownWalkGoal(town, {}, {}, prepared, true, segmentEnd, true, 77, segmentEnd));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, {true, unrelated}, {}, {}, false, {}, false, 0, {}));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, {}, {true, unrelated}, {}, false, {}, false, 0, {}));
+    EXPECT_FALSE(OwnsTownWalkGoal(
+        town, {true, town}, {true, unrelated}, prepared, true, segmentEnd, true, 77, segmentEnd));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, {}, {}, prepared, true, unrelated, true, 77, segmentEnd));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, {}, {}, prepared, true, segmentEnd, true, 78, segmentEnd));
+    EXPECT_FALSE(OwnsTownWalkGoal(town, {}, {}, prepared, false, segmentEnd, false, 77, segmentEnd));
+
+    // A matching old scheduler goal never grants ownership of a newer native spline.
+    EXPECT_FALSE(OwnsTownWalkGoal(
+        town, {}, {true, town}, {}, false, {}, true, 90, unrelated));
+    PreparedWalkSegment stalePrepared = prepared;
+    stalePrepared.splineId = 77;
+    EXPECT_FALSE(OwnsTownWalkGoal(
+        town, {}, {true, town}, stalePrepared, true, segmentEnd, true, 90, unrelated));
+    // The same veto applies to unrelated active LastMovement metadata without a prepared record.
+    EXPECT_FALSE(OwnsTownWalkGoal(
+        town, {}, {true, town}, {}, true, unrelated, false, 0, {}));
+    EXPECT_TRUE(OwnsTownWalkGoal(
+        town, {}, {true, town}, {}, true, town, false, 0, {}));
+}
+
+TEST(Errands, FreshDirectAndTravelMgrProofsExecuteThroughPreparedSeam)
+{
+    WalkGoalKey const town{1, 10127, 2224, 1328};
+    PreparedWalkFacts facts;
+    facts.requestedGoal = town;
+    facts.sourceZone = 148;
+    facts.freshProof = PreparedWalkProofKind::Direct;
+    EXPECT_EQ(DecidePreparedWalk({}, facts), PreparedWalkAction::ExecuteFresh);
+
+    facts.freshProof = PreparedWalkProofKind::TravelMgr;
+    EXPECT_EQ(DecidePreparedWalk({}, facts), PreparedWalkAction::ExecuteFresh);
+    facts.freshProof = PreparedWalkProofKind::None;
+    EXPECT_EQ(DecidePreparedWalk({}, facts), PreparedWalkAction::Deny);
+}
+
+TEST(Errands, StartWaitsForActivePredecessorButCanRetireFinishedMetadata)
+{
+    EXPECT_EQ(DecideErrandsStartHandoff(false, false),
+              ErrandsStartHandoff::RetireFinishedPredecessor);
+    EXPECT_EQ(DecideErrandsStartHandoff(true, false),
+              ErrandsStartHandoff::WaitForActivePredecessor);
+    EXPECT_EQ(DecideErrandsStartHandoff(false, true),
+              ErrandsStartHandoff::WaitForActivePredecessor);
+}
+
+TEST(Errands, OnlyExactLivePreparedSegmentBypassesFreshProbe)
+{
+    WalkGoalKey const town{1, 10127, 2224, 1328};
+    WalkGoalKey const endpoint{1, 10020, 2190, 1300};
+    WalkGoalKey const unrelated{1, 9000, 2000, 10};
+    PreparedWalkSegment const segment{
+        true, town, endpoint, 1, 148, 77, PreparedWalkProofKind::TravelMgr};
+    PreparedWalkFacts facts;
+    facts.requestedGoal = town;
+    facts.sourceMap = 1;
+    facts.sourceZone = 148;
+    facts.movementActive = true;
+    facts.movementEndpoint = endpoint;
+    facts.nativeSplineActive = true;
+    facts.nativeSplineId = 77;
+    facts.nativeSplineEndpoint = endpoint;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ContinueExact);
+
+    facts.movementActive = false;  // death / stopped motion invalidates the record
+    facts.freshProof = PreparedWalkProofKind::Direct;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.movementActive = true;
+    facts.sourceZone = 141;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.sourceZone = 148;
+    facts.requestedGoal = unrelated;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.requestedGoal = town;
+    facts.movementEndpoint = unrelated;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.movementEndpoint = endpoint;
+    facts.nativeSplineId = 78;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.nativeSplineId = 77;
+    facts.nativeSplineActive = false;  // stale LastMovement metadata with the same endpoint is insufficient
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.nativeSplineActive = true;
+    facts.sourceMap = 0;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::ExecuteFresh);
+    facts.sourceMap = 1;
+
+    facts.ownershipConflict = true;
+    EXPECT_EQ(DecidePreparedWalk(segment, facts), PreparedWalkAction::WaitForConflict);
 }
 
 TEST(Errands, OnlyAttemptedTravelWalkFailureIsRemembered)

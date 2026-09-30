@@ -5,6 +5,7 @@
  */
 
 #include "ZoneProgressionPolicy.h"
+#include "TransportCrossingPolicy.h"
 
 #include "gtest/gtest.h"
 
@@ -509,6 +510,137 @@ std::vector<Route> OutlandTable()
     std::vector<Route> routes = HighTable();
     AddOutland(routes);
     return routes;
+}
+
+// soak-s85: an L58/L59 already in Hellfire has no eligible cross-zone hub yet. Reuse the faction's
+// existing Hellfire inn as a death-loop-only escape target instead of reporting no_route forever.
+TEST(ZoneProgression, SameZoneEscapeFallbackUsesExistingHellfireHubsAt58And59)
+{
+    std::vector<Route> const routes = OutlandTable();
+    auto const safe = [](Route const&) { return false; };
+
+    Route const* crossZone = PickSafeEscapeRoute(routes, 1, 58, kHellfireZone, kOutlandMap, -2570, 3917, safe);
+    EXPECT_EQ(crossZone, nullptr);
+    Route const* hub = PickEscapeOrSafeSameZoneHub(crossZone, routes, 1, 58, kHellfireZone, kOutlandMap, -2570,
+                                                   3917, safe);
+    ASSERT_NE(hub, nullptr);
+    EXPECT_EQ(hub->inn, 16826U);
+    EXPECT_EQ(hub->x, -709);
+    EXPECT_EQ(hub->y, 2739);
+
+    crossZone = PickSafeEscapeRoute(routes, 2, 59, kHellfireZone, kOutlandMap, -1243, 5866, safe);
+    EXPECT_EQ(crossZone, nullptr);
+    hub = PickEscapeOrSafeSameZoneHub(crossZone, routes, 2, 59, kHellfireZone, kOutlandMap, -1243, 5866, safe);
+    ASSERT_NE(hub, nullptr);
+    EXPECT_EQ(hub->inn, 16602U);
+    EXPECT_EQ(hub->x, 191);
+    EXPECT_EQ(hub->y, 2611);
+}
+
+TEST(ZoneProgression, SameZoneEscapeFallbackHonorsArrivalRadiusAtTheRealHub)
+{
+    std::vector<Route> const routes = OutlandTable();
+    auto const safe = [](Route const&) { return false; };
+    Route const* hub = PickEscapeOrSafeSameZoneHub(nullptr, routes, 1, 58, kHellfireZone, kOutlandMap, -2570, 3917,
+                                                   safe);
+    ASSERT_NE(hub, nullptr);
+
+    EXPECT_TRUE(AtRouteHub(*hub, kOutlandMap, -709.0f, 2739.0f));
+    EXPECT_TRUE(AtRouteHub(*hub, kOutlandMap, -695.0f, 2739.0f));
+    EXPECT_FALSE(AtRouteHub(*hub, kOutlandMap, -694.0f, 2739.0f));
+    EXPECT_FALSE(AtRouteHub(*hub, 0, -709.0f, 2739.0f));
+    EXPECT_EQ(PickEscapeOrSafeSameZoneHub(nullptr, routes, 1, 58, kHellfireZone, kOutlandMap, -709, 2739, safe),
+              nullptr);
+    EXPECT_EQ(PickEscapeOrSafeSameZoneHub(nullptr, routes, 1, 58, kHellfireZone, kOutlandMap, -695, 2739, safe),
+              nullptr);
+}
+
+TEST(ZoneProgression, SameZoneEscapeTripWalksAndPortalsToTheExactHub)
+{
+    std::vector<Route> const routes = OutlandTable();
+    Route const* hub = PickEscapeOrSafeSameZoneHub(nullptr, routes, 1, 58, kHellfireZone, kOutlandMap, -2570, 3917,
+                                                   [](Route const&) { return false; });
+    ASSERT_NE(hub, nullptr);
+    ASSERT_TRUE(hub->crossing);  // the existing hub comes from an Outland entry route row
+
+    BotState trip;
+    BeginEscape(trip, *hub, kHellfireZone, 1000, false);
+    EXPECT_EQ(trip.route.from, kHellfireZone);
+    EXPECT_EQ(trip.route.to, kHellfireZone);
+    EXPECT_FALSE(trip.route.crossing);
+    EXPECT_FALSE(IsOutlandEntry(trip.route));
+    EXPECT_EQ(trip.route.x, -709);
+    EXPECT_EQ(trip.route.y, 2739);
+
+    std::vector<AutoWowTransports::Crossing> crossings = AutoWowTransports::DefaultCrossings();
+    for (AutoWowTransports::Crossing const& crossing : AutoWowTransports::OutlandCrossings())
+        crossings.push_back(crossing);
+    std::vector<AutoWowTransports::Crossing> const chain =
+        AutoWowTransports::ChainFor(crossings, 1, trip.route.from, trip.route.to);
+    EXPECT_TRUE(chain.empty());
+    EXPECT_EQ(AutoWowTransports::SelectMode(false, true, trip.route.crossing, !chain.empty()), Mode::Walk);
+
+    bool const far = PortalFallbackDestinationReached(trip, kHellfireZone, kOutlandMap, -2570.0f, 3917.0f);
+    EXPECT_FALSE(far);
+    EXPECT_TRUE(PortalFallback(true, Mode::Walk, far, 8, 8, 0, 1200000));
+    bool const atHub = PortalFallbackDestinationReached(trip, kHellfireZone, kOutlandMap, -709.0f, 2739.0f);
+    EXPECT_TRUE(atHub);
+    EXPECT_FALSE(PortalFallback(true, Mode::Walk, atHub, 8, 8, 0, 1200000));
+}
+
+TEST(ZoneProgression, SameZoneEscapeFallbackDeduplicatesAndRejectsUnsafeHubs)
+{
+    std::vector<Route> const routes = {
+        {2, 1, 7, 10, 20, 530, 100, 0, 0, 1001, false},  // opposing faction
+        {1, 1, 7, 30, 40, 530, 200, 0, 0, 1002, false},  // wrong level
+        {1, 1, 7, 10, 20, 1, 50, 0, 0, 1006, false},     // wrong map
+        {1, 1, 7, 10, 20, 530, 300, 0, 0, 1003, false},
+        {1, 2, 7, 10, 20, 530, 300, 0, 0, 9999, false},  // duplicate coordinates
+        {1, 3, 7, 10, 20, 530, 310, 0, 0, 1003, false},  // duplicate hub identity
+        {1, 4, 7, 10, 20, 530, -600, 0, 0, 1004, false},
+        {1, 5, 7, 10, 20, 530, -900, 0, 0, 1005, false},
+    };
+    auto const zoneAt = [](std::int32_t x, std::int32_t) -> std::uint32_t
+    { return x >= 100 && x <= 200 ? 77 : 7; };
+    int checked = 0;
+    auto const unsafe = [&](Route const& r)
+    {
+        ++checked;
+        bool const crosses = SegmentCrossesDanger(0, 0, r.x, r.y, 50, 7, zoneAt,
+                                                   [](std::uint32_t z) { return z == 77; });
+        bool const activePointDanger = r.map == 530 && r.x == -600 && r.y == 0;
+        return crosses || activePointDanger;
+    };
+    Route const* hub = PickEscapeOrSafeSameZoneHub(nullptr, routes, 1, 15, 7, 530, 0, 0, unsafe);
+    ASSERT_NE(hub, nullptr);
+    EXPECT_EQ(hub->inn, 1005U);
+    EXPECT_EQ(checked, 3);  // three unique eligible hubs, despite repeated route rows
+    EXPECT_EQ(PickEscapeOrSafeSameZoneHub(nullptr, routes, 1, 15, 7, 530, 0, 0,
+                                          [](Route const&) { return true; }),
+              nullptr);
+}
+
+TEST(ZoneProgression, CrossZoneAndOrdinaryRoutingStillWinAtHellfireLevel60)
+{
+    std::vector<Route> const routes = OutlandTable();
+    Route const* escape = PickSafeEscapeRoute(routes, 1, 60, kHellfireZone, kOutlandMap, -2570, 3917,
+                                               [](Route const&) { return false; });
+    ASSERT_NE(escape, nullptr);
+    EXPECT_EQ(escape->to, 3521U);
+    int fallbackChecks = 0;
+    Route const* chosen = PickEscapeOrSafeSameZoneHub(escape, routes, 1, 60, kHellfireZone, kOutlandMap, -2570,
+                                                      3917,
+                                                      [&](Route const&)
+                                                      {
+                                                          ++fallbackChecks;
+                                                          return false;
+                                                      });
+    EXPECT_EQ(chosen, escape);
+    EXPECT_EQ(fallbackChecks, 0);
+
+    Route const* ordinary = PickRoute(routes, 1, kHellfireZone, 60, 0);
+    ASSERT_NE(ordinary, nullptr);
+    EXPECT_EQ(ordinary->to, 3521U);
 }
 
 // soak-s76: the L58-67 cohort bots stood in Silithus (1377), Winterspring (618), Feralas (357), Un'Goro (490)
