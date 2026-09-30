@@ -31,11 +31,11 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 8;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+inline constexpr std::uint32_t kStateVersion = 9;  // RoleState / TeamState layout; bump on change (2: tiers, market;
                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
                                                    // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
                                                    // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
-                                                   // 8: TeamState gearCloth)
+                                                   // 8: TeamState gearCloth; 9: TeamState extraRooms)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -119,6 +119,13 @@ struct Params
     // Tinkers guns (lane tinkers2; off by default):
     bool engGuns = false;                  // AutoWow.Supply.EngGuns: the eng table's gearGuns rows (anvil parts, Rough
                                            // Boomstick, the Bronze Tube skill bridge), the anvil station, tool purchases
+    // Craft flow (lane craftflow, soak S75; all off by default):
+    bool routeBagExtra = false;            // AutoWow.Supply.RouteBagExtra: donors route a bag tier's extra reagent (Heavy
+                                           // Leather) to the bag house (ExtraRoom)
+    bool gearStockSell = false;            // AutoWow.Supply.GearStockSell: a gear-line rep vendors pieces beyond
+                                           // RepStockPerItem per recipe (PlanGearStockSale)
+    bool gearSkillupRestock = false;       // AutoWow.Supply.GearSkillupRestock: GearBootstrap skill-up past the stock gate
+                                           // when every option is stocked (PlanGearSkillupRestock)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -569,6 +576,18 @@ struct Hand
 [[nodiscard]] inline std::uint32_t ClothRoom(std::uint32_t stock, std::uint32_t cap, bool repReady)
 {
     return repReady && cap > stock ? cap - stock : 0;
+}
+
+// RouteBagExtra (lane craftflow; soak S75: members wanted 92 / 86 Small Silk Packs while the Weavers held 214 / 209 silk
+// and 1 / 0 Heavy Leather, the pack's extra reagent: no route carried it, cohort skinners vendored theirs and the rep's
+// buy orders went unfilled). Donor room for a tier's extra reagent: what the bags members want that the house cloth
+// makes still lack (held = house stock, mail included); 0 without an extra, a known recipe or a ready rep.
+[[nodiscard]] inline std::uint32_t ExtraRoom(Tier const& t, bool known, std::uint32_t want, std::uint32_t clothBags,
+                                             std::uint32_t held, bool repReady)
+{
+    if (!t.extra || !known || !repReady)
+        return 0;
+    return Short(std::uint64_t(std::min(want, clothBags)) * t.extraPerBag, held);
 }
 
 // ---- delivery, pay, XP ----
@@ -1729,6 +1748,54 @@ template <typename Have>
     return {{options[static_cast<std::size_t>(pick)].tier, casts, top->guid}};
 }
 
+// GearSkillupRestock (lane craftflow; soak S75: both Tinkers artisans sat at engineering 46 / 49 for 2.3 h, below
+// Rough Boomstick's 50, `skillup=0` in every bootstrap scan: each known recipe below grey was stocked, 10 Handful of
+// Copper Bolts at each artisan and 20 casts of Crafted Light Shot at each rep, and nothing consumes skill-up stock).
+// PlanGearSkillup over `options` built without the stock gate; the order is the artisan's finished units of that recipe
+// (`mine`, which GearTick counts against the order) + `casts`, so it still casts `casts` more. Grey ends it.
+[[nodiscard]] inline std::vector<GearOrder> PlanGearSkillupRestock(RecipeTable const& g,
+                                                                   std::vector<GearNeed> const& blocked,
+                                                                   std::uint32_t skill,
+                                                                   std::vector<SkillupOption> const& options,
+                                                                   std::vector<std::uint32_t> const& mine,
+                                                                   std::uint32_t casts)
+{
+    std::vector<GearOrder> out = PlanGearSkillup(g, blocked, skill, options, casts);
+    for (GearOrder& o : out)
+        o.units += o.recipe < mine.size() ? mine[o.recipe] : 0;
+    return out;
+}
+
+// GearStockSell (lane craftflow; soak S75: the Horde Tanners rep's 40 bag slots held 28 leather pieces nobody wanted,
+// GearBootstrap skill-up output and RepStockPerItem stock, so it could not take 37 mails holding 95 Light Leather and
+// its artisan, 25 Fine Leather Belt orders open, was never fed). A gear-line rep's finished pieces (rows with a
+// RequiredLevel) beyond `keep` per recipe go to the vendor: the lowest guids stay, the rest in ascending guid, sellable
+// ones only (shot sells for 0: never planned, no trip loop).
+struct GearPiece
+{
+    std::uint8_t recipe = kNoTier;
+    std::uint32_t guid = 0;       // item guid-low
+    std::uint32_t sellPrice = 0;  // vendor sell value per unit
+};
+
+[[nodiscard]] inline std::vector<std::uint32_t> PlanGearStockSale(std::vector<GearPiece> pieces, std::uint32_t keep)
+{
+    std::sort(pieces.begin(), pieces.end(), [](GearPiece const& a, GearPiece const& b) { return a.guid < b.guid; });
+    std::vector<std::pair<std::uint8_t, std::uint32_t>> kept;  // recipe -> pieces kept (bounded by the table)
+    std::vector<std::uint32_t> out;
+    for (GearPiece const& p : pieces)
+    {
+        auto it = std::find_if(kept.begin(), kept.end(), [&](auto const& k) { return k.first == p.recipe; });
+        if (it == kept.end())
+            it = kept.insert(kept.end(), {p.recipe, 0});
+        if (it->second < keep)
+            ++it->second;
+        else if (p.sellPrice)
+            out.push_back(p.guid);
+    }
+    return out;
+}
+
 // A finished piece a sender holds: its recipe and item guid-low.
 struct GearItem
 {
@@ -2044,6 +2111,7 @@ void EmitLine(Line l, Player* p, Reason r, std::uint32_t oid, std::uint32_t item
 inline bool DemandOnly() { return detail::gEnabled && detail::gParams.demandOnly; }
 inline bool GearBootstrap() { return detail::gEnabled && detail::gParams.gearBootstrap; }
 inline bool EngGuns() { return detail::gEnabled && detail::gParams.engGuns; }
+inline bool GearStockSell() { return detail::gEnabled && detail::gParams.gearStockSell; }
 // A gear line's recipe table: its gearStarters last rows only with GearBootstrap, its gearGuns last rows only with
 // EngGuns (off: the lane V / AA table as was).
 [[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)

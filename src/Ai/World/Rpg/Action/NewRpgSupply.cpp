@@ -65,7 +65,8 @@ enum class Task : std::uint8_t
     GearVendor = 12,   // gear line artisan: its target's vendor reagents (thread, dye) at the line vendor
     Forge = 13,        // gear line artisan (lane AA): its order's smelting at the forge near home (spell focus)
     GearTrainer2 = 14, // gear line artisan (lane AA): its line's due spells at the second trainer (Engineering: mining)
-    Anvil = 15         // gear line artisan (lane tinkers2, EngGuns): its order's anvil casts at the anvil near home
+    Anvil = 15,        // gear line artisan (lane tinkers2, EngGuns): its order's anvil casts at the anvil near home
+    GearSell = 16      // gear line rep (lane craftflow, GearStockSell): its pieces beyond RepStockPerItem at the vendor
 };
 
 constexpr std::uint32_t kHearthstone = 6948;
@@ -160,7 +161,8 @@ Station const* StationFor(Stations const& st, Task task)
         case Task::Trainer: return st.trainer.entry ? &st.trainer : nullptr;
         case Task::Thread:
         case Task::Sell:
-        case Task::Junk: return st.threadVendor.entry ? &st.threadVendor : nullptr;
+        case Task::Junk:
+        case Task::GearSell: return st.threadVendor.entry ? &st.threadVendor : nullptr;
         case Task::Auction:
         case Task::Market: return st.auctioneer.entry ? &st.auctioneer : nullptr;
         case Task::Bank: return st.banker.entry ? &st.banker : nullptr;
@@ -403,6 +405,19 @@ std::vector<std::uint32_t> LineSurplusGuids(Player* bot, ProductLine const& l, L
     }
     return out;
 }
+
+// GearStockSell: the gear-line rep's finished pieces (rows with a RequiredLevel) beyond RepStockPerItem per recipe
+// (PlanGearStockSale).
+std::vector<std::uint32_t> GearStockSale(Player* bot, ProductLine const& gear)
+{
+    RecipeTable const g = GearTable(gear);
+    std::vector<GearPiece> pieces;
+    for (std::uint8_t r = 0; r < g.tierCount; ++r)
+        if (g.tiers[r].reqLevel)
+            for (std::uint32_t const guid : LooseGuids(bot, g.tiers[r].product, 0xFFFFFFFFu))
+                pieces.push_back({r, guid, SellPriceOf(g.tiers[r].product)});
+    return PlanGearStockSale(std::move(pieces), detail::gParams.repStockPerItem);
+}
 }  // namespace
 }  // namespace AutoWowSupply
 
@@ -608,6 +623,10 @@ bool NewRpgBaseAction::SupplyStep()
         if (next == Task::None && (AutoWowTrade::HasCollectableMailWithRoom(bot) || AutoWowTrade::HasEmptyMail(bot)) &&
             st.mailbox.entry)
             next = Task::Mailbox;
+        // GearStockSell: a gear-line rep's unwanted pieces go to the vendor (soak S75: a full rep never took its mail).
+        if (next == Task::None && role.role == Role::Rep && repGear && GearStockSell() &&
+            StationFor(lined ? lst : st, Task::GearSell) && !GearStockSale(bot, *repGear).empty())
+            next = Task::GearSell;
         if (artisan && Tiers())
         {
             // Tiers: the product tier's bag recipe, the product / skill-up thread.
@@ -1003,6 +1022,19 @@ bool NewRpgBaseAction::SupplyStep()
                     ClearLineSurplus(lineId, role.alliance);
                 else
                     ClearSurplus(role.alliance);
+                break;
+            }
+            case Task::GearSell:
+            {
+                // Re-planned here (bags may have changed on the way); one row, mixed items (item 0; count = pieces).
+                std::uint64_t const m0 = bot->GetMoney();
+                std::vector<std::uint32_t> const sell = repGear ? GearStockSale(bot, *repGear) : std::vector<std::uint32_t>{};
+                std::uint32_t const sold = SellGuids(bot, target->ToCreature(), sell);
+                LOG_INFO("playerbots", "[Supply] gear stock sale bot={} sold={}/{} copper={} free={}", bot->GetName(), sold,
+                         sell.size(), bot->GetMoney() - m0, bot->GetFreeInventorySpace());
+                if (sold)
+                    EmitLine(static_cast<Line>(role.gear), bot, SurplusReason(), 0, 0, sold, bot->GetMoney() - m0, guid, 0,
+                             "vendor");
                 break;
             }
             case Task::Junk:
