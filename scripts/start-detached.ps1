@@ -13,12 +13,12 @@ param(
     [Parameter(Mandatory = $true)][string]$Log
 )
 $ErrorActionPreference = 'Stop'
-$pwsh = Join-Path $PSHOME 'pwsh.exe'
-if (-not (Test-Path -LiteralPath $pwsh)) { $pwsh = 'C:\Program Files\PowerShell\7\pwsh.exe' }
+$powershellExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not (Test-Path -LiteralPath $powershellExe)) { throw 'Native Windows PowerShell 5.1 is required.' }
 $scriptPath = (Resolve-Path -LiteralPath $Script).Path
 $logPath = [System.IO.Path]::GetFullPath($Log)
 $r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-    CommandLine = "cmd.exe /c `"`"$pwsh`" -NoProfile -File `"$scriptPath`" $Arguments > `"$logPath`" 2>&1`""
+    CommandLine = "cmd.exe /c `"`"$powershellExe`" -NoProfile -File `"$scriptPath`" $Arguments > `"$logPath`" 2>&1`""
     CurrentDirectory = (Split-Path -Parent $scriptPath)
 }
 if ($r.ReturnValue -ne 0) { throw "Win32_Process.Create failed: $($r.ReturnValue)" }
