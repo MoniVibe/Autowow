@@ -372,6 +372,90 @@ TEST(Errands, PlanStopsMinimalRunAndTeamFilter)
     EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpRepair));
 }
 
+TEST(Errands, SellTimeoutUsesDifferentVendorAndPreservesFutureStop)
+{
+    Town t;
+    Npc first = MakeNpc(7, RoleRepair | RoleVendor, 20, kAlliance);
+    Npc alternate = MakeNpc(9, RoleVendor, 30, kAlliance);
+    t.npcs = {first, alternate};
+    Plan plan;
+    plan.count = kMaxStops;
+    plan.stops[0] = Stop{first.spawn, first.entry, first.x, 0, 0,
+                         OpSell | OpRepair | OpBuy | OpTool | OpGear | OpTrain, 1u << KindFood};
+    for (std::uint8_t k = 1; k < plan.count; ++k)
+        plan.stops[k] = Stop{std::uint32_t(20 + k), std::uint32_t(1020 + k), std::int32_t(40 + k), 0, 0,
+                             k == 1 ? std::uint32_t(OpTrain) : std::uint32_t(OpBuy),
+                             k == 1 ? 0u : std::uint32_t(1u << KindWater)};
+    std::array<Stop, kMaxStops> const before = plan.stops;
+    SellerRetry retry;
+    Stop const* fallback = RetryTimedOutSeller(t, kAlliance, plan, 0, retry);
+    ASSERT_NE(fallback, nullptr);
+    EXPECT_EQ(fallback->spawn, alternate.spawn);
+    EXPECT_EQ(fallback->ops, std::uint32_t(OpSell));
+    EXPECT_EQ(fallback->buyKinds, 0U);
+    EXPECT_EQ(plan.count, kMaxStops);
+    for (std::uint8_t k = 1; k < plan.count; ++k)
+    {
+        EXPECT_EQ(plan.stops[k].spawn, before[k].spawn);
+        EXPECT_EQ(plan.stops[k].entry, before[k].entry);
+        EXPECT_EQ(plan.stops[k].ops, before[k].ops);
+        EXPECT_EQ(plan.stops[k].buyKinds, before[k].buyKinds);
+    }
+}
+
+TEST(Errands, SellFallbackExcludesWrongTeamNonVendorPlannedAndSameEntry)
+{
+    Town t;
+    Npc failed = MakeNpc(7, RoleVendor, 10, kAlliance);
+    Npc wrongTeam = MakeNpc(8, RoleVendor, 20, kHorde);
+    Npc nonVendor = MakeNpc(9, RoleRepair, 30, kAlliance);
+    Npc planned = MakeNpc(10, RoleVendor, 40, kAlliance);
+    Npc clone = MakeNpc(11, RoleVendor, 50, kAlliance);
+    clone.entry = failed.entry;
+    t.npcs = {failed, wrongTeam, nonVendor, planned, clone};
+    Plan plan;
+    plan.count = 2;
+    plan.stops[0] = Stop{failed.spawn, failed.entry, failed.x, 0, 0, OpSell, 0};
+    plan.stops[1] = Stop{planned.spawn, planned.entry, planned.x, 0, 0, OpBuy, 1u << KindFood};
+    SellerRetry retry;
+    EXPECT_EQ(RetryTimedOutSeller(t, kAlliance, plan, 0, retry), nullptr);
+    EXPECT_EQ(plan.stops[1].ops, std::uint32_t(OpBuy));
+}
+
+TEST(Errands, SellFallbackStopsAfterTwoAlternatives)
+{
+    Town t;
+    Npc first = MakeNpc(7, RoleVendor, 10, kAlliance);
+    Npc second = MakeNpc(8, RoleRepair | RoleVendor, 20, kAlliance);
+    Npc third = MakeNpc(9, RoleVendor, 30, kAlliance);
+    Npc fourth = MakeNpc(10, RoleVendor, 40, kAlliance);
+    t.npcs = {fourth, third, second, first};
+    Plan plan;
+    plan.count = 1;
+    plan.stops[0] = Stop{first.spawn, first.entry, first.x, 0, 0, OpSell, 0};
+    SellerRetry retry;
+    ASSERT_NE(RetryTimedOutSeller(t, kAlliance, plan, 0, retry), nullptr);
+    EXPECT_EQ(plan.stops[0].spawn, second.spawn);
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell | OpRepair));
+    ASSERT_NE(RetryTimedOutSeller(t, kAlliance, plan, 0, retry), nullptr);
+    EXPECT_EQ(plan.stops[0].spawn, third.spawn);
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell));
+    EXPECT_EQ(RetryTimedOutSeller(t, kAlliance, plan, 0, retry), nullptr);
+    EXPECT_EQ(retry.count, 3U);
+}
+
+TEST(Errands, NonSellTimeoutHasNoFallback)
+{
+    Town t;
+    t.npcs = {MakeNpc(8, RoleVendor, 20, kAlliance)};
+    Plan plan;
+    plan.count = 1;
+    plan.stops[0] = Stop{7, 1007, 10, 0, 0, OpRepair, 0};
+    SellerRetry retry;
+    EXPECT_EQ(RetryTimedOutSeller(t, kAlliance, plan, 0, retry), nullptr);
+    EXPECT_EQ(retry.count, 0U);
+}
+
 // AutoWow.Trade: auctioneer then mailbox after every other stop; a mailbox spawn sharing a creature's
 // number (kGoSpawnBit) never merges into that creature's stop.
 TEST(Errands, PlanStopsTradeStopsLastAndMailboxIdSpaceDisjoint)
@@ -417,11 +501,14 @@ TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
     s.town = 99;
     s.lastClassTrainLevel = 24;
     s.spent = 500;
+    s.sellerRetry.count = 1;
+    s.sellerRetry.spawns[0] = 77;
     BotState const n = AfterRun(p, s, 1000);
     EXPECT_EQ(n.phase, Phase::None);
     EXPECT_EQ(n.town, 0U);
     EXPECT_EQ(n.spent, 0U);
     EXPECT_EQ(n.lastClassTrainLevel, 24U);
+    EXPECT_EQ(n.sellerRetry.count, 0U);
     EXPECT_EQ(n.cooldownUntilMs, 1000U + p.cooldownMs);
     EXPECT_EQ(n.version, kStateVersion);
 }

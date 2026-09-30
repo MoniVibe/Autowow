@@ -1649,6 +1649,19 @@ bool NewRpgBaseAction::ErrandsStep()
         {
             LOG_INFO("playerbots", "[Errands] bot={} skip stop spawn={} entry={} ops={} (timeout)", bot->GetName(),
                      st.spawn, st.entry, st.ops);
+            if ((st.ops & OpSell) && RetryTimedOutSeller(*town, team, s.plan, s.stop, s.sellerRetry))
+            {
+                Stop const& fallback = s.plan.stops[s.stop];
+                s.legMs = now;
+                s.legIssued = false;
+                s.reissues = 0;
+                if (info.GetStatus() != RPG_IDLE)
+                    info.ChangeToIdle();
+                LOG_INFO("playerbots", "[Errands] bot={} sell fallback spawn={} entry={} attempt={}", bot->GetName(),
+                         fallback.spawn, fallback.entry, static_cast<uint32>(s.sellerRetry.count));
+                StoreState(guid, s);
+                return true;
+            }
             ++s.stop;
             s.legMs = now;
             StoreState(guid, s);

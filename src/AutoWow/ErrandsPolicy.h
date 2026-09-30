@@ -846,6 +846,14 @@ struct Plan
     std::uint8_t count = 0;
 };
 
+inline constexpr std::size_t kMaxSellerFailures = 3;
+struct SellerRetry
+{
+    std::array<std::uint32_t, kMaxSellerFailures> spawns{};
+    std::array<std::uint32_t, kMaxSellerFailures> entries{};
+    std::uint8_t count = 0;
+};
+
 struct PlanInput
 {
     std::uint8_t team = 0;                             // kAlliance | kHorde
@@ -960,6 +968,48 @@ struct PlanInput
                 break;
             }
     return plan;
+}
+
+// Replace a timed-out sell stop in place, retaining later planned services and excluding failed/template clones.
+[[nodiscard]] inline Stop const* RetryTimedOutSeller(Town const& town, std::uint8_t team, Plan& plan,
+                                                     std::uint8_t stop, SellerRetry& retry)
+{
+    if (stop >= plan.count || !(plan.stops[stop].ops & OpSell))
+        return nullptr;
+    Stop const failed = plan.stops[stop];
+    bool known = false;
+    for (std::uint8_t k = 0; k < retry.count; ++k)
+        if (retry.spawns[k] == failed.spawn || retry.entries[k] == failed.entry)
+            known = true;
+    if (!known && retry.count < kMaxSellerFailures)
+    {
+        retry.spawns[retry.count] = failed.spawn;
+        retry.entries[retry.count] = failed.entry;
+        ++retry.count;
+    }
+    if (retry.count >= kMaxSellerFailures)
+        return nullptr;
+
+    Npc const* best = nullptr;
+    for (Npc const& n : town.npcs)
+    {
+        if (!n.spawn || !n.entry || !(n.roles & RoleVendor) || !(n.teams & team))
+            continue;
+        bool excluded = false;
+        for (std::uint8_t k = 0; k < retry.count; ++k)
+            if (retry.spawns[k] == n.spawn || retry.entries[k] == n.entry)
+                excluded = true;
+        for (std::uint8_t k = 0; !excluded && k < plan.count; ++k)
+            if (plan.stops[k].spawn == n.spawn || plan.stops[k].entry == n.entry)
+                excluded = true;
+        if (!excluded && (!best || n.spawn < best->spawn || (n.spawn == best->spawn && n.entry < best->entry)))
+            best = &n;
+    }
+    if (!best)
+        return nullptr;
+    plan.stops[stop] = Stop{best->spawn, best->entry, best->x, best->y, best->z,
+                            OpSell | ((best->roles & RoleRepair) ? OpRepair : 0u), 0};
+    return &plan.stops[stop];
 }
 
 // ---- AutoWow.Errands.Mounts --------------------------------------------------------------------------
@@ -1215,6 +1265,7 @@ struct BotState
     std::uint64_t sold = 0;                 // copper credited by selling
     Plan plan;
     std::uint8_t stop = 0;
+    SellerRetry sellerRetry;
     std::array<std::uint32_t, kKinds> buyItems{};
     Outcome outcome = Outcome::Done;
     // AutoWow.Survival.KeepConsumables: passing-vendor grey sale (Phase::None only).
