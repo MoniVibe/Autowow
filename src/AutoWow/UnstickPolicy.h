@@ -196,6 +196,92 @@ struct TrimFact
     return nowMs >= from && nowMs - from >= stallMs;
 }
 
+// Separate productive-combat watchdog. Outgoing damage and healing are intentionally absent from the
+// sample: they can repeat forever while a geometry-separated creature heals back. Progress is a different
+// creature target, a new target-health low-water mark, incoming damage, or movement by at least 8 yards.
+// The first sample starts the clock. A missing target clears it. Uses the ordinary CombatStallMs window.
+inline constexpr std::int32_t kProductiveMovementYards = 8;
+
+struct ProductiveCombatWatch
+{
+    std::uint64_t target = 0;
+    std::uint32_t lowTargetHp = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint64_t incomingMs = 0;
+    std::uint64_t sinceMs = 0;
+    std::uint32_t targetMaxHp = 0;
+};
+
+struct ProductiveCombatSample
+{
+    std::uint64_t target = 0;
+    std::uint32_t targetHp = 0;
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::int32_t z = 0;
+    std::uint64_t incomingMs = 0;
+    std::uint32_t targetMaxHp = 0;
+};
+
+[[nodiscard]] inline bool ProductiveCombatStalled(ProductiveCombatWatch& w, ProductiveCombatSample const& sample,
+                                                  std::uint64_t nowMs, std::uint64_t stallMs)
+{
+    if (!stallMs || !sample.target)
+    {
+        w = ProductiveCombatWatch{};
+        return false;
+    }
+
+    std::int64_t const dx = std::int64_t(sample.x) - w.x;
+    std::int64_t const dy = std::int64_t(sample.y) - w.y;
+    std::int64_t const dz = std::int64_t(sample.z) - w.z;
+    std::int64_t constexpr move2 = std::int64_t(kProductiveMovementYards) * kProductiveMovementYards;
+    bool const first = !w.sinceMs;
+    bool const targetChanged = !first && sample.target != w.target;
+    bool const maxHpChanged = !first && !targetChanged && sample.targetMaxHp != w.targetMaxHp;
+    bool const newLow = !first && !targetChanged && !maxHpChanged && sample.targetHp < w.lowTargetHp;
+    bool const tookDamage = !first && sample.incomingMs > w.incomingMs;
+    bool const moved = !first && dx * dx + dy * dy + dz * dz >= move2;
+    if (first || targetChanged || maxHpChanged || newLow || tookDamage || moved)
+    {
+        w.target = sample.target;
+        w.lowTargetHp =
+            targetChanged || maxHpChanged || first ? sample.targetHp : std::min(w.lowTargetHp, sample.targetHp);
+        w.x = sample.x;
+        w.y = sample.y;
+        w.z = sample.z;
+        w.incomingMs = sample.incomingMs;
+        w.targetMaxHp = sample.targetMaxHp;
+        w.sinceMs = nowMs ? nowMs : 1;
+        return false;
+    }
+
+    return nowMs >= w.sinceMs && nowMs - w.sinceMs >= stallMs;
+}
+
+// Runtime eligibility facts are kept pure so every exclusion is regression-tested. Cohort means an
+// ordinary configured AutoWoW character rather than a native random bot. Independent arming is deliberately
+// not a fact: a newly activated, still-unarmed cohort character must be recoverable.
+struct ProductiveCombatScope
+{
+    bool alive = true;
+    bool solo = true;
+    bool openWorld = true;
+    bool cohort = true;
+    bool masterless = true;
+    bool oracleManaged = false;
+    bool paused = false;
+    bool userControlled = false;
+};
+
+[[nodiscard]] inline bool ProductiveCombatEligible(ProductiveCombatScope const& s)
+{
+    return s.alive && s.solo && s.openWorld && s.cohort && s.masterless && !s.oracleManaged && !s.paused &&
+           !s.userControlled;
+}
+
 // Party quest progress: sig folds the members' quest logs (FNV-1a over ids / counters / status). A new sig (or
 // the first look, sinceMs 0) restarts the window; true once it has held for stallMs. stallMs 0 = off.
 inline constexpr std::uint64_t kFoldSeed = 1469598103934665603ull;
@@ -242,6 +328,8 @@ std::vector<QuestAge> ObserveAges(std::uint32_t guid, std::vector<QuestScheduler
                                   std::uint64_t nowMs);
 // Damage dealt / taken or healing done by the bot (its pets count as the bot). Unit hook, map threads.
 void NoteCombatActivity(std::uint32_t guid, std::uint64_t nowMs);
+// Incoming damage is ordinary activity and productive progress. Unit hook, map threads.
+void NoteCombatIncomingDamage(std::uint32_t guid, std::uint64_t nowMs);
 // Bot unit update: the combat watchdog (clears a stalled combat). Throttled per bot.
 void CombatWatch(Player* bot, std::uint64_t nowMs);
 // Taxi fare of a node path at full price (sum of the TaxiPath costs; 0 when a hop has no path).

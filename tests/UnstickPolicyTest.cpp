@@ -121,6 +121,98 @@ TEST(UnstickV2, CombatStallCountsFromTheLaterOfCombatStartAndLastActivity)
     EXPECT_FALSE(CombatStalled(1000, 0, 999999, 0));            // off
 }
 
+TEST(UnstickV2, ProductiveCombatStallsWhenDamageOnlyRepeatsTheSameHpBounce)
+{
+    ProductiveCombatWatch w;
+    ProductiveCombatSample s{42, 164, 100, 200, 300, 0};
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 1000, 60000));
+
+    s.targetHp = 134;  // the first hit establishes a new low-water mark
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 2000, 60000));
+    for (std::uint64_t now = 7000; now < 62000; now += 5000)
+    {
+        s.targetHp = s.targetHp == 134 ? 164 : 134;  // healer restores exactly what the bot dealt
+        EXPECT_FALSE(ProductiveCombatStalled(w, s, now, 60000));
+    }
+    s.targetHp = 134;
+    EXPECT_TRUE(ProductiveCombatStalled(w, s, 62000, 60000));
+}
+
+TEST(UnstickV2, ProductiveCombatDecliningTargetHpKeepsTheFightLive)
+{
+    ProductiveCombatWatch w;
+    ProductiveCombatSample s{42, 500, 100, 200, 300, 0};
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 1000, 60000));
+    for (std::uint64_t now = 31000; now <= 181000; now += 30000)
+    {
+        s.targetHp -= 50;
+        EXPECT_FALSE(ProductiveCombatStalled(w, s, now, 60000));
+    }
+}
+
+TEST(UnstickV2, ProductiveCombatMovementIncomingDamageAndTargetChangeRestartTheWindow)
+{
+    ProductiveCombatWatch w;
+    ProductiveCombatSample s{42, 500, 100, 200, 300, 0};
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 1000, 60000));
+
+    s.x = 108;  // eight yards is meaningful movement
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 61000, 60000));
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 120999, 60000));
+
+    s.incomingMs = 121000;
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 121000, 60000));
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 180999, 60000));
+
+    s.target = 43;
+    s.targetHp = 900;
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 181000, 60000));
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 240999, 60000));
+    EXPECT_TRUE(ProductiveCombatStalled(w, s, 241000, 60000));
+
+    s.targetMaxHp = 1000;
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 242000, 60000));
+    s.targetMaxHp = 1200;  // scaling or transformation starts a fresh target-health window
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 302000, 60000));
+
+    s.target = 0;
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 999999, 60000));
+    EXPECT_EQ(w.sinceMs, 0u);
+    s.target = 43;
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 999999, 0));
+    EXPECT_EQ(w.sinceMs, 0u);
+}
+
+TEST(UnstickV2, ProductiveCombatOnlyAppliesToSoloMasterlessOpenWorldCohortBots)
+{
+    ProductiveCombatScope scope;
+    EXPECT_TRUE(ProductiveCombatEligible(scope));
+
+    scope.alive = false;
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.solo = false;  // native or user party
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.openWorld = false;  // every instance, including an idle encounter
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.cohort = false;  // native random bot
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.masterless = false;
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.oracleManaged = true;
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.paused = true;
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+    scope = {};
+    scope.userControlled = true;
+    EXPECT_FALSE(ProductiveCombatEligible(scope));
+}
+
 TEST(UnstickV2, PartyStallRestartsOnAnyQuestLogChange)
 {
     std::uint64_t sig = 0;

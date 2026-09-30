@@ -784,7 +784,7 @@ public:
         if (IsPlayerbotPlayer(victim, botGuid))
         {
             if (AutoWowUnstickV2::Enabled() && damage)
-                AutoWowUnstickV2::NoteCombatActivity(botGuid, nowMs);
+                AutoWowUnstickV2::NoteCombatIncomingDamage(botGuid, nowMs);
             RecordDamageTaken(botGuid, nowMs, damage);
             if (TelemetryEnabled() && damage)
                 WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDamageTaken(damage); });
