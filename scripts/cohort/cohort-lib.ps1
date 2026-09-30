@@ -232,7 +232,7 @@ function Get-CohortInventory {
 # Live Oracle allowlist as the WSL worldserver reads it (read-only file grep).
 function Get-CohortOracleAllowlist {
     param([string]$WslDistro = 'Ubuntu-24.04', [string]$ConfigPath = '/usr/local/etc/modules/playerbots.conf')
-    $lines = @(& wsl.exe -d $WslDistro -u root -- grep -E '^\s*AutoWow\.OracleRuntime\.(Enabled|BotGuids)\s*=' $ConfigPath 2>$null)
+    $lines = @(& wsl.exe -d $WslDistro -u root -e grep -E '^\s*AutoWow\.OracleRuntime\.(Enabled|BotGuids)\s*=' $ConfigPath 2>$null)
     $enabled = $false; $guids = @()
     foreach ($l in $lines) {
         $v = (([string]$l) -replace '^[^=]*=\s*', '').Trim().Trim('"')
