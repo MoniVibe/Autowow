@@ -2399,6 +2399,11 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
     auto gateUnavailable = [&](uint32 encounterIndex, std::vector<DungeonEncounter const*> const& records)
         -> char const*
     {
+        if (DungeonGate::OtherWing(map->GetId(), encounterIndex, bot->GetPositionX(), bot->GetPositionY(),
+                bot->GetPositionZ()))
+        {
+            return "other_wing";
+        }
         std::vector<std::size_t> const rowIndices = DungeonGate::StepsFor(map->GetId(), encounterIndex);
         if (!rowIndices.empty())
         {

@@ -315,6 +315,27 @@ TEST(DungeonRoutePolicy, SunkenTempleLegsWalkTheGateRowsInOrder)
         EXPECT_FALSE(Points[row].direct) << row;
 }
 
+TEST(DungeonRoutePolicy, MaraudonTheradrasAndDireMaulEastLegs)
+{
+    // Maraudon: Princess Theradras (idx7, spawn 55342) from the S75 Rotgrip kill points.
+    EXPECT_TRUE(RouteFor(349, 6).empty());
+    std::vector<std::size_t> const theradras = RouteFor(349, 7);
+    ASSERT_FALSE(theradras.empty());
+    EXPECT_TRUE(EndsAt(theradras, 27.8981f, 83.1932f, -124.483f));
+    EXPECT_LE(NearestPoint(theradras, 15.17f, -188.006f, -197.688f), 1u);
+    EXPECT_LE(NearestPoint(theradras, 26.594f, -196.021f, -197.688f), 1u);
+
+    // Dire Maul East: Zevrim (0) from Lethtendris's ledge, Hydrospawn (1), Alzzin (3); none for Lethtendris (2).
+    std::vector<std::size_t> const zevrim = RouteFor(429, 0);
+    ASSERT_FALSE(zevrim.empty());
+    EXPECT_LT(Distance(Points[zevrim.front()], -5.45062f, -441.126f, 16.4179f), 0.01f);
+    EXPECT_TRUE(EndsAt(zevrim, -34.983f, -448.0f, -37.8785f));
+    EXPECT_LE(NearestPoint(zevrim, -13.341f, -450.982f, 16.404f), 1u);  // S75 stall on the ledge
+    EXPECT_TRUE(EndsAt(RouteFor(429, 1), 4.57887f, -438.407f, -59.954f));
+    EXPECT_TRUE(RouteFor(429, 2).empty());
+    EXPECT_TRUE(EndsAt(RouteFor(429, 3), 274.844f, -427.251f, -119.962f));
+}
+
 TEST(DungeonRoutePolicy, BlackfathomSarevessLegSwimsThePool)
 {
     // Lady Sarevess, idx1 (spawn 26129); no leg for Ghamoo-ra (idx0), so the route is leg 1 alone.
