@@ -242,3 +242,19 @@ swim moves leader and followers across the pool; stragglers walk on the RFK dire
   where leg 3 starts). All pairs replay complete without the slope check.
 - Not changed: a latched shared-regroup terminal still waits without a straggler walk (only the gate-goal cohesion
   branch walks stragglers).
+
+## Lane dgates8 status, 2026-09-30 (S75)
+- Maraudon Theradras idx7 (7/8, stuck at 0..26,-188..-200 z -198): `unsupported_transition` 78x; the full path from
+  the Rotgrip kill point to the lake (z -124) is incomplete past 74 points. Same region. Fix: curated leg (349,7),
+  54 points from the S75 Rotgrip kill point, Detour ground|water corridor, thinned; all pairs replay complete.
+- Dire Maul (1/16, stuck on Lethtendris's ledge next=0): `walk_prefix_unreachable` 78x toward Zevrim down the spiral
+  (z 16 -> -38). Fix: curated legs (429,0) Lethtendris -> Zevrim, (429,1) -> Hydrospawn, (429,3) -> Alzzin (57
+  points). Offline regions: East (1614 polys; entrances 3183-3185, bosses 0..3) has no navmesh link to West+North
+  (2849 polys; entrances 3186/3187/3189, bosses 4..15). New `DungeonGate::WingAnchors` (entrances + boss spawns per
+  wing, nearest anchor = the party's wing) and `OtherWing`: other-wing encounters are set aside
+  (`gate_unavailable=other_wing`) and leave the probe's clearable mask, so an East probe scores 4. Key doors inside
+  West/North (Crescent Key, Gordok keys) not attempted: a probe entering there is untested.
+- Cohort ZF 0/5 (pid 6 and pid 24, both led by Zulkanji 62995): never a navigator problem. `[Party] pid=6 dungeon
+  member missing 180550 ms: abandon`: the leader entered, members never arrived (same window: FlightTrap abandons for
+  Zenjira and Winoka, both pid 6 members), PartyRuntime abandoned at the entrance. The other cohort parties (pid 12,
+  pid 13) completed ZF 5/5. Owner: dparty lane (PartyRuntime), not changed here.
