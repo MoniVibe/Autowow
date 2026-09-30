@@ -58,6 +58,7 @@ ws|GameType|1
 ws|MapUpdateInterval|50
 ws|LogsDir|"/root/autowow-soak/logs"
 ws|DataDir|"/root/autowow-upstream-s83-data"
+ws|Console.Enable|0
 ws|RecordUpdateTimeDiffInterval|60000
 ws|MinRecordUpdateTimeDiff|0
 ws|Logger.playerbots|4,Console Playerbots
