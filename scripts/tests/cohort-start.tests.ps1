@@ -1,0 +1,183 @@
+BeforeAll {
+    $script:Scripts = Split-Path -Parent $PSScriptRoot
+    $script:CohortStartSource = Join-Path $script:Scripts 'cohort\cohort-start.ps1'
+    $script:SoakStartSource = Join-Path $script:Scripts 'start-soak-full.ps1'
+    $script:SubjectDir = Join-Path $TestDrive 'cohort'
+    New-Item -ItemType Directory -Path $script:SubjectDir | Out-Null
+    Copy-Item -LiteralPath $script:CohortStartSource -Destination (Join-Path $script:SubjectDir 'cohort-start.ps1')
+    $script:Subject = Join-Path $script:SubjectDir 'cohort-start.ps1'
+    Set-Content -LiteralPath (Join-Path $script:SubjectDir 'cohort-lib.ps1') -Encoding Ascii -Value @'
+Set-StrictMode -Version Latest
+function Get-CohortManifest { param($Path) return $global:CohortTestManifest }
+function Select-CohortEntries { param($Manifest, $Id, $Faction) return @($Manifest.entries) }
+function Get-CohortDb { return [pscustomobject]@{} }
+function Get-CohortInventory { param($DbInfo, $Entries) return [pscustomobject]@{ rows = @($global:CohortTestRows) } }
+function Get-CohortOracleAllowlist { param($WslDistro) return [pscustomobject]@{ enabled = $false; guids = @() } }
+function Get-CohortOnlineGuids { return @($global:CohortTestOnline) }
+function Invoke-CohortBridge {
+    param($Action, [uint32]$Guid)
+    $global:CohortTestCalls.Add("$Action/$Guid")
+    if ($Action -eq 'activate') {
+        if ($Guid -notin $global:CohortTestOnline) { $global:CohortTestOnline = @($global:CohortTestOnline) + $Guid }
+        return $global:CohortTestActivateResult
+    }
+    if ($Action -eq 'independent') {
+        $result = @($global:CohortTestIndependentResults)[$global:CohortTestIndependentIndex]
+        $global:CohortTestIndependentIndex++
+        return $result
+    }
+    throw "Unexpected bridge action $Action"
+}
+'@
+
+    $tokens = $null
+    $errors = $null
+    $tree = [Management.Automation.Language.Parser]::ParseFile($script:SoakStartSource, [ref]$tokens, [ref]$errors)
+    $retryFunction = $tree.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-CohortStartWithRetry'
+    }, $true)
+    . ([scriptblock]::Create($retryFunction.Extent.Text))
+}
+
+Describe 'cohort startup retry correctness' {
+    BeforeEach {
+        $global:CohortTestManifest = [pscustomobject]@{ entries = @([pscustomobject]@{ id = 'A-HU-01' }) }
+        $global:CohortTestRows = @([pscustomobject]@{
+            id = 'A-HU-01'; guid = [uint32]31; state = 'ok'; enrolled = $true; control_arm = 'stock'
+        })
+        $global:CohortTestOnline = @()
+        $global:CohortTestCalls = [System.Collections.Generic.List[string]]::new()
+        $global:CohortTestIndependentIndex = 0
+        $global:CohortTestActivateResult = [pscustomobject]@{ ok = $true }
+        $global:CohortTestIndependentResults = @()
+        Mock Start-Sleep {}
+    }
+
+    AfterAll {
+        Remove-Variable -Scope Global -Name CohortTestManifest,CohortTestRows,CohortTestOnline,CohortTestCalls,CohortTestIndependentIndex,CohortTestActivateResult,CohortTestIndependentResults -ErrorAction SilentlyContinue
+    }
+
+    It 'retries a newly-online bot after the first bounded combat deferral' {
+        $deferred = [pscustomobject]@{ ok = $false; error = 'independent_deferred_combat' }
+        $global:CohortTestIndependentResults = @(1..11 | ForEach-Object { $deferred }) + @([pscustomobject]@{ ok = $true })
+
+        $first = ((& $script:Subject -ControlMode Stock -Apply -AllowIncomplete | Out-String) | ConvertFrom-Json)
+        $first.complete | Should -BeFalse
+        @($first.pending_guids) | Should -Be @(31)
+
+        $second = ((& $script:Subject -ControlMode Stock -Apply -PendingGuid $first.pending_guids -AllowIncomplete | Out-String) | ConvertFrom-Json)
+        $second.complete | Should -BeTrue
+        @($second.pending_guids).Count | Should -Be 0
+        @($global:CohortTestCalls | Where-Object { $_ -eq 'activate/31' }).Count | Should -Be 1
+        @($global:CohortTestCalls | Where-Object { $_ -eq 'independent/31' }).Count | Should -Be 12
+    }
+
+    It 'keeps persistent combat deferral pending instead of reporting success' {
+        $global:CohortTestIndependentResults = @(1..22 | ForEach-Object {
+            [pscustomobject]@{ ok = $false; error = 'independent_deferred_combat' }
+        })
+
+        $first = ((& $script:Subject -ControlMode Stock -Apply -AllowIncomplete | Out-String) | ConvertFrom-Json)
+        $second = ((& $script:Subject -ControlMode Stock -Apply -PendingGuid $first.pending_guids -AllowIncomplete | Out-String) | ConvertFrom-Json)
+        $second.complete | Should -BeFalse
+        @($second.pending_guids) | Should -Be @(31)
+    }
+
+    It 'clears an activation rejection when the bot appears asynchronously and arms successfully' {
+        $global:CohortTestActivateResult = [pscustomobject]@{ ok = $false; error = 'login_already_queued' }
+        $global:CohortTestIndependentResults = @([pscustomobject]@{ ok = $true })
+
+        $status = ((& $script:Subject -ControlMode Stock -Apply -AllowIncomplete | Out-String) | ConvertFrom-Json)
+        $status.complete | Should -BeTrue
+        @($status.pending_guids).Count | Should -Be 0
+        @($status.armed) | Should -Contain 'A-HU-01=31'
+        $global:CohortTestCalls | Should -Contain 'independent/31'
+    }
+
+    It 'does not issue independent or activate for an originally-online healthy bot' {
+        $global:CohortTestOnline = @(31)
+        $status = ((& $script:Subject -ControlMode Stock -Apply -AllowIncomplete | Out-String) | ConvertFrom-Json)
+        $status.complete | Should -BeTrue
+        $global:CohortTestCalls.Count | Should -Be 0
+        @($status.already_online) | Should -Contain 'A-HU-01=31'
+    }
+
+    It 'preserves an originally-online native group by making no independent call' {
+        $global:CohortTestOnline = @(31)
+        $global:CohortTestIndependentResults = @([pscustomobject]@{ ok = $false; error = 'independent_requires_solo' })
+        $null = & $script:Subject -ControlMode Stock -Apply -AllowIncomplete
+        @($global:CohortTestCalls | Where-Object { $_ -like 'independent/*' }).Count | Should -Be 0
+    }
+
+    It 'keeps dry-run free of bridge mutations and exposes the pending preflight GUID' {
+        $status = ((& $script:Subject -ControlMode Stock | Out-String) | ConvertFrom-Json)
+        $status.complete | Should -BeFalse
+        @($status.pending_guids) | Should -Be @(31)
+        $global:CohortTestCalls.Count | Should -Be 0
+    }
+}
+
+Describe 'full soak cohort retry gate' {
+    BeforeEach {
+        $global:CohortLauncherCalls = [System.Collections.Generic.List[string]]::new()
+        $global:CohortLauncherAttempt = 0
+        Mock Start-Sleep {}
+    }
+
+    AfterAll {
+        Remove-Variable -Scope Global -Name CohortLauncherCalls,CohortLauncherAttempt -ErrorAction SilentlyContinue
+    }
+
+    It 'passes the preflight pending GUID into a later successful retry' {
+        $fake = Join-Path $TestDrive 'cohort-launcher-success.ps1'
+        Set-Content -LiteralPath $fake -Encoding Ascii -Value @'
+param([string]$ControlMode, [switch]$Apply, [uint32[]]$PendingGuid = @(), [switch]$AllowIncomplete)
+$global:CohortLauncherCalls.Add("apply=$Apply pending=$($PendingGuid -join ',')")
+if (-not $Apply) { '{"complete":false,"pending_guids":[31]}' ; return }
+$global:CohortLauncherAttempt++
+if ($global:CohortLauncherAttempt -eq 1) { '{"complete":false,"pending_guids":[31]}' }
+else { '{"complete":true,"pending_guids":[]}' }
+'@
+        $status = Invoke-CohortStartWithRetry -CohortStartPath $fake -Attempts 2 -DelaySeconds 0
+        $status.complete | Should -BeTrue
+        $global:CohortLauncherCalls | Should -Contain 'apply=True pending=31'
+    }
+
+    It 'throws after bounded attempts while a GUID remains pending' {
+        $fake = Join-Path $TestDrive 'cohort-launcher-fail.ps1'
+        Set-Content -LiteralPath $fake -Encoding Ascii -Value @'
+param([string]$ControlMode, [switch]$Apply, [uint32[]]$PendingGuid = @(), [switch]$AllowIncomplete)
+if (-not $Apply) { '{"complete":false,"pending_guids":[31]}' ; return }
+'{"complete":false,"pending_guids":[31]}'
+'@
+        { Invoke-CohortStartWithRetry -CohortStartPath $fake -Attempts 2 -DelaySeconds 0 } |
+            Should -Throw '*incomplete after 2 attempts*pending GUIDs: 31*'
+    }
+
+    It 'retains the preflight GUID when an apply attempt throws unexpectedly' {
+        $fake = Join-Path $TestDrive 'cohort-launcher-throw.ps1'
+        Set-Content -LiteralPath $fake -Encoding Ascii -Value @'
+param([string]$ControlMode, [switch]$Apply, [uint32[]]$PendingGuid = @(), [switch]$AllowIncomplete)
+if (-not $Apply) { '{"complete":false,"pending_guids":[31]}' ; return }
+$global:CohortLauncherCalls.Add("pending=$($PendingGuid -join ',')")
+$global:CohortLauncherAttempt++
+if ($global:CohortLauncherAttempt -eq 1) { throw 'transport failed' }
+'{"complete":true,"pending_guids":[]}'
+'@
+        $status = Invoke-CohortStartWithRetry -CohortStartPath $fake -Attempts 2 -DelaySeconds 0
+        $status.complete | Should -BeTrue
+        @($global:CohortLauncherCalls | Where-Object { $_ -eq 'pending=31' }).Count | Should -Be 2
+    }
+
+    It 'does not trust a complete flag while pending GUIDs remain' {
+        $fake = Join-Path $TestDrive 'cohort-launcher-false-success.ps1'
+        Set-Content -LiteralPath $fake -Encoding Ascii -Value @'
+param([string]$ControlMode, [switch]$Apply, [uint32[]]$PendingGuid = @(), [switch]$AllowIncomplete)
+if (-not $Apply) { '{"complete":false,"pending_guids":[31]}' ; return }
+'{"complete":true,"pending_guids":[31]}'
+'@
+        { Invoke-CohortStartWithRetry -CohortStartPath $fake -Attempts 1 -DelaySeconds 0 } |
+            Should -Throw '*incomplete after 1 attempts*'
+    }
+}

@@ -18,6 +18,35 @@ $sd = Join-Path $PSScriptRoot 'start-detached.ps1'
 $lg = Join-Path $root 'logs\phase1-runtime'
 $ctl = Join-Path $PSScriptRoot 'autowow-control.ps1'
 
+function Invoke-CohortStartWithRetry {
+    param(
+        [Parameter(Mandatory = $true)][string]$CohortStartPath,
+        [ValidateRange(1,100)][int]$Attempts = 8,
+        [ValidateRange(0,600)][int]$DelaySeconds = 30
+    )
+    $preflightRaw = @(& $CohortStartPath -ControlMode Stock)
+    $preflight = (($preflightRaw | Out-String) | ConvertFrom-Json)
+    $pending = @($preflight.pending_guids | ForEach-Object { [uint32]$_ })
+    $lastError = $null
+    for ($try = 1; $try -le $Attempts; $try++) {
+        try {
+            $raw = @(& $CohortStartPath -ControlMode Stock -Apply -PendingGuid $pending -AllowIncomplete)
+            $status = (($raw | Out-String) | ConvertFrom-Json)
+            $pending = @($status.pending_guids | ForEach-Object { [uint32]$_ })
+            if ([bool]$status.complete -and $pending.Count -eq 0) {
+                "cohort ok try $try"
+                return $status
+            }
+            $lastError = "pending GUIDs: $($pending -join ',')"
+        }
+        catch {
+            $lastError = $_.Exception.Message
+        }
+        if ($try -lt $Attempts -and $DelaySeconds -gt 0) { Start-Sleep -Seconds $DelaySeconds }
+    }
+    throw "Cohort start incomplete after $Attempts attempts ($lastError)."
+}
+
 if (-not $SkipWorld) {
 if (-not (Get-Process authserver -ErrorAction SilentlyContinue)) {
     & $sd -Script (Join-Path $PSScriptRoot 'start-server.ps1') -Arguments '-AuthOnly' -Log "$lg\detached-auth.log"
@@ -38,10 +67,7 @@ foreach ($i in 1..120) {
 if (-not $ready) { return }
 Start-Sleep -Seconds 30
 
-foreach ($try in 1..8) {
-    try { & (Join-Path $PSScriptRoot 'cohort\cohort-start.ps1') -ControlMode Stock -Apply 2>&1 | Out-Null; "cohort ok try $try"; break }
-    catch { Start-Sleep -Seconds 30 }
-}
+$null = Invoke-CohortStartWithRetry -CohortStartPath (Join-Path $PSScriptRoot 'cohort\cohort-start.ps1')
 foreach ($try in 1..4) {
     try { & (Join-Path $PSScriptRoot 'revive-autowow.ps1') -Action Start -Apply -RosterGuids @(101,112,121,123,236,244) 2>&1 | Out-Null; 'scouts ok'; break }
     catch { Start-Sleep -Seconds 20 }
