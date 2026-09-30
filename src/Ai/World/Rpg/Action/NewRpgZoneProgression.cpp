@@ -66,6 +66,11 @@ void LoadConfig()
     if (sConfigMgr->GetOption<bool>("AutoWow.ZoneProgression.HighRoutes", false))
         for (Route const& r : HubRoutes(DefaultHubs(), DefaultHubSources()))
             detail::gRoutes.push_back(r);
+    // AutoWow.ZoneProgression.Outland (default 0): the L58-70 Outland ladder (Azeroth bands stop at 57).
+    detail::gOutland = sConfigMgr->GetOption<bool>("AutoWow.ZoneProgression.Outland", false);
+    p.outlandPortalAfterMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.OutlandPortalAfterMs", 2400000);
+    if (detail::gOutland)
+        AddOutland(detail::gRoutes);
     std::string const routes = sConfigMgr->GetOption<std::string>("AutoWow.ZoneProgression.Routes", "");
     if (!routes.empty() && !ParseRoutes(routes, detail::gRoutes))
         LOG_ERROR("server.loading", "[ZoneProgression] AutoWow.ZoneProgression.Routes malformed; built-in table kept");
@@ -134,6 +139,10 @@ void AutoWowTransports::LoadConfig()
     std::string const rows = sConfigMgr->GetOption<std::string>("AutoWow.Transports.Crossings", "");
     if (!rows.empty() && !ParseCrossings(rows, detail::gCrossings))
         LOG_ERROR("server.loading", "[Transports] AutoWow.Transports.Crossings malformed; built-in table kept");
+    // AutoWow.ZoneProgression.Outland: the Dark Portal chains of the Outland entry routes.
+    if (AutoWowZoneProgression::detail::gOutland)
+        for (Crossing const& c : OutlandCrossings())
+            detail::gCrossings.push_back(c);
     // Routes only a crossing can serve join the zone-progression table (runs after its LoadConfig).
     if (detail::gEnabled)
         for (AutoWowZoneProgression::Route const& r : ExtraRoutes())
@@ -244,6 +253,12 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
                 bot->TeleportTo(x.exitMap, float(x.exitX), float(x.exitY), float(x.exitZ), bot->GetOrientation());
             else if (x.via == Via::AreaTrigger)
             {
+                // AutoWow.ZoneProgression.Outland: the Dark Portal trigger is a box 3.8 yd deep (no radius, no
+                // tolerance in Player::IsInAreaTriggerRadius); a bot stopped inside approachYards but outside
+                // the box steps onto the trigger point.
+                if (AutoWowZoneProgression::OutlandEnabled() && !bot->isMoving() &&
+                    bot->GetExactDist2d(float(x.x), float(x.y)) > 1.0f)
+                    bot->GetMotionMaster()->MovePoint(0, float(x.x), float(x.y), float(x.z));
                 WorldPacket packet(CMSG_AREATRIGGER);
                 packet << x.object;
                 packet.rpos(0);
@@ -659,8 +674,11 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         if (transports)
         {
             bool const allowed = AutoWowTransports::detail::gParams.mode != AutoWowTransports::TransportMode::Real;
-            bool const start = PortalFallback(allowed, s.mode, bot->GetZoneId() == s.route.to, s.reissues,
-                                              p.maxReissues, now >= s.startMs ? now - s.startMs : 0, p.portalAfterMs);
+            // AutoWow.ZoneProgression.Outland: an entry trip's chain portals like a walk, on OutlandPortalAfterMs.
+            bool const entry = OutlandEnabled() && IsOutlandEntry(s.route);
+            bool const start = PortalFallback(allowed, FallbackMode(s.mode, entry), bot->GetZoneId() == s.route.to,
+                                              s.reissues, p.maxReissues, now >= s.startMs ? now - s.startMs : 0,
+                                              entry ? p.outlandPortalAfterMs : p.portalAfterMs);
             if (start || (s.mode == Mode::Portal && s.reissues <= p.maxReissues))
             {
                 if (start)

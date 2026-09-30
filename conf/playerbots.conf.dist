@@ -2755,6 +2755,16 @@ AutoWow.ZoneProgression.PortalAfterMs = 1200000
 # Cenarion Hold). Each hub is reached from the starter zones and every lower-or-same tier hub zone of
 # its faction on the same continent, for bots in its level band; walk/flight as above (same continent).
 AutoWow.ZoneProgression.HighRoutes = 0
+# Outland (default 0; needs AutoWow.Transports.Enable for the crossings): the L58-70 Outland ladder
+# (ZoneProgressionPolicy.h OutlandHubs): Honor Hold/Thrallmar (58-63) -> Telredor/Zabra'jin (60-64) ->
+# Allerian/Stonebreaker (62-65) -> Telaar/Garadar (64-67) -> Sylvanaar/Thunderlord (65-68) -> Area 52 and
+# Wildhammer/Shadowmoon Village (67-70). Azeroth hub bands stop at 57; every Azeroth hub/source zone leads a
+# L58-70 bot to its Hellfire hub through the Dark Portal (TransportCrossingPolicy.h OutlandCrossings: walk,
+# or the Ironforge / Orgrimmar / Darnassus Portal to Blasted Lands first). An entry trip still short of
+# Hellfire after OutlandPortalAfterMs (0 = time rule off), or out of stuck re-issues, takes the portal
+# fallback (Transports.Mode auto/portal). No Northrend ladder yet: a L70 stays in Outland.
+AutoWow.ZoneProgression.Outland = 0
+AutoWow.ZoneProgression.OutlandPortalAfterMs = 2400000
 AutoWow.ZoneProgression.Routes = ""
 
 # Gathering detours for independent questing bots (GatherDetourPolicy.h). A bot that knows Herbalism or

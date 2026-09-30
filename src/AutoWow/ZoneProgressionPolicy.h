@@ -194,6 +194,87 @@ inline std::vector<HubSource> DefaultHubSources()
     return out;
 }
 
+// AutoWow.ZoneProgression.Outland (default 0): the L58-70 Outland ladder. soak-s76: 14 cohort bots at L58-67
+// and none on map 530 - no hub band reached past 60, so a L61+ bot had no route anywhere and ground grey
+// Silithus / Winterspring mobs. Hubs = world DB innkeeper spawns on map 530 (stages continue DefaultHubs).
+inline constexpr std::uint32_t kOutlandMinLevel = 58;
+inline constexpr std::uint32_t kOutlandMaxLevel = 70;
+inline constexpr std::uint32_t kOutlandMap = 530;
+inline constexpr std::uint32_t kHellfireZone = 3483;
+
+inline std::vector<Hub> OutlandHubs()
+{
+    return {
+        {1, 5, 3483, 58, 63, 530, -709, 2739, 95, 16826, 16826},   // Hellfire: Honor Hold
+        {2, 5, 3483, 58, 63, 530, 191, 2611, 87, 16602, 16602},    // Hellfire: Thrallmar
+        {1, 6, 3521, 60, 64, 530, 282, 6098, 133, 18251, 18251},   // Zangarmarsh: Telredor
+        {2, 6, 3521, 60, 64, 530, 228, 7934, 25, 18245, 18245},    // Zangarmarsh: Zabra'jin
+        {1, 7, 3519, 62, 65, 530, -2918, 4021, 1, 19296, 19296},   // Terokkar: Allerian Stronghold
+        {2, 7, 3519, 62, 65, 530, -2622, 4450, 36, 18957, 18957},  // Terokkar: Stonebreaker Hold
+        {1, 8, 3518, 64, 67, 530, -2761, 7300, 44, 18914, 18914},  // Nagrand: Telaar
+        {2, 8, 3518, 64, 67, 530, -1230, 7161, 57, 18913, 18913},  // Nagrand: Garadar
+        {1, 9, 3522, 65, 68, 530, 2098, 6904, 183, 19495, 19495},  // Blade's Edge: Sylvanaar
+        {2, 9, 3522, 65, 68, 530, 2404, 5951, 152, 19470, 19470},  // Blade's Edge: Thunderlord Stronghold
+        {1, 10, 3523, 67, 70, 530, 3062, 3702, 143, 19571, 19571}, // Netherstorm: Area 52
+        {2, 10, 3523, 67, 70, 530, 3062, 3702, 143, 19571, 19571}, // Netherstorm: Area 52
+        {1, 10, 3520, 67, 70, 530, -4084, 2187, 108, 19352, 19352}, // Shadowmoon: Wildhammer Stronghold
+        {2, 10, 3520, 67, 70, 530, -2965, 2562, 79, 19319, 19319},  // Shadowmoon: Shadowmoon Village
+    };
+}
+
+// Outland zones a bot may stand in outside the hub zones: Shattrath City.
+inline std::vector<HubSource> OutlandSources() { return {{1, 530, 3703}, {2, 530, 3703}}; }
+
+// Azeroth zones an Outland entry trip leaves from: every DefaultHubs zone and DefaultHubSources zone of the
+// team (both continents). Ascending (map, zone), deterministic.
+[[nodiscard]] inline std::vector<HubSource> OutlandEntryZones(std::uint32_t team)
+{
+    std::vector<HubSource> out;
+    for (HubSource const& s : DefaultHubSources())
+        if (s.team == team)
+            out.push_back(s);
+    for (Hub const& h : DefaultHubs())
+        if (h.team == team)
+            out.push_back(HubSource{team, h.map, h.zone});
+    std::sort(out.begin(), out.end(), [](HubSource const& a, HubSource const& b)
+              { return a.map != b.map ? a.map < b.map : a.zone < b.zone; });
+    out.erase(std::unique(out.begin(), out.end(), [](HubSource const& a, HubSource const& b)
+                          { return a.map == b.map && a.zone == b.zone; }),
+              out.end());
+    return out;
+}
+
+// The Outland routes: entry routes (every OutlandEntryZones zone -> the team's Hellfire hub, band 58-70,
+// crossing: the Dark Portal chain, AutoWow.Transports OutlandCrossings) then the in-Outland HubRoutes.
+[[nodiscard]] inline std::vector<Route> OutlandRoutes()
+{
+    std::vector<Hub> const hubs = OutlandHubs();
+    std::vector<Route> out;
+    for (Hub const& h : hubs)
+        if (h.zone == kHellfireZone)
+            for (HubSource const& s : OutlandEntryZones(h.team))
+                out.push_back(Route{h.team, s.zone, h.zone, kOutlandMinLevel, kOutlandMaxLevel, h.map, h.x, h.y, h.z,
+                                    h.inn, true});
+    for (Route const& r : HubRoutes(hubs, OutlandSources()))
+        out.push_back(r);
+    return out;
+}
+
+// Applies the ladder to a route table: Azeroth hub bands stop at 57 (a L58+ bot's only way on is Outland),
+// then the Outland routes are appended.
+inline void AddOutland(std::vector<Route>& routes)
+{
+    for (Route& r : routes)
+        if ((r.map == 0 || r.map == 1) && r.minLevel < kOutlandMinLevel && r.maxLevel >= kOutlandMinLevel)
+            r.maxLevel = kOutlandMinLevel - 1;
+    for (Route const& r : OutlandRoutes())
+        routes.push_back(r);
+}
+
+// An Outland entry trip (hub on map 530, crossing): its crossing chain may take the portal fallback like a
+// walk leg (FallbackMode), on its own clock (AutoWow.ZoneProgression.OutlandPortalAfterMs).
+[[nodiscard]] inline bool IsOutlandEntry(Route const& r) { return r.map == kOutlandMap && r.crossing && r.to == kHellfireZone; }
+
 // Config override AutoWow.ZoneProgression.Routes: ';'-separated routes, each
 // "team,from,to,minLevel,maxLevel,map,x,y,z,inn,crossing" (integers; crossing 0|1). Replaces the
 // built-in table. False (out untouched) on any malformed entry.
@@ -427,6 +508,7 @@ struct Params
     std::uint32_t maxReissues = 8;           // AutoWow.ZoneProgression.MaxReissues
     std::uint32_t cooldownMs = 1800000;      // AutoWow.ZoneProgression.GiveUpCooldownMs
     std::uint32_t portalAfterMs = 1200000;   // AutoWow.ZoneProgression.PortalAfterMs (0 = time rule off)
+    std::uint32_t outlandPortalAfterMs = 2400000;  // AutoWow.ZoneProgression.OutlandPortalAfterMs (entry trips)
 };
 
 // zoneMax = high end of the current zone's bracket (0 = unbracketed: level rule off). hasRoute = a
@@ -576,6 +658,14 @@ inline std::int64_t RoadDist2(RoadPoint const& p, std::int32_t x, std::int32_t y
     return reissues >= maxReissues || (portalAfterMs && travelMs >= portalAfterMs);
 }
 
+// AutoWow.ZoneProgression.Outland: the mode PortalFallback judges. An Outland entry trip's crossing chain
+// (Silithus -> Orgrimmar portal -> Dark Portal -> Thrallmar) counts as a walk leg; every other chain keeps
+// its own give-up rule.
+[[nodiscard]] inline Mode FallbackMode(Mode mode, bool outlandEntry)
+{
+    return outlandEntry && mode == Mode::Chain ? Mode::Walk : mode;
+}
+
 enum class Phase : std::uint8_t
 {
     None = 0,     // evaluating triggers
@@ -652,10 +742,12 @@ inline std::string LedgerFields(std::uint32_t fromZone, std::uint32_t toZone, st
 namespace detail
 {
 inline bool gEnabled = false;
+inline bool gOutland = false;  // AutoWow.ZoneProgression.Outland
 inline Params gParams;
 inline std::vector<Route> gRoutes;
 }
 inline bool Enabled() { return detail::gEnabled; }
+inline bool OutlandEnabled() { return detail::gEnabled && detail::gOutland; }
 
 void LoadConfig();
 // A graduation (travel or flight-path learning) is under way for this bot. Town runs wait for it.

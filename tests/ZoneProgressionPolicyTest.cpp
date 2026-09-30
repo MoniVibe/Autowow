@@ -502,4 +502,122 @@ TEST(ZoneProgression, SafeEscapeHubSkipsANearerHubBehindDanger)
     EXPECT_EQ(PickSafeEscapeRoute(routes, 1, 30, 7, 0, 0, 0, crosses), nullptr);
     EXPECT_EQ(PickSafeEscapeRoute(only, 1, 15, 501, 0, 0, 0, crosses), nullptr);
 }
+
+// AutoWow.ZoneProgression.Outland: HighRoutes + the Outland ladder.
+std::vector<Route> OutlandTable()
+{
+    std::vector<Route> routes = HighTable();
+    AddOutland(routes);
+    return routes;
+}
+
+// soak-s76: the L58-67 cohort bots stood in Silithus (1377), Winterspring (618), Feralas (357), Un'Goro (490)
+// and Eastern Plaguelands (139). Every one of them now has exactly one kind of way on: its Hellfire hub.
+TEST(ZoneProgression, OutlandEntryFromEveryAzerothHubZoneAt58To70)
+{
+    std::vector<Route> const routes = OutlandTable();
+    for (std::uint32_t team : {1U, 2U})
+        for (HubSource const& s : OutlandEntryZones(team))
+            for (std::uint32_t level = kOutlandMinLevel; level <= kOutlandMaxLevel; ++level)
+                for (std::uint32_t guid : {62955U, 62961U, 62980U})
+                {
+                    Route const* r = PickRoute(routes, team, s.zone, level, guid);
+                    ASSERT_NE(r, nullptr) << team << " " << s.zone << " L" << level;
+                    EXPECT_EQ(r->to, kHellfireZone);
+                    EXPECT_EQ(r->map, kOutlandMap);
+                    EXPECT_TRUE(r->crossing);
+                    EXPECT_TRUE(IsOutlandEntry(*r));
+                    EXPECT_EQ(r->inn, team == 1 ? 16826U : 16602U);  // Honor Hold / Thrallmar
+                }
+    // The soak-s76 bots by name: 62961 (dwarf L67, Feralas), 62980 (orc L65, Silithus), 62955 (human L64, EPL).
+    EXPECT_EQ(PickRoute(routes, 1, 357, 67, 62961)->inn, 16826U);
+    EXPECT_EQ(PickRoute(routes, 2, 1377, 65, 62980)->inn, 16602U);
+    EXPECT_EQ(PickRoute(routes, 1, 139, 64, 62955)->inn, 16826U);
+    // Below 58 the Azeroth ladder is unchanged in kind: same continent, no crossing.
+    Route const* r = PickRoute(routes, 1, 139, 57, 62955);
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->map, 0U);
+    EXPECT_FALSE(IsOutlandEntry(*r));
+}
+
+TEST(ZoneProgression, OutlandLadderClampsAzerothBandsOnly)
+{
+    std::vector<Route> const high = HighTable();
+    std::vector<Route> const routes = OutlandTable();
+    ASSERT_GT(routes.size(), high.size());
+    for (std::size_t k = 0; k < high.size(); ++k)
+    {
+        EXPECT_EQ(routes[k].from, high[k].from);
+        EXPECT_EQ(routes[k].to, high[k].to);
+        EXPECT_EQ(routes[k].minLevel, high[k].minLevel);
+        EXPECT_EQ(routes[k].maxLevel, std::min(high[k].maxLevel, kOutlandMinLevel - 1));
+    }
+    for (std::size_t k = high.size(); k < routes.size(); ++k)
+    {
+        EXPECT_EQ(routes[k].map, kOutlandMap);
+        EXPECT_GE(routes[k].minLevel, kOutlandMinLevel);
+        EXPECT_LE(routes[k].maxLevel, kOutlandMaxLevel);
+        EXPECT_NE(routes[k].from, routes[k].to);
+    }
+    // Deterministic: same table twice.
+    std::vector<Route> const again = OutlandTable();
+    ASSERT_EQ(again.size(), routes.size());
+    for (std::size_t k = 0; k < routes.size(); ++k)
+        EXPECT_TRUE(again[k].from == routes[k].from && again[k].to == routes[k].to && again[k].x == routes[k].x);
+}
+
+// Inside Outland: every hub zone (and Shattrath) has a way on from its band max until 69, on map 530, walkable.
+TEST(ZoneProgression, OutlandLadderClimbsTo70)
+{
+    std::vector<Route> const routes = OutlandTable();
+    for (Hub const& h : OutlandHubs())
+        for (std::uint32_t level = h.maxLevel; level < kOutlandMaxLevel; ++level)
+        {
+            Route const* r = PickRoute(routes, h.team, h.zone, level, h.npc);
+            ASSERT_NE(r, nullptr) << h.team << " " << h.zone << " L" << level;
+            EXPECT_NE(r->to, h.zone);
+            EXPECT_EQ(r->map, kOutlandMap);
+            EXPECT_FALSE(r->crossing);
+            EXPECT_TRUE(level >= r->minLevel && level <= r->maxLevel);
+        }
+    // The brief's ladder: Hellfire L61 -> Zangarmarsh only; Shattrath L58 -> Hellfire.
+    EXPECT_EQ(PickRoute(routes, 1, 3483, 61, 0)->to, 3521U);
+    EXPECT_EQ(PickRoute(routes, 2, 3483, 61, 1)->to, 3521U);
+    EXPECT_EQ(PickRoute(routes, 2, 3703, 58, 0)->to, kHellfireZone);
+    // No band past 70 (no Northrend ladder).
+    for (Route const& x : routes)
+        EXPECT_LE(x.maxLevel, kOutlandMaxLevel);
+}
+
+// Outland hub npcs: creature_template.faction and FactionTemplate.dbc enemy group (2 alliance, 4 horde).
+TEST(ZoneProgression, NoHostileOutlandHubs)
+{
+    struct Npc { std::uint32_t entry, factionTemplate, enemyGroup; };
+    std::vector<Npc> const npcs = {
+        {16826, 1667, 4}, {16602, 68, 2},   {18251, 1638, 4}, {18245, 126, 2},  {19296, 1732, 4},
+        {18957, 1735, 2}, {18914, 1722, 4}, {18913, 1652, 2}, {19495, 80, 4},   {19470, 1735, 2},
+        {19571, 35, 0},   {19352, 1732, 4}, {19319, 1735, 2},
+    };
+    for (Hub const& h : OutlandHubs())
+    {
+        auto const it = std::find_if(npcs.begin(), npcs.end(), [&](Npc const& n) { return n.entry == h.npc; });
+        ASSERT_NE(it, npcs.end()) << h.npc;
+        EXPECT_EQ(it->enemyGroup & (h.team == 1 ? 2U : 4U), 0U) << "hub npc " << h.npc;
+        EXPECT_EQ(h.inn, h.npc);
+        EXPECT_EQ(h.map, kOutlandMap);
+    }
+}
+
+TEST(ZoneProgression, OutlandChainPortalsLikeAWalk)
+{
+    EXPECT_EQ(FallbackMode(Mode::Chain, true), Mode::Walk);
+    EXPECT_EQ(FallbackMode(Mode::Chain, false), Mode::Chain);
+    EXPECT_EQ(FallbackMode(Mode::Flight, true), Mode::Flight);
+    // An entry chain past its clock portals; any other chain never takes the fallback.
+    EXPECT_TRUE(PortalFallback(true, FallbackMode(Mode::Chain, true), false, 0, 8, 2400000, 2400000));
+    EXPECT_FALSE(PortalFallback(true, FallbackMode(Mode::Chain, true), false, 0, 8, 2399999, 2400000));
+    EXPECT_FALSE(PortalFallback(true, FallbackMode(Mode::Chain, false), false, 8, 8, 9999999, 1));
+    // Already in Hellfire: no portal.
+    EXPECT_FALSE(PortalFallback(true, FallbackMode(Mode::Chain, true), true, 8, 8, 9999999, 1));
+}
 }  // namespace
