@@ -278,7 +278,8 @@ try {
             Where-Object { $_.CommandLine -and $_.CommandLine -match 'phase1-wsl-mysql-relay\.ps1' } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         Start-Sleep -Milliseconds 500
-        Start-Process -FilePath 'pwsh.exe' -ArgumentList @('-NoProfile','-File',$relayScript) `
+        Start-Process -FilePath 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' `
+            -ArgumentList @('-NoProfile','-File',$relayScript) `
             -RedirectStandardOutput $relayStdout -RedirectStandardError $relayStderr `
             -WindowStyle Hidden -PassThru
     }

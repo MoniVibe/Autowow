@@ -76,8 +76,11 @@ New-Item -ItemType Directory -Path $statusDirectory -Force | Out-Null
 if (-not ('AutoWow.Phase1.TcpRelay' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -95,27 +98,79 @@ namespace AutoWow.Phase1
             var listener = new TcpListener(listenAddress, listenPort);
             listener.Server.ExclusiveAddressUse = true;
             listener.Start();
-            try
+            using (var runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            using (runCts.Token.Register(delegate { listener.Stop(); }))
             {
-                while (!cancellationToken.IsCancellationRequested)
+                var connections = new List<Task>();
+                var connectionGate = new object();
+                ExceptionDispatchInfo failure = null;
+                Task[] remaining;
+                try
                 {
-                    TcpClient client;
-                    try
+                    while (!runCts.IsCancellationRequested)
                     {
-                        client = await listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
+                        TcpClient client;
+                        try
+                        {
+                            client = await listener.AcceptTcpClientAsync().ConfigureAwait(false);
+                        }
+                        catch (ObjectDisposedException)
+                        {
+                            if (runCts.IsCancellationRequested) break;
+                            throw;
+                        }
+                        catch (SocketException)
+                        {
+                            if (runCts.IsCancellationRequested) break;
+                            throw;
+                        }
 
-                    _ = RelayConnectionAsync(client, targetAddress, targetPort, cancellationToken);
+                        Task connection = RelayConnectionAsync(
+                            client, targetAddress, targetPort, runCts.Token);
+                        lock (connectionGate)
+                        {
+                            connections.Add(connection);
+                        }
+                        RemoveWhenCompleted(connection, connections, connectionGate);
+                    }
                 }
+                catch (Exception error)
+                {
+                    failure = ExceptionDispatchInfo.Capture(error);
+                }
+                finally
+                {
+                    runCts.Cancel();
+                    listener.Stop();
+                    lock (connectionGate)
+                    {
+                        remaining = connections.ToArray();
+                    }
+                }
+                if (remaining.Length != 0)
+                {
+                    await Task.WhenAll(remaining).ConfigureAwait(false);
+                }
+                if (failure != null) failure.Throw();
             }
-            finally
-            {
-                listener.Stop();
-            }
+        }
+
+        private static void RemoveWhenCompleted(
+            Task connection,
+            List<Task> connections,
+            object connectionGate)
+        {
+            connection.ContinueWith(
+                delegate(Task completed)
+                {
+                    lock (connectionGate)
+                    {
+                        connections.Remove(completed);
+                    }
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private static async Task RelayConnectionAsync(
@@ -127,16 +182,21 @@ namespace AutoWow.Phase1
             using (client)
             using (var upstream = new TcpClient(targetAddress.AddressFamily))
             using (var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(serverToken))
+            using (connectionCts.Token.Register(delegate
+            {
+                client.Close();
+                upstream.Close();
+            }))
             {
                 try
                 {
-                    await upstream.ConnectAsync(targetAddress, targetPort, connectionCts.Token)
+                    await upstream.ConnectAsync(targetAddress, targetPort)
                         .ConfigureAwait(false);
                     using (NetworkStream inbound = client.GetStream())
                     using (NetworkStream outbound = upstream.GetStream())
                     {
-                        Task toUpstream = inbound.CopyToAsync(outbound, connectionCts.Token);
-                        Task toClient = outbound.CopyToAsync(inbound, connectionCts.Token);
+                        Task toUpstream = PumpAsync(inbound, outbound);
+                        Task toClient = PumpAsync(outbound, inbound);
                         await Task.WhenAny(toUpstream, toClient).ConfigureAwait(false);
                         connectionCts.Cancel();
                         try
@@ -149,6 +209,20 @@ namespace AutoWow.Phase1
                 }
                 catch (OperationCanceledException) { }
                 catch (SocketException) { }
+                catch (IOException) { }
+                catch (ObjectDisposedException) { }
+            }
+        }
+
+        private static async Task PumpAsync(Stream source, Stream destination)
+        {
+            var buffer = new byte[81920];
+            while (true)
+            {
+                int count = await source.ReadAsync(buffer, 0, buffer.Length)
+                    .ConfigureAwait(false);
+                if (count == 0) return;
+                await destination.WriteAsync(buffer, 0, count).ConfigureAwait(false);
             }
         }
     }
