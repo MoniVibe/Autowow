@@ -10,13 +10,49 @@
 param(
     [Parameter(Mandatory = $true)][string]$RunId,
     [Parameter(Mandatory = $true)][string]$SnapshotName,
-    [switch]$SkipWorld
+    [switch]$SkipWorld,
+    [string]$WorldserverBinary = '/root/autowow-upstream-s83-build/src/server/apps/worldserver',
+    [string]$AuthserverBinary = '/root/autowow-upstream-s83-build/src/server/apps/authserver',
+    [string]$AuthserverConfig = '/root/p1runtime/authserver-s83.conf'
 )
 $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 $sd = Join-Path $PSScriptRoot 'start-detached.ps1'
 $lg = Join-Path $root 'logs\phase1-runtime'
 $ctl = Join-Path $PSScriptRoot 'autowow-control.ps1'
+
+function Get-FullSoakServerLaunchPlan {
+    param(
+        [Parameter(Mandatory = $true)][string]$ServerRoot,
+        [string]$WorldserverBinary = '/root/autowow-upstream-s83-build/src/server/apps/worldserver',
+        [string]$AuthserverBinary = '/root/autowow-upstream-s83-build/src/server/apps/authserver',
+        [string]$AuthserverConfig = '/root/p1runtime/authserver-s83.conf'
+    )
+
+    $authBinarySpecified = -not [string]::IsNullOrWhiteSpace($AuthserverBinary)
+    $authConfigSpecified = -not [string]::IsNullOrWhiteSpace($AuthserverConfig)
+    if ($authBinarySpecified -xor $authConfigSpecified) {
+        throw 'AuthserverBinary and AuthserverConfig must be supplied together.'
+    }
+
+    foreach ($commandLineValue in @($ServerRoot, $WorldserverBinary, $AuthserverBinary, $AuthserverConfig)) {
+        if ($commandLineValue.IndexOf('"') -ge 0 -or $commandLineValue.IndexOf('%') -ge 0 -or
+            $commandLineValue.IndexOfAny([char[]]@("`r", "`n")) -ge 0) {
+            throw 'Server launch paths cannot contain double quotes, percent signs, or line breaks.'
+        }
+    }
+
+    $quotedRoot = '"' + $ServerRoot + '"'
+    $quotedWorld = '"' + $WorldserverBinary + '"'
+    $quotedAuth = '"' + $AuthserverBinary + '"'
+    $quotedAuthConfig = '"' + $AuthserverConfig + '"'
+    [pscustomobject]@{
+        auth_mode = if ($authBinarySpecified) { 'wsl' } else { 'windows' }
+        start_windows_auth = -not $authBinarySpecified
+        arguments = "-ServerRoot $quotedRoot -WorldserverBinary $quotedWorld " +
+            "-AuthserverBinary $quotedAuth -AuthserverConfig $quotedAuthConfig"
+    }
+}
 
 function Invoke-CohortStartWithRetry {
     param(
@@ -48,13 +84,16 @@ function Invoke-CohortStartWithRetry {
 }
 
 if (-not $SkipWorld) {
-if (-not (Get-Process authserver -ErrorAction SilentlyContinue)) {
-    & $sd -Script (Join-Path $PSScriptRoot 'start-server.ps1') -Arguments '-AuthOnly' -Log "$lg\detached-auth.log"
-    Start-Sleep -Seconds 20
-}
-# A fresh log name per start: reusing one log file once left the launch silently not started.
-$startLog = Join-Path $lg ("detached-start-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
-& $sd -Script (Join-Path $PSScriptRoot 'start-phase1-wsl-worldserver.ps1') -Arguments '-WorldserverBinary /root/autowow-advisor-t1-build/src/server/apps/worldserver' -Log $startLog
+    $launchPlan = Get-FullSoakServerLaunchPlan -ServerRoot $root -WorldserverBinary $WorldserverBinary `
+        -AuthserverBinary $AuthserverBinary -AuthserverConfig $AuthserverConfig
+    if ($launchPlan.start_windows_auth -and -not (Get-Process authserver -ErrorAction SilentlyContinue)) {
+        & $sd -Script (Join-Path $PSScriptRoot 'start-server.ps1') -Arguments '-AuthOnly' -Log "$lg\detached-auth.log"
+        Start-Sleep -Seconds 20
+    }
+    # A fresh log name per start: reusing one log file once left the launch silently not started.
+    $startLog = Join-Path $lg ("detached-start-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    & $sd -Script (Join-Path $PSScriptRoot 'start-phase1-wsl-worldserver.ps1') `
+        -Arguments $launchPlan.arguments -Log $startLog
 }
 $ready = $false
 foreach ($i in 1..120) {

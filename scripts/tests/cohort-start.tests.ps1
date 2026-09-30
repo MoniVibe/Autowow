@@ -33,11 +33,17 @@ function Invoke-CohortBridge {
     $tokens = $null
     $errors = $null
     $tree = [Management.Automation.Language.Parser]::ParseFile($script:SoakStartSource, [ref]$tokens, [ref]$errors)
+    $script:SoakStartTree = $tree
     $retryFunction = $tree.Find({
         param($node)
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-CohortStartWithRetry'
     }, $true)
     . ([scriptblock]::Create($retryFunction.Extent.Text))
+    $launchPlanFunction = $tree.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-FullSoakServerLaunchPlan'
+    }, $true)
+    . ([scriptblock]::Create($launchPlanFunction.Extent.Text))
 }
 
 Describe 'cohort startup retry correctness' {
@@ -179,5 +185,47 @@ if (-not $Apply) { '{"complete":false,"pending_guids":[31]}' ; return }
 '@
         { Invoke-CohortStartWithRetry -CohortStartPath $fake -Attempts 1 -DelaySeconds 0 } |
             Should -Throw '*incomplete after 1 attempts*'
+    }
+}
+
+Describe 'full soak server launch contract' {
+    It 'defaults to the upstream S83 WSL worldserver and authserver pair' {
+        $plan = Get-FullSoakServerLaunchPlan -ServerRoot 'D:\Games\wowstuff\AutoWoW'
+
+        $plan.auth_mode | Should -BeExactly 'wsl'
+        $plan.start_windows_auth | Should -BeFalse
+        $plan.arguments | Should -BeExactly (
+            '-ServerRoot "D:\Games\wowstuff\AutoWoW" ' +
+            '-WorldserverBinary "/root/autowow-upstream-s83-build/src/server/apps/worldserver" ' +
+            '-AuthserverBinary "/root/autowow-upstream-s83-build/src/server/apps/authserver" ' +
+            '-AuthserverConfig "/root/p1runtime/authserver-s83.conf"')
+    }
+
+    It 'preserves Windows-auth mode when both WSL auth paths are explicitly empty' {
+        $plan = Get-FullSoakServerLaunchPlan -ServerRoot 'D:\Games\wowstuff\AutoWoW' `
+            -AuthserverBinary '' -AuthserverConfig ''
+
+        $plan.auth_mode | Should -BeExactly 'windows'
+        $plan.start_windows_auth | Should -BeTrue
+        $plan.arguments | Should -Match '-AuthserverBinary "" -AuthserverConfig ""$'
+    }
+
+    It 'rejects a partial WSL auth selection' {
+        { Get-FullSoakServerLaunchPlan -ServerRoot 'D:\Games\wowstuff\AutoWoW' `
+            -AuthserverBinary '/root/build/authserver' -AuthserverConfig '' } |
+            Should -Throw '*must be supplied together*'
+    }
+
+    It 'keeps all server planning and startup inside the SkipWorld gate' {
+        $skipWorldGate = $script:SoakStartTree.Find({
+            param($node)
+            $node -is [Management.Automation.Language.IfStatementAst] -and
+                $node.Clauses[0].Item1.Extent.Text -match '\$SkipWorld'
+        }, $true)
+        $gateText = $skipWorldGate.Extent.Text
+
+        $gateText | Should -Match 'Get-FullSoakServerLaunchPlan'
+        $gateText | Should -Match 'start-phase1-wsl-worldserver\.ps1'
+        $gateText | Should -Match '\$launchPlan\.start_windows_auth'
     }
 }
