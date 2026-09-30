@@ -31,7 +31,7 @@ std::string ReadGroupedReleasedIngressBranch()
     std::size_t const branchStart = source.find(
         "if (IsReleasedGroupedInstanceCorpse(bot))", functionStart);
     std::size_t const ordinaryDeathStart = source.find(
-        "const GraveyardStruct* graveyard", branchStart);
+        "GraveyardStruct const* graveyard = GetGrave(", branchStart);
     std::size_t const helperStart = source.find("constexpr uint32 IngressRejectedPathTypes");
     std::size_t const helperEnd = source.find(
         "ReleasedCorpseApproachPolicy::IngressPortalSelection FindIngressPortal", helperStart);

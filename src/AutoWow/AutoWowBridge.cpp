@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "AiObjectContext.h"
+#include "AiFactory.h"
 #include "AttackAction.h"
 #include "ChooseTravelTargetAction.h"
 #include "Config.h"
@@ -77,6 +78,7 @@
 #include "Player.h"
 #include "PlayerbotFactory.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotAIConfig.h"
 #include "PlayerbotOperation.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "PortalAdmissionPolicy.h"
@@ -84,6 +86,8 @@
 #include "PlayerbotsDatabase.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedValueContext.h"
+#include "StatsCollector.h"
+#include "StatsWeightCalculator.h"
 #include "TravelMgr.h"
 #include "Unit.h"
 #include "Value.h"
@@ -217,6 +221,7 @@ enum class AutoWowRequestType
     OracleLog,
     Destinations,
     Snapshot,
+    GearScore,
     CombatLog,
     EncounterLog,
     ProfessionEconomy,
@@ -276,6 +281,8 @@ struct AutoWowRequest
     uint32 fixtureQuality = 0;
     uint32 fixturePacingPercent = 0;
     uint32 fixtureKillEntry = 0;
+    uint32 gearItemA = 0;
+    uint32 gearItemB = 0;
     uint64 fixtureKillSpawnId = 0;
     AutoWowProbePlace::WireRequest probe;
     uint32 raidDifficulty = 0;
@@ -2591,6 +2598,96 @@ public:
                 return Finish(true, ListDestinations(bot));
             case AutoWowRequestType::Snapshot:
                 return Finish(true, "{\"ok\":true,\"bot\":" + SnapshotJson(bot, botAI) + "}");
+            case AutoWowRequestType::GearScore:
+            {
+                ItemTemplate const* itemA = sObjectMgr->GetItemTemplate(m_request.gearItemA);
+                ItemTemplate const* itemB = sObjectMgr->GetItemTemplate(m_request.gearItemB);
+                if (!itemA || !itemB)
+                    return Finish(false, ErrorResponse("item_template_not_found"));
+
+                CollectorType collectorType = CollectorType::RANGED;
+                if (PlayerbotAI::IsHeal(bot))
+                    collectorType = CollectorType::SPELL_HEAL;
+                else if (PlayerbotAI::IsCaster(bot))
+                    collectorType = CollectorType::SPELL_DMG;
+                else if (PlayerbotAI::IsTank(bot))
+                    collectorType = CollectorType::MELEE_TANK;
+                else if (PlayerbotAI::IsMelee(bot))
+                    collectorType = CollectorType::MELEE_DMG;
+
+                struct GearScoreView
+                {
+                    ItemTemplate const* item = nullptr;
+                    float pve = 0.0f;
+                    float pvp = 0.0f;
+                    float attackPower = 0.0f;
+                    float meleeDps = 0.0f;
+                    float resilience = 0.0f;
+                };
+
+                auto inspect = [bot, collectorType](ItemTemplate const* item)
+                {
+                    GearScoreView view;
+                    view.item = item;
+
+                    StatsWeightCalculator pve(bot);
+                    pve.SetOverflowPenalty(false);
+                    pve.SetItemSetBonus(false);
+                    pve.SetPvpSpec(false);
+                    view.pve = pve.CalculateItem(item->ItemId, 0, -1);
+
+                    StatsWeightCalculator pvp(bot);
+                    pvp.SetOverflowPenalty(false);
+                    pvp.SetItemSetBonus(false);
+                    pvp.SetPvpSpec(true);
+                    view.pvp = pvp.CalculateItem(item->ItemId, 0, -1);
+
+                    StatsCollector collector(collectorType, bot->getClass());
+                    collector.CollectItemStats(item);
+                    view.attackPower = collector.stats[STATS_TYPE_ATTACK_POWER];
+                    view.meleeDps = collector.stats[STATS_TYPE_MELEE_DPS];
+                    view.resilience = collector.stats[STATS_TYPE_RESILIENCE];
+                    return view;
+                };
+
+                GearScoreView const a = inspect(itemA);
+                GearScoreView const b = inspect(itemB);
+                float const threshold = sPlayerbotAIConfig.equipUpgradeThreshold;
+                auto replaces = [threshold](float candidate, float worn)
+                {
+                    return candidate > worn * threshold && candidate > worn;
+                };
+                auto appendItem = [](std::ostringstream& out, char const* label, GearScoreView const& view)
+                {
+                    out << "{\"label\":" << JsonString(label)
+                        << ",\"id\":" << view.item->ItemId
+                        << ",\"name\":" << JsonString(view.item->Name1)
+                        << ",\"pve_score\":" << view.pve
+                        << ",\"pvp_score\":" << view.pvp
+                        << ",\"stats\":{\"attack_power\":" << view.attackPower
+                        << ",\"melee_dps\":" << view.meleeDps
+                        << ",\"resilience\":" << view.resilience << "}}";
+                };
+
+                std::ostringstream out;
+                out << "{\"ok\":true,\"schema\":\"autowow.gear_score.v1\",\"order\":\"gear-score\""
+                    << ",\"read_only\":true,\"profile\":{\"name\":\"item_usage\",\"random_property_id\":0"
+                    << ",\"slot\":-1,\"overflow_penalty\":false,\"item_set_bonus\":false}"
+                    << ",\"guid\":" << m_request.botGuid
+                    << ",\"bot_name\":" << JsonString(bot->GetName())
+                    << ",\"class_id\":" << static_cast<uint32>(bot->getClass())
+                    << ",\"spec_tab\":" << static_cast<uint32>(AiFactory::GetPlayerSpecTab(bot))
+                    << ",\"equip_upgrade_threshold\":" << threshold << ",\"items\":[";
+                appendItem(out, "a", a);
+                out << ',';
+                appendItem(out, "b", b);
+                out << "],\"comparisons\":{\"pve\":{\"a_replaces_b\":"
+                    << (replaces(a.pve, b.pve) ? "true" : "false")
+                    << ",\"b_replaces_a\":" << (replaces(b.pve, a.pve) ? "true" : "false")
+                    << "},\"pvp\":{\"a_replaces_b\":" << (replaces(a.pvp, b.pvp) ? "true" : "false")
+                    << ",\"b_replaces_a\":" << (replaces(b.pvp, a.pvp) ? "true" : "false") << "}}}";
+                return Finish(true, out.str());
+            }
             case AutoWowRequestType::CombatLog:
                 return Finish(true, AutoWowCombatTelemetry::Build(bot, botAI));
             case AutoWowRequestType::EncounterLog:
@@ -5662,6 +5759,21 @@ bool ParseRequest(std::string requestText, AutoWowRequest& request, std::string&
         request.type = AutoWowRequestType::Destinations;
     else if (command == "snapshot")
         request.type = AutoWowRequestType::Snapshot;
+    else if (command == "gear-score")
+    {
+        std::string itemAToken;
+        std::string itemBToken;
+        std::string extra;
+        if (!(input >> itemAToken >> itemBToken) ||
+            !ParseUnsignedToken(itemAToken, request.gearItemA) || !request.gearItemA ||
+            !ParseUnsignedToken(itemBToken, request.gearItemB) || !request.gearItemB ||
+            (input >> extra))
+        {
+            error = "gear-score requires exactly bot-guid item-a item-b as positive numeric ids";
+            return false;
+        }
+        request.type = AutoWowRequestType::GearScore;
+    }
     else if (command == "combatlog")
         request.type = AutoWowRequestType::CombatLog;
     else if (command == "encounterlog")

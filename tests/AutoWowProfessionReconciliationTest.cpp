@@ -116,7 +116,13 @@ TEST(AutoWowProfessionReconciliation, ProductionHookIsManagedAndPrimaryOnly)
     ASSERT_FALSE(initTradeSkills.empty());
     EXPECT_NE(initTradeSkills.find("AutoWowProfessionReconciliation::ShouldHonorStoredPair"),
               std::string_view::npos);
-    EXPECT_NE(initTradeSkills.find("maxPrimaryTradeSkills >= 2 && !hasStoredProfessionPair"),
+    EXPECT_NE(initTradeSkills.find("sPlayerbotAIConfig.GetAutoWowProfessionPlan"),
+              std::string_view::npos);
+    EXPECT_NE(initTradeSkills.find("std::vector<uint16> knownPrimarySkills"),
+              std::string_view::npos);
+    EXPECT_NE(initTradeSkills.find("if (!autoWowManaged || honorAutoWowStoredPair)"),
+              std::string_view::npos);
+    EXPECT_NE(initTradeSkills.find("primarySkills.size() >= maxPrimaryTradeSkills"),
               std::string_view::npos);
 
     std::string const bridge = ReadSource(ModuleRoot() / "src/AutoWow/AutoWowBridge.cpp");

@@ -2728,7 +2728,7 @@ void RandomPlayerbotMgr::OnBotLoginInternal(Player* const bot)
         factory.InitGuild();
     }
 
-    RandomPlayerbotFactory::AssignBotToArenaTeam(bot);
+    // Preserve existing arena rosters on ordinary login. Legacy assignment remains part of bot randomization.
 
     if (sPlayerbotAIConfig.randomBotFixedLevel)
     {
