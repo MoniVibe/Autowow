@@ -2946,6 +2946,24 @@ AutoWow.Supply.PotionPayPct = 200
 AutoWow.Supply.PotionMaxOrder = 20
 AutoWow.Supply.PotionSurplusKeep = 20
 AutoWow.Supply.SkillupCasts = 10
+# PotionTiers (lane brewtiers; off by default; off = the potions line exactly as above). Soak S75/S76: the cohort is
+# L15-66 but the Brewers artisans (alchemy 57 / 64) know only Minor / Lesser Healing, both from Peacebloom (1 donated
+# in S75), while the houses held Bruiseweed + Briarthorn for 19-20 Healing Potions (alchemy 110). On: the line gains
+# (checked like the tiers above) Minor Mana Potion 2455 (spell 2331, alchemy 25, grey 105, req 5; Mageroyal 785 +
+# Silverleaf + Empty Vial), Lesser Mana Potion 3385 (3173, 120, grey 185, req 14; Mageroyal + Stranglekelp 3820 + Empty
+# Vial), Greater Healing Potion 1710 (7181, 155, grey 215, req 21; Liferoot 3357 + Kingsblood 3356 + Leaded Vial), Mana
+# Potion 3827 (3452, 160, grey 220, req 22; Stranglekelp + Kingsblood + Leaded Vial) and the Elixir of Wisdom 3383
+# (3171, 90, grey 160; Mageroyal + 2 Briarthorn + Empty Vial), a skill-up bridge no member wants: the one trainer recipe
+# from 105 (Minor Mana grey) to 110 without Peacebloom (DemandOnly: consumer-less, last resort, sold as `waste`).
+# Greater Healing / Mana need Expert alchemy (artisan level 20). Superior Healing / Greater Mana (Artisan alchemy,
+# level 35, another trainer) are not in the table. Need: each member wants its best heal tier (req 1 / 3 / 12 / 21) and
+# a mana user (max mana > 0) also its best mana tier (req 5 / 14 / 22), each the highest the artisan knows (else the
+# highest usable); a better tier of the same family it holds and can use counts as stock. Product: the heal family
+# first (craftable, then known wanted), then mana. RouteHerbs also routes Mageroyal / Stranglekelp / Liferoot /
+# Kingsblood (each once a recipe using it is within the artisan's skill). Consumer of mana potions: the stock
+# "potions" strategy's medium mana -> "mana potion". Log: "[Supply] overlord tiers" per team (item:want/craftable/
+# known/surplus for every tier).
+AutoWow.Supply.PotionTiers = 0
 # RouteRaw (lane G): at the errand sell stop a cohort adventurer mails ore (Copper 2770 / Tin 2771 / Iron 2772) to
 # its team's House.Ore rep (default Smiths) and leather (Ruined Leather Scraps 2934 / Light 2318 / Medium 2319) to
 # its House.Leather rep (default Tanners) instead of selling them, each while the rep holds under RawCap of it
