@@ -357,7 +357,7 @@ char const* TaxiFailReason(Player* bot, std::vector<std::uint32_t> const& nodes,
 {
     if (nodes.size() < 2)
         return "short_path";
-    if (bot->GetSession()->isLogingOut() || bot->IsInCombat() || bot->HasUnitState(UNIT_STATE_STUNNED) ||
+    if (bot->GetSession()->IsLoggingOut() || bot->IsInCombat() || bot->HasUnitState(UNIT_STATE_STUNNED) ||
         bot->HasUnitState(UNIT_STATE_ROOT))
         return "busy";
     if (bot->HasUnitFlag(UNIT_FLAG_DISABLE_MOVE))
