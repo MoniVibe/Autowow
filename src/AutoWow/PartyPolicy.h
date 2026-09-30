@@ -91,7 +91,9 @@ enum class Disband : std::uint8_t
     TooSmall,
     Disabled,
     Stalled,  // AutoWow.Unstick.V2: group-quest party without quest progress for StallMs, or its leader gave up
-    Recruited  // AutoWow.Dungeon.RecruitWidePool: a member was recruited into a dungeon party
+    Recruited, // AutoWow.Dungeon.RecruitWidePool: a member was recruited into a dungeon party
+    UnsafeZone,    // a member is below the curated minimum level of the leader's zone
+    SurvivalEscape // a member's hard-escape recovery retired an open-world group-quest party
 };
 
 inline constexpr char const* DisbandName(Disband d)
@@ -108,6 +110,8 @@ inline constexpr char const* DisbandName(Disband d)
         case Disband::Disabled: return "disabled";
         case Disband::Stalled: return "stalled";
         case Disband::Recruited: return "recruited";
+        case Disband::UnsafeZone: return "unsafe_zone";
+        case Disband::SurvivalEscape: return "survival_escape";
         case Disband::None: return "none";
     }
     return "none";
@@ -287,9 +291,17 @@ struct Candidate
     std::uint32_t zone = 0;
     std::int32_t x = 0;
     std::int32_t y = 0;
+    std::uint32_t zoneMinLevel = 0;  // curated zone bracket low; 0 = unknown, so do not reject
     bool groupQuest = false;  // a group quest in its log or offered in its zone at its level
     bool canTank = false;     // PlanRecruit with RequireTank: warrior, paladin, or druid with a bear form
 };
+
+// Both members can safely follow either candidate as leader. Unknown zone brackets remain admissible.
+[[nodiscard]] inline bool ZoneLevelCompatible(Candidate const& a, Candidate const& b)
+{
+    return (!a.zoneMinLevel || b.level >= a.zoneMinLevel) &&
+           (!b.zoneMinLevel || a.level >= b.zoneMinLevel);
+}
 
 struct FormParams
 {
@@ -351,7 +363,7 @@ inline std::vector<Plan> FormParties(std::vector<Candidate> cands, FormParams co
             return dist(a) != dist(b) ? dist(a) < dist(b) : cands[a].guid < cands[b].guid;
         });
         // Greedy fill from the seed; `prefer` first (tank, healer), then everyone, level span bounded.
-        auto build = [&](bool roleFirst)
+        auto build = [&](bool roleFirst, bool zoneSafe)
         {
             std::vector<std::size_t> pick{s};
             std::uint32_t lo = seed.level, hi = seed.level;
@@ -359,6 +371,9 @@ inline std::vector<Plan> FormParties(std::vector<Candidate> cands, FormParams co
             {
                 if (pick.size() >= maxSize || std::find(pick.begin(), pick.end(), i) != pick.end())
                     return false;
+                for (std::size_t j : pick)
+                    if (zoneSafe && !ZoneLevelCompatible(cands[j], cands[i]))
+                        return false;
                 std::uint32_t const l2 = std::min(lo, cands[i].level), h2 = std::max(hi, cands[i].level);
                 if (h2 - l2 > p.levelSpread)
                     return false;
@@ -413,7 +428,7 @@ inline std::vector<Plan> FormParties(std::vector<Candidate> cands, FormParams co
         std::vector<std::size_t> pick;
         if (p.dungeons)
         {
-            pick = build(true);
+            pick = build(true, false);
             std::vector<Member> ms;
             std::uint32_t lo = ~0u, hi = 0;
             for (std::size_t i : pick)
@@ -435,7 +450,7 @@ inline std::vector<Plan> FormParties(std::vector<Candidate> cands, FormParams co
         }
         if (plan.reason == Reason::None)
         {
-            pick = build(false);
+            pick = build(false, true);
             bool quest = false;
             for (std::size_t i : pick)
                 quest = quest || cands[i].groupQuest;
@@ -775,6 +790,7 @@ struct KeepFacts
     std::uint64_t purposelessMs = 0;  // how long the party has had no reason (group quest / dungeon)
     std::uint64_t ageMs = 0;
     bool inDungeonRun = false;
+    bool unsafeZone = false;         // some member is below the leader zone's curated minimum
 };
 
 struct KeepParams
@@ -794,6 +810,8 @@ inline Disband ShouldDisband(KeepFacts const& f, KeepParams const& p)
         return Disband::TooSmall;
     if (f.inDungeonRun)
         return Disband::None;
+    if (f.unsafeZone)
+        return Disband::UnsafeZone;
     if (f.maxLevel - f.minLevel > p.levelSpread)
         return Disband::LevelDrift;
     if (f.separatedMs >= p.separatedMs)
@@ -803,6 +821,13 @@ inline Disband ShouldDisband(KeepFacts const& f, KeepParams const& p)
     if (f.ageMs >= p.maxAgeMs)
         return Disband::MaxAge;
     return Disband::None;
+}
+
+// A hard escape may retire only an ordinary tracked group-quest party. Dungeon runs and squad parties
+// have separate lifecycle owners and native/user parties are never represented by this policy.
+[[nodiscard]] inline bool ShouldLeaveForSurvival(Reason why, bool inDungeonRun)
+{
+    return why == Reason::GroupQuest && !inDungeonRun;
 }
 
 // ---- group combat roles -------------------------------------------------------------------------------
@@ -1069,6 +1094,8 @@ void CombatUpdate(PlayerbotAI* botAI);
 std::uint32_t PartySize(std::uint32_t guid, bool* dungeonParty = nullptr);
 // True when `guid` is a member of a recruited dungeon party (AutoWow.Dungeon.Recruit); any thread.
 bool InRecruitedParty(std::uint32_t guid);
+// Map-thread safe: queue retirement of guid's tracked open-world group-quest party on the world thread.
+void RequestSurvivalLeave(std::uint32_t guid);
 // True when `guid` leads a cohort party; fills its order.
 bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out);
 // One Approach walk tick of the leader (stuck = WalkLeg reported no progress).

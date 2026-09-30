@@ -29,6 +29,7 @@
 #include "PlayerScript.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "PartyPolicy.h"
 #include "TravelMgr.h"
 #include "ZoneProgressionPolicy.h"
 
@@ -230,7 +231,10 @@ void HardEscapeTick(Player* bot)
                  "stuck_ms={} home_zone={}",
                  bot->GetName(), ok, level, zone, zoneLow, deaths, killerLevel, stuckMs, homeZone);
         if (ok)
+        {
+            AutoWowParty::RequestSurvivalLeave(guid);
             return;
+        }
         // The hearth would not start: portal now (same bookkeeping as HardStep's portal).
         std::lock_guard<std::mutex> guard(gLock);
         if (BotState* s = Find(guid))
@@ -267,6 +271,8 @@ void HardEscapeTick(Player* bot)
         bot->GetMotionMaster()->Clear();
         bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_TELEPORTED | AURA_INTERRUPT_FLAG_CHANGE_MAP);
         ok = bot->TeleportTo(to.map, float(to.x), float(to.y), float(to.z), bot->GetOrientation());
+        if (ok)
+            AutoWowParty::RequestSurvivalLeave(guid);
         if (AutoWowQuestLedger::Enabled())
             AutoWowQuestLedger::EmitZoneMove(bot, "hard_escape",
                                              AutoWowZoneProgression::LedgerFields(

@@ -156,6 +156,7 @@ std::uint32_t gSinceForm = 0;
 std::uint32_t gSinceSupervise = 0;
 std::uint32_t gSinceRecruit = 0;
 std::unordered_map<std::uint32_t, std::uint64_t> gRecruitReadyMs;  // guid -> earliest next recruit (gLock)
+std::unordered_set<std::uint32_t> gSurvivalLeave;                  // party ids requested by map threads (gLock)
 std::map<std::uint32_t, std::uint32_t> gClearable;                 // dungeon map -> clearable bits (world thread)
 
 constexpr std::uint32_t kSuperviseMs = 1000;
@@ -285,6 +286,7 @@ void Dissolve(std::uint32_t id, Disband why, std::uint64_t now)
     Party p;
     {
         std::lock_guard<std::mutex> guard(gLock);
+        gSurvivalLeave.erase(id);
         auto const it = gParties.find(id);
         if (it == gParties.end())
             return;
@@ -544,6 +546,7 @@ void Form(std::uint64_t now)
         c.team = TeamOf(bot);
         c.map = bot->GetMapId();
         c.zone = bot->GetZoneId();
+        c.zoneMinLevel = sTravelMgr.GetZoneBracketLow(c.zone);
         c.x = Yd(bot->GetPositionX());
         c.y = Yd(bot->GetPositionY());
         c.groupQuest = GroupQuestSignal(bot);
@@ -562,10 +565,17 @@ void Form(std::uint64_t now)
             if (e == gEntrances.end() || !lead || e->second.map != lead->GetMapId())
             {
                 bool quest = false;
+                bool zoneSafe = true;
+                std::vector<Candidate const*> members;
                 for (Candidate const& c : cands)
                     if (std::find(pl.guids.begin(), pl.guids.end(), c.guid) != pl.guids.end())
+                    {
                         quest = quest || c.groupQuest;
-                if (!quest)
+                        for (Candidate const* member : members)
+                            zoneSafe = zoneSafe && ZoneLevelCompatible(*member, c);
+                        members.push_back(&c);
+                    }
+                if (!quest || !zoneSafe)
                     continue;
                 pl.reason = Reason::GroupQuest;
                 pl.dungeonMap = 0;
@@ -988,12 +998,19 @@ bool RecruitGather(Party& p, std::uint64_t now)
 void Supervise(std::uint32_t id, std::uint64_t now)
 {
     Party p;
+    bool survivalLeave = false;
     {
         std::lock_guard<std::mutex> guard(gLock);
         auto const it = gParties.find(id);
         if (it == gParties.end())
             return;
         p = it->second;
+        survivalLeave = gSurvivalLeave.erase(id) && ShouldLeaveForSurvival(p.why, p.phase != Phase::None);
+    }
+    if (survivalLeave)
+    {
+        Dissolve(id, Disband::SurvivalEscape, now);
+        return;
     }
     if (p.why == Reason::Squad)
         return;  // EnsureSquad owns it
@@ -1050,6 +1067,12 @@ void Supervise(std::uint32_t id, std::uint64_t now)
         f.online = 0;  // the roster broke up (logout, kick, left): let it go
     f.ageMs = now - p.formedMs;
     f.inDungeonRun = p.phase != Phase::None;
+    if (leader && p.why == Reason::GroupQuest && p.phase == Phase::None)
+    {
+        std::uint32_t const leaderZoneLow = sTravelMgr.GetZoneBracketLow(leader->GetZoneId());
+        f.unsafeZone = leaderZoneLow && std::any_of(bots.begin(), bots.end(), [leaderZoneLow](Player* bot)
+        { return bot->GetLevel() < leaderZoneLow; });
+    }
 
     Disband why = Disband::None;
     if (p.recruited && f.online == f.size && f.inDungeonRun)
@@ -1475,6 +1498,17 @@ bool InRecruitedParty(std::uint32_t guid)
     std::lock_guard<std::mutex> guard(gLock);
     auto const it = gOf.find(guid);
     return it != gOf.end() && gParties.at(it->second).recruited;
+}
+
+void RequestSurvivalLeave(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const member = gOf.find(guid);
+    if (member == gOf.end())
+        return;
+    Party const& p = gParties.at(member->second);
+    if (ShouldLeaveForSurvival(p.why, p.phase != Phase::None))
+        gSurvivalLeave.insert(member->second);
 }
 
 bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out)

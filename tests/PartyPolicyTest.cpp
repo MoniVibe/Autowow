@@ -12,8 +12,11 @@ namespace
 {
 using namespace AutoWowParty;
 
+std::vector<DungeonDef> Defs();
+FormParams DungeonParams();
+
 Candidate C(std::uint32_t guid, std::uint32_t level, std::uint32_t cls, std::uint32_t zone = 17,
-            std::uint8_t team = kHorde)
+            std::uint8_t team = kHorde, std::uint32_t zoneMinLevel = 0)
 {
     Candidate c;
     c.guid = guid;
@@ -22,7 +25,49 @@ Candidate C(std::uint32_t guid, std::uint32_t level, std::uint32_t cls, std::uin
     c.team = team;
     c.map = 1;
     c.zone = zone;
+    c.zoneMinLevel = zoneMinLevel;
     return c;
+}
+
+TEST(PartyPolicyTest, FormationRejectsMemberBelowAnotherCandidatesZoneFloor)
+{
+    FormParams fp;
+    fp.levelSpread = 10;
+    fp.hubYards = 4000;
+    std::vector<Candidate> c = {
+        C(62959, 59, kWarlock, 3483, kAlliance, 58),
+        C(62962, 64, kRogue, 3519, kAlliance, 62),
+    };
+    c[0].groupQuest = true;
+
+    EXPECT_TRUE(FormParties(c, fp, {}).empty());
+
+    c[0].level = 62;
+    ASSERT_EQ(FormParties(c, fp, {}).size(), 1u);
+
+    c[0].zoneMinLevel = 0;  // two unknown zone brackets remain admissible
+    c[1].zoneMinLevel = 0;
+    c[0].level = 59;
+    ASSERT_EQ(FormParties(c, fp, {}).size(), 1u);
+}
+
+TEST(PartyPolicyTest, DungeonFormationIgnoresOpenWorldZoneFloors)
+{
+    std::vector<Candidate> c = {
+        C(1, 14, kWarrior, 17, kHorde, 40),
+        C(2, 14, kPriest, 17, kHorde, 40),
+        C(3, 14, kMage, 17, kHorde, 40),
+    };
+    ASSERT_EQ(FormParties(c, DungeonParams(), Defs()).size(), 1u);
+    EXPECT_EQ(FormParties(c, DungeonParams(), Defs())[0].reason, Reason::Dungeon);
+}
+
+TEST(PartyPolicyTest, SurvivalEscapeRetiresOnlyOpenWorldGroupQuestParties)
+{
+    EXPECT_TRUE(ShouldLeaveForSurvival(Reason::GroupQuest, false));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Dungeon, false));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Squad, false));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::GroupQuest, true));
 }
 
 std::vector<DungeonDef> Defs() { return ParseDungeons("389:13:18:H,36:17:26:A,43:17:24:AH"); }
@@ -182,6 +227,9 @@ TEST(PartyPolicyTest, DisbandRules)
     f.minLevel = 14;
     f.maxLevel = 15;
     EXPECT_EQ(ShouldDisband(f, kp), Disband::None);
+    f.unsafeZone = true;
+    EXPECT_EQ(ShouldDisband(f, kp), Disband::UnsafeZone);
+    f.unsafeZone = false;
     f.online = 2;
     EXPECT_EQ(ShouldDisband(f, kp), Disband::MemberOffline);
     f.online = 3;
