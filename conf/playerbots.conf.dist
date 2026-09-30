@@ -3366,6 +3366,25 @@ AutoWow.Errands.TravelTimeoutMs = 1200000
 AutoWow.Errands.AuctionDetourMs = 0
 # SellTradeGoods: at the sell stop also sell white/grey trade goods no profession of the bot needs.
 AutoWow.Errands.SellTradeGoods = 0
+# Mounts (lane AU; S76: 10 of 48 cohort bots at L20+ knew Riding, 38 walked). Mounts 1 (needs Enable; cohort bots,
+# AutoWow.Guilds.CohortGuids): once per MountsCheckMs a bot whose next riding rank is due (Apprentice 33388 at 20,
+# Journeyman 33391 at 40, Expert 34090 at 60, up to MountsMaxTier; a known rank without a mount of it buys the mount)
+# runs to its own race's riding trainer + mount vendor (Eastvale / Orgrimmar / Amberstill / Darnassus / Brill /
+# Bloodhoof / Steelgrill's / Sen'jin / Eversong / Azuremyst; Expert: Honor Hold / Thrallmar) when that site is on its
+# map and reachable (walk, known flight to the nearest flight master, hearth), learns the rank at the trainer and
+# buys + learns the cheapest mount of the rank (world DB 2026-09-30: 4g + 1g, 50g + 10g, 250g + 50g). Own gold
+# pays when it covers the cost plus the class-trainer reserve (level^2 x 5 copper); else (AutoWow.Supply.Outfit, a
+# house member) one house-treasury grant request per MountsCheckMs for the shortfall (reserve included, at most the
+# cost), capped per bot per level at OutfitMaxCopper (+ gear room) + the cost and per team at
+# MountsGrantBudgetPerHour (its own budget: the outfit budget is untouched); the run starts once the money covers
+# the cost. The stock `mount` strategy then rides (party members follow their leader's mount state). Rows: ledger
+# `errand` riding / mount (site, tier, spell | item, copper, learned) and the run's errand row (needs 16384, done
+# 4096 = rank learned, 8192 = mount learned); `supply` grant op "mount"; "[Mounts]" log lines. MountsMaxTier 3
+# (flying) is unproven with the bot movers: default 2. Cold Weather Flying is not planned.
+AutoWow.Errands.Mounts = 0
+AutoWow.Errands.MountsCheckMs = 600000
+AutoWow.Errands.MountsMaxTier = 2
+AutoWow.Errands.MountsGrantBudgetPerHour = 100000
 
 # Gear upgrades for independent bots (GearUpgradePolicy.h; default 0; the vendor part needs
 # AutoWow.Errands.Enable = 1). Real gold only, no free items. Once per level, with MinBudget gold beyond

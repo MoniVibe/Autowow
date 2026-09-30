@@ -58,7 +58,9 @@
 //     AutoWow.Supply.OutfitGear, ah_gear 2048 with AutoWow.Gear.AuctionUpgrades), spent, sold (copper),
 //     dur0, dur1 (average equipped durability % at arrival / after the errands), bag0, bag1 (free bag
 //     slots, same points), travel_ms (decision to arrival), return_ms, leg (walk|flight|hearth|none: the
-//     leg that took the bot to town), hearth (bool: the hearthstone was cast).
+//     leg that took the bot to town), hearth (bool: the hearthstone was cast). AutoWow.Errands.Mounts: a ride
+//     run's town is the riding trainer's spawn guid (needs 16384; done 4096 rank learned, 8192 mount learned), and
+//     each stop adds a row reason riding | mount with site, tier, spell | item, copper (paid), learned (bool).
 //   - `trade` (event 17; AutoWow.Trade.Enable, AutoWow.Ledger.Treasury): one line per auction-house or
 //     mail result, or per fee paid (AutoWowTrade, TradePolicy.h). reason = action; quest is 0. Trailing:
 //     action (post|buy|sold|expired|mail|fee|tax), item (entry, 0 = none), count, price (copper: listing

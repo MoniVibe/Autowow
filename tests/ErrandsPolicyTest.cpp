@@ -519,7 +519,7 @@ TEST(Errands, KeepConsumablesDefaults)
     EXPECT_EQ(p.sellDetourMs, 30000U);
     EXPECT_EQ(p.sellRetryMs, 300000U);
     BotState const s;
-    EXPECT_EQ(s.version, 9U);
+    EXPECT_EQ(s.version, 10U);
     EXPECT_FALSE(s.rescued);
     EXPECT_EQ(s.sellUntilMs, 0U);
     EXPECT_EQ(s.sellRetryMs, 0U);
@@ -755,7 +755,7 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 9u);
+    EXPECT_EQ(kStateVersion, 10u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
 }
@@ -1057,5 +1057,166 @@ TEST(AhGear, NeedIsUrgentServedByAuctionTownAndLevelSurvivesRuns)
     // Wire-stable bits.
     EXPECT_EQ(std::uint32_t(NeedAhGear), 8192U);
     EXPECT_EQ(std::uint32_t(DoneAhGear), 2048U);
+}
+
+// ---- AutoWow.Errands.Mounts ---------------------------------------------------------------------------
+TEST(Mounts, NextRideFollowsTierLevelsAndMaxTier)
+{
+    EXPECT_EQ(NextRide(19, 0, 0, 2).tier, 0U);  // below Apprentice
+    Ride const a = NextRide(20, 0, 0, 2);
+    EXPECT_EQ(a.tier, 1U);
+    EXPECT_TRUE(a.learn);
+    EXPECT_TRUE(a.buy);
+    // A paladin / warlock class mount (60%) covers the tier-1 mount: learn only.
+    Ride const cls = NextRide(20, 0, 1, 2);
+    EXPECT_EQ(cls.tier, 1U);
+    EXPECT_TRUE(cls.learn);
+    EXPECT_FALSE(cls.buy);
+    // Apprentice known, no mount: the mount first (even at L45, before Journeyman).
+    Ride const buyOnly = NextRide(45, 1, 0, 2);
+    EXPECT_EQ(buyOnly.tier, 1U);
+    EXPECT_FALSE(buyOnly.learn);
+    EXPECT_TRUE(buyOnly.buy);
+    EXPECT_EQ(NextRide(39, 1, 1, 2).tier, 0U);  // Journeyman waits for 40
+    Ride const j = NextRide(40, 1, 1, 2);
+    EXPECT_EQ(j.tier, 2U);
+    EXPECT_TRUE(j.learn);
+    EXPECT_TRUE(j.buy);
+    EXPECT_EQ(NextRide(60, 2, 2, 2).tier, 0U);  // Expert past MaxTier 2
+    EXPECT_EQ(NextRide(60, 2, 2, 3).tier, 3U);
+    EXPECT_EQ(NextRide(80, 3, 3, 3).tier, 0U);  // nothing past Expert
+    EXPECT_EQ(NextRide(20, 0, 0, 0).tier, 0U);  // MaxTier 0: off
+}
+
+TEST(Mounts, MountTierFromKnownSpeeds)
+{
+    EXPECT_EQ(MountTierOf(0, false), 0U);
+    EXPECT_EQ(MountTierOf(59, false), 1U);
+    EXPECT_EQ(MountTierOf(99, false), 2U);
+    EXPECT_EQ(MountTierOf(59, true), 3U);
+}
+
+TEST(Mounts, AffordOwnGoldThenOneGrantUpToCost)
+{
+    std::uint64_t const cost = 50000;    // Apprentice 4g + a 1g mount
+    std::uint64_t const reserve = 2000;  // L20 class-trainer reserve
+    Afford const own = MountAfford(52000, cost, reserve, true, false);
+    EXPECT_TRUE(own.go);
+    EXPECT_EQ(own.grantNeed, 0U);
+    // Short with a treasury: ask for the shortfall incl. the reserve (need = money + shortfall).
+    Afford const ask = MountAfford(30000, cost, reserve, true, false);
+    EXPECT_FALSE(ask.go);
+    EXPECT_EQ(ask.grantNeed, 30000U + 22000U);
+    // Broke: the grant is capped at the cost (the reserve stays unfunded).
+    Afford const broke = MountAfford(0, cost, reserve, true, false);
+    EXPECT_EQ(broke.grantNeed, cost);
+    // No treasury: wait.
+    Afford const none = MountAfford(30000, cost, reserve, false, false);
+    EXPECT_FALSE(none.go);
+    EXPECT_EQ(none.grantNeed, 0U);
+    // Asked this window: go once the money covers the cost itself, else wait (no second ask).
+    EXPECT_TRUE(MountAfford(50000, cost, reserve, true, true).go);
+    Afford const pending = MountAfford(30000, cost, reserve, true, true);
+    EXPECT_FALSE(pending.go);
+    EXPECT_EQ(pending.grantNeed, 0U);
+}
+
+TEST(Mounts, CheapestMountOfRankForRace)
+{
+    std::uint32_t const human = 1u << 0, orc = 1u << 1;
+    std::vector<MountOffer> const offers = {{5656, 10000, 75, 1101},   {2414, 10000, 75, 1101},
+                                            {18776, 100000, 150, 1101}, {1132, 10000, 75, 690},
+                                            {33976, 100000, 75, 0xFFFFFFFFu}};
+    MountOffer const* a = CheapestMount(offers, 75, human);
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(a->item, 2414U);  // price tie: lower item
+    EXPECT_EQ(CheapestMount(offers, 150, human)->item, 18776U);
+    EXPECT_EQ(CheapestMount(offers, 75, orc)->item, 1132U);
+    EXPECT_EQ(CheapestMount(offers, 150, orc), nullptr);
+    EXPECT_EQ(CheapestMount(offers, 225, human), nullptr);
+}
+
+TEST(Mounts, SiteForOwnRaceAndExpertPerTeam)
+{
+    EXPECT_EQ(kSites[SiteFor(1, 1)].trainer, 4732U);   // Human -> Randal Hunter
+    EXPECT_EQ(kSites[SiteFor(1, 2)].vendor, 384U);     // Katie Hunter
+    EXPECT_EQ(kSites[SiteFor(2, 1)].trainer, 4752U);   // Orc -> Kildar
+    EXPECT_EQ(kSites[SiteFor(10, 2)].vendor, 16264U);  // Blood Elf -> Winaestra
+    EXPECT_EQ(kSites[SiteFor(11, 1)].trainer, 20914U);  // Draenei -> Aalun
+    EXPECT_EQ(kSites[SiteFor(4, 3)].trainer, 35100U);  // Night Elf expert: Honor Hold
+    EXPECT_EQ(kSites[SiteFor(8, 3)].trainer, 35093U);  // Troll expert: Thrallmar
+    EXPECT_EQ(SiteFor(6, 4), kMountSites);             // no tier 4
+    EXPECT_EQ(SiteFor(0, 1), kMountSites);
+    // Every playable race has a tier-1 site.
+    for (std::uint32_t race : {1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 10u, 11u})
+        EXPECT_LT(SiteFor(race, 1), kMountSites) << race;
+}
+
+TEST(Mounts, BuildMountSitesPairsTrainerVendorAndNearestFlightMaster)
+{
+    std::vector<Npc> npcs;
+    auto npc = [&](std::uint32_t spawn, std::uint32_t entry, std::uint32_t map, std::int32_t x, std::uint32_t roles,
+                   std::uint8_t teams)
+    {
+        Npc n;
+        n.spawn = spawn;
+        n.entry = entry;
+        n.map = map;
+        n.x = x;
+        n.roles = roles;
+        n.teams = teams;
+        npcs.push_back(n);
+    };
+    npc(900, 4732, 0, 0, RoleTradeTrainer, kAlliance);     // Randal Hunter
+    npc(800, 4732, 0, 5000, RoleTradeTrainer, kAlliance);  // a second spawn: the lower guid wins
+    npc(901, 384, 0, 10, RoleVendor, kAlliance);           // Katie Hunter near 900
+    npc(902, 384, 0, 5010, RoleVendor, kAlliance);         // ... and near 800
+    npc(50, 1, 0, 5600, RoleFlight, kAlliance);            // nearest alliance flight master to 800
+    npc(40, 2, 0, 5100, RoleFlight, kHorde);               // nearer, but horde
+    npc(30, 3, 1, 5000, RoleFlight, kAlliance);            // other map
+    std::vector<Town> const sites = BuildMountSites(npcs);
+    ASSERT_EQ(sites.size(), kMountSites);
+    Town const& h = sites[SiteFor(1, 1)];
+    EXPECT_EQ(h.id, 800U);
+    EXPECT_EQ(h.x, 5000);
+    EXPECT_EQ(h.teams, kAlliance);
+    ASSERT_EQ(h.npcs.size(), 3U);
+    EXPECT_EQ(h.npcs[0].spawn, 50U);  // spawn ascending
+    EXPECT_EQ(h.npcs[1].spawn, 800U);
+    EXPECT_EQ(h.npcs[2].spawn, 902U);
+    EXPECT_EQ(sites[SiteFor(2, 1)].id, 0U);  // Orc site not spawned
+    // The stops: rank first, then the mount.
+    Plan const both = PlanRide(h, true, true, 384);
+    ASSERT_EQ(both.count, 2U);
+    EXPECT_EQ(both.stops[0].spawn, 800U);
+    EXPECT_EQ(both.stops[0].ops, std::uint32_t(OpRide));
+    EXPECT_EQ(both.stops[1].spawn, 902U);
+    EXPECT_EQ(both.stops[1].ops, std::uint32_t(OpMount));
+    Plan const buy = PlanRide(h, false, true, 384);
+    ASSERT_EQ(buy.count, 1U);
+    EXPECT_EQ(buy.stops[0].ops, std::uint32_t(OpMount));
+}
+
+TEST(Mounts, StateAndWireBits)
+{
+    Params p;
+    EXPECT_FALSE(p.mounts);  // default off
+    BotState s;
+    s.nextMountMs = 7000;
+    s.mountGrantMs = 5000;
+    s.rideTier = 2;
+    s.rideLearn = true;
+    s.mountItem = 18776;
+    BotState const next = AfterRun(p, s, 1000);
+    EXPECT_EQ(next.nextMountMs, 7000U);  // survives runs
+    EXPECT_EQ(next.mountGrantMs, 0U);    // run-scoped
+    EXPECT_EQ(next.rideTier, 0U);
+    EXPECT_EQ(next.mountItem, 0U);
+    EXPECT_EQ(kStateVersion, 10U);
+    EXPECT_EQ(std::uint32_t(NeedRiding), 16384U);
+    EXPECT_EQ(std::uint32_t(DoneRiding), 4096U);
+    EXPECT_EQ(std::uint32_t(DoneMount), 8192U);
+    EXPECT_EQ(MountLedgerFields(81389, 1, "spell", 33388, 40000, true),
+              ",\"site\":81389,\"tier\":1,\"spell\":33388,\"copper\":40000,\"learned\":true");
 }
 }  // namespace

@@ -2233,7 +2233,10 @@ inline bool OutfitGear() { return Outfit() && detail::gParams.outfitGear; }
 // TickMs the world thread ranks the pending requests (RankGrants) and pays each shortfall from the bot's house
 // bank (AutoWowGuilds::Pay, reason grant; a short bank levies or refuses) within OutfitMaxCopper per bot per level
 // and OutfitBudgetPerHour per team. One pending request per bot (a newer one replaces it).
-void RequestGrant(Player* bot, std::uint64_t need);
+// AutoWow.Errands.Mounts: room > 0 widens that request's per-bot cap by room and books it against its own team
+// budget of roomBudgetPerHour (so a mount grant neither needs nor starves the outfit budget); `supply` grant rows
+// carry op "mount".
+void RequestGrant(Player* bot, std::uint64_t need, std::uint64_t room = 0, std::uint64_t roomBudgetPerHour = 0);
 bool GrantPending(std::uint32_t guid);
 // Any thread: a `supply` row of the bot's house with line "outfit": a tool bought (item, from = the bot, to 0 =
 // the vendor) or a refusal (op; a grant refusal has item 0, from 0 = the treasury, to = the bot).

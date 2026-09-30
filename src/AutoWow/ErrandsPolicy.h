@@ -31,12 +31,14 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 9;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 10;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
                                                   // 7: nextTrainRunMs (Professions.TrainRuns);
                                                   // 8: floorGear (Supply.OutfitGear);
-                                                  // 9: lastAhGearLevel / ahGearItems (Gear.AuctionUpgrades)
+                                                  // 9: lastAhGearLevel / ahGearItems (Gear.AuctionUpgrades);
+                                                  // 10: nextMountMs / mountGrantMs / rideTier / rideLearn /
+                                                  //     mountItem (Errands.Mounts)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -55,7 +57,8 @@ enum Need : std::uint32_t
     NeedGear = 1u << 10,       // AutoWow.Gear.Upgrades: vendor weapon / armor shopping due (AutoWowGear::GearDue)
     NeedTool = 1u << 11,       // AutoWow.Supply.Outfit: a known Mining / Skinning without its gathering tool
     NeedMail = 1u << 12,       // AutoWow.Supply.MailPickup: a supply mail (bag / potions from its house) waits
-    NeedAhGear = 1u << 13      // AutoWow.Gear.AuctionUpgrades: gear far under the ilvl curve, gold for the AH
+    NeedAhGear = 1u << 13,     // AutoWow.Gear.AuctionUpgrades: gear far under the ilvl curve, gold for the AH
+    NeedRiding = 1u << 14      // AutoWow.Errands.Mounts: a riding rank / mount run (its own site, not a town)
 };
 inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
 
@@ -250,6 +253,13 @@ struct Params
     std::uint32_t sellDetourYards = 30;        // AutoWow.Survival.KeepConsumables.SellDetourYards
     std::uint32_t sellDetourMs = 30000;        // walk-to-vendor budget per detour
     std::uint32_t sellRetryMs = 300000;        // after a detour (sold or given up)
+    // AutoWow.Errands.Mounts (default 0; cohort bots; grants need AutoWow.Supply.Outfit).
+    bool mounts = false;
+    std::uint32_t mountsCheckMs = 600000;          // AutoWow.Errands.MountsCheckMs: one mount decision per window
+    std::uint32_t mountsMaxTier = 2;               // AutoWow.Errands.MountsMaxTier: 1 apprentice, 2 journeyman,
+                                                   // 3 expert (flying, Outland)
+    std::uint32_t mountsGrantBudgetPerHour = 100000;  // AutoWow.Errands.MountsGrantBudgetPerHour: mount grants per
+                                                      // team per game hour (copper)
 };
 
 // Integer yards / percentages ------------------------------------------------------------------------
@@ -795,7 +805,9 @@ enum Done : std::uint32_t
     DoneTooled = 1u << 8,   // AutoWow.Supply.Outfit: a gathering tool was bought
     DoneWeaponFloor = 1u << 9,  // AutoWow.Supply.OutfitGear: a floor weapon was bought
     DoneFoodFloor = 1u << 10,   // AutoWow.Supply.OutfitGear: food / drink was bought
-    DoneAhGear = 1u << 11       // AutoWow.Gear.AuctionUpgrades: an auction-bought piece was equipped
+    DoneAhGear = 1u << 11,      // AutoWow.Gear.AuctionUpgrades: an auction-bought piece was equipped
+    DoneRiding = 1u << 12,      // AutoWow.Errands.Mounts: the riding rank was learned
+    DoneMount = 1u << 13        // AutoWow.Errands.Mounts: a mount was learned
 };
 
 // Operations at one npc, run in bit order.
@@ -810,7 +822,9 @@ enum Op : std::uint32_t
     OpAuction = 1u << 6,  // AutoWow.Trade (TradePolicy.h): post / buy at the auctioneer
     OpMail = 1u << 7,     // AutoWow.Trade: collect mail at a mailbox (entry = gameobject entry)
     OpGear = 1u << 8,     // AutoWow.Gear.Upgrades: buy the planned weapon / armor this vendor sells
-    OpTool = 1u << 9      // AutoWow.Supply.Outfit: buy the missing gathering tools this vendor sells
+    OpTool = 1u << 9,     // AutoWow.Supply.Outfit: buy the missing gathering tools this vendor sells
+    OpRide = 1u << 10,    // AutoWow.Errands.Mounts: learn the run's riding rank at the riding trainer
+    OpMount = 1u << 11    // AutoWow.Errands.Mounts: buy (unless held) and learn the run's mount
 };
 
 struct Stop
@@ -948,6 +962,197 @@ struct PlanInput
     return plan;
 }
 
+// ---- AutoWow.Errands.Mounts --------------------------------------------------------------------------
+// Cohort bots walked everywhere (S76: 10 of 48 cohort bots at L20+ knew Riding). With the flag a cohort bot that
+// reaches a riding tier's level runs to its own race's riding trainer + mount vendor (another race's mounts need
+// exalted), learns the rank with its own gold (a house-treasury grant tops a shortfall up, at most the tier's cost),
+// then buys and learns the cheapest mount of the rank; the stock `mount` strategy (CheckMountStateAction) rides it.
+// World DB checked 2026-09-30: riding trainers teach every race of their faction (trainer.Requirement 0); prices are
+// read from the trainer / vendor at run time (Apprentice 4g, Journeyman 50g, Expert 250g; mounts 1g / 10g / 50g).
+// Cold Weather Flying (54197: L77, 1000g, Dalaran) is not planned.
+struct RidingTier
+{
+    std::uint32_t spell = 0;
+    std::uint32_t level = 0;
+    std::uint32_t mountRank = 0;  // item_template.RequiredSkillRank of the tier's mounts
+};
+inline constexpr std::size_t kRidingTiers = 3;
+inline constexpr RidingTier kRiding[kRidingTiers] = {{33388, 20, 75}, {33391, 40, 150}, {34090, 60, 225}};
+inline constexpr std::uint32_t kRidingSkill = 762;  // SKILL_RIDING
+
+// A riding trainer + mount vendor pair. races: bit (1 << (race - 1)); tiers: bit (1 << (tier - 1)).
+struct MountSite
+{
+    std::uint32_t races = 0;
+    std::uint8_t tiers = 0;
+    std::uint32_t trainer = 0;  // creature entry
+    std::uint32_t vendor = 0;   // creature entry
+};
+inline constexpr std::size_t kMountSites = 12;
+inline constexpr MountSite kSites[kMountSites] = {
+    {1u << 0, 3, 4732, 384},      // Human: Randal Hunter / Katie Hunter, Eastvale Logging Camp (map 0)
+    {1u << 1, 3, 4752, 3362},     // Orc: Kildar / Ogunaro Wolfrunner, Orgrimmar (1)
+    {1u << 2, 3, 4772, 1261},     // Dwarf: Ultham Ironhorn / Veron Amberstill, Amberstill Ranch (0)
+    {1u << 3, 3, 4753, 4730},     // Night Elf: Jartsam / Lelanai, Darnassus (1)
+    {1u << 4, 3, 4773, 4731},     // Undead: Velma Warnam / Zachariah Post, Brill (0)
+    {1u << 5, 3, 3690, 3685},     // Tauren: Kar Stormsinger / Harb Clawhoof, Bloodhoof Village (1)
+    {1u << 6, 3, 7954, 7955},     // Gnome: Binjy / Milli Featherwhistle, Steelgrill's Depot (0)
+    {1u << 7, 3, 7953, 7952},     // Troll: Xar'Ti / Zjolnir, Sen'jin Village (1)
+    {1u << 9, 3, 16280, 16264},   // Blood Elf: Perascamin / Winaestra, Eversong Woods (530)
+    {1u << 10, 3, 20914, 17584},  // Draenei: Aalun / Torallius the Pack Handler, Azuremyst Isle (530)
+    {1101, 4, 35100, 35101},      // Alliance expert: Hargen / Grunda Bronzewing, Honor Hold (530)
+    {690, 4, 35093, 35099},       // Horde expert: Wind Rider Jahubo / Bana Wildmane, Thrallmar (530)
+};
+
+// Site row of a race and tier; kMountSites = none.
+[[nodiscard]] inline std::size_t SiteFor(std::uint32_t race, std::uint8_t tier)
+{
+    if (!race || race > 32 || !tier || tier > kRidingTiers)
+        return kMountSites;
+    for (std::size_t k = 0; k < kMountSites; ++k)
+        if ((kSites[k].races & (1u << (race - 1))) && (kSites[k].tiers & (1u << (tier - 1))))
+            return k;
+    return kMountSites;
+}
+
+// Mount tier of the bot's best known mount: a flying mount 3, a 100% ground mount (speed 99) 2, a 60% one (59) 1.
+[[nodiscard]] inline std::uint8_t MountTierOf(std::int32_t groundSpeed, bool flying)
+{
+    return flying ? 3 : groundSpeed >= 99 ? 2 : groundSpeed >= 59 ? 1 : 0;
+}
+
+struct Ride
+{
+    std::uint8_t tier = 0;  // 0 = nothing due
+    bool learn = false;     // learn kRiding[tier - 1].spell
+    bool buy = false;       // buy a mount of kRiding[tier - 1].mountRank
+};
+
+// The next ride errand: a known rank without its mount buys it; else the next rank once its level is reached (up to
+// maxTier), with its mount unless one of that tier is known (a paladin / warlock class mount covers tier 1).
+[[nodiscard]] inline Ride NextRide(std::uint32_t level, std::uint8_t knownTier, std::uint8_t mountTier, std::uint32_t maxTier)
+{
+    if (mountTier < knownTier && knownTier <= maxTier)
+        return {knownTier, false, true};
+    std::uint32_t const next = knownTier + 1u;
+    if (next > maxTier || next > kRidingTiers || level < kRiding[next - 1].level)
+        return {};
+    return {static_cast<std::uint8_t>(next), true, mountTier < next};
+}
+
+struct Afford
+{
+    bool go = false;
+    std::uint64_t grantNeed = 0;  // > 0: ask the treasury (AutoWowSupply::RequestGrant need = money + shortfall)
+};
+
+// Own gold after a reserve pays: go. Else, once per window (asked), a grant of the shortfall (reserve included,
+// at most the tier's cost); after the ask the bot goes as soon as its money covers the cost itself.
+[[nodiscard]] inline Afford MountAfford(std::uint64_t money, std::uint64_t cost, std::uint64_t reserve, bool grantable,
+                                        bool asked)
+{
+    if (money >= cost + reserve || (asked && money >= cost))
+        return {true, 0};
+    if (!grantable || asked)
+        return {};
+    return {false, money + std::min(cost, cost + reserve - money)};
+}
+
+struct MountOffer
+{
+    std::uint32_t item = 0;
+    std::uint64_t price = 0;  // BuyPrice (before the reputation discount)
+    std::uint32_t rank = 0;   // RequiredSkillRank
+    std::uint32_t races = 0;  // AllowableRace (-1 = every race)
+};
+
+// Cheapest mount of `rank` the race may buy; ties the lower item. nullptr = none.
+[[nodiscard]] inline MountOffer const* CheapestMount(std::vector<MountOffer> const& offers, std::uint32_t rank,
+                                                     std::uint32_t raceBit)
+{
+    MountOffer const* best = nullptr;
+    for (MountOffer const& o : offers)
+        if (o.rank == rank && (o.races & raceBit) &&
+            (!best || o.price < best->price || (o.price == best->price && o.item < best->item)))
+            best = &o;
+    return best;
+}
+
+// One site per kSites row (same index): id = the trainer's lowest spawn guid (0 = not spawned), the vendor spawn
+// nearest the trainer on its map and the nearest same-team flight master on that map (for the flight leg; the walk
+// from it is the tail). Teams: those both npcs serve. Npcs ascend by spawn.
+[[nodiscard]] inline std::vector<Town> BuildMountSites(std::vector<Npc> const& npcs)
+{
+    std::vector<Town> sites(kMountSites);
+    for (std::size_t k = 0; k < kMountSites; ++k)
+    {
+        Npc const* trainer = nullptr;
+        for (Npc const& n : npcs)
+            if (n.entry == kSites[k].trainer && (!trainer || n.spawn < trainer->spawn))
+                trainer = &n;
+        if (!trainer)
+            continue;
+        auto nearest = [&](auto const& match)
+        {
+            Npc const* best = nullptr;
+            std::int64_t bestD2 = 0;
+            for (Npc const& n : npcs)
+            {
+                if (n.map != trainer->map || !match(n))
+                    continue;
+                std::int64_t const d2 = Dist2(trainer->x, trainer->y, n.x, n.y);
+                if (!best || d2 < bestD2 || (d2 == bestD2 && n.spawn < best->spawn))
+                {
+                    best = &n;
+                    bestD2 = d2;
+                }
+            }
+            return best;
+        };
+        Npc const* vendor = nearest([&](Npc const& n) { return n.entry == kSites[k].vendor; });
+        std::uint8_t const teams = vendor ? static_cast<std::uint8_t>(trainer->teams & vendor->teams) : 0;
+        if (!teams)
+            continue;
+        Town& t = sites[k];
+        t.id = trainer->spawn;
+        t.map = trainer->map;
+        t.x = trainer->x;
+        t.y = trainer->y;
+        t.z = trainer->z;
+        t.teams = teams;
+        t.npcs = {*trainer, *vendor};
+        if (Npc const* fm = nearest([&](Npc const& n) { return (n.roles & RoleFlight) && (n.teams & teams); }))
+            t.npcs.push_back(*fm);
+        std::sort(t.npcs.begin(), t.npcs.end(), [](Npc const& a, Npc const& b) { return a.spawn < b.spawn; });
+    }
+    return sites;
+}
+
+// The ride stops: the rank at the trainer (the site's own spawn) first, as a mount needs its skill, then the vendor.
+[[nodiscard]] inline Plan PlanRide(Town const& site, bool learn, bool buy, std::uint32_t vendorEntry)
+{
+    Plan plan;
+    for (Npc const& n : site.npcs)
+        if (learn && n.spawn == site.id)
+            plan.stops[plan.count++] = Stop{n.spawn, n.entry, n.x, n.y, n.z, OpRide, 0};
+    for (Npc const& n : site.npcs)
+        if (buy && n.entry == vendorEntry)
+        {
+            plan.stops[plan.count++] = Stop{n.spawn, n.entry, n.x, n.y, n.z, OpMount, 0};
+            break;
+        }
+    return plan;
+}
+
+// Trailing fields of the ledger `errand` rows riding / mount (AutoWowQuestLedger.h documents them).
+inline std::string MountLedgerFields(std::uint32_t site, std::uint8_t tier, char const* key, std::uint32_t id,
+                                     std::uint64_t copper, bool learned)
+{
+    return ",\"site\":" + std::to_string(site) + ",\"tier\":" + std::to_string(tier) + ",\"" + key +
+           "\":" + std::to_string(id) + ",\"copper\":" + std::to_string(copper) +
+           ",\"learned\":" + (learned ? "true" : "false");
+}
+
 // ---- per-bot state -----------------------------------------------------------------------------------
 enum class Phase : std::uint8_t
 {
@@ -1033,6 +1238,13 @@ struct BotState
     // run's auction gear purchases (item entries queued at the auctioneer, 0 = none), equipped at the errands' end.
     std::uint32_t lastAhGearLevel = 0;
     std::array<std::uint32_t, AutoWowGear::kAhMaxBuys> ahGearItems{};
+    // AutoWow.Errands.Mounts: no mount decision before this (survives runs, not restarts), the last grant request
+    // (0 = none; cleared by a run) and this run's plan (rideTier 0 = a town run).
+    std::uint64_t nextMountMs = 0;
+    std::uint64_t mountGrantMs = 0;
+    std::uint8_t rideTier = 0;
+    bool rideLearn = false;
+    std::uint32_t mountItem = 0;  // 0 = no mount to buy
 };
 
 // Travel / return leg exhausted: past its timeout or out of reissues.
@@ -1067,6 +1279,7 @@ struct BotState
     next.nextMailMs = s.nextMailMs;
     next.nextTrainRunMs = s.nextTrainRunMs;
     next.lastAhGearLevel = s.lastAhGearLevel;
+    next.nextMountMs = s.nextMountMs;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;
@@ -1090,6 +1303,7 @@ namespace detail
 inline bool gEnabled = false;
 inline Params gParams;
 inline std::vector<Town> gTowns;  // built once at world init with the flag on; read-only afterwards
+inline std::vector<Town> gMountSites;  // AutoWow.Errands.Mounts: kSites order (BuildMountSites), same lifetime
 }
 inline bool Enabled() { return detail::gEnabled; }
 
