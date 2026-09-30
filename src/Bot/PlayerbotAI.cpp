@@ -496,7 +496,7 @@ void PlayerbotAI::SetAutoWowPaused(bool paused)
 
     if (autoWowPaused && bot)
     {
-        InterruptSpell();
+        bot->CastStop();
         bot->StopMoving();
     }
 }
