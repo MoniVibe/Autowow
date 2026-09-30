@@ -1168,6 +1168,7 @@ std::vector<StockMember> StockMembers(bool alliance, ProductLine const& l)
             if (!m || !m->IsInWorld() || (m->GetTeamId() == TEAM_ALLIANCE) != alliance || IsRole(m))
                 continue;
             StockMember sm{guid, m->GetLevel(), {}};
+            sm.mana = m->GetMaxPower(POWER_MANA) > 0;
             for (std::size_t i = 0; i < l.tierCount; ++i)
                 sm.held[i] = HeldUnits(m, l.tiers[i].product);
             out.push_back(sm);
@@ -1181,7 +1182,7 @@ std::vector<StockMember> StockMembers(bool alliance, ProductLine const& l)
 void LineTick(Line line, bool alliance, bool overlord)
 {
     Params const& p = detail::gParams;
-    ProductLine const& L = LineOf(line);
+    ProductLine const L = ActiveLine(line);
     std::size_t const li = static_cast<std::size_t>(line), t = T(alliance);
     std::uint32_t const gid = AutoWowGuilds::HouseGuildId(gLineHouse[li], alliance);
     std::uint32_t const repGuid = gid ? AutoWowGuilds::RepOf(gid) : 0;
@@ -1209,6 +1210,14 @@ void LineTick(Line line, bool alliance, bool overlord)
     for (std::size_t i = 0; i < L.tierCount; ++i)
         known[i] = art && art->HasSpell(L.tiers[i].spell);
 
+    // The need: RankStock, PotionTiers a need per family (RankStockTiers).
+    auto rankStock = [&]()
+    {
+        std::vector<StockMember> const members = StockMembers(alliance, L);
+        return p.potionTiers ? RankStockTiers(L, members, known, p.potionTarget)
+                             : RankStock(L, members, known, p.potionTarget);
+    };
+
     // The artisan's current target (the order, else the skill-up recipe) and its casts: a Craft reagent of it
     // stays with the artisan.
     std::uint8_t const target = v.remaining && v.product != kNoTier ? v.product : v.skillup;
@@ -1217,7 +1226,7 @@ void LineTick(Line line, bool alliance, bool overlord)
     // DirectRoutes: artisan -> members below PotionTarget first (one hop instead of two), from the stacks it may ship.
     if (p.directRoutes && art && gid)
     {
-        std::vector<StockNeed> const need = RankStock(L, StockMembers(alliance, L), known, p.potionTarget);
+        std::vector<StockNeed> const need = rankStock();
         for (std::size_t i = L.tierCount; i-- > 0;)
         {
             LineTier const& tier = L.tiers[i];
@@ -1307,7 +1316,7 @@ void LineTick(Line line, bool alliance, bool overlord)
     // Need scan (the overlord's order; every tick for the rep's deliveries).
     std::vector<StockNeed> ranked;
     if (overlord || rep)
-        ranked = RankStock(L, StockMembers(alliance, L), known, p.potionTarget);
+        ranked = rankStock();
     if (overlord)
     {
         std::vector<ProductOption> opts(L.tierCount);
@@ -1318,7 +1327,7 @@ void LineTick(Line line, bool alliance, bool overlord)
             opts[i] = {known[i], wants[i], Casts(L, i, house)};
             v.surplus[i] = Surplus(wants[i], Loose(rep, L.tiers[i].product), p.potionKeep);
         }
-        std::uint8_t const product = PickProduct(opts);
+        std::uint8_t const product = p.potionTiers ? PickLineProduct(L, opts) : PickProduct(opts);
         std::uint32_t const n = product == kNoTier ? 0 : OrderSize(wants[product], house(L.tiers[product].product),
                                                                    opts[product].craftable, p.potionMaxOrder);
         if (n && (!v.remaining || product != v.product))
@@ -1335,6 +1344,17 @@ void LineTick(Line line, bool alliance, bool overlord)
                  wants[0], wants[1], wants[2], L.tierCount > 0 ? opts[0].craftable : 0,
                  L.tierCount > 1 ? opts[1].craftable : 0, L.tierCount > 2 ? opts[2].craftable : 0,
                  product == kNoTier ? -1 : int(product), n, v.orderId, v.surplus[0], v.surplus[1], v.surplus[2]);
+        if (p.potionTiers)
+        {
+            // Every tier (the line above shows the first three): product item:want/craftable/known/surplus.
+            std::string tiers;
+            for (std::size_t i = 0; i < L.tierCount; ++i)
+                tiers += (i ? " " : "") + std::to_string(L.tiers[i].product) + ":" + std::to_string(wants[i]) + "/" +
+                         std::to_string(opts[i].craftable) + "/" + (known[i] ? "1" : "0") + "/" +
+                         std::to_string(v.surplus[i]);
+            LOG_INFO("playerbots", "[Supply] overlord tiers line={} team={} skill={} skillup_last={} tiers={}", L.name,
+                     alliance ? "alliance" : "horde", v.artisanSkill, v.skillup == kNoTier ? -1 : int(v.skillup), tiers);
+        }
         if (n)
             if (Player* who = art ? art : rep)
             {
@@ -2462,6 +2482,7 @@ void LoadConfig()
     p.routeBagExtra = sConfigMgr->GetOption<bool>("AutoWow.Supply.RouteBagExtra", false);
     p.gearStockSell = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearStockSell", false);
     p.gearSkillupRestock = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearSkillupRestock", false);
+    p.potionTiers = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionTiers", false);
     gPriority.clear();
     std::string const priority = sConfigMgr->GetOption<std::string>("AutoWow.Supply.PriorityGuids", "");
     if (!ParseGuids(priority, gPriority))
@@ -2586,7 +2607,7 @@ void LoadConfig()
     // Catalog lines with their own runtime (tierCount > 0): house, table check, learn list, routed reagents.
     for (std::size_t li = 0; li < kLineCount; ++li)
     {
-        ProductLine const& L = kCatalog[li];
+        ProductLine const L = ActiveLine(kCatalog[li].id);
         if (!L.tierCount || !LineOn(L.id))
             continue;
         auto off = [&](std::string const& why)
@@ -2728,7 +2749,7 @@ void LoadConfig()
             BuildStations(alliance, home);
         for (std::size_t li = 0; li < kLineCount && home.set; ++li)
         {
-            ProductLine const& L = kCatalog[li];
+            ProductLine const L = ActiveLine(kCatalog[li].id);
             if (!L.tierCount || !LineOn(L.id))
                 continue;
             // Trainer: the one teaching the first trainer-taught recipe; vendor: the first Vendor reagent's.
@@ -2873,6 +2894,10 @@ void LoadConfig()
                      kCatalog[li].name, gLineHouseName[li], gLineArtisan[li][0], gLineArtisan[li][1],
                      gLineLearn[li].size(), gLineRoute[li].size(), p.routeHerbs, p.herbCap, p.potionTarget,
                      p.potionPayPct, p.potionMaxOrder, p.potionKeep, p.skillupCasts);
+    if (p.potionTiers && LineOn(Line::Potions))
+        LOG_INFO("server.loading", "[Supply] line potions: PotionTiers on: {} tiers (+{}: mana potions, Greater Healing, "
+                 "Elixir of Wisdom bridge), a need per family (mana users), heal products first",
+                 ActiveLine(Line::Potions).tierCount, LineOf(Line::Potions).tierExtra);
 }
 
 void WorldUpdate(std::uint32_t diff)
@@ -3309,8 +3334,9 @@ std::vector<MaterialNeed> MaterialDemand(bool alliance)
             LineView const& v = gLines[li][t].v;
             if (!L.tierCount || !LineOn(L.id) || v.rooms.size() != gLineRoute[li].size())
                 continue;
+            ProductLine const A = ActiveLine(L.id);
             for (std::size_t i = 0; i < gLineRoute[li].size(); ++i)
-                if (UsableNow(L, gLineRoute[li][i], v.artisanSkill))
+                if (UsableNow(A, gLineRoute[li][i], v.artisanSkill))
                     out.push_back({gLineRoute[li][i], v.rooms[i]});
         }
     if (p.routeRaw)

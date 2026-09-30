@@ -467,7 +467,7 @@ bool NewRpgBaseAction::SupplyStep()
     // A catalog line's rep / artisan (AutoWow.Supply.Products, e.g. potions): its own view and stations.
     bool const lined = role.line != kNoLine;
     Line const lineId = lined ? static_cast<Line>(role.line) : Line::Bags;
-    ProductLine const& L = LineOf(lineId);
+    ProductLine const L = ActiveLine(lineId);
     LineView const lview = lined ? LineViewOf(lineId, role.alliance) : LineView{};
     Stations const& lst = lined ? LineStationsOf(lineId, role.alliance) : st;
     // A gear line's artisan (lane V, Products cloth_gear / leather_gear): the line's view, stations and table.

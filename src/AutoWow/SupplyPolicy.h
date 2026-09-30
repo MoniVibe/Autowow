@@ -31,11 +31,12 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 9;  // RoleState / TeamState layout; bump on change (2: tiers, market;
-                                                   // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
-                                                   // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
-                                                   // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
-                                                   // 8: TeamState gearCloth; 9: TeamState extraRooms)
+inline constexpr std::uint32_t kStateVersion = 10;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
+                                                    // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
+                                                    // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
+                                                    // 8: TeamState gearCloth; 9: TeamState extraRooms; 10: kMaxLineTiers
+                                                    // 8 (LineView surplus, LineState wants), LineTier family)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -126,6 +127,10 @@ struct Params
                                            // RepStockPerItem per recipe (PlanGearStockSale)
     bool gearSkillupRestock = false;       // AutoWow.Supply.GearSkillupRestock: GearBootstrap skill-up past the stock gate
                                            // when every option is stocked (PlanGearSkillupRestock)
+    // Potion tiers (lane brewtiers; off by default):
+    bool potionTiers = false;              // AutoWow.Supply.PotionTiers: the potions line's tierExtra rows (mana potions,
+                                           // Greater Healing, the Elixir of Wisdom skill bridge; ActiveLine), a need per
+                                           // family (RankStockTiers), heal products first (PickLineProduct)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -786,7 +791,11 @@ struct Reagent
 };
 
 inline constexpr std::size_t kMaxReagents = 3;
-inline constexpr std::size_t kMaxLineTiers = 3;
+inline constexpr std::size_t kMaxLineTiers = 8;  // potions: 3 rows + 5 PotionTiers rows (tierExtra)
+
+// A line tier's family (PotionStock need, PotionTiers): a member wants its best tier of each family it uses; within a
+// family the table order is ascending (a later row is a better tier). Bridge = a skill-up recipe no member wants.
+inline constexpr std::uint8_t kFamilyHeal = 0, kFamilyMana = 1, kFamilyBridge = 2;
 
 // One recipe of a single-step line: spell -> one product per cast.
 struct LineTier
@@ -796,6 +805,7 @@ struct LineTier
     std::uint32_t grey = 0;      // no skill-up at or above (SkillLineAbility TrivialSkillLineRankHigh)
     std::uint32_t reqLevel = 0;  // product item RequiredLevel (the need rule's "usable at their level")
     std::array<Reagent, kMaxReagents> reagents{};
+    std::uint8_t family = kFamilyHeal;  // potions (BestTier); gear rows leave it
 };
 
 struct ProductLine
@@ -814,6 +824,8 @@ struct ProductLine
     std::uint8_t gearCount = 0;
     std::uint8_t gearStarters = 0;  // the last rows of `gear`: in the table only with GearBootstrap (GearTable)
     std::uint8_t gearGuns = 0;      // the last rows of `gear`: in the table only with EngGuns (GearTable)
+    std::uint8_t tierExtra = 0;     // tiers[tierCount .. tierCount + tierExtra): in the table only with PotionTiers
+                                    // (ActiveLine; off: tierCount rows, the lane D table as was)
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -958,6 +970,19 @@ inline constexpr std::uint32_t kAnvilFocus = 1;  // SpellFocusObject.dbc: Anvil 
 //   Lesser Healing Potion 858 (req 3): spell 2337, alchemy 55, grey 125; Minor Healing Potion + Briarthorn 2450.
 //   Healing Potion 929 (req 12): spell 3447, alchemy 110, grey 175; Bruiseweed 2453 + Briarthorn + Leaded Vial
 //     3372 (vendor).
+// PotionTiers rows (lane brewtiers, tierExtra; same checks; both vials sold by the line vendors Stormwind 1286 /
+// Orgrimmar 5817; Mageroyal 785, Stranglekelp 3820, Kingsblood 3356, Liferoot 3357 are routed):
+//   Minor Mana Potion 2455 (req 5): spell 2331, alchemy 25, grey 105; Mageroyal + Silverleaf + Empty Vial.
+//   Lesser Mana Potion 3385 (req 14): spell 3173, alchemy 120, grey 185; Mageroyal + Stranglekelp + Empty Vial.
+//   Greater Healing Potion 1710 (req 21): spell 7181, alchemy 155 (Expert: artisan level 20), grey 215; Liferoot +
+//     Kingsblood + Leaded Vial.
+//   Mana Potion 3827 (req 22): spell 3452, alchemy 160 (Expert), grey 220; Stranglekelp + Kingsblood + Leaded Vial.
+//   Elixir of Wisdom 3383 (bridge): spell 3171, alchemy 90, grey 160 (orange to 120); Mageroyal + 2 Briarthorn +
+//     Empty Vial. The only trainer recipe from 105 (Minor Mana grey) to Healing Potion's 110 without Peacebloom (soak
+//     S75: 1 Peacebloom donated; Lesser Healing needs a Minor Healing Potion); no member wants it (DemandOnly: a
+//     consumer-less last-resort skill-up, its output sold as `waste`).
+//   Dropped: Superior Healing 3928 (alchemy 215) and Greater Mana 6149 (205) need Artisan alchemy (character level 35,
+//     not taught by trainer 67; the artisans are level 12-13); Swiftness Potion (recipe item, not trainer-taught).
 inline constexpr ProductLine kCatalog[] = {
     {Line::Bags, "bags", "Bags", "Weavers", "", 197, NeedRule::BagSlots, Consumer::EquipBag, {}, 0},
     // Alchemy ranks (trainer 67): Apprentice 2275 (level 5), Journeyman 2280 (skill 50, level 10), Expert 3465
@@ -966,8 +991,18 @@ inline constexpr ProductLine kCatalog[] = {
      Consumer::DrinkAtLowHp,
      {{{2330, 118, 1, 95, 1, {{{2447, 1, Source::Route}, {765, 1, Source::Route}, {3371, 1, Source::Vendor}}}},
        {2337, 858, 55, 125, 3, {{{118, 1, Source::Craft}, {2450, 1, Source::Route}, {}}}},
-       {3447, 929, 110, 175, 12, {{{2453, 1, Source::Route}, {2450, 1, Source::Route}, {3372, 1, Source::Vendor}}}}}},
-     3},
+       {3447, 929, 110, 175, 12, {{{2453, 1, Source::Route}, {2450, 1, Source::Route}, {3372, 1, Source::Vendor}}}},
+       // PotionTiers only (tierExtra):
+       {2331, 2455, 25, 105, 5, {{{785, 1, Source::Route}, {765, 1, Source::Route}, {3371, 1, Source::Vendor}}},
+        kFamilyMana},
+       {3173, 3385, 120, 185, 14, {{{785, 1, Source::Route}, {3820, 1, Source::Route}, {3371, 1, Source::Vendor}}},
+        kFamilyMana},
+       {7181, 1710, 155, 215, 21, {{{3357, 1, Source::Route}, {3356, 1, Source::Route}, {3372, 1, Source::Vendor}}}},
+       {3452, 3827, 160, 220, 22, {{{3820, 1, Source::Route}, {3356, 1, Source::Route}, {3372, 1, Source::Vendor}}},
+        kFamilyMana},
+       {3171, 3383, 90, 160, 10, {{{785, 1, Source::Route}, {2450, 2, Source::Route}, {3371, 1, Source::Vendor}}},
+        kFamilyBridge}}},
+     3, nullptr, 0, 0, 0, 5},
     // Gear lines (lane V): learn = the profession ranks (Apprentice .. Artisan; for the bag house the bag chain's own
     // Artisan.Learn already teaches them) plus every trainer-taught table recipe.
     {Line::ClothGear, "cloth_gear", "ClothGear", "Weavers", "3911,3912,3913,12181", 197, NeedRule::GearSlots,
@@ -983,6 +1018,13 @@ inline constexpr ProductLine kCatalog[] = {
      kEngGuns},
 };
 inline constexpr std::size_t kLineCount = std::size(kCatalog);
+// PotionTiers rows fit the tier array.
+static_assert([] {
+    for (ProductLine const& l : kCatalog)
+        if (l.tierCount + l.tierExtra > kMaxLineTiers)
+            return false;
+    return true;
+}());
 // GearTable drops either tail by its own flag: a line has starter rows or gun rows, never both.
 static_assert([] {
     for (ProductLine const& l : kCatalog)
@@ -1163,16 +1205,18 @@ struct StockMember
     std::uint32_t guid = 0;
     std::uint32_t level = 0;
     std::array<std::uint32_t, kMaxLineTiers> held{};
+    bool mana = false;  // a mana user (max mana > 0): PotionTiers ranks it on the mana family too (RankStockTiers)
 };
 
-// The member's tier: the highest the house can make (known) usable at its level, else the highest usable at
-// its level (nothing known yet); kNoTier = none usable.
+// The member's tier of `family`: the highest the house can make (known) usable at its level, else the highest usable
+// at its level (nothing known yet); kNoTier = none usable.
 [[nodiscard]] inline std::uint8_t BestTier(ProductLine const& l, std::uint32_t level,
-                                           std::array<bool, kMaxLineTiers> const& known)
+                                           std::array<bool, kMaxLineTiers> const& known,
+                                           std::uint8_t family = kFamilyHeal)
 {
     std::uint8_t best = kNoTier, bestKnown = kNoTier;
     for (std::uint8_t i = 0; i < l.tierCount; ++i)
-        if (l.tiers[i].reqLevel <= level)
+        if (l.tiers[i].reqLevel <= level && l.tiers[i].family == family)
         {
             best = i;
             if (known[i])
@@ -1207,6 +1251,35 @@ struct StockNeed
     return out;
 }
 
+// PotionTiers: RankStock per family: every member on the heal family, a mana user also on the mana family (bridge
+// rows: never). The stock of its tier counts the family's later (better) rows usable at its level too: a Greater
+// Healing Potion in the bags covers a Healing Potion want. Lowest stock first, ties the lower guid, then the lower tier.
+[[nodiscard]] inline std::vector<StockNeed> RankStockTiers(ProductLine const& l, std::vector<StockMember> const& members,
+                                                           std::array<bool, kMaxLineTiers> const& known,
+                                                           std::uint32_t target)
+{
+    std::vector<StockNeed> out;
+    for (StockMember const& m : members)
+        for (std::uint8_t const family : {kFamilyHeal, kFamilyMana})
+        {
+            if (family == kFamilyMana && !m.mana)
+                continue;
+            std::uint8_t const tier = BestTier(l, m.level, known, family);
+            if (tier == kNoTier)
+                continue;
+            std::uint64_t stock = 0;
+            for (std::size_t j = tier; j < l.tierCount; ++j)
+                if (l.tiers[j].family == family && l.tiers[j].reqLevel <= m.level)
+                    stock += m.held[j];
+            if (stock < target)
+                out.push_back({m.guid, tier, static_cast<std::uint32_t>(stock),
+                               target - static_cast<std::uint32_t>(stock)});
+        }
+    std::sort(out.begin(), out.end(), [](StockNeed const& a, StockNeed const& b)
+              { return std::tie(a.stock, a.guid, a.tier) < std::tie(b.stock, b.guid, b.tier); });
+    return out;
+}
+
 // The want of the ranked members on tier `tier`.
 [[nodiscard]] inline std::uint32_t TierWant(std::vector<StockNeed> const& ranked, std::uint8_t tier)
 {
@@ -1215,6 +1288,19 @@ struct StockNeed
         if (s.tier == tier)
             n += s.want;
     return n;
+}
+
+// PotionTiers: PickProduct over a line with families: a craftable tier before a merely known one (as PickProduct), and
+// at each step the heal family first (the critical-health consumer), then any family; the later row within a step.
+[[nodiscard]] inline std::uint8_t PickLineProduct(ProductLine const& l, std::vector<ProductOption> const& tiers)
+{
+    for (bool const craftable : {true, false})
+        for (bool const heal : {true, false})
+            for (std::size_t i = std::min<std::size_t>(tiers.size(), l.tierCount); i-- > 0;)
+                if (tiers[i].known && tiers[i].want && (!craftable || tiers[i].craftable) &&
+                    (!heal || l.tiers[i].family == kFamilyHeal))
+                    return static_cast<std::uint8_t>(i);
+    return kNoTier;
 }
 
 struct StackDelivery
@@ -2112,6 +2198,16 @@ inline bool DemandOnly() { return detail::gEnabled && detail::gParams.demandOnly
 inline bool GearBootstrap() { return detail::gEnabled && detail::gParams.gearBootstrap; }
 inline bool EngGuns() { return detail::gEnabled && detail::gParams.engGuns; }
 inline bool GearStockSell() { return detail::gEnabled && detail::gParams.gearStockSell; }
+inline bool PotionTiers() { return detail::gEnabled && detail::gParams.potionTiers; }
+// A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
+// as was). A copy: callers keep it for the scope that reads its tiers.
+[[nodiscard]] inline ProductLine ActiveLine(Line l)
+{
+    ProductLine out = LineOf(l);
+    if (PotionTiers())
+        out.tierCount = static_cast<std::uint8_t>(out.tierCount + out.tierExtra);
+    return out;
+}
 // A gear line's recipe table: its gearStarters last rows only with GearBootstrap, its gearGuns last rows only with
 // EngGuns (off: the lane V / AA table as was).
 [[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)

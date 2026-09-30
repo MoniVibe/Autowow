@@ -573,7 +573,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 9u);
+    EXPECT_EQ(kStateVersion, 10u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -1604,6 +1604,174 @@ TEST(SupplyCraftFlow, SkillupRestockPassesTheStockGate)
     std::vector<GearNeed> const heavy = {{62962, TierOf(g, 8068), kAmmoSlot, kNoPriority, 380}};  // Heavy Shot 75
     EXPECT_TRUE(PlanGearSkillupRestock(g, heavy, 60, any, mine, 10).empty());  // bolts / light shot grey at 60
     EXPECT_TRUE(PlanGearSkillupRestock(g, {}, 46, any, mine, 10).empty());       // nothing blocked
+}
+
+// Lane brewtiers (soak S75/S76: cohort L15-66, artisans at alchemy 57 / 64 know only the Peacebloom tiers).
+ProductLine PotionsOn()
+{
+    detail::gEnabled = true;
+    detail::gParams.potionTiers = true;
+    ProductLine const l = ActiveLine(Line::Potions);
+    detail::gParams.potionTiers = false;
+    detail::gEnabled = false;
+    return l;
+}
+
+TEST(SupplyPotionTiers, RowsOnlyWithTheFlagAndMatchTheWorldDb)
+{
+    EXPECT_EQ(ActiveLine(Line::Potions).tierCount, 3u);  // off: the lane D table as was
+    EXPECT_EQ(LineOf(Line::Potions).tierCount, 3u);
+    EXPECT_EQ(ActiveLine(Line::ClothGear).tierCount, 0u);
+    ProductLine const l = PotionsOn();
+    ASSERT_EQ(l.tierCount, 8u);
+    // spell, product, alchemy to learn (trainer 67 ReqSkillRank), grey (TrivialSkillLineRankHigh), item RequiredLevel,
+    // family: the world DB / DBC values.
+    struct Row
+    {
+        std::uint32_t spell, product, skill, grey, req;
+        std::uint8_t family;
+    };
+    Row const rows[] = {{2330, 118, 1, 95, 1, kFamilyHeal},      {2337, 858, 55, 125, 3, kFamilyHeal},
+                        {3447, 929, 110, 175, 12, kFamilyHeal},  {2331, 2455, 25, 105, 5, kFamilyMana},
+                        {3173, 3385, 120, 185, 14, kFamilyMana}, {7181, 1710, 155, 215, 21, kFamilyHeal},
+                        {3452, 3827, 160, 220, 22, kFamilyMana}, {3171, 3383, 90, 160, 10, kFamilyBridge}};
+    for (std::size_t i = 0; i < std::size(rows); ++i)
+    {
+        EXPECT_EQ(l.tiers[i].spell, rows[i].spell) << i;
+        EXPECT_EQ(l.tiers[i].product, rows[i].product) << i;
+        EXPECT_EQ(l.tiers[i].skill, rows[i].skill) << i;
+        EXPECT_EQ(l.tiers[i].grey, rows[i].grey) << i;
+        EXPECT_EQ(l.tiers[i].reqLevel, rows[i].req) << i;
+        EXPECT_EQ(l.tiers[i].family, rows[i].family) << i;
+        EXPECT_LT(l.tiers[i].skill, l.tiers[i].grey) << i;
+    }
+    // Within a family a later row is a better tier (BestTier / RankStockTiers rely on it).
+    for (std::size_t i = 0; i < l.tierCount; ++i)
+        for (std::size_t j = i + 1; j < l.tierCount; ++j)
+            if (l.tiers[i].family == l.tiers[j].family)
+                EXPECT_LT(l.tiers[i].reqLevel, l.tiers[j].reqLevel) << i << " " << j;
+    // Reagents: vials bought (Empty 3371 / Leaded 3372), herbs routed, one Wisdom takes 2 Briarthorn.
+    EXPECT_EQ(l.tiers[3].reagents[0].item, 785u);
+    EXPECT_EQ(l.tiers[3].reagents[2].item, 3371u);
+    EXPECT_EQ(l.tiers[3].reagents[2].source, Source::Vendor);
+    EXPECT_EQ(l.tiers[5].reagents[2].item, 3372u);
+    EXPECT_EQ(l.tiers[7].reagents[1].item, 2450u);
+    EXPECT_EQ(l.tiers[7].reagents[1].count, 2u);
+    // Routed herbs: the lane D four, then Mageroyal, Stranglekelp, Liferoot, Kingsblood.
+    EXPECT_EQ(RouteItems(l), (std::vector<std::uint32_t>{2447, 765, 2450, 2453, 785, 3820, 3357, 3356}));
+    EXPECT_EQ(RouteItems(ActiveLine(Line::Potions)), (std::vector<std::uint32_t>{2447, 765, 2450, 2453}));
+    // Routed while a recipe using it is within the artisan's skill: Mageroyal at 25 (Minor Mana), Stranglekelp at 120.
+    EXPECT_TRUE(UsableNow(l, 785, 64));
+    EXPECT_FALSE(UsableNow(l, 3820, 119));
+    EXPECT_TRUE(UsableNow(l, 3820, 120));
+    EXPECT_FALSE(UsableNow(l, 3357, 154));
+    EXPECT_TRUE(LineItem(l, 3383));  // the bridge's output is a house item (make-room keeps it for the rep)
+}
+
+TEST(SupplyPotionTiers, NeedPerFamilyByLevel)
+{
+    ProductLine const l = PotionsOn();
+    std::array<bool, kMaxLineTiers> all{};
+    all.fill(true);
+    // Heal: Minor 1-2, Lesser 3-11, Healing 12-20, Greater 21+; mana: Minor 5-13, Lesser 14-21, Mana 22+.
+    EXPECT_EQ(BestTier(l, 2, all), 0u);
+    EXPECT_EQ(BestTier(l, 11, all), 1u);
+    EXPECT_EQ(BestTier(l, 20, all), 2u);
+    EXPECT_EQ(BestTier(l, 49, all), 5u);
+    EXPECT_EQ(BestTier(l, 4, all, kFamilyMana), kNoTier);
+    EXPECT_EQ(BestTier(l, 13, all, kFamilyMana), 3u);
+    EXPECT_EQ(BestTier(l, 21, all, kFamilyMana), 4u);
+    EXPECT_EQ(BestTier(l, 66, all, kFamilyMana), 6u);
+    // Alchemy 64 (S76 alliance): Minor / Lesser Healing, Minor Mana known -> every L15-66 member wants Lesser Healing,
+    // a mana user Minor Mana too.
+    std::array<bool, kMaxLineTiers> const s64{true, true, false, true, false, false, false, false};
+    EXPECT_EQ(BestTier(l, 49, s64), 1u);
+    EXPECT_EQ(BestTier(l, 49, s64, kFamilyMana), 3u);
+    std::vector<StockMember> members = {
+        {10, 49, {}, false},  // warrior: heal only
+        {20, 49, {}, true},   // mage: heal + mana
+        {30, 30, {}, true},   // holds 5 Greater Healing: covers a Healing want
+        {40, 18, {}, false},  // holds 9 Greater Healing it cannot use (req 21): no cover
+    };
+    members[1].held[5] = 3;  // 3 Greater Healing: heal stock 3 on a Greater want
+    members[2].held[5] = 5;
+    members[2].held[3] = 5;  // 5 Minor Mana
+    members[3].held[5] = 9;
+    std::vector<StockNeed> const ranked = RankStockTiers(l, members, all, 5);
+    ASSERT_EQ(ranked.size(), 5u);
+    EXPECT_EQ(ranked[0].guid, 10u);
+    EXPECT_EQ(ranked[0].tier, 5u);
+    EXPECT_EQ(ranked[1].guid, 20u);  // mana stock 0: same stock as 10, higher guid
+    EXPECT_EQ(ranked[1].tier, 6u);
+    EXPECT_EQ(ranked[1].want, 5u);
+    EXPECT_EQ(ranked[2].guid, 30u);  // mana: Mana Potion (its Minor Manas are a lower tier: no cover)
+    EXPECT_EQ(ranked[2].tier, 6u);
+    EXPECT_EQ(ranked[3].guid, 40u);  // Healing (req 12) at L18, the Greater it holds does not count
+    EXPECT_EQ(ranked[3].tier, 2u);
+    EXPECT_EQ(ranked[4].guid, 20u);  // heal: 3 Greater held
+    EXPECT_EQ(ranked[4].tier, 5u);
+    EXPECT_EQ(ranked[4].want, 2u);
+    // Member 30 alone: heal covered (5 Greater), only the mana need.
+    std::vector<StockNeed> const one = RankStockTiers(l, {members[2]}, all, 5);
+    ASSERT_EQ(one.size(), 1u);
+    EXPECT_EQ(one[0].tier, 6u);
+    EXPECT_EQ(TierWant(ranked, 5), 5u + 2u);
+    EXPECT_EQ(TierWant(ranked, 7), 0u);  // the bridge: never wanted
+    // Off (lane D): RankStock still ranks one tier per member, heal rows only.
+    EXPECT_EQ(RankStock(LineOf(Line::Potions), members, all, 5).size(), 4u);
+}
+
+TEST(SupplyPotionTiers, ProductIsHealFirstAtEachStep)
+{
+    ProductLine const l = PotionsOn();
+    std::vector<ProductOption> opts(l.tierCount);
+    opts[1] = {true, 40, 0};  // Lesser Healing: wanted, no herbs
+    opts[3] = {true, 20, 6};  // Minor Mana: wanted, craftable
+    EXPECT_EQ(PickLineProduct(l, opts), 3u);  // craftable first
+    opts[1].craftable = 2;
+    EXPECT_EQ(PickLineProduct(l, opts), 1u);  // heal first among the craftable
+    opts[1].craftable = 0;
+    opts[3].craftable = 0;
+    EXPECT_EQ(PickLineProduct(l, opts), 1u);  // nothing craftable: heal first (Market buys its herbs)
+    opts[1].want = 0;
+    EXPECT_EQ(PickLineProduct(l, opts), 3u);
+    opts[3].known = false;
+    EXPECT_EQ(PickLineProduct(l, opts), kNoTier);
+    // Heal rows only (the lane D shape): PickProduct's pick.
+    std::vector<ProductOption> const d = {{true, 5, 0}, {true, 5, 3}, {true, 5, 0}};
+    EXPECT_EQ(PickLineProduct(LineOf(Line::Potions), d), PickProduct(d));
+}
+
+TEST(SupplyPotionTiers, SkillLadderReachesHealingPotionWithoutPeacebloom)
+{
+    // The LineTick skill-up (DemandOnly, needStock) at every skill from 57 (S76 horde) to 110 with the house holding
+    // Mageroyal / Silverleaf / Briarthorn / Bruiseweed but no Peacebloom; the artisan knows every recipe its skill allows.
+    ProductLine const l = PotionsOn();
+    auto have = [](std::uint32_t item)
+    { return item == 785 || item == 765 || item == 2450 || item == 2453 ? 50u : 0u; };
+    auto pickAt = [&](std::uint32_t skill)
+    {
+        std::array<bool, kMaxLineTiers> known{};
+        for (std::size_t i = 0; i < l.tierCount; ++i)
+            known[i] = l.tiers[i].skill <= skill;
+        // Members: a L49 warrior and a L49 mage holding nothing (their wants give the known best tiers a consumer).
+        std::vector<StockNeed> const ranked =
+            RankStockTiers(l, {{1, 49, {}, false}, {2, 49, {}, true}}, known, 5);
+        std::vector<SkillupOption> options;
+        for (std::size_t i = 0; i < l.tierCount; ++i)
+            options.push_back({l.tiers[i].spell, static_cast<std::uint8_t>(i), false, known[i], l.tiers[i].grey,
+                               Casts(l, i, have) > 0, 0, TierWant(ranked, static_cast<std::uint8_t>(i)) > 0});
+        int const pick = PickSkillupFor(skill, options, true, true);
+        return pick < 0 ? kNoTier : options[static_cast<std::size_t>(pick)].tier;
+    };
+    EXPECT_EQ(pickAt(57), 3u);   // Minor Mana (mana users want it), not the Peacebloom tiers
+    EXPECT_EQ(pickAt(64), 3u);
+    EXPECT_EQ(pickAt(104), 3u);  // still below its grey 105
+    EXPECT_EQ(pickAt(105), 7u);  // Elixir of Wisdom: the consumer-less bridge
+    EXPECT_EQ(pickAt(109), 7u);
+    EXPECT_EQ(pickAt(110), 2u);  // Healing Potion: learned, wanted, Bruiseweed + Briarthorn in the house
+    for (std::uint32_t skill = 57; skill <= 150; ++skill)
+        EXPECT_NE(pickAt(skill), kNoTier) << skill;  // no dead band up to the Journeyman cap
 }
 
 }  // namespace
