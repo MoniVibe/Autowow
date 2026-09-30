@@ -34,8 +34,9 @@ class PlayerbotAI;
 // Value-only (no world access, no floats in decisions, no RNG); stable orders (guid ascending).
 namespace AutoWowParty
 {
-// 2: Party.questSig / questSinceMs (AutoWow.Unstick.V2); 3: Party recruit fields (AutoWow.Dungeon.Recruit)
-inline constexpr std::uint8_t kStateVersion = 3;
+// 2: Party.questSig / questSinceMs (AutoWow.Unstick.V2); 3: Party recruit fields (AutoWow.Dungeon.Recruit);
+// 4: Party.gatherMs / gatherPortaled (AutoWow.Dungeon.RecruitGatherPortalMs)
+inline constexpr std::uint8_t kStateVersion = 4;
 
 // Wire-stable (ledger `roles`); append only.
 enum class Role : std::uint8_t
@@ -719,6 +720,48 @@ inline std::string RecruitOutFields(std::uint32_t const (&counts)[std::size_t(Re
             first = false;
         }
     return out + "}";
+}
+
+// ---- recruit gather (AutoWow.Dungeon.RecruitGatherPortalMs) -----------------------------------------------
+// S75: two ZF runs entered with the leader while two members sat at flight paths far away; the Inside grace
+// (MemberGraceMs, 180 s) then abandoned 0/5. From the gather start (the party reaches the entrance: Stage) a
+// member not arrived after GatherPortalMs is portaled to the entrance once (its taxi ended first); the missing-
+// member grace only counts it after that portal. A member that cannot come (offline, or dead outside the
+// dungeon after the deadline) is dropped, and the run goes on while its tank and healer remain (KeepAfterDrop).
+struct GatherFacts
+{
+    bool online = true;
+    bool alive = true;
+    bool inDungeon = false;  // on the dungeon's map
+    bool arrived = false;    // in the dungeon, or at the entrance (within StageYards on its map)
+    bool portaled = false;   // the gather portal was already tried
+};
+
+enum class GatherAct : std::uint8_t
+{
+    None = 0,
+    Portal,
+    Drop
+};
+
+inline GatherAct DecideGather(GatherFacts const& f, bool deadlinePassed)
+{
+    if (!f.online)
+        return GatherAct::Drop;
+    if (f.arrived || !deadlinePassed)
+        return GatherAct::None;
+    if (!f.alive)
+        return f.inDungeon ? GatherAct::None : GatherAct::Drop;
+    return f.portaled ? GatherAct::None : GatherAct::Portal;
+}
+
+// The roster may run on without the dropped members: at least three left, and every tank / healer role the
+// party had is still filled.
+inline bool KeepAfterDrop(std::vector<Role> const& before, std::vector<Role> const& after)
+{
+    auto has = [](std::vector<Role> const& v, Role r) { return std::find(v.begin(), v.end(), r) != v.end(); };
+    return after.size() >= 3 && (!has(before, Role::Tank) || has(after, Role::Tank)) &&
+           (!has(before, Role::Healer) || has(after, Role::Healer));
 }
 
 // ---- keeping a party ---------------------------------------------------------------------------------

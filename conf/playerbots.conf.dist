@@ -3488,6 +3488,13 @@ AutoWow.Dungeon.RecruitWidePool = 0
 # the window up to N levels over the dungeon's max level fills the tank slot (closest level first; in-window tanks
 # always go first). The recruit line logs tank_dlvl (tank level minus the dungeon max; none = no tank).
 AutoWow.Dungeon.RecruitTankOverLevel = 0
+# RecruitGatherPortalMs > 0 (e.g. 60000): once a recruited party reaches the entrance (Stage), a member not in
+# the dungeon or at the entrance after this long is portaled there once, its taxi ended first (ledger
+# `contaminated` party_recruit_gather_portal); the MemberGraceMs missing-member abandon counts a member outside
+# only after that portal. A member offline, or dead outside the dungeon after the deadline, is dropped (party
+# row `dropped`) and the run goes on with at least three while its tank and healer remain; else it is abandoned
+# ([Party] recruit gather abandon why=leader_gone|roles_short). 0 = off.
+AutoWow.Dungeon.RecruitGatherPortalMs = 0
 
 # Dungeon navigator convoy V2 (DungeonNavigatorConvoyPolicy.h; default 0 = V1 unchanged). A follower whose
 # assigned trailing route slot is unreachable settles on the furthest reachable route point at or below it that
