@@ -7,12 +7,20 @@
 #ifndef PLAYERBOTS_BROADCASTHELPER_H
 #define PLAYERBOTS_BROADCASTHELPER_H
 
+#include "Define.h"
+#include <cstdint>
+#include <list>
+#include <string>
+#include <utility>
+#include <vector>
+
 class PlayerbotAI;
 class Player;
-class ItemTemplate;
 class Quest;
 class Creature;
 class Group;
+
+struct ItemTemplate;
 
 class BroadcastHelper
 {
@@ -45,12 +53,12 @@ public:
     static bool BroadcastLootingItem(
         PlayerbotAI* ai,
         Player* bot,
-        const ItemTemplate* proto
+        ItemTemplate const* proto
     );
     static bool BroadcastQuestAccepted(
         PlayerbotAI* ai,
         Player* bot,
-        const Quest* quest
+        Quest const* quest
     );
     static bool BroadcastQuestUpdateAddKill(
         PlayerbotAI* ai,
@@ -66,7 +74,7 @@ public:
         Quest const* quest,
         uint32_t availableCount,
         uint32_t requiredCount,
-        const ItemTemplate* proto
+        ItemTemplate const* proto
     );
     static bool BroadcastQuestUpdateFailedTimer(
         PlayerbotAI* ai,
@@ -131,7 +139,7 @@ public:
     );
     static bool BroadcastSuggestSell(
         PlayerbotAI* ai,
-        const ItemTemplate* proto,
+        ItemTemplate const* proto,
         uint32_t count,
         uint32_t price,
         Player* bot

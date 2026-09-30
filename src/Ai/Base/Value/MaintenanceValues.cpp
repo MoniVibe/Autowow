@@ -5,7 +5,6 @@
  */
 
 #include "MaintenanceValues.h"
-
 #include "Bag.h"
 #include "BudgetValues.h"
 #include "Item.h"

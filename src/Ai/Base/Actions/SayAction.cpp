@@ -4,15 +4,13 @@
  * or (at your option) any later version.
  */
 
-#include "AiFactory.h"
 #include "SayAction.h"
-
-#include <regex>
-#include <string>
-
+#include "AiFactory.h"
 #include "Event.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
+#include <regex>
+#include <string>
 
 static const std::unordered_set<std::string> noReplyMsgs = {
     "join",
@@ -171,7 +169,7 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32& type, uint32& guid1, std:
 
     // second one is for partial matches like + or - where we change strats
     if (std::any_of(noReplyMsgParts.begin(), noReplyMsgParts.end(),
-                    [&msg](const std::string& part) { return msg.find(part) != std::string::npos; }))
+                    [&msg](std::string const& part) { return msg.find(part) != std::string::npos; }))
     {
         /*std::ostringstream out;
         out << "DEBUG ChatReplyDo decided to ignore partial blocklist match" << msg;
@@ -180,7 +178,7 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32& type, uint32& guid1, std:
     }
 
     if (std::any_of(noReplyMsgStarts.begin(), noReplyMsgStarts.end(),
-                    [&msg](const std::string& start)
+                    [&msg](std::string const& start)
                     {
                         return msg.find(start) == 0;  // Check if the start matches the beginning of msg
                     }))

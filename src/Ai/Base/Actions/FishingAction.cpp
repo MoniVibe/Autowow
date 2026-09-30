@@ -5,9 +5,8 @@
  */
 
 #include "FishingAction.h"
-#include "FishValues.h"
 #include "Event.h"
-
+#include "FishValues.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
 #include "ItemPackets.h"
@@ -35,7 +34,7 @@ static bool IsFishingPole(Item* const item)
 {
     if (!item)
         return false;
-    const ItemTemplate* proto = item->GetTemplate();
+    ItemTemplate const* proto = item->GetTemplate();
     return proto && proto->Class == ITEM_CLASS_WEAPON &&
         proto->SubClass == ITEM_SUBCLASS_WEAPON_FISHING_POLE;
 }

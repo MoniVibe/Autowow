@@ -5,7 +5,6 @@
  */
 
 #include "AcceptInvitationAction.h"
-
 #include "Event.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
@@ -37,7 +36,7 @@ bool AcceptInvitationAction::Execute(Event event)
         return false;
     }
 
-    if (bot->isAFK())
+    if (bot->isAFK() && !IsSelfBot(bot))
         bot->ToggleAFK();
 
     WorldPacket p;

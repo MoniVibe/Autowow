@@ -5,7 +5,6 @@
  */
 
 #include "CheatAction.h"
-
 #include "Playerbots.h"
 
 bool CheatAction::Execute(Event event)
@@ -17,7 +16,7 @@ bool CheatAction::Execute(Event event)
     std::vector<std::string> splitted = split(param, ',');
     for (std::vector<std::string>::iterator i = splitted.begin(); i != splitted.end(); i++)
     {
-        const char* name = i->c_str();
+        char const* name = i->c_str();
         switch (name[0])
         {
             case '+':

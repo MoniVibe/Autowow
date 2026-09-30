@@ -1,3 +1,9 @@
+/*
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
+ */
+
 #ifndef PLAYERBOTS_NEWRPGACTION_H
 #define PLAYERBOTS_NEWRPGACTION_H
 
@@ -15,6 +21,9 @@
 #include "QuestPartyCohesionPolicy.h"
 #include "QuestSourceRotationPolicy.h"
 #include "TravelMgr.h"
+#include <string>
+
+class Player;
 
 namespace AutoWowQuestFinisher
 {
@@ -61,12 +70,18 @@ inline bool IsExactLoadedStableTarget(LoadedStableTargetFacts const& facts)
 }
 }
 
-class TellRpgStatusAction : public Action
+class TellRpgStatusAction : public NewRpgBaseAction
 {
 public:
-    TellRpgStatusAction(PlayerbotAI* botAI) : Action(botAI, "rpg status") {}
+    TellRpgStatusAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "rpg status") {}
 
     bool Execute(Event event) override;
+
+private:
+    static constexpr char const* RPG_STATUS_CHANGED_KEY = "rpg_status_changed";
+    static constexpr char const* RPG_STATUS_CHANGED_DEFAULT = "rpg status -> %status";
+
+    void WhisperStatusChange(Player* owner, std::string const& statusName);
 };
 
 class StartRpgDoQuestAction : public Action
@@ -232,6 +247,9 @@ class NewRpgTravelFlightAction : public NewRpgBaseAction
 public:
     NewRpgTravelFlightAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg travel flight") {}
     bool Execute(Event event) override;
+
+protected:
+    void ContinueCrossMapTaxi();
 };
 
 #endif

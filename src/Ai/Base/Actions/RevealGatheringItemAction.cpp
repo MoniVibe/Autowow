@@ -5,17 +5,16 @@
  */
 
 #include "RevealGatheringItemAction.h"
-
 #include "CellImpl.h"
 #include "ChatHelper.h"
 #include "Event.h"
 #include "GatherScalePolicy.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
+#include "NearestGameObjects.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "ServerFacade.h"
-#include "NearestGameObjects.h"
 
 bool RevealGatheringItemAction::Execute(Event /*event*/)
 {

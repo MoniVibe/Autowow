@@ -5,7 +5,6 @@
  */
 
 #include "ChooseTravelTargetAction.h"
-
 #include "ChatHelper.h"
 #include "LootObjectStack.h"
 #include "Playerbots.h"
@@ -44,7 +43,7 @@ bool ChooseTravelTargetAction::Execute(Event /*event*/)
 void ChooseTravelTargetAction::getNewTarget(TravelTarget* newTarget, TravelTarget* oldTarget)
 {
     // Join groups members
-    bool foundTarget = foundTarget = SetGroupTarget(newTarget);
+    bool foundTarget = SetGroupTarget(newTarget);
 
     // An explicit quest directive owns proactive travel from objective acquisition through reward.
     // Keep quest, group, and continue-current travel available, but suppress unrelated destinations
@@ -375,7 +374,7 @@ bool ChooseTravelTargetAction::getBestDestination(std::vector<TravelDestination*
     if (availablePoints.empty())  // No points available.
         return false;
 
-    TravelDestination* targetDestination;
+    TravelDestination* targetDestination = nullptr;
 
     for (auto activeTarget : *activeDestinations)  // Pick the destination that has this point.
         if (activeTarget->distanceTo(availablePoints.front()) == 0)
@@ -551,7 +550,7 @@ bool ChooseTravelTargetAction::SetNewQuestTarget(TravelTarget* target)
 
     // Find quest givers.
     std::vector<TravelDestination*> TravelDestinations =
-        TravelMgr::instance().getQuestTravelDestinations(bot, -1, botAI->HasRealPlayerMaster());
+        TravelMgr::instance().getQuestTravelDestinations(bot, -1, botAI->HasGameClientMaster());
 
     activeDestinations.insert(activeDestinations.end(), TravelDestinations.begin(), TravelDestinations.end());
 
@@ -580,7 +579,7 @@ bool ChooseTravelTargetAction::SetRpgTarget(TravelTarget* target)
 
     // Find rpg npcs
     std::vector<TravelDestination*> TravelDestinations =
-        TravelMgr::instance().getRpgTravelDestinations(bot, botAI->HasRealPlayerMaster());
+        TravelMgr::instance().getRpgTravelDestinations(bot, botAI->HasGameClientMaster());
 
     activeDestinations.insert(activeDestinations.end(), TravelDestinations.begin(), TravelDestinations.end());
 
@@ -609,7 +608,7 @@ bool ChooseTravelTargetAction::SetGrindTarget(TravelTarget* target)
 
     // Find grind mobs.
     std::vector<TravelDestination*> TravelDestinations =
-        TravelMgr::instance().getGrindTravelDestinations(bot, botAI->HasRealPlayerMaster());
+        TravelMgr::instance().getGrindTravelDestinations(bot, botAI->HasGameClientMaster());
 
     activeDestinations.insert(activeDestinations.end(), TravelDestinations.begin(), TravelDestinations.end());
 
@@ -638,7 +637,7 @@ bool ChooseTravelTargetAction::SetBossTarget(TravelTarget* target)
 
     // Find boss mobs.
     std::vector<TravelDestination*> TravelDestinations =
-        TravelMgr::instance().getBossTravelDestinations(bot, botAI->HasRealPlayerMaster());
+        TravelMgr::instance().getBossTravelDestinations(bot, botAI->HasGameClientMaster());
 
     activeDestinations.insert(activeDestinations.end(), TravelDestinations.begin(), TravelDestinations.end());
 
@@ -685,7 +684,7 @@ bool ChooseTravelTargetAction::SetExploreTarget(TravelTarget* target)
 
     if (activePoints.empty())
     {
-        TravelDestinations = TravelMgr::instance().getExploreTravelDestinations(bot, botAI->HasRealPlayerMaster());
+        TravelDestinations = TravelMgr::instance().getExploreTravelDestinations(bot, botAI->HasGameClientMaster());
 
         for (auto& activeTarget : activeDestinations)
         {
@@ -976,8 +975,8 @@ bool ChooseTravelTargetAction::needForQuest(Unit* target)
     return false;
 }
 
-bool ChooseTravelTargetAction::needItemForQuest(uint32 itemId, const Quest* questTemplate,
-                                                const QuestStatusData* questStatus)
+bool ChooseTravelTargetAction::needItemForQuest(uint32 itemId, Quest const* questTemplate,
+                                                QuestStatusData const* questStatus)
 {
     for (uint32 i = 0; i < QUEST_OBJECTIVES_COUNT; i++)
     {

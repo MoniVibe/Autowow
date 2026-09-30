@@ -5,8 +5,8 @@
  */
 
 #include "PriestTriggers.h"
-#include "PlayerbotAI.h"
 #include "Player.h"
+#include "PlayerbotAI.h"
 #include "Playerbots.h"
 
 bool ShadowProtectionTrigger::IsActive()
@@ -30,6 +30,15 @@ bool InnerFireTrigger::IsActive()
 {
     Unit* target = GetTarget();
     return SpellTrigger::IsActive() && !botAI->HasAura(spell, target);
+}
+
+bool FearWardOnMainTankTrigger::IsActive()
+{
+    uint32 const spellId = AI_VALUE2(uint32, "spell id", spell);
+    if (!spellId || bot->HasSpellCooldown(spellId))
+        return false;
+
+    return BuffOnMainTankTrigger::IsActive();
 }
 
 bool ShadowformTrigger::IsActive() { return !botAI->HasAura("shadowform", bot); }

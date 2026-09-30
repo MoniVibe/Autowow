@@ -8,9 +8,9 @@
 #include "AiObjectContext.h"
 #include "Group.h"
 #include "Pet.h"
+#include "Player.h"
 #include "PlayerbotAIConfig.h"
 #include "ServerFacade.h"
-#include "Player.h"
 
 Unit* HealthValue::GetTarget()
 {
@@ -211,7 +211,7 @@ uint8 BagSpaceValue::Calculate()
 
     for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
     {
-        const Bag* const pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
+        Bag const* const pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag);
         if (pBag)
         {
             ItemTemplate const* pBagProto = pBag->GetTemplate();

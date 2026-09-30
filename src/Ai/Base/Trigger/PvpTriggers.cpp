@@ -5,15 +5,13 @@
  */
 
 #include "PvpTriggers.h"
-
 #include "BattleGroundTactics.h"
+#include "BattlegroundAV.h"
 #include "BattlegroundEY.h"
 #include "BattlegroundMgr.h"
 #include "BattlegroundWS.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
-#include "BattlegroundAV.h"
-#include "BattlegroundEY.h"
 
 bool EnemyPlayerNear::IsActive() { return AI_VALUE(Unit*, "enemy player target"); }
 
@@ -330,7 +328,7 @@ bool AllianceNoSnowfallGY::IsActive()
 
     if (BattlegroundAV* av = dynamic_cast<BattlegroundAV*>(bg))
     {
-        const BG_AV_NodeInfo& snowfall = av->GetAVNodeInfo(BG_AV_NODES_SNOWFALL_GRAVE);
+        BG_AV_NodeInfo const& snowfall = av->GetAVNodeInfo(BG_AV_NODES_SNOWFALL_GRAVE);
         return snowfall.OwnerId != TEAM_ALLIANCE; // Active if the Snowfall Graveyard is NOT fully controlled by the Alliance
     }
 

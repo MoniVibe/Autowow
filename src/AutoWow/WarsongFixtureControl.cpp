@@ -29,6 +29,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
+#include "PlayerbotsDatabase.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 

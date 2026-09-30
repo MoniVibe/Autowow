@@ -7,13 +7,12 @@
 #ifndef PLAYERBOTS_ENGINE_H
 #define PLAYERBOTS_ENGINE_H
 
-#include <map>
-
 #include "Multiplier.h"
 #include "PlayerbotAIAware.h"
 #include "Queue.h"
 #include "Strategy.h"
 #include "Trigger.h"
+#include <map>
 
 class Action;
 class ActionNode;
@@ -94,7 +93,7 @@ public:
 
 private:
     bool MultiplyAndPush(std::vector<NextAction> actions, float forceRelevance, bool skipPrerequisites, Event event,
-                         const char* pushType);
+                         char const* pushType);
     void Reset();
     void ProcessTriggers(bool minimal);
     void PushDefaultActions();

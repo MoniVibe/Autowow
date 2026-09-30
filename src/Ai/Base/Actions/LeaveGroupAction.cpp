@@ -5,7 +5,6 @@
  */
 
 #include "LeaveGroupAction.h"
-
 #include "AutoWowBridge.h"
 #include "Event.h"
 #include "PlayerbotAIConfig.h"
@@ -122,7 +121,7 @@ bool LeaveFarAwayAction::isUseful()
 
     Player* groupLeader = botAI->GetGroupLeader();
     Player* trueMaster = botAI->GetMaster();
-    if (!groupLeader || (bot == groupLeader && !botAI->IsRealPlayer()))
+    if (!groupLeader || (bot == groupLeader && !IsSelfBot(bot)))
         return false;
 
     PlayerbotAI* groupLeaderBotAI = nullptr;
@@ -134,8 +133,8 @@ bool LeaveFarAwayAction::isUseful()
     if (trueMaster && !GET_PLAYERBOT_AI(trueMaster))
         return false;
 
-    if (botAI->IsAlt() &&
-        (!groupLeaderBotAI || groupLeaderBotAI->IsRealPlayer()))  // Don't leave group when alt grouped with player groupLeader.
+    if (botAI->IsAltBot() &&
+        (!groupLeaderBotAI || IsSelfBot(groupLeader)))  // Don't leave when an altbot is grouped under a regular real player or a selfbot.
         return false;
 
     if (botAI->GetGrouperType() == GrouperType::SOLO)
@@ -146,7 +145,7 @@ bool LeaveFarAwayAction::isUseful()
     if (dCount > 9)
         return true;
 
-    if (dCount > 4 && !botAI->HasRealPlayerMaster())
+    if (dCount > 4 && !botAI->HasGameClientMaster())
         return true;
 
     if (bot->GetGuildId() == groupLeader->GetGuildId())

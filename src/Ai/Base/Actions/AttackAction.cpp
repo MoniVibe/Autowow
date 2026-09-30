@@ -5,7 +5,6 @@
  */
 
 #include "AttackAction.h"
-
 #include "CreatureAI.h"
 #include "DungeonPullReadinessGuard.h"
 #include "Event.h"
@@ -16,7 +15,6 @@
 #include "Playerbots.h"
 #include "RaidTargetClaimValue.h"
 #include "ServerFacade.h"
-#include "SharedDefines.h"
 #include "Unit.h"
 #include "WaitForAttackStrategy.h"
 
@@ -243,3 +241,15 @@ bool AttackAction::Attack(Unit* target, bool /*with_pet*/ /*true*/)
 bool AttackDuelOpponentAction::isUseful() { return AI_VALUE(Unit*, "duel target"); }
 
 bool AttackDuelOpponentAction::Execute(Event /*event*/) { return Attack(AI_VALUE(Unit*, "duel target")); }
+
+bool MeleeAction::isUseful()
+{
+    // do not allow if can't attack from vehicle
+    if (botAI->IsInVehicle() && !botAI->IsInVehicle(false, false, true))
+        return false;
+
+    // Do not start autoattack while prowled — let opener spells break stealth intentionally.
+    // Future rogue stealth implementation should use this instead:
+    // return !(botAI->HasAura("stealth", bot) || botAI->HasAura("prowl", bot));
+    return !botAI->HasAura("prowl", bot);
+}

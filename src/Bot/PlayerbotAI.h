@@ -1,6 +1,7 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #ifndef PLAYERBOTS_PLAYERBOTAI_H
@@ -14,6 +15,7 @@
 #include "ChatHelper.h"
 #include "CreatureData.h"
 #include "Event.h"
+#include "ForceRebuff.h"
 #include "Item.h"
 #include "NewRpgInfo.h"
 #include "NewRpgStrategy.h"
@@ -87,6 +89,8 @@ enum BotState
     BOT_STATE_MAX
 };
 
+bool IsRealPlayer(Player* player);
+bool IsSelfBot(Player* player);
 bool IsAlliance(uint8 race);
 
 class PlayerbotChatHandler : protected ChatHandler
@@ -379,7 +383,7 @@ public:
     {
     }
 
-    const std::string& GetCommand() { return command; }
+    std::string const& GetCommand() { return command; }
     Player* GetOwner() { return owner; }
     uint32& GetType() { return type; }
     time_t& GetTime() { return time; }
@@ -452,6 +456,7 @@ public:
     std::vector<std::string> GetStrategies(BotState type);
     Strategy* GetStrategy(std::string const name, BotState type);
     void ApplyInstanceStrategies(uint32 mapId, bool tellMaster = false);
+    bool IsInNonRaidDungeon() const;
     bool HasTargetExclusions() const;
     void EvaluateHealerDpsStrategy();
     bool ContainsStrategy(StrategyType type);
@@ -475,9 +480,9 @@ public:
     static bool IsBotMainTank(Player* player);
     static uint32 GetGroupTankNum(Player* player);
     static bool IsAssistTank(Player* player);
-    static bool IsAssistTankOfIndex(Player* player, uint8 index, bool ignoreDeadPlayers = false);
-    static bool IsAssistHealOfIndex(Player* player, uint8 index, bool ignoreDeadPlayers = false);
-    static bool IsAssistRangedDpsOfIndex(Player* player, uint8 index, bool ignoreDeadPlayers = false);
+    static bool IsAssistTankOfIndex(Player* player, uint8 index, bool indexLivingOnly = false);
+    static bool IsAssistHealOfIndex(Player* player, uint8 index, bool indexLivingOnly = false);
+    static bool IsAssistRangedDpsOfIndex(Player* player, uint8 index, bool indexLivingOnly = false);
     bool HasAggro(Unit* unit);
     bool IsMovementImpaired(Unit* unit);
     static int32 GetAssistTankIndex(Player* player);
@@ -496,9 +501,9 @@ public:
     WorldObject* GetWorldObject(ObjectGuid guid);
     std::vector<Player*> GetAllPlayersInGroup();
     std::vector<Player*> GetRealPlayersInGroup();
-    const AreaTableEntry* GetCurrentArea();
-    const AreaTableEntry* GetCurrentZone();
-    static std::string GetLocalizedAreaName(const AreaTableEntry* entry);
+    AreaTableEntry const* GetCurrentArea();
+    AreaTableEntry const* GetCurrentZone();
+    static std::string GetLocalizedAreaName(AreaTableEntry const* entry);
     static std::string GetLocalizedCreatureName(uint32 entry);
     static std::string GetLocalizedGameObjectName(uint32 entry);
     bool TellMaster(std::ostringstream& stream, PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
@@ -508,18 +513,17 @@ public:
     bool TellMasterNoFacing(std::string const text,
                             PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
     bool TellError(std::string const text, PlayerbotSecurityLevel securityLevel = PLAYERBOT_SECURITY_ALLOW_ALL);
-    bool SayToGuild(const std::string& msg);
-    bool SayToWorld(const std::string& msg);
-    bool SayToChannel(const std::string& msg, const ChatChannelId& chanId);
-    bool SayToParty(const std::string& msg);
-    bool SayToRaid(const std::string& msg);
-    bool Yell(const std::string& msg);
-    bool Say(const std::string& msg);
-    bool Whisper(const std::string& msg, const std::string& receiverName);
+    bool SayToGuild(std::string const& msg);
+    bool SayToWorld(std::string const& msg);
+    bool SayToChannel(std::string const& msg, ChatChannelId const& chanId);
+    bool SayToParty(std::string const& msg);
+    bool SayToRaid(std::string const& msg);
+    bool Yell(std::string const& msg);
+    bool Say(std::string const& msg);
+    bool Whisper(std::string const& msg, std::string const& receiverName);
 
     void SpellInterrupted(uint32 spellid);
     int32 CalculateGlobalCooldown(uint32 spellid);
-    void InterruptSpell();
     void RequestSpellInterrupt();
     void RemoveAura(std::string const name);
     void RemoveShapeshift();
@@ -580,15 +584,17 @@ public:
     Player* GetMaster() { return master; }
     Player* FindNewMaster();
 
-    // Checks if the bot is really a player. Players always have themselves as master.
-    bool IsRealPlayer() { return master ? (master == bot) : false; }
-    // Bot has a master that is a player.
-    bool HasRealPlayerMaster();
-    // Bot has a master that is activly playing.
-    bool HasActivePlayerMaster();
     // Get the group leader or the master of the bot.
-    // Checks if the bot is summoned as alt of a player
-    bool IsAlt();
+    // Checks if the bot is summoned an altbot of a player
+    bool IsAltBot();
+    bool HasGameClientMaster();
+    // Compatibility predicates retained for AutoWow callers. The member IsRealPlayer() historically
+    // means this bot is a selfbot (its master is itself), unlike the global IsRealPlayer(Player*),
+    // which means a client-controlled player without an attached bot AI.
+    bool IsRealPlayer() { return master ? (master == bot) : false; }
+    // The upstream replacement has the same ownership boundary: a regular client player or a
+    // selfbot client controls this bot.
+    bool HasRealPlayerMaster() { return HasGameClientMaster(); }
     Player* GetGroupLeader();
     uint32 GetFixedBotNumber(uint32 maxNum = 100);
     GrouperType GetGrouperType();
@@ -598,6 +604,7 @@ public:
     bool AllowActive(ActivityType activityType);
     bool AllowActivity(ActivityType activityType = ALL_ACTIVITY, bool checkNow = false);
     void InvalidateActivityPolicy();
+    bool IsActivityAllowedCached() const { return allowActive[ALL_ACTIVITY]; }
     uint32 AutoScaleActivity(uint32 mod);
 
     // Check if player is safe to use.
@@ -605,7 +612,7 @@ public:
     bool IsSafe(WorldObject* obj);
     ChatChannelSource GetChatChannelSource(Player* bot, uint32 type, std::string channelName);
 
-    bool StarterLevelDistanceCheck(Player* player, const WorldLocation &loc, bool fromStartUp = false);
+    bool StarterLevelDistanceCheck(Player* player, WorldLocation const& loc, bool fromStartUp = false);
 
     bool HasCheat(BotCheatMask mask)
     {
@@ -636,21 +643,22 @@ public:
     std::vector<Item*> GetInventoryItems();
     uint32 GetInventoryItemsCountWithId(uint32 itemId);
     bool HasItemInInventory(uint32 itemId);
-    std::vector<std::pair<const Quest*, uint32>> GetCurrentQuestsRequiringItemId(uint32 itemId);
+    std::vector<std::pair<Quest const*, uint32>> GetCurrentQuestsRequiringItemId(uint32 itemId);
     uint32 GetReactDelay();
 
-    std::vector<const Quest*> GetAllCurrentQuests();
-    std::vector<const Quest*> GetCurrentIncompleteQuests();
+    std::vector<Quest const*> GetAllCurrentQuests();
+    std::vector<Quest const*> GetCurrentIncompleteQuests();
     std::set<uint32> GetAllCurrentQuestIds();
     std::set<uint32> GetCurrentIncompleteQuestIds();
     void PetFollow();
     static float GetItemScoreMultiplier(ItemQualities quality);
-    static bool IsHealingSpell(uint32 spellFamilyName, flag96 spelFalimyFlags);
+    static bool IsHealingSpell(uint32 spellFamilyName, flag96 spellFamilyFlags);
     static SpellFamilyNames Class2SpellFamilyName(uint8 cls);
     NewRpgInfo rpgInfo;
     NewRpgStatistic rpgStatistic;
     std::unordered_set<uint32> lowPriorityQuest;
     time_t bgReleaseAttemptTime = 0;
+    ForceRebuffState forceRebuff;
 
     // Schedules a callback to run once after <delayMs> milliseconds.
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);
@@ -664,12 +672,12 @@ private:
     void UpdateAIGroupMaster();
     Item* FindItemInInventory(std::function<bool(ItemTemplate const*)> checkItem) const;
     void HandleCommands();
-    void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
-    inline bool IsValidUnit(const Unit* unit) const
+    void HandleCommand(uint32 type, std::string const& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
+    inline bool IsValidUnit(Unit const* unit) const
     {
         return unit && unit->IsInWorld() && !unit->IsDuringRemoveFromWorld();
     }
-    inline bool IsValidPlayer(const Player* player) const
+    inline bool IsValidPlayer(Player const* player) const
     {
         return player && player->GetSession() && player->IsInWorld() && !player->IsDuringRemoveFromWorld() &&
                !player->IsBeingTeleported();

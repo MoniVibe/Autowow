@@ -5,7 +5,6 @@
  */
 
 #include "ReachTargetActions.h"
-
 #include <cmath>
 
 #include "Action.h"

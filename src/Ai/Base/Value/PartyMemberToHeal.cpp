@@ -5,7 +5,6 @@
  */
 
 #include "PartyMemberToHeal.h"
-
 #include "Action.h"
 #include "CriticalMemberRecoveryPolicy.h"
 #include "Playerbots.h"

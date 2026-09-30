@@ -7,9 +7,8 @@
 #ifndef PLAYERBOTS_PLAYERBOTSPELLREPOSITORY_H
 #define PLAYERBOTS_PLAYERBOTSPELLREPOSITORY_H
 
-#include <cstdint>
-
 #include "DBCStructure.h"
+#include <cstdint>
 
 class PlayerbotSpellRepository
 {
@@ -30,8 +29,8 @@ private:
     PlayerbotSpellRepository() = default;
     ~PlayerbotSpellRepository() = default;
 
-    PlayerbotSpellRepository(const PlayerbotSpellRepository&) = delete;
-    PlayerbotSpellRepository& operator=(const PlayerbotSpellRepository&) = delete;
+    PlayerbotSpellRepository(PlayerbotSpellRepository const&) = delete;
+    PlayerbotSpellRepository& operator=(PlayerbotSpellRepository const&) = delete;
 
     PlayerbotSpellRepository(PlayerbotSpellRepository&&) = delete;
     PlayerbotSpellRepository& operator=(PlayerbotSpellRepository&&) = delete;

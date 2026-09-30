@@ -24,6 +24,7 @@
 #include "PlayerbotAI.h"
 #include "PlayerbotOperations.h"
 #include "Playerbots.h"
+#include "PlayerbotsDatabase.h"
 
 namespace
 {

@@ -5,7 +5,6 @@
  */
 
 #include "PartyMemberToResurrect.h"
-
 #include <array>
 
 #include "Corpse.h"

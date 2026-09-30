@@ -81,6 +81,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "PortalAdmissionPolicy.h"
 #include "Playerbots.h"
+#include "PlayerbotsDatabase.h"
 #include "RandomPlayerbotMgr.h"
 #include "SharedValueContext.h"
 #include "TravelMgr.h"

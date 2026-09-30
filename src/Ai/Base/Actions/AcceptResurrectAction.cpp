@@ -5,7 +5,6 @@
  */
 
 #include "AcceptResurrectAction.h"
-
 #include "Event.h"
 #include "LastMovementValue.h"
 #include "Playerbots.h"

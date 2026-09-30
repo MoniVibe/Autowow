@@ -5,14 +5,13 @@
  */
 
 #include "DebugAction.h"
-
 #include "ChooseTravelTargetAction.h"
 #include "MapMgr.h"
-#include "TravelMgr.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
-#include "SpellMgr.h"
 #include "Spell.h"
+#include "SpellMgr.h"
+#include "TravelMgr.h"
 
 bool DebugAction::Execute(Event event)
 {
@@ -328,7 +327,6 @@ bool DebugAction::Execute(Event event)
             float dist = i / 60 * 30;
 
             WorldPosition botPos(bot);
-            WorldPosition botPos1 = botPos;
 
             botPos.setX(botPos.GetPositionX() + cos(ang) * dist);
             botPos.setY(botPos.GetPositionY() + sin(ang) * dist);
@@ -355,7 +353,6 @@ bool DebugAction::Execute(Event event)
             float dist = i / 60 * 30;
 
             WorldPosition botPos(bot);
-            WorldPosition botPos1 = botPos;
 
             botPos.setX(botPos.GetPositionX() + cos(ang) * dist);
             botPos.setY(botPos.GetPositionY() + sin(ang) * dist);
@@ -386,7 +383,6 @@ bool DebugAction::Execute(Event event)
             float dist = i / 60 * 30;
 
             WorldPosition botPos(bot);
-            WorldPosition botPos1 = botPos;
 
             botPos.setX(botPos.GetPositionX() + cos(ang) * dist);
             botPos.setY(botPos.GetPositionY() + sin(ang) * dist);
@@ -499,7 +495,7 @@ bool DebugAction::Execute(Event event)
                     out << "effect ";
                     out << effect;
 
-                    const std::string& Cname = out.str();
+                    std::string const& Cname = out.str();
 
                     wpCreature->Say(Cname.c_str(), LANG_UNIVERSAL, master);
                 }

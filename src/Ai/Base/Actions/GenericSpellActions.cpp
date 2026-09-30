@@ -5,29 +5,28 @@
  */
 
 #include "GenericSpellActions.h"
-
-#include <ctime>
-#include <unordered_set>
-
+#include "Chat.h"
 #include "Corpse.h"
+#include "DotLifetimeGate.h"
 #include "Event.h"
+#include "GenericBuffUtils.h"
+#include "Group.h"
 #include "ItemTemplate.h"
 #include "LastSpellCastValue.h"
 #include "ObjectDefines.h"
 #include "Opcodes.h"
 #include "Player.h"
+#include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
 #include "ResurrectionTargetPolicy.h"
 #include "ServerFacade.h"
 #include "Spell.h"
 #include "WorldPacket.h"
-#include "Group.h"
-#include "Chat.h"
-#include "GenericBuffUtils.h"
-#include "PlayerbotAI.h"
-#include "DotLifetimeGate.h"
+#include <ctime>
+#include <unordered_set>
 
+using ai::buff::BuffBelowRefreshTarget;
 using ai::buff::MakeAuraQualifierForBuff;
 using ai::spell::HasSpellOrCategoryCooldown;
 
@@ -236,10 +235,9 @@ bool CastSpellAction::isPossible()
 {
     if (botAI->IsInVehicle() && !botAI->IsInVehicle(false, false, true))
     {
-        if (!sPlayerbotAIConfig.logInGroupOnly || (bot->GetGroup() && botAI->HasRealPlayerMaster()))
-        {
+        if (!sPlayerbotAIConfig.logInGroupOnly || (bot->GetGroup() && botAI->HasGameClientMaster()))
             LOG_DEBUG("playerbots", "Can cast spell failed. Vehicle. - bot name: {}", bot->GetName());
-        }
+
         return false;
     }
 
@@ -248,10 +246,9 @@ bool CastSpellAction::isPossible()
 
     if (spell == "mount" && bot->IsInCombat())
     {
-        if (!sPlayerbotAIConfig.logInGroupOnly || (bot->GetGroup() && botAI->HasRealPlayerMaster()))
-        {
+        if (!sPlayerbotAIConfig.logInGroupOnly || (bot->GetGroup() && botAI->HasGameClientMaster()))
             LOG_DEBUG("playerbots", "Can cast spell failed. Mount. - bot name: {}", bot->GetName());
-        }
+
         bot->Dismount();
         return false;
     }
@@ -465,10 +462,7 @@ bool CastAuraSpellAction::isUseful()
         return false;
 
     Aura* aura = botAI->GetAura(spell, GetTarget(), isOwner, checkDuration);
-    if (!aura || (beforeDuration && uint32(aura->GetDuration()) < beforeDuration))
-        return true;
-
-    return false;
+    return BuffBelowRefreshTarget(botAI, aura, beforeDuration);
 }
 
 bool CastBuffSpellAction::isUseful()
@@ -478,11 +472,13 @@ bool CastBuffSpellAction::isUseful()
         return false;
 
     Aura* aura = botAI->GetAura(spell, target, isOwner, checkDuration);
-    return !aura || (beforeDuration && uint32(aura->GetDuration()) < beforeDuration);
+    return BuffBelowRefreshTarget(botAI, aura, beforeDuration);
 }
 
 bool CastBuffSpellAction::Execute(Event /*event*/)
 {
+    botAI->forceRebuff.NoteBuffWork();
+
     return botAI->CastSpell(spell, GetTarget());
 }
 
@@ -495,19 +491,19 @@ bool GroupBuffSpellAction::isUseful()
     if (ai::buff::IsGroupVariantEnabled(bot, spell))
     {
         std::string const groupVariant = ai::buff::GroupVariantFor(spell);
-        if (!groupVariant.empty() && botAI->HasAura(groupVariant, target, false, isOwner, -1, checkDuration))
+        if (!groupVariant.empty() && !BuffBelowRefreshTarget(
+                botAI, botAI->GetAura(groupVariant, target, isOwner, checkDuration), beforeDuration))
             return false;
     }
 
     Aura* aura = botAI->GetAura(spell, target, isOwner, checkDuration);
-    if (!aura || (beforeDuration && uint32(aura->GetDuration()) < beforeDuration))
-        return true;
-
-    return false;
+    return BuffBelowRefreshTarget(botAI, aura, beforeDuration);
 }
 
 bool GroupBuffSpellAction::Execute(Event /*event*/)
 {
+    botAI->forceRebuff.NoteBuffWork();
+
     std::string missingReagentGroupName;
     std::string const castName = ai::buff::UpgradeToGroupIfAppropriate(
         bot, botAI, spell, &missingReagentGroupName);
@@ -770,7 +766,7 @@ bool UseTrinketAction::UseTrinket(Item* item)
                 }
             }
 
-            const SpellInfo* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+            SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
             if (!spellInfo || !spellInfo->IsPositive())
                 return false;
 
@@ -780,7 +776,7 @@ bool UseTrinketAction::UseTrinket(Item* item)
             bool defensiveTankEffect = false;
             for (int i = 0; i < MAX_SPELL_EFFECTS; i++)
             {
-                const SpellEffectInfo& effectInfo = spellInfo->Effects[i];
+                SpellEffectInfo const& effectInfo = spellInfo->Effects[i];
                 if (effectInfo.Effect == SPELL_EFFECT_APPLY_AURA)
                     applyAura = true;
 

@@ -7,11 +7,10 @@
 #ifndef PLAYERBOTS_PLAYERBOTREPOSITORY_H
 #define PLAYERBOTS_PLAYERBOTREPOSITORY_H
 
+#include "PlayerbotAI.h"
 #include <cstdint>
 #include <string>
 #include <vector>
-
-#include "PlayerbotAI.h"
 
 class PlayerbotRepository
 {
@@ -31,8 +30,8 @@ private:
     PlayerbotRepository() = default;
     ~PlayerbotRepository() = default;
 
-    PlayerbotRepository(const PlayerbotRepository&) = delete;
-    PlayerbotRepository& operator=(const PlayerbotRepository&) = delete;
+    PlayerbotRepository(PlayerbotRepository const&) = delete;
+    PlayerbotRepository& operator=(PlayerbotRepository const&) = delete;
 
     PlayerbotRepository(PlayerbotRepository&&) = delete;
     PlayerbotRepository& operator=(PlayerbotRepository&&) = delete;
