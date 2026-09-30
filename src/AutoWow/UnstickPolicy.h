@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -17,6 +18,7 @@
 
 class Creature;
 class Player;
+class PlayerbotAI;
 
 // AutoWow.Unstick.V2 (default 0). soak-s49..s51: ~20 cohort bots, about half of the cohort bot-hours, earned
 // ~0 XP, frozen in one of five traps. With the flag:
@@ -204,6 +206,7 @@ struct TrimFact
 // creature target, a new target-health low-water mark, incoming damage, or movement by at least 8 yards.
 // The first sample starts the clock. A missing target clears it. Uses the ordinary CombatStallMs window.
 inline constexpr std::int32_t kProductiveMovementYards = 8;
+inline constexpr std::uint64_t kProactiveRetryBackoffMs = 30000;
 
 struct ProductiveCombatWatch
 {
@@ -313,6 +316,36 @@ struct StaleTargetScope
     return StaleTargetEligible(observation);
 }
 
+// A pre-combat timeout owns one exact runtime target GUID for a short retry backoff. This is not a persistent
+// ignore list: ordinary proactive grinding alone consults it, self-defence and objective-locked selectors bypass
+// it, and the exact expiry restores eligibility. The full raw GUID distinguishes loaded objects that share a low
+// counter; logout lifecycle bounds the ephemeral identity across sessions.
+struct ProactiveRetryBackoff
+{
+    std::uint64_t target = 0;
+    std::uint64_t untilMs = 0;
+};
+
+[[nodiscard]] inline ProactiveRetryBackoff StartProactiveRetryBackoff(std::uint64_t target,
+                                                                      std::uint64_t nowMs)
+{
+    if (!target)
+        return {};
+    std::uint64_t const room = std::numeric_limits<std::uint64_t>::max() - nowMs;
+    return {target, nowMs + std::min(room, kProactiveRetryBackoffMs)};
+}
+
+[[nodiscard]] inline bool ProactiveRetryBlocked(ProactiveRetryBackoff const& backoff, std::uint64_t target,
+                                                std::uint64_t nowMs)
+{
+    return target && target == backoff.target && nowMs < backoff.untilMs;
+}
+
+[[nodiscard]] inline bool ShouldClearMatchingPull(std::uint64_t pullTarget, std::uint64_t failedTarget)
+{
+    return pullTarget && pullTarget == failedTarget;
+}
+
 // Party quest progress: sig folds the members' quest logs (FNV-1a over ids / counters / status). A new sig (or
 // the first look, sinceMs 0) restarts the window; true once it has held for stallMs. stallMs 0 = off.
 inline constexpr std::uint64_t kFoldSeed = 1469598103934665603ull;
@@ -363,6 +396,10 @@ void NoteCombatActivity(std::uint32_t guid, std::uint64_t nowMs);
 void NoteCombatIncomingDamage(std::uint32_t guid, std::uint64_t nowMs);
 // Bot unit update: the combat watchdog (clears a stalled combat). Throttled per bot.
 void CombatWatch(Player* bot, std::uint64_t nowMs);
+// Ordinary proactive-grind admission for a runtime target. Rechecks current strict S80 ownership before locking.
+bool ProactiveRetryBlocked(Player* bot, PlayerbotAI* botAI, std::uint64_t target);
+// Bot logout lifecycle: forget only this bot's unstick trackers, including a live retry backoff.
+void Forget(std::uint32_t guid);
 // Taxi fare of a node path at full price (sum of the TaxiPath costs; 0 when a hop has no path).
 std::uint32_t TaxiFare(std::vector<std::uint32_t> const& nodes);
 // Why Player::ActivateTaxiPathTo refused this path (the core's own checks, in its order): busy, disable_move,

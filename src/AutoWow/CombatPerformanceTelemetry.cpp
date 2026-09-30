@@ -905,6 +905,8 @@ public:
 
     void OnPlayerLogout(Player* player) override
     {
+        if (player)
+            AutoWowUnstickV2::Forget(static_cast<std::uint32_t>(player->GetGUID().GetCounter()));
         if (AutoWowTactics::Tracking() && player)
             AutoWowTactics::Forget(static_cast<std::uint32_t>(player->GetGUID().GetCounter()));
         if (!TelemetryEnabled() || !player)

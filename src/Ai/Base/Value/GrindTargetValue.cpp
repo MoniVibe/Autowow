@@ -24,6 +24,7 @@
 #include "SharedDefines.h"
 #include "SquadPolicy.h"
 #include "TacticalRuntime.h"
+#include "UnstickPolicy.h"
 
 // AutoWow.Survival.PullLevelCap: an over-cap candidate is pulled only under the quest exception (counted
 // either way). Neighbours: idle hostile creatures of the candidate pool within AloneYards of it (the same
@@ -414,6 +415,12 @@ Unit* GrindTargetValue::FindTargetForGrinding(uint32 assistCount)
             continue;
 
         if (!unit->IsInWorld() || unit->IsDuringRemoveFromWorld())
+            continue;
+
+        // The attackers branch above always wins, and the objective-locked branch already returned. Only
+        // ordinary proactive grinding honors the exact runtime GUID briefly rejected by the S80 watchdog.
+        if (AutoWowUnstickV2::Enabled() &&
+            AutoWowUnstickV2::ProactiveRetryBlocked(bot, botAI, guid.GetRawValue()))
             continue;
 
         if (contract.phase != AutoWowContracts::Phase::None &&

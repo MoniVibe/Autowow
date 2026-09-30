@@ -300,6 +300,27 @@ TEST(UnstickV2, StaleTargetActiveCastDefersClearWithoutRestartingTheExpiredWindo
     EXPECT_EQ(w.sinceMs, 1000u);
 }
 
+TEST(UnstickV2, ProactiveRetryBackoffBlocksOnlyTheExactRuntimeGuidUntilExactExpiry)
+{
+    ProactiveRetryBackoff const backoff = StartProactiveRetryBackoff(0xF13000048A001E65ull, 1000);
+    EXPECT_EQ(backoff.target, 0xF13000048A001E65ull);
+    EXPECT_EQ(backoff.untilMs, 31000u);
+    EXPECT_TRUE(ProactiveRetryBlocked(backoff, backoff.target, 1000));
+    EXPECT_TRUE(ProactiveRetryBlocked(backoff, backoff.target, 30999));
+    EXPECT_FALSE(ProactiveRetryBlocked(backoff, backoff.target, 31000));
+    EXPECT_FALSE(ProactiveRetryBlocked(backoff, 0xF13000048A001E66ull, 2000));
+    EXPECT_FALSE(ProactiveRetryBlocked(backoff, 0xF14000048A001E65ull, 2000));  // same low counter, other high bits
+    EXPECT_FALSE(ProactiveRetryBlocked(StartProactiveRetryBackoff(0, 1000), backoff.target, 1000));
+}
+
+TEST(UnstickV2, PreCombatCleanupClearsOnlyPullOwnershipMatchingTheFailedRuntimeGuid)
+{
+    EXPECT_TRUE(ShouldClearMatchingPull(42, 42));
+    EXPECT_FALSE(ShouldClearMatchingPull(43, 42));
+    EXPECT_FALSE(ShouldClearMatchingPull(0, 42));
+    EXPECT_FALSE(ShouldClearMatchingPull(42, 0));
+}
+
 TEST(UnstickV2, PartyStallRestartsOnAnyQuestLogChange)
 {
     std::uint64_t sig = 0;

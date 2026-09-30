@@ -18,6 +18,7 @@
 #include "Creature.h"
 #include "DBCStores.h"
 #include "Group.h"
+#include "GameTime.h"
 #include "InstanceScript.h"
 #include "Log.h"
 #include "Map.h"
@@ -43,6 +44,7 @@ struct Combat
     std::uint64_t nextCheckMs = 0;
     ProductiveCombatWatch productive;
     ProductiveCombatWatch staleTarget;
+    ProactiveRetryBackoff proactiveRetry;
 };
 
 std::mutex gLock;
@@ -118,6 +120,50 @@ void NoteCombatIncomingDamage(std::uint32_t guid, std::uint64_t nowMs)
     Combat& c = gCombat[guid];
     c.activityMs = nowMs;
     c.incomingMs = nowMs;
+}
+
+bool ProactiveRetryBlocked(Player* bot, PlayerbotAI* ai, std::uint64_t target)
+{
+    if (!bot || !ai || !target)
+        return false;
+
+    std::uint32_t const guid = bot->GetGUID().GetCounter();
+    Map* const map = bot->GetMap();
+    ProductiveCombatScope const scope{
+        bot->IsAlive(),
+        !bot->GetGroup(),
+        map && !map->Instanceable(),
+        AutoWowGuilds::InRanges(gCohort, guid),
+        !ai->GetMaster(),
+        AutoWowOracleRuntime::IsManagedBot(guid),
+        ai->IsAutoWowPaused(),
+        ai->IsRealPlayer() || ai->HasRealPlayerMaster(),
+    };
+    if (!ProductiveCombatEligible(scope) || bot->InBattleground() || (map && map->IsBattlegroundOrArena()))
+        return false;
+
+    auto const gameNow = GameTime::GetGameTimeMS().count();
+    std::uint64_t const nowMs = gameNow > 0 ? static_cast<std::uint64_t>(gameNow) : 0;
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gCombat.find(guid);
+    if (it == gCombat.end())
+        return false;
+    if (!ProactiveRetryBlocked(it->second.proactiveRetry, target, nowMs))
+    {
+        if (nowMs >= it->second.proactiveRetry.untilMs)
+            it->second.proactiveRetry = {};
+        return false;
+    }
+    return true;
+}
+
+void Forget(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    gXp.erase(guid);
+    gGaveUpMs.erase(guid);
+    gAges.erase(guid);
+    gCombat.erase(guid);
 }
 
 void CombatWatch(Player* bot, std::uint64_t nowMs)
@@ -238,20 +284,36 @@ void CombatWatch(Player* bot, std::uint64_t nowMs)
 
     char const* const cause =
         staleTargetStalled ? "precombat_target" : productiveStalled ? "unproductive" : "inactive";
+    std::uint64_t const failedTargetRaw = staleTargetStalled && victim ? victim->GetGUID().GetRawValue() : 0;
+    if (failedTargetRaw)
+    {
+        // Unit updates and this bot's AI decisions are serialized on its map thread. Install before the target
+        // transition anyway, so any admission query after this callback observes the backoff immediately.
+        std::lock_guard<std::mutex> guard(gLock);
+        gCombat[guid].proactiveRetry = StartProactiveRetryBackoff(failedTargetRaw, nowMs);
+    }
     LOG_INFO("playerbots", "[Unstick] combat_stall bot={} cause={} lvl={} combat_ms={} idle_ms={} attackers={} "
-             "victim={} victim_guid={} map={} zone={} x={} y={}", bot->GetName(), cause,
+             "victim={} victim_guid={} backoff_ms={} map={} zone={} x={} y={}", bot->GetName(), cause,
              bot->GetLevel(), inCombat ? nowMs - since : 0,
              nowMs - (staleTargetStalled ? staleTargetSince
                                          : productiveStalled ? productiveSince : std::max(since, activity)),
              bot->getAttackers().size(),
-             victim ? victim->GetEntry() : 0, victim ? victim->GetGUID().GetCounter() : 0, bot->GetMapId(),
+             victim ? victim->GetEntry() : 0, victim ? victim->GetGUID().GetCounter() : 0,
+             staleTargetStalled ? kProactiveRetryBackoffMs : 0, bot->GetMapId(),
              bot->GetZoneId(),
              std::int32_t(bot->GetPositionX()), std::int32_t(bot->GetPositionY()));
 
     if (staleTargetStalled && ai)
     {
         // Match native DropTargetAction without a broad AI reset or any movement/credit mutation.
-        ai->GetAiObjectContext()->GetValue<Unit*>("current target")->Set(nullptr);
+        AiObjectContext* const context = ai->GetAiObjectContext();
+        context->GetValue<Unit*>("current target")->Set(nullptr);
+        auto* const pullTarget = context->GetValue<ObjectGuid>("pull target");
+        if (ShouldClearMatchingPull(pullTarget->Get().GetRawValue(), failedTargetRaw))
+            pullTarget->Set(ObjectGuid::Empty);
+        auto* const pullStrategyTarget = context->GetValue<ObjectGuid>("pull strategy target");
+        if (ShouldClearMatchingPull(pullStrategyTarget->Get().GetRawValue(), failedTargetRaw))
+            pullStrategyTarget->Set(ObjectGuid::Empty);
         bot->SetTarget(ObjectGuid::Empty);
         bot->SetSelection(ObjectGuid::Empty);
         bot->AttackStop();
@@ -271,7 +333,9 @@ void CombatWatch(Player* bot, std::uint64_t nowMs)
     }
 
     std::lock_guard<std::mutex> guard(gLock);
+    ProactiveRetryBackoff const retry = gCombat[guid].proactiveRetry;
     gCombat[guid] = Combat{};
+    gCombat[guid].proactiveRetry = retry;
 }
 
 std::uint32_t TaxiFare(std::vector<std::uint32_t> const& nodes)
