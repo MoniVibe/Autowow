@@ -27,6 +27,7 @@
 #include "ObjectMgr.h"
 #include "SupplyPolicy.h"
 #include "SelfCraftPolicy.h"
+#include "Spell.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "SquadPolicy.h"
@@ -91,7 +92,13 @@ Town const* FindTown(std::uint32_t id)
     std::vector<Town> const& towns = detail::gTowns;
     auto const it = std::lower_bound(towns.begin(), towns.end(), id,
                                      [](Town const& t, std::uint32_t v) { return t.id < v; });
-    return it != towns.end() && it->id == id ? &*it : nullptr;
+    if (it != towns.end() && it->id == id)
+        return &*it;
+    // AutoWow.Errands.Mounts: a ride site (trainer spawn guid: a creature guid, disjoint from innkeeper ids).
+    for (Town const& site : detail::gMountSites)
+        if (id && site.id == id)
+            return &site;
+    return nullptr;
 }
 
 // World init, flag on: every innkeeper / repairer / vendor / flight master / trainer spawn on the
@@ -204,6 +211,20 @@ void BuildCatalog()
             npcs.push_back(std::move(n));
         }
     std::size_t const scanned = npcs.size();
+    // AutoWow.Errands.Mounts: riding trainers (trainer-profession flag) and mount vendors are in the scan already.
+    if (detail::gParams.mounts)
+    {
+        detail::gMountSites = BuildMountSites(npcs);
+        for (std::size_t k = 0; k < kMountSites; ++k)
+        {
+            Town& site = detail::gMountSites[k];
+            if (Map* map = site.id ? sMapMgr->FindMap(site.map, 0) : nullptr)
+                site.zone = map->GetZoneId(PHASEMASK_NORMAL, float(site.x), float(site.y), float(site.z));
+            LOG_INFO("server.loading", ">> [Mounts] site row={} trainer={} vendor={} spawn={} map={} zone={} ({},{}) "
+                     "teams={} npcs={}", k, kSites[k].trainer, kSites[k].vendor, site.id, site.map, site.zone, site.x,
+                     site.y, static_cast<uint32>(site.teams), site.npcs.size());
+        }
+    }
     detail::gTowns = BuildTowns(std::move(npcs), detail::gParams.townRadius);
     LOG_INFO("server.loading", ">> [Errands] {} towns from {} service npcs in {} ms", detail::gTowns.size(), scanned,
              GetMSTimeDiffToNow(start));
@@ -984,6 +1005,179 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg, bool trainOnly 
     leg = best->leg;
     return FindTown(best->town);
 }
+
+// ---- AutoWow.Errands.Mounts ---------------------------------------------------------------------------------
+std::uint8_t KnownRidingTier(Player* bot)
+{
+    for (std::size_t k = kRidingTiers; k-- > 0;)
+        if (bot->HasSpell(kRiding[k].spell))
+            return static_cast<std::uint8_t>(k + 1);
+    return 0;
+}
+
+// Tier of the best mount the bot knows (the stock CollectMountData read: active SPELL_AURA_MOUNTED spells).
+std::uint8_t KnownMountTier(Player* bot)
+{
+    int32 ground = 0;
+    bool flying = false;
+    for (auto const& [id, ps] : bot->GetSpellMap())
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(id);
+        if (!info || !ps || ps->State == PLAYERSPELL_REMOVED || !ps->Active || info->IsPassive() ||
+            info->Effects[0].ApplyAuraName != SPELL_AURA_MOUNTED)
+            continue;
+        if (info->Effects[1].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED ||
+            info->Effects[2].ApplyAuraName == SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED)
+            flying = true;
+        else
+            ground = std::max({ground, info->Effects[1].BasePoints, info->Effects[2].BasePoints});
+    }
+    return MountTierOf(ground, flying);
+}
+
+// Mount items in the bags the bot may learn now (bought on a ride run, or a quest reward / drop): used, which
+// learns them (Player::CastItemUseSpell's learning case consumes the item). Returns the mounts learned.
+uint32 UseHeldMounts(Player* bot)
+{
+    std::vector<Item*> items;
+    auto consider = [&](Item* item)
+    {
+        ItemTemplate const* proto = item ? item->GetTemplate() : nullptr;
+        if (proto && proto->RequiredSkill == kRidingSkill &&
+            (proto->Spells[0].SpellId == 483 || proto->Spells[0].SpellId == 55884) && proto->Spells[1].SpellId > 0 &&
+            !bot->HasSpell(uint32(proto->Spells[1].SpellId)) && bot->CanUseItem(item) == EQUIP_ERR_OK)
+            items.push_back(item);
+    };
+    for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+        consider(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+    for (uint8 bag = INVENTORY_SLOT_BAG_START; bag < INVENTORY_SLOT_BAG_END; ++bag)
+        if (Bag const* pBag = static_cast<Bag*>(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag)))
+            for (uint32 slot = 0; slot < pBag->GetBagSize(); ++slot)
+                consider(pBag->GetItemByPos(slot));
+    uint32 learned = 0;
+    for (Item* item : items)
+    {
+        uint32 const entry = item->GetEntry();
+        uint32 const spell = uint32(item->GetTemplate()->Spells[1].SpellId);
+        SpellCastTargets targets;
+        targets.SetUnitTarget(bot);
+        bot->CastItemUseSpell(item, targets, 1, 0);  // the item is gone once learned
+        bool const ok = bot->HasSpell(spell);
+        learned += ok ? 1 : 0;
+        LOG_INFO("playerbots", "[Mounts] bot={} use item={} spell={} learned={} riding={} lvl={}", bot->GetName(),
+                 entry, spell, ok, bot->GetPureSkillValue(kRidingSkill), bot->GetLevel());
+    }
+    return learned;
+}
+
+// Plain-gold riding-skill items a vendor lists (world DB: the racial mounts; reputation-gated ones left out).
+std::vector<MountOffer> MountOffers(uint32 vendorEntry)
+{
+    std::vector<MountOffer> out;
+    if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(vendorEntry))
+        for (VendorItem const* vi : list->m_items)
+            if (ItemTemplate const* proto = vi && !vi->ExtendedCost ? sObjectMgr->GetItemTemplate(vi->item) : nullptr;
+                proto && proto->RequiredSkill == kRidingSkill && !proto->RequiredReputationFaction)
+                out.push_back({vi->item, static_cast<std::uint64_t>(std::max<int32>(0, proto->BuyPrice)),
+                               proto->RequiredSkillRank, proto->AllowableRace});
+    return out;
+}
+
+// Phase::None, a cohort bot once per MountsCheckMs: its next ride (NextRide) at its race's site when that site is
+// reachable (ChooseLeg) and paid for (MountAfford: own gold after the class-trainer reserve, else one treasury grant
+// request per window). True = a ride run started (state stored, Phase::Travel).
+bool StartMountRun(Player* bot, BotState& s, std::uint64_t now, std::uint8_t team)
+{
+    Params const& p = detail::gParams;
+    uint32 const guid = bot->GetGUID().GetCounter();
+    if (!p.mounts || now < s.nextMountMs || !AutoWowGuilds::InRanges(AutoWowGuilds::Cohort(), guid))
+        return false;
+    s.nextMountMs = now + p.mountsCheckMs;
+    UseHeldMounts(bot);
+    uint32 const level = bot->GetLevel();
+    std::uint8_t const known = KnownRidingTier(bot);
+    std::uint8_t const mountTier = KnownMountTier(bot);
+    Ride const r = NextRide(level, known, mountTier, p.mountsMaxTier);
+    std::size_t const k = r.tier ? SiteFor(bot->getRace(), r.tier) : kMountSites;
+    Town const* site = k < kMountSites && k < detail::gMountSites.size() && detail::gMountSites[k].id
+                           ? &detail::gMountSites[k]
+                           : nullptr;
+    auto wait = [&](char const* why)
+    {
+        LOG_INFO("playerbots", "[Mounts] bot={} wait {} tier={} learn={} buy={} known={} mount_tier={} race={} "
+                 "site={} map={} money={} lvl={}", bot->GetName(), why, static_cast<uint32>(r.tier), r.learn, r.buy,
+                 static_cast<uint32>(known), static_cast<uint32>(mountTier), static_cast<uint32>(bot->getRace()),
+                 site ? site->id : 0, bot->GetMapId(), bot->GetMoney(), level);
+        StoreState(guid, s);
+        return false;
+    };
+    if (!r.tier)
+    {
+        StoreState(guid, s);
+        return false;
+    }
+    if (!site || !(site->teams & team))
+        return wait("no_site");
+    uint64 cost = 0;
+    if (r.learn)
+    {
+        Trainer::Trainer* trainer = sObjectMgr->GetTrainer(kSites[k].trainer);
+        Trainer::Spell const* spell = trainer ? trainer->GetSpell(kRiding[r.tier - 1].spell) : nullptr;
+        if (!spell)
+            return wait("no_trainer_spell");
+        cost += spell->MoneyCost;
+    }
+    uint32 item = 0;
+    if (r.buy)
+    {
+        std::vector<MountOffer> const offers = MountOffers(kSites[k].vendor);
+        MountOffer const* o = CheapestMount(offers, kRiding[r.tier - 1].mountRank, 1u << (bot->getRace() - 1));
+        if (!o)
+            return wait("no_mount_offer");
+        item = o->item;
+        cost += o->price;
+    }
+    Leg const leg = ChooseLeg(p, TownLeg(bot, *site, team));
+    if (leg == Leg::None)
+        return wait("unreachable");
+    bool const asked = s.mountGrantMs && now < s.mountGrantMs + p.mountsCheckMs;
+    bool const grantable = AutoWowSupply::Outfit() && AutoWowGuilds::HouseGuildOf(bot);
+    uint64 const money = bot->GetMoney();
+    Afford const a = MountAfford(money, cost, ClassTrainBudgetCopper(level), grantable, asked);
+    if (a.grantNeed)
+    {
+        AutoWowSupply::RequestGrant(bot, a.grantNeed, cost, p.mountsGrantBudgetPerHour);
+        s.mountGrantMs = now;
+        s.nextMountMs = now;  // the next errand check sees the tick's answer
+        LOG_INFO("playerbots", "[Mounts] bot={} grant_request tier={} cost={} need={} money={} lvl={}", bot->GetName(),
+                 static_cast<uint32>(r.tier), cost, a.grantNeed, money, level);
+        StoreState(guid, s);
+        return false;
+    }
+    if (!a.go)
+    {
+        if (asked && AutoWowSupply::GrantPending(guid))
+            s.nextMountMs = now;
+        return wait(asked ? "grant_short" : "unaffordable");
+    }
+    s.phase = Phase::Travel;
+    s.town = site->id;
+    s.needs = NeedRiding;
+    s.leg = s.travelLeg = leg;
+    s.startMs = s.phaseMs = s.legMs = now;
+    s.backMap = bot->GetMapId();
+    s.backX = Yd(bot->GetPositionX());
+    s.backY = Yd(bot->GetPositionY());
+    s.backZ = Yd(bot->GetPositionZ());
+    s.rideTier = r.tier;
+    s.rideLearn = r.learn;
+    s.mountItem = item;
+    LOG_INFO("playerbots", "[Mounts] bot={} start site={} zone={} tier={} learn={} item={} cost={} money={} "
+             "granted={} leg={} lvl={}", bot->GetName(), site->id, site->zone, static_cast<uint32>(r.tier), r.learn,
+             item, cost, money, asked, LegName(leg), level);
+    StoreState(guid, s);
+    return true;
+}
 }  // namespace
 
 void LoadConfig()
@@ -1012,6 +1206,13 @@ void LoadConfig()
     p.sellTradeGoods = sConfigMgr->GetOption<bool>("AutoWow.Errands.SellTradeGoods", false);
     p.keepConsumables = sConfigMgr->GetOption<bool>("AutoWow.Survival.KeepConsumables", false);
     p.sellDetourYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.KeepConsumables.SellDetourYards", 30);
+    // AutoWow.Errands.Mounts: read before the catalog (the ride sites are built with it on).
+    p.mounts = sConfigMgr->GetOption<bool>("AutoWow.Errands.Mounts", false);
+    p.mountsCheckMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MountsCheckMs", 600000);
+    p.mountsMaxTier = std::min<std::uint32_t>(kRidingTiers,
+                                              sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MountsMaxTier", 2));
+    p.mountsGrantBudgetPerHour =
+        sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MountsGrantBudgetPerHour", 100000);
     // AutoWow.Gear.Upgrades (GearUpgradePolicy.h): read before the catalog (vendors list their gear with it on).
     AutoWowGear::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.Upgrades", false);
     AutoWowGear::Params& g = AutoWowGear::detail::gParams;
@@ -1127,6 +1328,9 @@ bool NewRpgBaseAction::ErrandsStep()
         if (auto const* quest = std::get_if<NewRpgInfo::DoQuest>(&info.data))
             if (quest->objectiveRuntime.phase == QuestActionPhase::EscortEvent)
                 return false;
+        // AutoWow.Errands.Mounts: a paid-for riding rank / mount goes before the town needs (next tick travels).
+        if (p.mounts && StartMountRun(bot, s, now, team))
+            return true;
         Assessment const a = AssessBot(bot, s, now);
         if (a.urgent & NeedTool)
         {
@@ -1238,6 +1442,21 @@ bool NewRpgBaseAction::ErrandsStep()
             s.travelMs = now - s.startMs;
             s.durBefore = EquippedDurabilityPct(bot);
             s.bagFreeBefore = BagFree(bot);
+            if (s.rideTier)
+            {
+                // AutoWow.Errands.Mounts: the ride site's stops only (ErrandsPolicy PlanRide).
+                std::size_t const k = SiteFor(bot->getRace(), s.rideTier);
+                s.plan = PlanRide(*town, s.rideLearn, s.mountItem != 0, k < kMountSites ? kSites[k].vendor : 0);
+                s.stop = 0;
+                s.phase = Phase::Errands;
+                s.phaseMs = s.legMs = now;
+                s.reissues = 0;
+                LOG_INFO("playerbots", "[Mounts] bot={} arrived site={} ms={} stops={} leg={}", bot->GetName(), town->id,
+                         s.travelMs, s.plan.count, LegName(s.travelLeg));
+                info.ChangeToIdle();
+                StoreState(guid, s);
+                return true;
+            }
             std::vector<uint32> available;
             for (Npc const& n : town->npcs)
                 if (n.teams & team)
@@ -1800,5 +2019,50 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
         AutoWowTrade::VisitAuctioneer(botAI, bot, npc, ClassTrainBudgetCopper(bot->GetLevel()), &ahGear);
         for (std::size_t k = 0; k < ahGear.size() && k < s.ahGearItems.size(); ++k)
             s.ahGearItems[k] = ahGear[k];
+    }
+    // AutoWow.Errands.Mounts (only planned with the flag on): the rank through the trainer's own teach path (its
+    // price, reputation discount and checks), then the mount bought unless held and learned by using it.
+    if ((st.ops & OpRide) && s.rideTier)
+    {
+        uint32 const spell = kRiding[s.rideTier - 1].spell;
+        uint64 const m0 = money();
+        if (Trainer::Trainer* trainer = sObjectMgr->GetTrainer(npc->GetEntry()))
+            trainer->TeachSpell(npc, bot, spell);
+        uint64 const paid = m0 > money() ? m0 - money() : 0;
+        bool const learned = bot->HasSpell(spell);
+        s.spent += paid;
+        s.done |= learned ? DoneRiding : DoneSkipped;
+        if (paid)
+            AutoWowTrade::NoteFee(bot, AutoWowTrade::FeeKind::Train, paid);
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::EmitErrand(bot, "riding", MountLedgerFields(s.town, s.rideTier, "spell", spell, paid, learned));
+        LOG_INFO("playerbots", "[Mounts] bot={} riding tier={} spell={} learned={} copper={} money={} skill={} lvl={}",
+                 bot->GetName(), static_cast<uint32>(s.rideTier), spell, learned, paid, money(),
+                 bot->GetPureSkillValue(kRidingSkill), bot->GetLevel());
+    }
+    if ((st.ops & OpMount) && s.mountItem)
+    {
+        uint64 const m0 = money();
+        VendorItemData const* list = npc->GetVendorItems();
+        if (list && !bot->HasItemCount(s.mountItem, 1))
+            for (uint32 i = 0; i < list->GetItemCount(); ++i)
+                if (VendorItem const* vi = list->GetItem(i); vi && vi->item == s.mountItem && !vi->ExtendedCost)
+                {
+                    bot->BuyItemFromVendorSlot(npc->GetGUID(), i, s.mountItem, 1, NULL_BAG, NULL_SLOT);
+                    break;
+                }
+        uint64 const paid = m0 > money() ? m0 - money() : 0;
+        s.spent += paid;
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(s.mountItem);
+        uint32 const mountSpell = proto && proto->Spells[1].SpellId > 0 ? uint32(proto->Spells[1].SpellId) : 0;
+        UseHeldMounts(bot);
+        bool const learned = mountSpell && bot->HasSpell(mountSpell);
+        s.done |= learned ? DoneMount : DoneSkipped;
+        if (AutoWowQuestLedger::Enabled())
+            AutoWowQuestLedger::EmitErrand(bot, "mount",
+                                           MountLedgerFields(s.town, s.rideTier, "item", s.mountItem, paid, learned));
+        LOG_INFO("playerbots", "[Mounts] bot={} mount tier={} item={} spell={} learned={} copper={} money={} lvl={}",
+                 bot->GetName(), static_cast<uint32>(s.rideTier), s.mountItem, mountSpell, learned, paid, money(),
+                 bot->GetLevel());
     }
 }

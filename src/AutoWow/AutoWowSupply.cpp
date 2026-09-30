@@ -155,8 +155,11 @@ std::array<std::array<std::array<std::uint32_t, kRawItems>, kRawKinds>, 2> gRawR
 // Outfit (AutoWow.Supply.Outfit): pending grant requests, guid -> need copper (gLock; map threads add, the world
 // tick takes). Per-bot level windows and per-team hour budgets are world thread only (in memory, reset on restart).
 std::unordered_map<std::uint32_t, std::uint64_t> gGrantRequests;
+std::unordered_map<std::uint32_t, std::pair<std::uint64_t, std::uint64_t>> gGrantRooms;  // AutoWow.Errands.Mounts:
+                                                                                          // guid -> room, budget/h
 std::unordered_map<std::uint32_t, GrantWindow> gGrantWindows;
 std::array<GrantBudget, 2> gGrantBudgets{};
+std::array<GrantBudget, 2> gMountGrantBudgets{};  // world thread only
 
 // World thread only.
 std::array<std::array<std::vector<GearNeed>, 2>, kLineCount> gGearNeeds;  // gear lines: the last scan's ranked needs
@@ -2364,11 +2367,13 @@ std::uint32_t ReagentCount(SpellInfo const* s, std::uint32_t item)
 void OutfitTick()
 {
     std::vector<GrantRequest> reqs;
+    std::unordered_map<std::uint32_t, std::pair<std::uint64_t, std::uint64_t>> rooms;
     {
         std::lock_guard<std::mutex> guard(gLock);
         for (auto const& [guid, need] : gGrantRequests)
             reqs.push_back({guid, 0, need});
         gGrantRequests.clear();
+        rooms.swap(gGrantRooms);
     }
     for (GrantRequest& r : reqs)
         if (Player* bot = Online(r.guid))
@@ -2382,14 +2387,20 @@ void OutfitTick()
         std::uint32_t const gid = bot ? AutoWowGuilds::HouseGuildOf(bot) : 0;
         if (!gid)
             continue;  // logged out / not in a house: nothing to pay into
-        GrantBudget& budget = gGrantBudgets[T(bot->GetTeamId() == TEAM_ALLIANCE)];
+        // AutoWow.Errands.Mounts: a mount request widens the bot cap by its room and uses its own team budget.
+        auto const room = rooms.find(r.guid);
+        bool const mount = room != rooms.end();
+        std::size_t const t = T(bot->GetTeamId() == TEAM_ALLIANCE);
+        GrantBudget& budget = mount ? gMountGrantBudgets[t] : gGrantBudgets[t];
         GrantWindow& window = gGrantWindows[r.guid];
         // AutoWow.Supply.OutfitGear: the floors' room on top of both caps (off: the Outfit caps as they were).
         bool const gear = OutfitGear();
         GrantDecision const d =
             DecideGrant(r, bot->GetMoney(), window, budget, hour,
-                        GrantCapCopper(p.outfitMaxCopper, gear, p.outfitGearCopper, r.level),
-                        p.outfitBudgetPerHour + (gear ? std::uint64_t(p.outfitGearBudgetPerHour) : 0));
+                        GrantCapCopper(p.outfitMaxCopper, gear, p.outfitGearCopper, r.level) +
+                            (mount ? room->second.first : 0),
+                        mount ? room->second.second
+                              : p.outfitBudgetPerHour + (gear ? std::uint64_t(p.outfitGearBudgetPerHour) : 0));
         if (d.verdict == GrantVerdict::Covered)
             continue;
         if (d.verdict != GrantVerdict::Pay)
@@ -2400,8 +2411,8 @@ void OutfitTick()
         if (AutoWowGuilds::Pay(gid, bot, d.copper, AutoWowGuilds::Reason::Grant))
         {
             NoteGrant(window, budget, r.level, hour, d.copper);
-            if (gear)
-                EmitOutfit(bot, Reason::Grant, 0, d.copper);
+            if (gear || mount)
+                EmitOutfit(bot, Reason::Grant, 0, d.copper, mount ? "mount" : nullptr);
         }
     }
 }
@@ -2513,11 +2524,13 @@ void LoadConfig()
         gHeld.clear();
         gRawRooms = {};
         gGrantRequests.clear();
+        gGrantRooms.clear();
         gOrders = {};
     }
     gCodPending.clear();
     gGrantWindows.clear();
     gGrantBudgets = {};
+    gMountGrantBudgets = {};
     if (!detail::gEnabled)
         return;
     auto disable = [](std::string const& why)
@@ -3347,12 +3360,16 @@ std::vector<MaterialNeed> MaterialDemand(bool alliance)
     return out;
 }
 
-void RequestGrant(Player* bot, std::uint64_t need)
+void RequestGrant(Player* bot, std::uint64_t need, std::uint64_t room, std::uint64_t roomBudgetPerHour)
 {
     if (!Outfit() || !bot || !need)
         return;
     std::lock_guard<std::mutex> guard(gLock);
     gGrantRequests[Low(bot)] = need;
+    if (room)
+        gGrantRooms[Low(bot)] = {room, roomBudgetPerHour};
+    else
+        gGrantRooms.erase(Low(bot));
 }
 
 bool GrantPending(std::uint32_t guid)
