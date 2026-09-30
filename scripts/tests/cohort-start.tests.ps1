@@ -44,6 +44,16 @@ function Invoke-CohortBridge {
         $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-FullSoakServerLaunchPlan'
     }, $true)
     . ([scriptblock]::Create($launchPlanFunction.Extent.Text))
+    foreach ($functionName in @(
+        'ConvertFrom-FullSoakControlResult',
+        'Invoke-FullSoakWslScoutStart',
+        'Invoke-FullSoakScoutDispatch')) {
+        $functionAst = $tree.Find({
+            param($node)
+            $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName
+        }, $true)
+        . ([scriptblock]::Create($functionAst.Extent.Text))
+    }
 }
 
 Describe 'cohort startup retry correctness' {
@@ -227,5 +237,107 @@ Describe 'full soak server launch contract' {
         $gateText | Should -Match 'Get-FullSoakServerLaunchPlan'
         $gateText | Should -Match 'start-phase1-wsl-worldserver\.ps1'
         $gateText | Should -Match '\$launchPlan\.start_windows_auth'
+    }
+}
+
+Describe 'full soak scout dispatch' {
+    BeforeEach {
+        $global:ScoutDispatchCalls = [System.Collections.Generic.List[string]]::new()
+        $global:ScoutGuids = @([uint32]101, [uint32]112, [uint32]121, [uint32]123, [uint32]236, [uint32]244)
+        Mock Start-Sleep {}
+    }
+
+    AfterAll {
+        Remove-Variable -Scope Global -Name ScoutDispatchCalls,ScoutGuids -ErrorAction SilentlyContinue
+    }
+
+    It 'uses bridge control only for the exact six scouts in WSL-auth mode' {
+        $control = {
+            param($action, $guid)
+            $global:ScoutDispatchCalls.Add("control:$action/$guid")
+            if ($action -eq 'list') {
+                return [pscustomobject]@{ ok = $true; bots = @($global:ScoutGuids | ForEach-Object {
+                    [pscustomobject]@{ guid = $_; group = [pscustomobject]@{ members = 0; leader_guid = 0 } }
+                }) }
+            }
+            [pscustomobject]@{ ok = $true }
+        }
+        $legacy = { $global:ScoutDispatchCalls.Add('unexpected:revive'); throw 'revive must not run' }
+
+        $result = Invoke-FullSoakScoutDispatch -AuthMode wsl -ServerRoot 'D:\root' `
+            -WorldserverBinary '/root/s83/worldserver' -ControlPath 'control.ps1' -RevivePath 'revive.ps1' `
+            -ControlInvoker $control -LegacyInvoker $legacy -OnlineAttempts 1 -ArmAttempts 1 -ControlDelaySeconds 0
+
+        $result.complete | Should -BeTrue
+        $global:ScoutDispatchCalls | Should -Not -Contain 'unexpected:revive'
+        @($global:ScoutDispatchCalls | Where-Object { $_ -like 'control:independent/*' }) |
+            Should -Be @($global:ScoutGuids | ForEach-Object { "control:independent/$_" })
+        @($global:ScoutDispatchCalls | Where-Object { $_ -like 'control:activate/*' }).Count | Should -Be 0
+    }
+
+    It 'passes the selected root and world binary to the legacy revival helper' {
+        $legacy = {
+            param($path, $root, $binary, $guids)
+            $global:ScoutDispatchCalls.Add("legacy:$path|$root|$binary|$($guids -join ',')")
+        }
+        $control = { $global:ScoutDispatchCalls.Add('unexpected:control'); throw 'control must not run' }
+
+        $result = Invoke-FullSoakScoutDispatch -AuthMode windows -ServerRoot 'D:\actual-root' `
+            -WorldserverBinary '/root/actual/worldserver' -ControlPath 'control.ps1' -RevivePath 'revive.ps1' `
+            -ControlInvoker $control -LegacyInvoker $legacy -LegacyAttempts 1 -LegacyDelaySeconds 0
+
+        $result.complete | Should -BeTrue
+        $global:ScoutDispatchCalls | Should -Contain `
+            'legacy:revive.ps1|D:\actual-root|/root/actual/worldserver|101,112,121,123,236,244'
+        $global:ScoutDispatchCalls | Should -Not -Contain 'unexpected:control'
+    }
+
+    It 'arms already-online scouts but reports every GUID still offline after bounded retries' {
+        $online = @([uint32]101, [uint32]121, [uint32]123, [uint32]236, [uint32]244)
+        $control = {
+            param($action, $guid)
+            $global:ScoutDispatchCalls.Add("$action/$guid")
+            if ($action -eq 'list') {
+                return [pscustomobject]@{ ok = $true; bots = @($online | ForEach-Object {
+                    [pscustomobject]@{ guid = $_; group = [pscustomobject]@{ members = 0; leader_guid = 0 } }
+                }) }
+            }
+            if ($action -eq 'activate') { return [pscustomobject]@{ ok = $false; error = 'login_already_queued' } }
+            [pscustomobject]@{ ok = $true }
+        }.GetNewClosure()
+
+        { Invoke-FullSoakWslScoutStart -ControlPath 'control.ps1' -ControlInvoker $control `
+            -OnlineAttempts 2 -ArmAttempts 1 -DelaySeconds 0 } |
+            Should -Throw '*not_online=112*'
+        $global:ScoutDispatchCalls | Should -Contain 'independent/101'
+        $global:ScoutDispatchCalls | Should -Contain 'activate/112'
+    }
+
+    It 'accepts independent-requires-solo only when list evidence shows the scout is grouped' {
+        $groupedControl = {
+            param($action, $guid)
+            if ($action -eq 'list') {
+                return [pscustomobject]@{ ok = $true; bots = @($global:ScoutGuids | ForEach-Object {
+                    [pscustomobject]@{ guid = $_; group = [pscustomobject]@{ members = 2; leader_guid = 101 } }
+                }) }
+            }
+            [pscustomobject]@{ ok = $false; error = 'independent_requires_solo' }
+        }
+        $grouped = Invoke-FullSoakWslScoutStart -ControlPath 'control.ps1' -ControlInvoker $groupedControl `
+            -OnlineAttempts 1 -ArmAttempts 1 -DelaySeconds 0
+        @($grouped.grouped_guids) | Should -Be $global:ScoutGuids
+
+        $soloControl = {
+            param($action, $guid)
+            if ($action -eq 'list') {
+                return [pscustomobject]@{ ok = $true; bots = @($global:ScoutGuids | ForEach-Object {
+                    [pscustomobject]@{ guid = $_; group = [pscustomobject]@{ members = 0; leader_guid = 0 } }
+                }) }
+            }
+            [pscustomobject]@{ ok = $false; error = 'independent_requires_solo' }
+        }
+        { Invoke-FullSoakWslScoutStart -ControlPath 'control.ps1' -ControlInvoker $soloControl `
+            -OnlineAttempts 1 -ArmAttempts 1 -DelaySeconds 0 } |
+            Should -Throw '*arm_failed=*independent_requires_solo*'
     }
 }
