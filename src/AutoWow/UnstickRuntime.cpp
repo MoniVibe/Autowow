@@ -42,6 +42,7 @@ struct Combat
     std::uint64_t incomingMs = 0;     // incoming damage is productive progress
     std::uint64_t nextCheckMs = 0;
     ProductiveCombatWatch productive;
+    ProductiveCombatWatch staleTarget;
 };
 
 std::mutex gLock;
@@ -130,6 +131,9 @@ void CombatWatch(Player* bot, std::uint64_t nowMs)
     Map* const map = bot->GetMap();
     PlayerbotAI* const ai = PlayerbotsMgr::instance().GetPlayerbotAI(bot);
     Unit* const victim = bot->GetVictim();
+    Unit* const currentTarget = ai && ai->GetAiObjectContext()
+                                    ? ai->GetAiObjectContext()->GetValue<Unit*>("current target")->Get()
+                                    : nullptr;
     Group const* const group = bot->GetGroup();
     ProductiveCombatScope const scope{
         bot->IsAlive(),
@@ -142,8 +146,21 @@ void CombatWatch(Player* bot, std::uint64_t nowMs)
         !ai || ai->IsRealPlayer() || ai->HasRealPlayerMaster(),
     };
     bool const productiveEligible = ProductiveCombatEligible(scope) && victim && victim->ToCreature();
+    bool const sameLiveCreatureTarget = victim && victim == currentTarget && victim->ToCreature() &&
+                                        victim->IsAlive() && victim->IsInWorld() &&
+                                        victim->GetMapId() == bot->GetMapId() && bot->IsValidAttackTarget(victim);
+    StaleTargetScope const staleScope{
+        scope,
+        bot->InBattleground() || (map && map->IsBattlegroundOrArena()),
+        inCombat,
+        ai && ai->GetState() == BOT_STATE_COMBAT,
+        sameLiveCreatureTarget,
+        bot->IsNonMeleeSpellCast(false),
+    };
+    bool const staleTargetObserved = StaleTargetObserved(staleScope);
+    bool const staleTargetEligible = StaleTargetEligible(staleScope);
     ProductiveCombatSample productiveSample;
-    if (productiveEligible)
+    if (productiveEligible || staleTargetObserved)
     {
         productiveSample.target = victim->GetGUID().GetRawValue();
         productiveSample.targetHp = victim->GetHealth();
@@ -156,43 +173,60 @@ void CombatWatch(Player* bot, std::uint64_t nowMs)
     std::uint64_t since = 0;
     std::uint64_t activity = 0;
     std::uint64_t productiveSince = 0;
+    std::uint64_t staleTargetSince = 0;
     bool inactivityStalled = false;
     bool productiveStalled = false;
+    bool staleTargetStalled = false;
     {
         std::lock_guard<std::mutex> guard(gLock);
-        if (!inCombat)
+        if (!inCombat && !staleTargetObserved)
         {
             auto const it = gCombat.find(guid);
             if (it != gCombat.end())
             {
                 it->second.combatSinceMs = 0;
                 it->second.productive = ProductiveCombatWatch{};
+                it->second.staleTarget = ProductiveCombatWatch{};
             }
             return;
         }
 
         Combat& c = gCombat[guid];
-        if (!c.combatSinceMs)
-            c.combatSinceMs = nowMs ? nowMs : 1;
         if (nowMs < c.nextCheckMs)
             return;
         c.nextCheckMs = nowMs + kCombatCheckMs;
-        since = c.combatSinceMs;
-        activity = c.activityMs;
-        inactivityStalled = CombatStalled(since, activity, nowMs, p.combatStallMs);
-        if (productiveEligible)
+        if (inCombat)
         {
-            productiveSample.incomingMs = c.incomingMs;
-            productiveStalled =
-                ProductiveCombatStalled(c.productive, productiveSample, nowMs, p.combatStallMs);
-            productiveSince = c.productive.sinceMs;
+            c.staleTarget = ProductiveCombatWatch{};
+            if (!c.combatSinceMs)
+                c.combatSinceMs = nowMs ? nowMs : 1;
+            since = c.combatSinceMs;
+            activity = c.activityMs;
+            inactivityStalled = CombatStalled(since, activity, nowMs, p.combatStallMs);
+            if (productiveEligible)
+            {
+                productiveSample.incomingMs = c.incomingMs;
+                productiveStalled =
+                    ProductiveCombatStalled(c.productive, productiveSample, nowMs, p.combatStallMs);
+                productiveSince = c.productive.sinceMs;
+            }
+            else
+                c.productive = ProductiveCombatWatch{};
         }
         else
+        {
+            c.combatSinceMs = 0;
             c.productive = ProductiveCombatWatch{};
+            staleTargetStalled =
+                ProductiveCombatStalled(c.staleTarget, productiveSample, nowMs, p.combatStallMs);
+            staleTargetSince = c.staleTarget.sinceMs;
+        }
     }
 
-    if (!inactivityStalled && !productiveStalled)
+    if (!inactivityStalled && !productiveStalled && !staleTargetStalled)
         return;
+    if (staleTargetStalled && !staleTargetEligible)
+        return;  // preserve the active cast; the already-expired timer is checked again when it ends
 
     // Preserve the original inactivity-watchdog exclusions. The productive watchdog has already applied
     // the stricter solo, masterless, cohort, open-world and paused/user-control gates above.
@@ -202,22 +236,39 @@ void CombatWatch(Player* bot, std::uint64_t nowMs)
         if (InstanceScript* script = instance->GetInstanceScript(); script && script->IsEncounterInProgress())
             return;  // a boss fight: the dungeon's own wipe / reset rules apply
 
+    char const* const cause =
+        staleTargetStalled ? "precombat_target" : productiveStalled ? "unproductive" : "inactive";
     LOG_INFO("playerbots", "[Unstick] combat_stall bot={} cause={} lvl={} combat_ms={} idle_ms={} attackers={} "
-             "victim={} map={} zone={} x={} y={}", bot->GetName(), productiveStalled ? "unproductive" : "inactive",
-             bot->GetLevel(), nowMs - since,
-             nowMs - (productiveStalled ? productiveSince : std::max(since, activity)), bot->getAttackers().size(),
-             victim ? victim->GetEntry() : 0, bot->GetMapId(), bot->GetZoneId(),
+             "victim={} victim_guid={} map={} zone={} x={} y={}", bot->GetName(), cause,
+             bot->GetLevel(), inCombat ? nowMs - since : 0,
+             nowMs - (staleTargetStalled ? staleTargetSince
+                                         : productiveStalled ? productiveSince : std::max(since, activity)),
+             bot->getAttackers().size(),
+             victim ? victim->GetEntry() : 0, victim ? victim->GetGUID().GetCounter() : 0, bot->GetMapId(),
+             bot->GetZoneId(),
              std::int32_t(bot->GetPositionX()), std::int32_t(bot->GetPositionY()));
 
-    bot->GetThreatMgr().RemoveMeFromThreatLists();
-    if (productiveStalled && ai)
+    if (staleTargetStalled && ai)
     {
+        // Match native DropTargetAction without a broad AI reset or any movement/credit mutation.
         ai->GetAiObjectContext()->GetValue<Unit*>("current target")->Set(nullptr);
         bot->SetTarget(ObjectGuid::Empty);
         bot->SetSelection(ObjectGuid::Empty);
         bot->AttackStop();
+        ai->ChangeEngine(BOT_STATE_NON_COMBAT);
     }
-    bot->CombatStopWithPets(true);
+    else
+    {
+        bot->GetThreatMgr().RemoveMeFromThreatLists();
+        if (productiveStalled && ai)
+        {
+            ai->GetAiObjectContext()->GetValue<Unit*>("current target")->Set(nullptr);
+            bot->SetTarget(ObjectGuid::Empty);
+            bot->SetSelection(ObjectGuid::Empty);
+            bot->AttackStop();
+        }
+        bot->CombatStopWithPets(true);
+    }
 
     std::lock_guard<std::mutex> guard(gLock);
     gCombat[guid] = Combat{};

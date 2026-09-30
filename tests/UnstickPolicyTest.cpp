@@ -213,6 +213,93 @@ TEST(UnstickV2, ProductiveCombatOnlyAppliesToSoloMasterlessOpenWorldCohortBots)
     EXPECT_FALSE(ProductiveCombatEligible(scope));
 }
 
+TEST(UnstickV2, StaleTargetOnlyAppliesToTheExactIdlePreCombatLatch)
+{
+    StaleTargetScope scope;
+    EXPECT_TRUE(StaleTargetObserved(scope));
+    EXPECT_TRUE(StaleTargetEligible(scope));
+
+    scope.coreCombat = true;  // the ordinary combat watchdog owns this state
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.aiCombat = false;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.sameLiveCreatureTarget = false;  // no target, different slots, dead, invalid, or a player
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.casting = true;
+    EXPECT_TRUE(StaleTargetObserved(scope));   // keep timing through periodic self-maintenance
+    EXPECT_FALSE(StaleTargetEligible(scope));  // but never clear an actively casting bot
+    scope = {};
+    scope.battleground = true;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+}
+
+TEST(UnstickV2, StaleTargetPreservesGroupedMasteredPausedOracleUserAndInstanceBots)
+{
+    StaleTargetScope scope;
+    scope.owner.solo = false;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.masterless = false;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.paused = true;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.oracleManaged = true;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.userControlled = true;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.openWorld = false;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.cohort = false;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+    scope = {};
+    scope.owner.alive = false;
+    EXPECT_FALSE(StaleTargetObserved(scope));
+}
+
+TEST(UnstickV2, StaleTargetWaitsAFullWindowAndRestartsOnRealProgress)
+{
+    ProductiveCombatWatch w;
+    ProductiveCombatSample s{42, 297, -5492, -3033, 359, 0, 297};
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 1000, 180000));
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 180999, 180000));
+    EXPECT_TRUE(ProductiveCombatStalled(w, s, 181000, 180000));
+
+    s.target = 43;  // normal target selection starts a new pull window
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 181001, 180000));
+    s.targetHp = 250;  // damage landed before core combat was observed
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 200000, 180000));
+    s.x += kProductiveMovementYards;  // approach movement also restarts it
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 300000, 180000));
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 479999, 180000));
+    EXPECT_TRUE(ProductiveCombatStalled(w, s, 480000, 180000));
+}
+
+TEST(UnstickV2, StaleTargetActiveCastDefersClearWithoutRestartingTheExpiredWindow)
+{
+    StaleTargetScope scope;
+    ProductiveCombatWatch w;
+    ProductiveCombatSample const s{42, 297, -5492, -3033, 359, 0, 297};
+    EXPECT_FALSE(ProductiveCombatStalled(w, s, 1000, 180000));
+
+    scope.casting = true;
+    EXPECT_TRUE(StaleTargetObserved(scope));
+    EXPECT_FALSE(StaleTargetEligible(scope));
+    EXPECT_TRUE(ProductiveCombatStalled(w, s, 181000, 180000));
+
+    scope.casting = false;
+    EXPECT_TRUE(StaleTargetEligible(scope));
+    EXPECT_TRUE(ProductiveCombatStalled(w, s, 186000, 180000));
+    EXPECT_EQ(w.sinceMs, 1000u);
+}
+
 TEST(UnstickV2, PartyStallRestartsOnAnyQuestLogChange)
 {
     std::uint64_t sig = 0;

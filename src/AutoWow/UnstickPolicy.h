@@ -30,7 +30,10 @@ class Player;
 //      a 530-copper Stonetalon Peak -> Nijel's Point fare); a flight leg that returns to idle without taking off
 //      switches the trip to walk (portal fallback applies); taxi activation failures log at INFO with a reason.
 //   3. Combat stall: in combat with no damage dealt / taken / healing for CombatStallMs -> CombatStop and threat
-//      reset ("[Unstick] combat_stall"); never in a battleground or during an instance encounter.
+//      reset; the original path stays excluded from battlegrounds and active instance encounters. The productive
+//      watchdog and the pre-combat latch cleanup below are stricter open-world-only paths. A solo cohort bot latched
+//      in the AI combat engine before core combat began drops the unchanged target after the same window. All log
+//      "[Unstick] combat_stall".
 //   4. Pinned party: a group-quest party disbands (reason `stalled`) after AutoWow.Party.StallMs without quest-log
 //      progress, or once its leader's zone graduation gave up after the party formed.
 //   5. Instance strand: an unpartied cohort bot alive on an instance map (none of our runs, not a dungeon probe)
@@ -280,6 +283,34 @@ struct ProductiveCombatScope
 {
     return s.alive && s.solo && s.openWorld && s.cohort && s.masterless && !s.oracleManaged && !s.paused &&
            !s.userControlled;
+}
+
+// AttackAction installs the AI target / Unit victim and switches engines before core combat necessarily begins.
+// If the pull never enters core combat, the native "invalid target" trigger cannot drop an otherwise valid live
+// creature. Keep this narrower than the productive-combat watchdog: the exact same target must occupy both slots.
+// Movement, target changes and target-health progress are timed by ProductiveCombatStalled. An active cast only
+// defers the final clear; it does not restart the timer, so periodic self-maintenance cannot mask a stale target.
+struct StaleTargetScope
+{
+    ProductiveCombatScope owner;
+    bool battleground = false;
+    bool coreCombat = false;
+    bool aiCombat = true;
+    bool sameLiveCreatureTarget = true;
+    bool casting = false;
+};
+
+[[nodiscard]] inline bool StaleTargetEligible(StaleTargetScope const& s)
+{
+    return ProductiveCombatEligible(s.owner) && !s.battleground && !s.coreCombat && s.aiCombat &&
+           s.sameLiveCreatureTarget && !s.casting;
+}
+
+[[nodiscard]] inline bool StaleTargetObserved(StaleTargetScope const& s)
+{
+    StaleTargetScope observation = s;
+    observation.casting = false;
+    return StaleTargetEligible(observation);
 }
 
 // Party quest progress: sig folds the members' quest logs (FNV-1a over ids / counters / status). A new sig (or
