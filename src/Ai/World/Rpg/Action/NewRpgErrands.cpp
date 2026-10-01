@@ -7,6 +7,7 @@
 // AutoWow.Errands runtime (policy: AutoWow/ErrandsPolicy.h).
 
 #include <algorithm>
+#include <bit>
 #include <mutex>
 #include <unordered_map>
 
@@ -62,7 +63,7 @@ BotState LoadState(std::uint32_t guid)
 {
     std::lock_guard<std::mutex> guard(gLock);
     auto const it = gStates.find(guid);
-    return it == gStates.end() ? BotState{} : it->second;
+    return it == gStates.end() || it->second.version != kStateVersion ? BotState{} : it->second;
 }
 
 void StoreState(std::uint32_t guid, BotState const& s)
@@ -1275,6 +1276,53 @@ void LoadConfig()
         BuildCatalog();
 }
 
+ErrandsFlightCaptureToken ArmFlightPredecessorCapture(std::uint32_t guid, WalkGoalKey const& payloadGoal)
+{
+    if (!detail::gEnabled)
+        return {};
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gStates.find(guid);
+    if (it == gStates.end() || it->second.version != kStateVersion)
+        return {};
+    BotState const& s = it->second;
+    ErrandsPredecessorSource const source = s.phase == Phase::Return
+        ? ErrandsPredecessorSource::ReturnFlight
+        : ErrandsPredecessorSource::TravelFlight;
+    if ((s.phase != Phase::Travel && s.phase != Phase::Return) || s.leg != Leg::Flight || !s.legIssued ||
+        !s.predecessor.active || s.predecessor.source != source ||
+        !SameWalkGoal(s.predecessor.sourceGoal, payloadGoal))
+        return {};
+    return {true, source, s.predecessor.generation, payloadGoal};
+}
+
+void ObserveFlightPredecessorCall(
+    std::uint32_t guid, ErrandsFlightCaptureToken const& token, WalkGoalKey const& callGoal,
+    ErrandsPredecessorFacts const& before, ErrandsPredecessorFacts const& after)
+{
+    if (!detail::gEnabled || !token.active)
+        return;
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gStates.find(guid);
+    if (it == gStates.end() || it->second.version != kStateVersion)
+        return;
+    BotState& s = it->second;
+    if ((s.phase != Phase::Travel && s.phase != Phase::Return) || s.leg != Leg::Flight || !s.legIssued ||
+        !MatchesFlightCapture(s.predecessor, token))
+        return;
+
+    s.predecessor.expectedGoal = callGoal;
+    ErrandsPredecessorFacts ownedBefore = before;
+    ErrandsPredecessorFacts ownedAfter = after;
+    for (ErrandsPredecessorFacts* facts : {&ownedBefore, &ownedAfter})
+    {
+        facts->source = token.source;
+        facts->stop = s.predecessor.stop;
+        facts->generation = s.predecessor.generation;
+        facts->expectedGoal = callGoal;
+    }
+    ObserveErrandsPredecessorCall(s.predecessor, ownedBefore, ownedAfter);
+}
+
 bool Active(std::uint32_t guid) { return LoadState(guid).phase != Phase::None; }
 }  // namespace AutoWowErrands
 
@@ -1310,6 +1358,102 @@ bool NewRpgBaseAction::ErrandsStep()
         info.SetMoveFarTo(WorldPosition());
         info.travelIntent = {};
         AI_VALUE(LastMovement&, "last movement").clear();
+        return true;
+    };
+
+    auto goalKey = [](WorldPosition const& pos)
+    {
+        return WalkGoalKey{pos.GetMapId(), Yd(pos.GetPositionX()), Yd(pos.GetPositionY()), Yd(pos.GetPositionZ())};
+    };
+
+    auto predecessorFacts = [&](ErrandsPredecessorSource source, std::uint8_t stop,
+                                std::uint64_t generation, WalkGoalKey const& expected)
+    {
+        ErrandsPredecessorFacts facts;
+        facts.source = source;
+        facts.stop = stop;
+        facts.generation = generation;
+        facts.expectedGoal = expected;
+        facts.botMoving = bot->isMoving();
+        facts.nativeSplineActive = nativeSplineActive();
+        bool const moveFarActive = info.moveFarPos != WorldPosition();
+        facts.moveFar = {
+            moveFarActive,
+            moveFarActive ? goalKey(info.moveFarPos) : WalkGoalKey{},
+            moveFarActive ? std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionX()) : 0,
+            moveFarActive ? std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionY()) : 0,
+            moveFarActive ? std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionZ()) : 0};
+        TravelIntentPolicy::Intent const& intent = info.travelIntent;
+        facts.intent = {
+            intent.active,
+            {intent.goal.mapId, intent.goal.x, intent.goal.y, intent.goal.z},
+            intent.createdMs,
+            intent.lastObservedMs,
+            intent.segmentsCommitted,
+            intent.failures};
+        LastMovement const& movement = AI_VALUE(LastMovement&, "last movement");
+        facts.movement = {
+            movement.msTime != 0,
+            {movement.lastMoveToMapId, Yd(movement.lastMoveToX), Yd(movement.lastMoveToY),
+             Yd(movement.lastMoveToZ)},
+            movement.msTime};
+        return facts;
+    };
+
+    auto beginPredecessor = [&](ErrandsPredecessorSource source, std::uint8_t stop,
+                                WalkGoalKey const& expected)
+    {
+        if (s.predecessor.active)
+            return s.predecessor.source == source && s.predecessor.stop == stop &&
+                SameWalkGoal(s.predecessor.expectedGoal, expected);
+        std::uint64_t const generation = NextErrandsPredecessorGeneration(s.predecessorGeneration);
+        if (!generation)
+            return false;
+        ErrandsPredecessorFacts const baseline = predecessorFacts(source, stop, generation, expected);
+        s.predecessor = BeginErrandsPredecessor(source, stop, generation, expected, baseline);
+        return true;
+    };
+
+    auto observePredecessorCall = [&](ErrandsPredecessorFacts const& before)
+    {
+        if (!s.predecessor.active)
+            return;
+        ErrandsPredecessorFacts const after =
+            predecessorFacts(s.predecessor.source, s.predecessor.stop, s.predecessor.generation,
+                             s.predecessor.expectedGoal);
+        ObserveErrandsPredecessorCall(s.predecessor, before, after);
+    };
+
+    auto handoffPredecessor = [&]()
+    {
+        if (!s.predecessor.active)
+            return true;
+        ErrandsPredecessorFacts const facts =
+            predecessorFacts(s.predecessor.source, s.predecessor.stop, s.predecessor.generation,
+                             s.predecessor.expectedGoal);
+        ErrandsPredecessorDecision const decision = DecideErrandsPredecessorHandoff(s.predecessor, facts);
+        if (decision != s.predecessor.lastDecision)
+        {
+            LOG_INFO("playerbots", "[Errands] bot={} handoff result={} reason={} owner={} generation={} "
+                     "expected=({},{},{},{})", bot->GetName(), ErrandsPredecessorResultName(decision),
+                     ErrandsPredecessorReasonName(decision), ErrandsPredecessorSourceName(s.predecessor.source),
+                     s.predecessor.generation, s.predecessor.expectedGoal.map, s.predecessor.expectedGoal.x,
+                     s.predecessor.expectedGoal.y, s.predecessor.expectedGoal.z);
+            s.predecessor.lastDecision = decision;
+        }
+        if (decision != ErrandsPredecessorDecision::RetireOwned &&
+            decision != ErrandsPredecessorDecision::CompleteAbsent)
+            return false;
+        if (decision == ErrandsPredecessorDecision::RetireOwned)
+        {
+            if (facts.moveFar.active)
+                info.SetMoveFarTo(WorldPosition());
+            if (facts.intent.active)
+                info.travelIntent = {};
+            if (facts.movement.active)
+                AI_VALUE(LastMovement&, "last movement").clear();
+        }
+        s.predecessor = {};
         return true;
     };
 
@@ -1535,6 +1679,14 @@ bool NewRpgBaseAction::ErrandsStep()
                 std::vector<uint32> path;
                 if (FlightTo(bot, destNode, fm, path))
                 {
+                    ErrandsPredecessorSource const source = s.phase == Phase::Return
+                        ? ErrandsPredecessorSource::ReturnFlight
+                        : ErrandsPredecessorSource::TravelFlight;
+                    if (!beginPredecessor(source, 0, goalKey(fm->pos)))
+                    {
+                        StoreState(guid, s);
+                        return true;
+                    }
                     s.legIssued = true;
                     StoreState(guid, s);
                     info.ChangeToTravelFlight(fm->templateEntry, fm->pos, path);
@@ -1549,6 +1701,14 @@ bool NewRpgBaseAction::ErrandsStep()
         }
         if (s.leg == Leg::Walk)
         {
+            if (s.predecessor.active &&
+                (s.predecessor.source == ErrandsPredecessorSource::TravelFlight ||
+                 s.predecessor.source == ErrandsPredecessorSource::ReturnFlight) &&
+                !handoffPredecessor())
+            {
+                StoreState(guid, s);
+                return true;
+            }
             WalkGoalKey const requested{
                 dest.GetMapId(), Yd(dest.GetPositionX()), Yd(dest.GetPositionY()), Yd(dest.GetPositionZ())};
             LastMovement& movement = AI_VALUE(LastMovement&, "last movement");
@@ -1705,6 +1865,8 @@ bool NewRpgBaseAction::ErrandsStep()
     {
         if (bot->GetMapId() == town->map && Dist2(bx, by, town->x, town->y) <= arrive2)
         {
+            if (s.predecessor.active)
+                handoffPredecessor();
             retireWalk({town->map, town->x, town->y, town->z});
             // Arrived: plan the batch (ErrandsPolicy PlanStops).
             s.travelMs = now - s.startMs;
@@ -1925,6 +2087,30 @@ bool NewRpgBaseAction::ErrandsStep()
     if (s.phase == Phase::Errands)
     {
         bool const timedOut = now - s.phaseMs > p.errandsTimeoutMs;
+        if (s.predecessor.active &&
+            (s.predecessor.source == ErrandsPredecessorSource::TravelFlight ||
+             s.predecessor.source == ErrandsPredecessorSource::ReturnFlight) &&
+            !handoffPredecessor() && !timedOut)
+        {
+            StoreState(guid, s);
+            return true;
+        }
+        if (s.predecessor.active && s.predecessor.source == ErrandsPredecessorSource::ServiceStop)
+        {
+            bool const phaseEnding = timedOut || s.stop >= s.plan.count;
+            WalkGoalKey currentGoal{};
+            if (!phaseEnding)
+            {
+                Stop const& current = s.plan.stops[s.stop];
+                currentGoal = {town->map, current.x, current.y, current.z};
+            }
+            if (ServiceBoundaryNeedsHandoff(s.predecessor, phaseEnding, s.stop, currentGoal) &&
+                !handoffPredecessor() && !phaseEnding)
+            {
+                StoreState(guid, s);
+                return true;
+            }
+        }
         if (timedOut || s.stop >= s.plan.count)
         {
             if (s.ahGearItems[0])
@@ -1993,7 +2179,17 @@ bool NewRpgBaseAction::ErrandsStep()
                                                           mailbox->GetPositionZ());
                 }
                 else
-                    WalkLeg(WorldPosition(town->map, float(st.x), float(st.y), float(st.z)));
+                {
+                    WalkGoalKey const expected{town->map, st.x, st.y, st.z};
+                    if (beginPredecessor(ErrandsPredecessorSource::ServiceStop, s.stop, expected))
+                    {
+                        ErrandsPredecessorFacts const before =
+                            predecessorFacts(s.predecessor.source, s.predecessor.stop,
+                                             s.predecessor.generation, s.predecessor.expectedGoal);
+                        WalkLeg(WorldPosition(town->map, float(st.x), float(st.y), float(st.z)));
+                        observePredecessorCall(before);
+                    }
+                }
             }
             StoreState(guid, s);
             return true;
@@ -2026,7 +2222,17 @@ bool NewRpgBaseAction::ErrandsStep()
                 bot->GetMotionMaster()->MovePoint(0, npc->GetPositionX(), npc->GetPositionY(), npc->GetPositionZ());
         }
         else
-            WalkLeg(WorldPosition(town->map, float(st.x), float(st.y), float(st.z)));  // the stop timeout bounds it
+        {
+            WalkGoalKey const expected{town->map, st.x, st.y, st.z};
+            if (beginPredecessor(ErrandsPredecessorSource::ServiceStop, s.stop, expected))
+            {
+                ErrandsPredecessorFacts const before =
+                    predecessorFacts(s.predecessor.source, s.predecessor.stop,
+                                     s.predecessor.generation, s.predecessor.expectedGoal);
+                WalkLeg(WorldPosition(town->map, float(st.x), float(st.y), float(st.z)));
+                observePredecessorCall(before);
+            }
+        }
         StoreState(guid, s);
         return true;
     }
@@ -2039,6 +2245,16 @@ bool NewRpgBaseAction::ErrandsStep()
         if (s.outcome == Outcome::Done)
             s.outcome = Outcome::ReturnGaveUp;
         return finish();
+    }
+    if (FlightStatusOwnsPredecessor(s.predecessor, info.GetStatus() == RPG_TRAVEL_FLIGHT))
+    {
+        StoreState(guid, s);
+        return false;
+    }
+    if (s.predecessor.active && !handoffPredecessor())
+    {
+        StoreState(guid, s);
+        return true;
     }
     WorldPosition const back(s.backMap, float(s.backX), float(s.backY), float(s.backZ));
     uint32 backNode = 0;  // known node nearest the pre-run position (only while a flight may be issued)

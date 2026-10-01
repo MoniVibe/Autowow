@@ -31,7 +31,7 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 12;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 13;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
                                                   // 7: nextTrainRunMs (Professions.TrainRuns);
@@ -41,6 +41,7 @@ inline constexpr std::uint8_t kStateVersion = 12;  // 2: sellUntilMs / sellRetry
                                                   //     mountItem (Errands.Mounts)
                                                   // 11: walk admission / bounded town walk backoff
                                                   // 12: exact prepared walk segment provenance
+                                                  // 13: typed internal predecessor handoff provenance
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -1288,7 +1289,272 @@ struct WalkGoalOwner
 {
     bool active = false;
     WalkGoalKey goal{};
+    std::uint32_t xBits = 0;
+    std::uint32_t yBits = 0;
+    std::uint32_t zBits = 0;
 };
+
+[[nodiscard]] inline bool SameMoveFarOwner(WalkGoalOwner const& a, WalkGoalOwner const& b)
+{
+    return a.active == b.active && (!a.active ||
+        (SameWalkGoal(a.goal, b.goal) && a.xBits == b.xBits && a.yBits == b.yBits && a.zBits == b.zBits));
+}
+
+struct TravelIntentOwner
+{
+    bool active = false;
+    WalkGoalKey goal{};
+    std::uint32_t createdMs = 0;
+    std::uint32_t lastObservedMs = 0;
+    std::uint32_t segmentsCommitted = 0;
+    std::uint32_t failures = 0;
+};
+
+[[nodiscard]] inline bool SameTravelIntentOwner(TravelIntentOwner const& a, TravelIntentOwner const& b)
+{
+    return a.active == b.active && (!a.active ||
+        (SameWalkGoal(a.goal, b.goal) && a.createdMs == b.createdMs &&
+         a.lastObservedMs == b.lastObservedMs && a.segmentsCommitted == b.segmentsCommitted &&
+         a.failures == b.failures));
+}
+
+struct LastMovementOwner
+{
+    bool active = false;
+    WalkGoalKey endpoint{};
+    std::uint32_t msTime = 0;
+};
+
+[[nodiscard]] inline bool SameLastMovementOwner(LastMovementOwner const& a, LastMovementOwner const& b)
+{
+    return a.active == b.active && (!a.active ||
+        (SameWalkGoal(a.endpoint, b.endpoint) && a.msTime == b.msTime));
+}
+
+enum class ErrandsPredecessorSource : std::uint8_t
+{
+    None,
+    TravelFlight,
+    ReturnFlight,
+    ServiceStop
+};
+
+enum class ErrandsPredecessorDecision : std::uint8_t
+{
+    None,
+    CompleteAbsent,
+    WaitForMotion,
+    RetireOwned,
+    PreserveSourceMismatch,
+    PreserveMoveFar,
+    PreserveTravelIntent,
+    PreserveLastMovement
+};
+
+struct ErrandsPredecessor
+{
+    std::uint8_t version = 1;
+    bool active = false;
+    ErrandsPredecessorSource source = ErrandsPredecessorSource::None;
+    std::uint8_t stop = 0;
+    std::uint64_t generation = 0;
+    WalkGoalKey sourceGoal{};      // immutable flight payload / service-stop identity
+    WalkGoalKey expectedGoal{};
+    WalkGoalOwner baselineMoveFar{};
+    TravelIntentOwner baselineIntent{};
+    LastMovementOwner baselineMovement{};
+    bool moveFarOwned = false;
+    bool intentOwned = false;
+    bool movementOwned = false;
+    WalkGoalOwner ownedMoveFar{};
+    TravelIntentOwner ownedIntent{};
+    LastMovementOwner ownedMovement{};
+    ErrandsPredecessorDecision lastDecision = ErrandsPredecessorDecision::None;
+};
+
+struct ErrandsPredecessorFacts
+{
+    ErrandsPredecessorSource source = ErrandsPredecessorSource::None;
+    std::uint8_t stop = 0;
+    std::uint64_t generation = 0;
+    WalkGoalKey expectedGoal{};
+    bool botMoving = false;
+    bool nativeSplineActive = false;
+    WalkGoalOwner moveFar{};
+    TravelIntentOwner intent{};
+    LastMovementOwner movement{};
+};
+
+struct ErrandsFlightCaptureToken
+{
+    bool active = false;
+    ErrandsPredecessorSource source = ErrandsPredecessorSource::None;
+    std::uint64_t generation = 0;
+    WalkGoalKey payloadGoal{};
+};
+
+[[nodiscard]] inline std::uint64_t NextErrandsPredecessorGeneration(std::uint64_t& counter)
+{
+    if (counter == UINT64_MAX)
+        return 0;
+    return ++counter;
+}
+
+[[nodiscard]] inline ErrandsPredecessor BeginErrandsPredecessor(
+    ErrandsPredecessorSource source, std::uint8_t stop, std::uint64_t generation,
+    WalkGoalKey const& expectedGoal, ErrandsPredecessorFacts const& baseline)
+{
+    ErrandsPredecessor predecessor;
+    predecessor.active = true;
+    predecessor.source = source;
+    predecessor.stop = stop;
+    predecessor.generation = generation;
+    predecessor.sourceGoal = expectedGoal;
+    predecessor.expectedGoal = expectedGoal;
+    predecessor.baselineMoveFar = baseline.moveFar;
+    predecessor.baselineIntent = baseline.intent;
+    predecessor.baselineMovement = baseline.movement;
+    return predecessor;
+}
+
+[[nodiscard]] inline bool SameErrandsPredecessorSource(
+    ErrandsPredecessor const& predecessor, ErrandsPredecessorFacts const& facts)
+{
+    return predecessor.active && predecessor.source == facts.source && predecessor.stop == facts.stop &&
+        predecessor.generation == facts.generation && SameWalkGoal(predecessor.expectedGoal, facts.expectedGoal);
+}
+
+[[nodiscard]] inline bool MatchesFlightCapture(
+    ErrandsPredecessor const& predecessor, ErrandsFlightCaptureToken const& token)
+{
+    return token.active && predecessor.active && predecessor.source == token.source &&
+        predecessor.generation == token.generation && SameWalkGoal(predecessor.sourceGoal, token.payloadGoal);
+}
+
+[[nodiscard]] inline bool FlightStatusOwnsPredecessor(
+    ErrandsPredecessor const& predecessor, bool travelFlightStatus)
+{
+    return travelFlightStatus && predecessor.active &&
+        (predecessor.source == ErrandsPredecessorSource::TravelFlight ||
+         predecessor.source == ErrandsPredecessorSource::ReturnFlight);
+}
+
+[[nodiscard]] inline bool ServiceBoundaryNeedsHandoff(
+    ErrandsPredecessor const& predecessor, bool phaseEnding, std::uint8_t currentStop,
+    WalkGoalKey const& currentGoal)
+{
+    return predecessor.active && predecessor.source == ErrandsPredecessorSource::ServiceStop &&
+        (phaseEnding || predecessor.stop != currentStop ||
+         !SameWalkGoal(predecessor.expectedGoal, currentGoal));
+}
+
+// Capture only changes made synchronously by the exact errand-owned generic movement call. A later
+// call may advance an identity only when the before-snapshot is still the identity previously owned.
+inline void ObserveErrandsPredecessorCall(
+    ErrandsPredecessor& predecessor, ErrandsPredecessorFacts const& before,
+    ErrandsPredecessorFacts const& after)
+{
+    if (!SameErrandsPredecessorSource(predecessor, before) ||
+        !SameErrandsPredecessorSource(predecessor, after) || !after.moveFar.active ||
+        !SameWalkGoal(after.moveFar.goal, predecessor.expectedGoal))
+        return;
+
+    if (after.moveFar.active && !SameMoveFarOwner(before.moveFar, after.moveFar) &&
+        (!predecessor.moveFarOwned || SameMoveFarOwner(before.moveFar, predecessor.ownedMoveFar)))
+    {
+        predecessor.moveFarOwned = true;
+        predecessor.ownedMoveFar = after.moveFar;
+    }
+    if (!predecessor.moveFarOwned)
+        return;
+
+    if (after.intent.active && !SameTravelIntentOwner(before.intent, after.intent) &&
+        (!predecessor.intentOwned || SameTravelIntentOwner(before.intent, predecessor.ownedIntent)))
+    {
+        predecessor.intentOwned = true;
+        predecessor.ownedIntent = after.intent;
+    }
+    if (after.movement.active && !SameLastMovementOwner(before.movement, after.movement) &&
+        (!predecessor.movementOwned || SameLastMovementOwner(before.movement, predecessor.ownedMovement)))
+    {
+        predecessor.movementOwned = true;
+        predecessor.ownedMovement = after.movement;
+    }
+}
+
+// Retirement is all-or-nothing. A mismatched field may be a newer inactive owner; preserve every
+// field and let the enclosing finite phase timeout arbitrate instead of partially rewriting authority.
+[[nodiscard]] inline ErrandsPredecessorDecision DecideErrandsPredecessorHandoff(
+    ErrandsPredecessor const& predecessor, ErrandsPredecessorFacts const& facts)
+{
+    if (!predecessor.active)
+        return ErrandsPredecessorDecision::CompleteAbsent;
+    if (!SameErrandsPredecessorSource(predecessor, facts))
+        return ErrandsPredecessorDecision::PreserveSourceMismatch;
+    if (facts.botMoving || facts.nativeSplineActive)
+        return ErrandsPredecessorDecision::WaitForMotion;
+    if (facts.intent.active &&
+        (!predecessor.intentOwned || !SameTravelIntentOwner(facts.intent, predecessor.ownedIntent)))
+        return ErrandsPredecessorDecision::PreserveTravelIntent;
+    if (facts.movement.active &&
+        (!predecessor.movementOwned || !SameLastMovementOwner(facts.movement, predecessor.ownedMovement)))
+        return ErrandsPredecessorDecision::PreserveLastMovement;
+    bool const identityCorroborated =
+        (facts.intent.active && predecessor.intentOwned) ||
+        (facts.movement.active && predecessor.movementOwned);
+    if (facts.moveFar.active &&
+        (!predecessor.moveFarOwned || !SameMoveFarOwner(facts.moveFar, predecessor.ownedMoveFar) ||
+         !SameWalkGoal(facts.moveFar.goal, predecessor.expectedGoal) ||
+         !identityCorroborated))
+        return ErrandsPredecessorDecision::PreserveMoveFar;
+    if (facts.moveFar.active || facts.intent.active || facts.movement.active)
+        return ErrandsPredecessorDecision::RetireOwned;
+    return ErrandsPredecessorDecision::CompleteAbsent;
+}
+
+[[nodiscard]] inline char const* ErrandsPredecessorSourceName(ErrandsPredecessorSource source)
+{
+    switch (source)
+    {
+        case ErrandsPredecessorSource::TravelFlight: return "travel_flight";
+        case ErrandsPredecessorSource::ReturnFlight: return "return_flight";
+        case ErrandsPredecessorSource::ServiceStop: return "service_stop";
+        case ErrandsPredecessorSource::None: return "none";
+    }
+    return "none";
+}
+
+[[nodiscard]] inline char const* ErrandsPredecessorResultName(ErrandsPredecessorDecision decision)
+{
+    switch (decision)
+    {
+        case ErrandsPredecessorDecision::CompleteAbsent: return "complete";
+        case ErrandsPredecessorDecision::WaitForMotion: return "wait";
+        case ErrandsPredecessorDecision::RetireOwned: return "retire";
+        case ErrandsPredecessorDecision::PreserveSourceMismatch:
+        case ErrandsPredecessorDecision::PreserveMoveFar:
+        case ErrandsPredecessorDecision::PreserveTravelIntent:
+        case ErrandsPredecessorDecision::PreserveLastMovement: return "preserve";
+        case ErrandsPredecessorDecision::None: return "none";
+    }
+    return "none";
+}
+
+[[nodiscard]] inline char const* ErrandsPredecessorReasonName(ErrandsPredecessorDecision decision)
+{
+    switch (decision)
+    {
+        case ErrandsPredecessorDecision::CompleteAbsent: return "metadata_absent";
+        case ErrandsPredecessorDecision::WaitForMotion: return "live_motion";
+        case ErrandsPredecessorDecision::RetireOwned: return "matched_finished";
+        case ErrandsPredecessorDecision::PreserveSourceMismatch: return "source_mismatch";
+        case ErrandsPredecessorDecision::PreserveMoveFar: return "move_far_conflict";
+        case ErrandsPredecessorDecision::PreserveTravelIntent: return "intent_conflict";
+        case ErrandsPredecessorDecision::PreserveLastMovement: return "last_movement_conflict";
+        case ErrandsPredecessorDecision::None: return "none";
+    }
+    return "none";
+}
 
 enum class PreparedWalkProofKind : std::uint8_t
 {
@@ -1453,6 +1719,8 @@ struct BotState
     bool legIssued = false;                 // flight handed to the flight status / hearth cast requested
     bool hearthUsed = false;
     PreparedWalkSegment preparedWalk{};     // exact proof/execution segment; never reused after it stops
+    std::uint64_t predecessorGeneration = 0;  // monotonically increasing per-bot, process-memory only
+    ErrandsPredecessor predecessor{};       // exact generic owner crossing an internal run boundary
     bool townWalkAttempted = false;          // a town-bound prepared spline started in this run
     std::uint32_t walkSourceZone = 0;        // live source of the latest town-bound prepared segment
     std::uint64_t walkRetryMs = 0;           // transient WalkPrepared rejection probe cooldown
@@ -1540,6 +1808,7 @@ struct BotState
     next.nextTrainRunMs = s.nextTrainRunMs;
     next.lastAhGearLevel = s.lastAhGearLevel;
     next.nextMountMs = s.nextMountMs;
+    next.predecessorGeneration = s.predecessorGeneration;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;
     return next;
@@ -1570,6 +1839,12 @@ inline bool Enabled() { return detail::gEnabled; }
 void LoadConfig();
 // A run (travel, errands or return) is under way for this bot. Zone progression waits for it.
 bool Active(std::uint32_t guid);
+// Flight action seam: the caller takes O(1) before/after generic-movement snapshots only while the
+// matching current errand flight predecessor is armed. The observer revalidates under the state lock.
+ErrandsFlightCaptureToken ArmFlightPredecessorCapture(std::uint32_t guid, WalkGoalKey const& payloadGoal);
+void ObserveFlightPredecessorCall(
+    std::uint32_t guid, ErrandsFlightCaptureToken const& token, WalkGoalKey const& callGoal,
+    ErrandsPredecessorFacts const& before, ErrandsPredecessorFacts const& after);
 }  // namespace AutoWowErrands
 
 #endif  // AUTOWOW_ERRANDS_POLICY_H

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -3906,6 +3907,61 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
         return false;
 
     auto& data = *dataPtr;
+    auto goalKey = [](WorldPosition const& pos)
+    {
+        return AutoWowErrands::WalkGoalKey{
+            pos.GetMapId(), static_cast<std::int32_t>(pos.GetPositionX()),
+            static_cast<std::int32_t>(pos.GetPositionY()), static_cast<std::int32_t>(pos.GetPositionZ())};
+    };
+    auto movementFacts = [&]()
+    {
+        AutoWowErrands::ErrandsPredecessorFacts facts;
+        bool const moveFarActive = info.moveFarPos != WorldPosition();
+        facts.moveFar = {
+            moveFarActive,
+            moveFarActive ? goalKey(info.moveFarPos) : AutoWowErrands::WalkGoalKey{},
+            moveFarActive ? std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionX()) : 0,
+            moveFarActive ? std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionY()) : 0,
+            moveFarActive ? std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionZ()) : 0};
+        TravelIntentPolicy::Intent const& intent = info.travelIntent;
+        facts.intent = {
+            intent.active,
+            {intent.goal.mapId, intent.goal.x, intent.goal.y, intent.goal.z},
+            intent.createdMs,
+            intent.lastObservedMs,
+            intent.segmentsCommitted,
+            intent.failures};
+        LastMovement const& movement = AI_VALUE(LastMovement&, "last movement");
+        facts.movement = {
+            movement.msTime != 0,
+            {movement.lastMoveToMapId, static_cast<std::int32_t>(movement.lastMoveToX),
+             static_cast<std::int32_t>(movement.lastMoveToY),
+             static_cast<std::int32_t>(movement.lastMoveToZ)},
+            movement.msTime};
+        return facts;
+    };
+    auto moveToFlightMaster = [&](WorldPosition target, bool* outStuck = nullptr)
+    {
+        if (!AutoWowErrands::Enabled())
+            return MoveFarTo(target, /*questNoTeleport*/ false, outStuck);
+        AutoWowErrands::WalkGoalKey const payloadGoal = goalKey(data.flightMasterPos);
+        bool const captureEligible = bot->IsInWorld() && !bot->IsDuringRemoveFromWorld() && bot->IsAlive() &&
+            !bot->IsInFlight() && !bot->IsInCombat() && !bot->IsBeingTeleported() &&
+            botAI->IsAutoWowIndependentParty() && !botAI->IsRealPlayer() && !botAI->HasRealPlayerMaster() &&
+            !botAI->IsAutoWowPaused() && !AutoWowOracleRuntime::IsManagedBot(bot->GetGUID().GetCounter()) &&
+            bot->GetMap() && !bot->GetMap()->Instanceable() && !bot->GetTransport();
+        if (!captureEligible)
+            return MoveFarTo(target, /*questNoTeleport*/ false, outStuck);
+        AutoWowErrands::ErrandsFlightCaptureToken const capture =
+            AutoWowErrands::ArmFlightPredecessorCapture(bot->GetGUID().GetCounter(), payloadGoal);
+        if (!capture.active)
+            return MoveFarTo(target, /*questNoTeleport*/ false, outStuck);
+        AutoWowErrands::ErrandsPredecessorFacts const before = movementFacts();
+        bool const moved = MoveFarTo(target, /*questNoTeleport*/ false, outStuck);
+        AutoWowErrands::ObserveFlightPredecessorCall(
+            bot->GetGUID().GetCounter(), capture, goalKey(target), before, movementFacts());
+        return moved;
+    };
     if (bot->IsInFlight())
     {
         data.inFlight = true;
@@ -3918,14 +3974,14 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
     if (AutoWowFlightTrap::Enabled() && bot->GetDistance(data.flightMasterPos) > INTERACTION_DISTANCE)
     {
         bool stuck = false;
-        bool const moved = MoveFarTo(data.flightMasterPos, /*questNoTeleport*/ false, &stuck);
+        bool const moved = moveToFlightMaster(data.flightMasterPos, &stuck);
         if (stuck)
             return AbandonTravelFlight(botAI, FlightTrapPolicy::Exit::GaveUp);
         return moved;
     }
 
     if (bot->GetDistance(data.flightMasterPos) > INTERACTION_DISTANCE)
-        return MoveFarTo(data.flightMasterPos);
+        return moveToFlightMaster(data.flightMasterPos);
 
     Creature* flightMaster = bot->FindNearestCreature(data.flightMasterEntry, INTERACTION_DISTANCE * 3);
     if (!flightMaster || !flightMaster->IsAlive())
@@ -3937,7 +3993,7 @@ bool NewRpgTravelFlightAction::Execute(Event /*event*/)
         return true;
     }
     if (bot->GetDistance(flightMaster) > INTERACTION_DISTANCE)
-        return MoveFarTo(flightMaster);
+        return moveToFlightMaster(WorldPosition(flightMaster));
 
     std::vector<uint32> nodes = data.path;
 

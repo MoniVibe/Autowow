@@ -606,6 +606,263 @@ TEST(Errands, StartWaitsForActivePredecessorButCanRetireFinishedMetadata)
               ErrandsStartHandoff::WaitForActivePredecessor);
 }
 
+TEST(Errands, OwnedFinishedPredecessorRetiresOnlyAfterPhysicalMotionEnds)
+{
+    WalkGoalKey const flightMaster{530, -225, 1050, 54};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::TravelFlight;
+    before.generation = 41;
+    before.expectedGoal = flightMaster;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, 0, before.generation, flightMaster, before);
+
+    ErrandsPredecessorFacts issued = before;
+    issued.moveFar = {true, flightMaster};
+    issued.intent = {true, flightMaster, 100, 110, 1, 0};
+    issued.movement = {true, {530, -180, 1020, 52}, 111};
+    ObserveErrandsPredecessorCall(predecessor, before, issued);
+    ASSERT_TRUE(predecessor.moveFarOwned);
+    ASSERT_TRUE(predecessor.intentOwned);
+    ASSERT_TRUE(predecessor.movementOwned);
+
+    issued.botMoving = true;
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, issued),
+              ErrandsPredecessorDecision::WaitForMotion);
+    issued.botMoving = false;
+    issued.nativeSplineActive = true;
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, issued),
+              ErrandsPredecessorDecision::WaitForMotion);
+    issued.nativeSplineActive = false;
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, issued),
+              ErrandsPredecessorDecision::RetireOwned);
+}
+
+TEST(Errands, NewerSameGoalIntentAndMovementAreNeverRelabelled)
+{
+    WalkGoalKey const stopGoal{530, -713, 2613, 94};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ServiceStop;
+    before.stop = 2;
+    before.generation = 77;
+    before.expectedGoal = stopGoal;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, before.stop, before.generation, stopGoal, before);
+
+    ErrandsPredecessorFacts owned = before;
+    owned.moveFar = {true, stopGoal};
+    owned.intent = {true, stopGoal, 100, 110, 1, 0};
+    owned.movement = {true, stopGoal, 111};
+    ObserveErrandsPredecessorCall(predecessor, before, owned);
+
+    ErrandsPredecessorFacts foreign = owned;
+    foreign.intent.createdMs = 200;
+    foreign.intent.lastObservedMs = 210;
+    foreign.movement.msTime = 211;
+    ErrandsPredecessorFacts afterForeignCall = foreign;
+    afterForeignCall.intent.lastObservedMs = 220;
+    afterForeignCall.movement.msTime = 221;
+    ObserveErrandsPredecessorCall(predecessor, foreign, afterForeignCall);
+
+    EXPECT_EQ(predecessor.ownedIntent.createdMs, 100U);
+    EXPECT_EQ(predecessor.ownedMovement.msTime, 111U);
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, afterForeignCall),
+              ErrandsPredecessorDecision::PreserveTravelIntent);
+    afterForeignCall.intent = {};
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, afterForeignCall),
+              ErrandsPredecessorDecision::PreserveLastMovement);
+}
+
+TEST(Errands, OwnedCallMayAdvanceOnlyItsUnchangedPriorIdentity)
+{
+    WalkGoalKey const goal{530, -713, 2613, 94};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ServiceStop;
+    before.stop = 1;
+    before.generation = 3;
+    before.expectedGoal = goal;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, before.stop, before.generation, goal, before);
+    ErrandsPredecessorFacts first = before;
+    first.moveFar = {true, goal, 1, 2, 3};
+    first.intent = {true, goal, 10, 20, 1, 0};
+    first.movement = {true, goal, 30};
+    ObserveErrandsPredecessorCall(predecessor, before, first);
+
+    ErrandsPredecessorFacts next = first;
+    next.intent.lastObservedMs = 40;
+    next.intent.segmentsCommitted = 2;
+    next.movement.msTime = 50;
+    ObserveErrandsPredecessorCall(predecessor, first, next);
+    EXPECT_EQ(predecessor.ownedIntent.lastObservedMs, 40U);
+    EXPECT_EQ(predecessor.ownedMovement.msTime, 50U);
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, next),
+              ErrandsPredecessorDecision::RetireOwned);
+}
+
+TEST(Errands, NewerSubYardMoveFarIsPreservedEvenWhenIntegerGoalMatches)
+{
+    WalkGoalKey const goal{530, -713, 2613, 94};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ServiceStop;
+    before.stop = 1;
+    before.generation = 4;
+    before.expectedGoal = goal;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, before.stop, before.generation, goal, before);
+    ErrandsPredecessorFacts owned = before;
+    owned.moveFar = {true, goal, 10, 20, 30};
+    owned.intent = {true, goal, 100, 110, 1, 0};
+    owned.movement = {true, goal, 120};
+    ObserveErrandsPredecessorCall(predecessor, before, owned);
+
+    ErrandsPredecessorFacts foreign = owned;
+    foreign.moveFar.xBits = 11;  // same integer yard, different native float position
+    ObserveErrandsPredecessorCall(predecessor, foreign, foreign);
+    EXPECT_EQ(predecessor.ownedMoveFar.xBits, 10U);
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, foreign),
+              ErrandsPredecessorDecision::PreserveMoveFar);
+}
+
+TEST(Errands, PredecessorSourceGenerationAndGoalMismatchFailClosed)
+{
+    WalkGoalKey const expected{1, 100, 200, 30};
+    ErrandsPredecessorFacts facts;
+    facts.source = ErrandsPredecessorSource::ReturnFlight;
+    facts.generation = 9;
+    facts.expectedGoal = expected;
+    ErrandsPredecessor const predecessor = BeginErrandsPredecessor(
+        facts.source, 0, facts.generation, expected, facts);
+
+    facts.source = ErrandsPredecessorSource::TravelFlight;
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, facts),
+              ErrandsPredecessorDecision::PreserveSourceMismatch);
+    facts.source = ErrandsPredecessorSource::ReturnFlight;
+    ++facts.generation;
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, facts),
+              ErrandsPredecessorDecision::PreserveSourceMismatch);
+    --facts.generation;
+    ++facts.expectedGoal.x;
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, facts),
+              ErrandsPredecessorDecision::PreserveSourceMismatch);
+}
+
+TEST(Errands, BareSameGoalMoveFarIsAmbiguousAndPreserved)
+{
+    WalkGoalKey const expected{1, 100, 200, 30};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ServiceStop;
+    before.stop = 1;
+    before.generation = 2;
+    before.expectedGoal = expected;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, before.stop, before.generation, expected, before);
+    ErrandsPredecessorFacts after = before;
+    after.moveFar = {true, expected};
+    ObserveErrandsPredecessorCall(predecessor, before, after);
+    ASSERT_TRUE(predecessor.moveFarOwned);
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, after),
+              ErrandsPredecessorDecision::PreserveMoveFar);
+}
+
+TEST(Errands, FlightCaptureGenerationAndReturnStatusAreExact)
+{
+    WalkGoalKey const payload{530, -225, 1050, 54};
+    ErrandsPredecessorFacts baseline;
+    baseline.source = ErrandsPredecessorSource::ReturnFlight;
+    baseline.generation = 8;
+    baseline.expectedGoal = payload;
+    ErrandsPredecessor const predecessor = BeginErrandsPredecessor(
+        baseline.source, 0, baseline.generation, payload, baseline);
+    ErrandsFlightCaptureToken token{true, baseline.source, baseline.generation, payload};
+    EXPECT_TRUE(MatchesFlightCapture(predecessor, token));
+    EXPECT_TRUE(FlightStatusOwnsPredecessor(predecessor, true));
+    EXPECT_FALSE(FlightStatusOwnsPredecessor(predecessor, false));
+    ++token.generation;
+    EXPECT_FALSE(MatchesFlightCapture(predecessor, token));
+}
+
+TEST(Errands, ReturnFlightCrossZoneLandingRetiresWithoutZoneContinuity)
+{
+    WalkGoalKey const flightMaster{530, -225, 1050, 54};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ReturnFlight;
+    before.generation = 9;
+    before.expectedGoal = flightMaster;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, 0, before.generation, flightMaster, before);
+    ErrandsPredecessorFacts issued = before;
+    issued.moveFar = {true, flightMaster, 1, 2, 3};
+    issued.intent = {true, flightMaster, 10, 20, 1, 0};
+    issued.movement = {true, flightMaster, 30};
+    ObserveErrandsPredecessorCall(predecessor, before, issued);
+
+    // Zone is deliberately absent from predecessor identity: a normal taxi may land in another
+    // zone on the same allowed map. Only source, generation, payload and exact generic owners matter.
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, issued),
+              ErrandsPredecessorDecision::RetireOwned);
+}
+
+TEST(Errands, ServiceCompletionAndTimeoutRequireOldOwnerBeforeNextBoundary)
+{
+    WalkGoalKey const firstGoal{530, -713, 2613, 94};
+    WalkGoalKey const secondGoal{530, -680, 2640, 95};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ServiceStop;
+    before.stop = 1;
+    before.generation = 12;
+    before.expectedGoal = firstGoal;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, before.stop, before.generation, firstGoal, before);
+    EXPECT_FALSE(ServiceBoundaryNeedsHandoff(predecessor, false, 1, firstGoal));
+    EXPECT_TRUE(ServiceBoundaryNeedsHandoff(predecessor, false, 2, secondGoal));
+    EXPECT_TRUE(ServiceBoundaryNeedsHandoff(predecessor, true, 1, firstGoal));
+
+    ErrandsPredecessorFacts owned = before;
+    owned.moveFar = {true, firstGoal, 1, 2, 3};
+    owned.intent = {true, firstGoal, 10, 20, 1, 0};
+    owned.movement = {true, firstGoal, 30};
+    ObserveErrandsPredecessorCall(predecessor, before, owned);
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, owned),
+              ErrandsPredecessorDecision::RetireOwned);
+
+    predecessor = {};
+    EXPECT_FALSE(ServiceBoundaryNeedsHandoff(predecessor, true, 2, secondGoal));
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, {}),
+              ErrandsPredecessorDecision::CompleteAbsent);
+}
+
+TEST(Errands, ForeignOwnerIsPreservedAndEnclosingPhaseRemainsFinite)
+{
+    WalkGoalKey const expected{1, 100, 200, 30};
+    WalkGoalKey const foreignGoal{1, 400, 500, 60};
+    ErrandsPredecessorFacts before;
+    before.source = ErrandsPredecessorSource::ServiceStop;
+    before.stop = 1;
+    before.generation = 14;
+    before.expectedGoal = expected;
+    ErrandsPredecessor predecessor = BeginErrandsPredecessor(
+        before.source, before.stop, before.generation, expected, before);
+    ErrandsPredecessorFacts foreign = before;
+    foreign.moveFar = {true, foreignGoal, 4, 5, 6};
+    EXPECT_EQ(DecideErrandsPredecessorHandoff(predecessor, foreign),
+              ErrandsPredecessorDecision::PreserveMoveFar);
+
+    Params p;
+    BotState s;
+    s.phaseMs = 100;
+    EXPECT_TRUE(LegExhausted(p, s, 101 + p.returnTimeoutMs, p.returnTimeoutMs));
+}
+
+TEST(Errands, PredecessorGenerationNeverWrapsOrReuses)
+{
+    std::uint64_t generation = 0;
+    EXPECT_EQ(NextErrandsPredecessorGeneration(generation), 1U);
+    generation = UINT64_MAX - 1;
+    EXPECT_EQ(NextErrandsPredecessorGeneration(generation), UINT64_MAX);
+    EXPECT_EQ(NextErrandsPredecessorGeneration(generation), 0U);
+    EXPECT_EQ(generation, UINT64_MAX);
+}
+
 TEST(Errands, OnlyExactLivePreparedSegmentBypassesFreshProbe)
 {
     WalkGoalKey const town{1, 10127, 2224, 1328};
@@ -667,6 +924,8 @@ TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
     s.town = 99;
     s.lastClassTrainLevel = 24;
     s.spent = 500;
+    s.predecessorGeneration = 44;
+    s.predecessor.active = true;
     s.sellerRetry.count = 1;
     s.sellerRetry.spawns[0] = 77;
     RememberTownWalkFailure(s.walkBackoffs, 46341, 148, NeedProfTrain, 100, 5000);
@@ -674,6 +933,8 @@ TEST(Errands, AfterRunKeepsTrainLevelAndCoolsDown)
     EXPECT_EQ(n.phase, Phase::None);
     EXPECT_EQ(n.town, 0U);
     EXPECT_EQ(n.spent, 0U);
+    EXPECT_EQ(n.predecessorGeneration, 44U);
+    EXPECT_FALSE(n.predecessor.active);
     EXPECT_EQ(n.lastClassTrainLevel, 24U);
     EXPECT_EQ(n.sellerRetry.count, 0U);
     EXPECT_TRUE(TownWalkBackedOff(n.walkBackoffs, 46341, 148, NeedProfTrain, 1000));
@@ -1010,7 +1271,7 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 10u);
+    EXPECT_EQ(kStateVersion, 13u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
 }
@@ -1467,7 +1728,7 @@ TEST(Mounts, StateAndWireBits)
     EXPECT_EQ(next.mountGrantMs, 0U);    // run-scoped
     EXPECT_EQ(next.rideTier, 0U);
     EXPECT_EQ(next.mountItem, 0U);
-    EXPECT_EQ(kStateVersion, 10U);
+    EXPECT_EQ(kStateVersion, 13U);
     EXPECT_EQ(std::uint32_t(NeedRiding), 16384U);
     EXPECT_EQ(std::uint32_t(DoneRiding), 4096U);
     EXPECT_EQ(std::uint32_t(DoneMount), 8192U);
