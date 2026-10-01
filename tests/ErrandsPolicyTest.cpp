@@ -1735,4 +1735,26 @@ TEST(Mounts, StateAndWireBits)
     EXPECT_EQ(MountLedgerFields(81389, 1, "spell", 33388, 40000, true),
               ",\"site\":81389,\"tier\":1,\"spell\":33388,\"copper\":40000,\"learned\":true");
 }
+
+TEST(ErrandsDiagnostics, ClassifiesAbsentCurrentAndInvalidStoredState)
+{
+    EXPECT_EQ(ClassifyDiagnosticState(false, 0, kStateVersion), DiagnosticState::Absent);
+    EXPECT_EQ(ClassifyDiagnosticState(true, kStateVersion, kStateVersion), DiagnosticState::Current);
+    EXPECT_EQ(ClassifyDiagnosticState(true, kStateVersion - 1, kStateVersion), DiagnosticState::InvalidVersion);
+    EXPECT_STREQ(DiagnosticStateName(DiagnosticState::Absent), "absent");
+    EXPECT_STREQ(DiagnosticStateName(DiagnosticState::Current), "current");
+    EXPECT_STREQ(DiagnosticStateName(DiagnosticState::InvalidVersion), "invalid_version");
+}
+
+TEST(ErrandsDiagnostics, MissingGetterDoesNotInsertOrNormalizeState)
+{
+    constexpr std::uint32_t guid = 0xFFFFFFFEu;
+    BotState first;
+    BotState second;
+    EXPECT_FALSE(ReadStateForDiagnostics(guid, first));
+    EXPECT_FALSE(ReadStateForDiagnostics(guid, second));
+    EXPECT_EQ(first.version, kStateVersion);
+    EXPECT_EQ(second.version, kStateVersion);
+}
+
 }  // namespace

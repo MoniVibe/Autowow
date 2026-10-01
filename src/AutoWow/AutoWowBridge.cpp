@@ -16,6 +16,8 @@
 #include "EncounterTelemetry.h"
 #include "DungeonPathSafety.h"
 #include "DungeonPathWalkAction.h"
+#include "DeathLoopBreaker.h"
+#include "ErrandsPolicy.h"
 #include "ExactPartyRepairPolicy.h"
 #include "ExactBossTargetControl.h"
 #include "FixtureAccelerationControl.h"
@@ -59,12 +61,15 @@
 #include "Event.h"
 #include "GameObject.h"
 #include "GameEventMgr.h"
+#include "GameTime.h"
 #include "Group.h"
 #include "GroupMgr.h"
 #include "Map.h"
 #include "GatheringWorkerState.h"
 #include "MoveToTravelTargetAction.h"
 #include "Log.h"
+#include "LastMovementValue.h"
+#include "NewRpgBaseAction.h"
 #include "NewRpgInfo.h"
 #include "ObserverControl.h"
 #include "AutoWowProfessionEconomyTelemetry.h"
@@ -88,6 +93,7 @@
 #include "SharedValueContext.h"
 #include "StatsCollector.h"
 #include "StatsWeightCalculator.h"
+#include "SurvivalRecovery.h"
 #include "TravelMgr.h"
 #include "Unit.h"
 #include "Value.h"
@@ -221,6 +227,7 @@ enum class AutoWowRequestType
     OracleLog,
     Destinations,
     Snapshot,
+    SurvivalStatus,
     GearScore,
     CombatLog,
     EncounterLog,
@@ -906,6 +913,288 @@ void AppendOracleJson(std::ostringstream& out, uint32 botGuid)
         << '}';
 }
 
+char const* NewRpgStatusName(NewRpgStatus status)
+{
+    switch (status)
+    {
+        case RPG_IDLE: return "idle";
+        case RPG_GO_GRIND: return "go_grind";
+        case RPG_GO_CAMP: return "go_camp";
+        case RPG_WANDER_RANDOM: return "wander_random";
+        case RPG_WANDER_NPC: return "wander_npc";
+        case RPG_DO_QUEST: return "do_quest";
+        case RPG_TRAVEL_FLIGHT: return "travel_flight";
+        case RPG_REST: return "rest";
+        case RPG_OUTDOOR_PVP: return "outdoor_pvp";
+        case RPG_STATUS_END: return "invalid";
+    }
+    return "invalid";
+}
+
+char const* ErrandsPhaseName(AutoWowErrands::Phase phase)
+{
+    switch (phase)
+    {
+        case AutoWowErrands::Phase::None: return "none";
+        case AutoWowErrands::Phase::Travel: return "travel";
+        case AutoWowErrands::Phase::Errands: return "errands";
+        case AutoWowErrands::Phase::Return: return "return";
+    }
+    return "invalid";
+}
+
+void AppendAge64(std::ostringstream& out, std::uint64_t timestampMs, std::uint64_t nowMs)
+{
+    out << "{\"valid\":" << (timestampMs ? "true" : "false")
+        << ",\"timestamp_ms\":";
+    if (timestampMs)
+        out << timestampMs;
+    else
+        out << "null";
+    out << ",\"clock_reversed\":" << (timestampMs && nowMs < timestampMs ? "true" : "false")
+        << ",\"age_ms\":";
+    if (timestampMs)
+        out << (nowMs >= timestampMs ? nowMs - timestampMs : 0);
+    else
+        out << "null";
+    out << '}';
+}
+
+void AppendJsonNumber(std::ostringstream& out, double value);
+
+void AppendWalkGoal(std::ostringstream& out, AutoWowErrands::WalkGoalKey const& goal)
+{
+    out << "{\"map\":" << goal.map << ",\"x\":";
+    AppendJsonNumber(out, goal.x);
+    out << ",\"y\":";
+    AppendJsonNumber(out, goal.y);
+    out << ",\"z\":";
+    AppendJsonNumber(out, goal.z);
+    out << '}';
+}
+
+void AppendMoveFarOwner(std::ostringstream& out, AutoWowErrands::WalkGoalOwner const& owner)
+{
+    out << "{\"active\":" << (owner.active ? "true" : "false") << ",\"goal\":";
+    AppendWalkGoal(out, owner.goal);
+    out << ",\"x_bits\":" << owner.xBits << ",\"y_bits\":" << owner.yBits
+        << ",\"z_bits\":" << owner.zBits << '}';
+}
+
+void AppendTravelIntentOwner(std::ostringstream& out, AutoWowErrands::TravelIntentOwner const& owner)
+{
+    out << "{\"active\":" << (owner.active ? "true" : "false") << ",\"goal\":";
+    AppendWalkGoal(out, owner.goal);
+    out << ",\"created_ms\":" << owner.createdMs << ",\"last_observed_ms\":" << owner.lastObservedMs
+        << ",\"segments_committed\":" << owner.segmentsCommitted << ",\"failures\":" << owner.failures << '}';
+}
+
+void AppendLastMovementOwner(std::ostringstream& out, AutoWowErrands::LastMovementOwner const& owner)
+{
+    out << "{\"active\":" << (owner.active ? "true" : "false") << ",\"endpoint\":";
+    AppendWalkGoal(out, owner.endpoint);
+    out << ",\"timestamp_ms\":" << owner.msTime << '}';
+}
+
+void AppendErrandsPredecessor(std::ostringstream& out, AutoWowErrands::ErrandsPredecessor const& predecessor)
+{
+    out << "{\"version\":" << static_cast<std::uint32_t>(predecessor.version)
+        << ",\"active\":" << (predecessor.active ? "true" : "false")
+        << ",\"source\":" << JsonString(AutoWowErrands::ErrandsPredecessorSourceName(predecessor.source))
+        << ",\"stop\":" << static_cast<std::uint32_t>(predecessor.stop)
+        << ",\"generation\":" << predecessor.generation << ",\"source_goal\":";
+    AppendWalkGoal(out, predecessor.sourceGoal);
+    out << ",\"expected_goal\":";
+    AppendWalkGoal(out, predecessor.expectedGoal);
+    out << ",\"last_decision\":"
+        << JsonString(AutoWowErrands::ErrandsPredecessorReasonName(predecessor.lastDecision))
+        << ",\"ownership\":{\"move_far\":" << (predecessor.moveFarOwned ? "true" : "false")
+        << ",\"travel_intent\":" << (predecessor.intentOwned ? "true" : "false")
+        << ",\"last_movement\":" << (predecessor.movementOwned ? "true" : "false")
+        << "},\"baseline\":{\"move_far\":";
+    AppendMoveFarOwner(out, predecessor.baselineMoveFar);
+    out << ",\"travel_intent\":";
+    AppendTravelIntentOwner(out, predecessor.baselineIntent);
+    out << ",\"last_movement\":";
+    AppendLastMovementOwner(out, predecessor.baselineMovement);
+    out << "},\"owned\":{\"move_far\":";
+    AppendMoveFarOwner(out, predecessor.ownedMoveFar);
+    out << ",\"travel_intent\":";
+    AppendTravelIntentOwner(out, predecessor.ownedIntent);
+    out << ",\"last_movement\":";
+    AppendLastMovementOwner(out, predecessor.ownedMovement);
+    out << "}}";
+}
+
+std::string SurvivalStatusJson(Player* bot, PlayerbotAI* botAI)
+{
+    std::uint32_t const guid = bot->GetGUID().GetCounter();
+    NewRpgInfo& info = botAI->rpgInfo;
+    NewRpgStatus const status = info.GetStatus();
+    NewRpgInfo::TravelFlight const* flight = std::get_if<NewRpgInfo::TravelFlight>(&info.data);
+    std::uint64_t const gameNow = static_cast<std::uint64_t>(GameTime::GetGameTimeMS().count());
+    AutoWowSafeRevive::Diagnostic const safeRevive = AutoWowSafeRevive::ReadDiagnostic(guid);
+    AutoWowDeathLoop::Diagnostic const deathLoop = AutoWowDeathLoop::ReadDiagnostic(guid);
+    AutoWowErrands::BotState errands;
+    bool const errandsTracked = AutoWowErrands::ReadStateForDiagnostics(guid, errands);
+    AutoWowErrands::DiagnosticState const errandsState = AutoWowErrands::ClassifyDiagnosticState(
+        errandsTracked, errands.version, AutoWowErrands::kStateVersion);
+    bool const errandsVersionValid = errandsState == AutoWowErrands::DiagnosticState::Current;
+
+    LastMovement const* lastMovement = nullptr;
+    if (AiObjectContext* context = botAI->GetAiObjectContext())
+    {
+        std::set<std::string> const createdValues = context->GetValues();
+        if (createdValues.find("last movement") != createdValues.end())
+            if (Value<LastMovement&>* value = context->GetValue<LastMovement&>("last movement"))
+                lastMovement = &value->Get();
+    }
+
+    bool const moveFarActive = info.moveFarPos != WorldPosition();
+    bool const nativeInitialized = bot->movespline && bot->movespline->Initialized();
+    bool const nativeFinalized = !nativeInitialized || bot->movespline->Finalized();
+    G3D::Vector3 const nativeEnd = nativeInitialized ? bot->movespline->FinalDestination() : G3D::Vector3();
+
+    std::ostringstream out;
+    out << "{\"ok\":true,\"schema\":\"autowow.survival_status.v1\",\"order\":\"survivalstatus\""
+        << ",\"read_only\":true,\"consistency\":\"sequential_reads\",\"guid\":" << guid
+        << ",\"rpg\":{\"status_id\":" << static_cast<int>(status)
+        << ",\"status\":" << JsonString(NewRpgStatusName(status))
+        << ",\"start\":{\"valid\":" << (info.startT ? "true" : "false")
+        << ",\"timestamp_ms\":";
+    if (info.startT)
+        out << info.startT;
+    else
+        out << "null";
+    out << ",\"age_ms\":";
+    if (info.startT)
+        out << GetMSTimeDiffToNow(info.startT);
+    else
+        out << "null";
+    out << "},\"flight_payload\":{\"present\":" << (flight ? "true" : "false");
+    if (flight)
+    {
+        out << ",\"master_entry\":" << flight->flightMasterEntry
+            << ",\"master_position\":{\"map\":" << flight->flightMasterPos.GetMapId()
+            << ",\"x\":";
+        AppendJsonNumber(out, flight->flightMasterPos.GetPositionX());
+        out << ",\"y\":";
+        AppendJsonNumber(out, flight->flightMasterPos.GetPositionY());
+        out << ",\"z\":";
+        AppendJsonNumber(out, flight->flightMasterPos.GetPositionZ());
+        out << "},\"path_nodes\":" << flight->path.size()
+            << ",\"in_flight\":" << (flight->inFlight ? "true" : "false");
+    }
+    out << "},\"move_far\":{\"active\":" << (moveFarActive ? "true" : "false");
+    if (moveFarActive)
+    {
+        out << ",\"map\":" << info.moveFarPos.GetMapId() << ",\"x\":";
+        AppendJsonNumber(out, info.moveFarPos.GetPositionX());
+        out << ",\"y\":";
+        AppendJsonNumber(out, info.moveFarPos.GetPositionY());
+        out << ",\"z\":";
+        AppendJsonNumber(out, info.moveFarPos.GetPositionZ());
+    }
+    out << "},\"travel_intent\":{\"active\":" << (info.travelIntent.active ? "true" : "false")
+        << ",\"version\":" << static_cast<std::uint32_t>(info.travelIntent.version)
+        << ",\"goal\":{\"map\":" << info.travelIntent.goal.mapId << ",\"x\":";
+    AppendJsonNumber(out, info.travelIntent.goal.x);
+    out << ",\"y\":";
+    AppendJsonNumber(out, info.travelIntent.goal.y);
+    out << ",\"z\":";
+    AppendJsonNumber(out, info.travelIntent.goal.z);
+    out << "},\"created_ms\":" << info.travelIntent.createdMs
+        << ",\"last_observed_ms\":" << info.travelIntent.lastObservedMs
+        << ",\"segments_committed\":" << info.travelIntent.segmentsCommitted
+        << ",\"failures\":" << info.travelIntent.failures << "}"
+        << ",\"last_movement\":{\"present\":" << (lastMovement ? "true" : "false");
+    if (lastMovement)
+    {
+        out << ",\"timestamp_ms\":" << lastMovement->msTime << ",\"age_ms\":";
+        if (lastMovement->msTime)
+            out << GetMSTimeDiffToNow(lastMovement->msTime);
+        else
+            out << "null";
+        out << ",\"map\":" << lastMovement->lastMoveToMapId << ",\"x\":";
+        AppendJsonNumber(out, lastMovement->lastMoveToX);
+        out << ",\"y\":";
+        AppendJsonNumber(out, lastMovement->lastMoveToY);
+        out << ",\"z\":";
+        AppendJsonNumber(out, lastMovement->lastMoveToZ);
+    }
+    out << "},\"native_spline\":{\"initialized\":" << (nativeInitialized ? "true" : "false")
+        << ",\"finalized\":" << (nativeFinalized ? "true" : "false")
+        << ",\"active\":" << (nativeInitialized && !nativeFinalized ? "true" : "false")
+        << ",\"id\":" << (nativeInitialized ? bot->movespline->GetId() : 0)
+        << ",\"endpoint\":{\"map\":" << bot->GetMapId() << ",\"x\":";
+    AppendJsonNumber(out, nativeEnd.x);
+    out << ",\"y\":";
+    AppendJsonNumber(out, nativeEnd.y);
+    out << ",\"z\":";
+    AppendJsonNumber(out, nativeEnd.z);
+    out << "}}}"
+        << ",\"safe_revive\":{\"enabled\":" << (safeRevive.enabled ? "true" : "false")
+        << ",\"v2_enabled\":" << (safeRevive.v2Enabled ? "true" : "false")
+        << ",\"tracked\":" << (safeRevive.tracked ? "true" : "false") << ",\"state\":";
+    if (!safeRevive.tracked)
+        out << "null";
+    else
+    {
+        out << "{\"planned\":" << (safeRevive.planned ? "true" : "false")
+            << ",\"retreat_pending\":" << (safeRevive.retreatPending ? "true" : "false")
+            << ",\"retreating\":" << (safeRevive.retreating ? "true" : "false")
+            << ",\"rest_pending\":" << (safeRevive.restPending ? "true" : "false")
+            << ",\"relocate_on_res\":" << (safeRevive.relocateOnRes ? "true" : "false")
+            << ",\"relocate\":" << (safeRevive.relocate ? "true" : "false")
+            << ",\"plan_age\":";
+        AppendAge64(out, safeRevive.planMs, gameNow);
+        out << ",\"retreat_age\":";
+        AppendAge64(out, safeRevive.retreatMs, gameNow);
+        out << '}';
+    }
+    out << "},\"death_loop\":{\"enabled\":" << (deathLoop.enabled ? "true" : "false")
+        << ",\"v2_enabled\":" << (deathLoop.v2Enabled ? "true" : "false")
+        << ",\"tracked\":" << (deathLoop.tracked ? "true" : "false") << ",\"state\":";
+    if (!deathLoop.tracked)
+        out << "null";
+    else
+        out << "{\"relocate\":" << (deathLoop.relocate ? "true" : "false")
+            << ",\"rest_pending\":" << (deathLoop.restPending ? "true" : "false")
+            << ",\"relocation_block\":" << JsonString(AutoWowDeathLoop::RelocationBlockName(deathLoop.relocationBlock))
+            << '}';
+    out << "},\"errands\":{\"enabled\":" << (AutoWowErrands::Enabled() ? "true" : "false")
+        << ",\"tracked\":" << (errandsTracked ? "true" : "false")
+        << ",\"state_class\":" << JsonString(AutoWowErrands::DiagnosticStateName(errandsState))
+        << ",\"version\":{\"stored\":";
+    if (errandsTracked)
+        out << static_cast<std::uint32_t>(errands.version);
+    else
+        out << "null";
+    out << ",\"expected\":" << static_cast<std::uint32_t>(AutoWowErrands::kStateVersion)
+        << ",\"valid\":" << (errandsVersionValid ? "true" : "false") << "},\"state\":";
+    if (!errandsTracked)
+        out << "null";
+    else
+    {
+        out << "{\"active\":" << (errands.phase != AutoWowErrands::Phase::None ? "true" : "false")
+            << ",\"phase_id\":" << static_cast<std::uint32_t>(errands.phase)
+            << ",\"phase\":" << JsonString(ErrandsPhaseName(errands.phase))
+            << ",\"leg_id\":" << static_cast<std::uint32_t>(errands.leg)
+            << ",\"leg\":" << JsonString(AutoWowErrands::LegName(errands.leg))
+            << ",\"leg_issued\":" << (errands.legIssued ? "true" : "false")
+            << ",\"rescued\":" << (errands.rescued ? "true" : "false")
+            << ",\"town\":" << errands.town << ",\"reissues\":" << errands.reissues
+            << ",\"phase_age\":";
+        AppendAge64(out, errands.phaseMs, gameNow);
+        out << ",\"leg_age\":";
+        AppendAge64(out, errands.legMs, gameNow);
+        out << ",\"predecessor\":";
+        AppendErrandsPredecessor(out, errands.predecessor);
+        out << '}';
+    }
+    out << "}}";
+    return out.str();
+}
 std::string SnapshotJson(Player* bot, PlayerbotAI* botAI)
 {
     Unit* target = nullptr;
@@ -2598,6 +2887,8 @@ public:
                 return Finish(true, ListDestinations(bot));
             case AutoWowRequestType::Snapshot:
                 return Finish(true, "{\"ok\":true,\"bot\":" + SnapshotJson(bot, botAI) + "}");
+            case AutoWowRequestType::SurvivalStatus:
+                return Finish(true, SurvivalStatusJson(bot, botAI));
             case AutoWowRequestType::GearScore:
             {
                 ItemTemplate const* itemA = sObjectMgr->GetItemTemplate(m_request.gearItemA);
@@ -5759,6 +6050,8 @@ bool ParseRequest(std::string requestText, AutoWowRequest& request, std::string&
         request.type = AutoWowRequestType::Destinations;
     else if (command == "snapshot")
         request.type = AutoWowRequestType::Snapshot;
+    else if (command == "survivalstatus")
+        request.type = AutoWowRequestType::SurvivalStatus;
     else if (command == "gear-score")
     {
         std::string itemAToken;

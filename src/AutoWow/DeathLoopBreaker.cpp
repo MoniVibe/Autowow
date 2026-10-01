@@ -409,6 +409,24 @@ bool RelocationPending(std::uint32_t botGuid)
     return s && s->relocate;
 }
 
+Diagnostic ReadDiagnostic(std::uint32_t botGuid)
+{
+    Diagnostic diagnostic;
+    diagnostic.enabled = Enabled();
+    diagnostic.v2Enabled = V2Enabled();
+
+    std::lock_guard<std::mutex> guard(gLock);
+    BotState const* state = Find(botGuid);
+    if (!state)
+        return diagnostic;
+
+    diagnostic.tracked = true;
+    diagnostic.relocate = state->relocate;
+    diagnostic.restPending = state->restPending;
+    diagnostic.relocationBlock = state->relocationBlock;
+    return diagnostic;
+}
+
 bool TakeRelocation(std::uint32_t botGuid)
 {
     if (!Enabled())

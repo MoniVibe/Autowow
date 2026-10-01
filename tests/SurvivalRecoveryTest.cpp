@@ -10,6 +10,11 @@
 
 #include <array>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -37,6 +42,18 @@ std::vector<AutoWowSafeRevive::Spot> AllRevive(Point const& corpse)
     for (std::size_t k = 0; k < AutoWowSafeRevive::kReviveCandidates; ++k)
         spots.push_back({AutoWowSafeRevive::ReviveCandidate(corpse, k), true});
     return spots;
+}
+
+std::string ReadSurvivalStatusSource()
+{
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() /
+                        "src/AutoWow/AutoWowBridge.cpp");
+    std::string const source{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    std::size_t const start = source.find("void AppendWalkGoal(");
+    std::size_t const end = source.find("std::string SnapshotJson(", start);
+    if (start == std::string::npos || end == std::string::npos)
+        return {};
+    return source.substr(start, end - start);
 }
 
 // ---- SafeRevive ----------------------------------------------------------------------------------------
@@ -364,4 +381,51 @@ TEST(RestSafe, PvpPlanRevivesOnlyOnAZeroThreatSpot)
     EXPECT_EQ(AutoWowRestSafe::PvpPlan(Plan::None, {}), Plan::SpiritHealer);
     EXPECT_EQ(AutoWowRestSafe::PvpPlan(Plan::SpiritHealer, {0, 0}), Plan::SpiritHealer);
 }
+
+TEST(SafeReviveDiagnostics, MissingGetterDoesNotCreateOrConsumeState)
+{
+    constexpr std::uint32_t guid = 0xFFFFFFFDu;
+    AutoWowSafeRevive::Diagnostic const first = AutoWowSafeRevive::ReadDiagnostic(guid);
+    AutoWowSafeRevive::Diagnostic const second = AutoWowSafeRevive::ReadDiagnostic(guid);
+    EXPECT_FALSE(first.tracked);
+    EXPECT_FALSE(second.tracked);
+    EXPECT_FALSE(AutoWowSafeRevive::RelocationPending(guid));
+}
+
+TEST(SurvivalStatusDiagnostics, GuardsAbsentLastMovementAndFiniteEncodesCoordinates)
+{
+    std::string const source = ReadSurvivalStatusSource();
+    ASSERT_FALSE(source.empty());
+
+    std::size_t const createdValues = source.find("context->GetValues()");
+    std::size_t const absenceGuard = source.find("createdValues.find(\"last movement\")");
+    std::size_t const valueLookup = source.find("context->GetValue<LastMovement&>(\"last movement\")");
+    ASSERT_NE(createdValues, std::string::npos);
+    ASSERT_NE(absenceGuard, std::string::npos);
+    ASSERT_NE(valueLookup, std::string::npos);
+    EXPECT_LT(createdValues, absenceGuard);
+    EXPECT_LT(absenceGuard, valueLookup);
+
+    for (std::string_view const expression : {
+             "AppendJsonNumber(out, goal.x)",
+             "AppendJsonNumber(out, goal.y)",
+             "AppendJsonNumber(out, goal.z)",
+             "AppendJsonNumber(out, flight->flightMasterPos.GetPositionX())",
+             "AppendJsonNumber(out, flight->flightMasterPos.GetPositionY())",
+             "AppendJsonNumber(out, flight->flightMasterPos.GetPositionZ())",
+             "AppendJsonNumber(out, info.moveFarPos.GetPositionX())",
+             "AppendJsonNumber(out, info.moveFarPos.GetPositionY())",
+             "AppendJsonNumber(out, info.moveFarPos.GetPositionZ())",
+             "AppendJsonNumber(out, info.travelIntent.goal.x)",
+             "AppendJsonNumber(out, info.travelIntent.goal.y)",
+             "AppendJsonNumber(out, info.travelIntent.goal.z)",
+             "AppendJsonNumber(out, lastMovement->lastMoveToX)",
+             "AppendJsonNumber(out, lastMovement->lastMoveToY)",
+             "AppendJsonNumber(out, lastMovement->lastMoveToZ)",
+             "AppendJsonNumber(out, nativeEnd.x)",
+             "AppendJsonNumber(out, nativeEnd.y)",
+             "AppendJsonNumber(out, nativeEnd.z)"})
+        EXPECT_NE(source.find(expression), std::string::npos) << expression;
+}
+
 }  // namespace

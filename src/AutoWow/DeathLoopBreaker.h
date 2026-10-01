@@ -131,6 +131,18 @@ struct RelocationOwners
     [[nodiscard]] bool Any() const { return safeRevive || deathLoop; }
 };
 
+// On-demand bridge diagnostics. This is a value-only view of the existing state map; reading it
+// never inserts a bot, consumes relocation ownership or changes the last block reason.
+struct Diagnostic
+{
+    bool enabled = false;
+    bool v2Enabled = false;
+    bool tracked = false;
+    bool relocate = false;
+    bool restPending = false;
+    RelocationBlock relocationBlock = RelocationBlock::None;
+};
+
 template <typename Install, typename TakeSafeRevive, typename TakeDeathLoop>
 inline bool AcceptRelocationOwners(RelocationOwners owners, RelocationAttempt attempt, bool fallbackAccepted,
                                    Install install, TakeSafeRevive takeSafeRevive, TakeDeathLoop takeDeathLoop)
@@ -547,6 +559,7 @@ bool MarkDangerArea(std::uint32_t botGuid, std::uint32_t map, std::int32_t x, st
 // Non-consuming inspection and consuming acceptance of one relocation attempt per escalation.
 bool RelocationPending(std::uint32_t botGuid);
 bool TakeRelocation(std::uint32_t botGuid);
+Diagnostic ReadDiagnostic(std::uint32_t botGuid);
 // Records a native block reason only when it changes; false with the feature off or no tracked state.
 bool NoteRelocationBlock(std::uint32_t botGuid, RelocationBlock reason);
 // Clears obsolete source recovery only after an observed death-loop arrival. Failed arrival is inert.

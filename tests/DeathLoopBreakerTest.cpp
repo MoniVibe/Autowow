@@ -444,4 +444,16 @@ TEST(DeathLoopBreaker, HardPortalTargetIsAFittingBindElseTheCapital)
     EXPECT_EQ(HardPortalTarget(2, 1, steppes, 51, 18, 5).zone, 1637U);  // Orgrimmar
     EXPECT_EQ(HardPortalTarget(2, 530, steppes, 51, 18, 5).map, 1U);   // elsewhere: Orgrimmar
 }
+
+TEST(DeathLoopDiagnostics, MissingGetterDoesNotCreateOrConsumeState)
+{
+    constexpr std::uint32_t guid = 0xFFFFFFFCu;
+    Diagnostic const first = ReadDiagnostic(guid);
+    Diagnostic const second = ReadDiagnostic(guid);
+    EXPECT_FALSE(first.tracked);
+    EXPECT_FALSE(second.tracked);
+    EXPECT_FALSE(RelocationPending(guid));
+    EXPECT_FALSE(TakeRelocation(guid));
+}
+
 }  // namespace

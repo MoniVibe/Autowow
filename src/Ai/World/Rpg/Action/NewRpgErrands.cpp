@@ -1324,6 +1324,16 @@ void ObserveFlightPredecessorCall(
 }
 
 bool Active(std::uint32_t guid) { return LoadState(guid).phase != Phase::None; }
+
+bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gStates.find(guid);
+    if (it == gStates.end())
+        return false;
+    state = it->second;
+    return true;
+}
 }  // namespace AutoWowErrands
 
 bool NewRpgBaseAction::ErrandsStep()

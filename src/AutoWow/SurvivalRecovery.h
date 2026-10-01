@@ -274,6 +274,25 @@ enum class Step : std::uint8_t
 Step RecoveryStep(PlayerbotAI* botAI, float& x, float& y, float& z);
 void EndRetreat(std::uint32_t botGuid);
 
+// On-demand bridge diagnostics. A value copy is taken under the runtime lock; reading never creates,
+// consumes or advances recovery state. Timestamp zero stays distinguishable from an age of zero.
+struct Diagnostic
+{
+    bool enabled = false;
+    bool v2Enabled = false;
+    bool tracked = false;
+    bool planned = false;
+    bool retreatPending = false;
+    bool retreating = false;
+    bool restPending = false;
+    bool relocateOnRes = false;
+    bool relocate = false;
+    std::uint64_t planMs = 0;
+    std::uint64_t retreatMs = 0;
+};
+
+Diagnostic ReadDiagnostic(std::uint32_t botGuid);
+
 // Forced rest after a revive (AutoWowRestGate reads and clears it). False with the flag off.
 bool RestPending(std::uint32_t botGuid);
 void ClearRestPending(std::uint32_t botGuid);

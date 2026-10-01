@@ -1774,6 +1774,36 @@ struct BotState
     std::uint32_t mountItem = 0;  // 0 = no mount to buy
 };
 
+// Copies an existing state under the Errands mutex. False means absent; an invalid stored version is
+// still copied so diagnostics can distinguish it from absence. The read never inserts or normalizes.
+bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state);
+
+enum class DiagnosticState : std::uint8_t
+{
+    Absent,
+    Current,
+    InvalidVersion
+};
+
+[[nodiscard]] inline DiagnosticState ClassifyDiagnosticState(
+    bool tracked, std::uint8_t storedVersion, std::uint8_t expectedVersion)
+{
+    if (!tracked)
+        return DiagnosticState::Absent;
+    return storedVersion == expectedVersion ? DiagnosticState::Current : DiagnosticState::InvalidVersion;
+}
+
+[[nodiscard]] inline char const* DiagnosticStateName(DiagnosticState state)
+{
+    switch (state)
+    {
+        case DiagnosticState::Absent: return "absent";
+        case DiagnosticState::Current: return "current";
+        case DiagnosticState::InvalidVersion: return "invalid_version";
+    }
+    return "invalid_version";
+}
+
 // Travel / return leg exhausted: past its timeout or out of reissues.
 [[nodiscard]] inline bool LegExhausted(Params const& p, BotState const& s, std::uint64_t nowMs, std::uint32_t timeoutMs)
 {

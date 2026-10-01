@@ -452,6 +452,29 @@ void EndRetreat(std::uint32_t botGuid)
         s->retreating = false;
 }
 
+Diagnostic ReadDiagnostic(std::uint32_t botGuid)
+{
+    Diagnostic diagnostic;
+    diagnostic.enabled = Enabled();
+    diagnostic.v2Enabled = V2Enabled();
+
+    std::lock_guard<std::mutex> guard(gLock);
+    ReviveState const* state = Find(gRevive, botGuid);
+    if (!state)
+        return diagnostic;
+
+    diagnostic.tracked = true;
+    diagnostic.planned = state->planned;
+    diagnostic.retreatPending = state->retreatPending;
+    diagnostic.retreating = state->retreating;
+    diagnostic.restPending = state->restPending;
+    diagnostic.relocateOnRes = state->relocateOnRes;
+    diagnostic.relocate = state->relocate;
+    diagnostic.planMs = state->planMs;
+    diagnostic.retreatMs = state->retreatMs;
+    return diagnostic;
+}
+
 bool RestPending(std::uint32_t botGuid)
 {
     if (!Enabled())
