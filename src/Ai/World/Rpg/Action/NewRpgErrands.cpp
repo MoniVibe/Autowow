@@ -1323,7 +1323,7 @@ void ObserveFlightPredecessorCall(
     ObserveErrandsPredecessorCall(s.predecessor, ownedBefore, ownedAfter);
 }
 
-bool Active(std::uint32_t guid) { return LoadState(guid).phase != Phase::None; }
+bool Active(std::uint32_t guid) { return IsRunActive(LoadState(guid)); }
 
 bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state)
 {
@@ -1336,22 +1336,62 @@ bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state)
 }
 }  // namespace AutoWowErrands
 
-bool NewRpgBaseAction::ErrandsStep()
+bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
 {
     using namespace AutoWowErrands;
     using AutoWowErrands::BotState;  // other AutoWow policies also name these
     using AutoWowErrands::Params;
     using AutoWowErrands::Phase;
     uint32 const guid = bot->GetGUID().GetCounter();
+    NewRpgInfo& info = botAI->rpgInfo;
     if (!bot->IsAlive() || bot->IsInFlight() || bot->IsInCombat() || !botAI->IsAutoWowIndependentParty() ||
         AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable() ||
         bot->GetTransport())
         return false;
 
+    RelocationRetirementFacts retirementFacts;
+    if (relocationRetirementOnly)
+    {
+        retirementFacts.alive = bot->IsAlive();
+        retirementFacts.inWorld = bot->IsInWorld();
+        retirementFacts.duringRemove = bot->IsDuringRemoveFromWorld();
+        retirementFacts.inFlight = bot->IsInFlight();
+        retirementFacts.inCombat = bot->IsInCombat();
+        retirementFacts.aiCombat = botAI->GetState() == BOT_STATE_COMBAT;
+        retirementFacts.independent = botAI->IsAutoWowIndependentParty();
+        retirementFacts.hasMaster = botAI->GetMaster() != nullptr;
+        retirementFacts.selfControlled = botAI->IsRealPlayer();
+        retirementFacts.realPlayerMaster = botAI->HasRealPlayerMaster();
+        retirementFacts.paused = botAI->IsAutoWowPaused();
+        retirementFacts.grouped = bot->GetGroup() != nullptr;
+        retirementFacts.oracleManaged = AutoWowOracleRuntime::IsManagedBot(guid);
+        retirementFacts.mapAvailable = bot->GetMap() != nullptr;
+        retirementFacts.instance = bot->GetMap()->Instanceable();
+        retirementFacts.transport = bot->GetTransport() != nullptr;
+        retirementFacts.vehicle = bot->GetVehicle() != nullptr || bot->GetVehicleBase() != nullptr;
+        retirementFacts.teleporting = bot->IsBeingTeleported();
+        retirementFacts.casting = bot->IsNonMeleeSpellCast(false);
+        retirementFacts.rooted = bot->IsRooted();
+        retirementFacts.stunned = bot->HasStunAura();
+        retirementFacts.movementAllowed = botAI->CanMove();
+        retirementFacts.botMoving = bot->isMoving();
+        retirementFacts.movementPending = IsWaitingForLastMove(MovementPriority::MOVEMENT_NORMAL);
+        retirementFacts.nativeSplineActive =
+            bot->movespline && bot->movespline->Initialized() && !bot->movespline->Finalized();
+        retirementFacts.moveFarActive = info.moveFarPos != WorldPosition();
+        retirementFacts.travelIntentActive = info.travelIntent.active;
+        if (!RelocationRetirementAdmitted(retirementFacts))
+            return false;
+    }
+
     Params const& p = detail::gParams;
     std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
-    BotState s = LoadState(guid);
-    NewRpgInfo& info = botAI->rpgInfo;
+    BotState s;
+    bool tracked = true;
+    if (relocationRetirementOnly)
+        tracked = ReadStateForDiagnostics(guid, s);
+    else
+        s = LoadState(guid);
     std::uint8_t const team = TeamOf(bot);
     std::int32_t const bx = Yd(bot->GetPositionX()), by = Yd(bot->GetPositionY());
     std::optional<AutoWowQuestGiverTravel::ErrandsWalkProbeSelection> pendingWalk;
@@ -1528,6 +1568,23 @@ bool NewRpgBaseAction::ErrandsStep()
         info.ChangeToIdle();
         return true;
     };
+
+    if (relocationRetirementOnly)
+    {
+        retirementFacts.tracked = tracked;
+        retirementFacts.predecessorActive = s.predecessor.active;
+        switch (DecideRelocationRetirement(p, s, retirementFacts, now))
+        {
+            case RelocationRetirement::TravelGaveUp:
+                s.outcome = Outcome::TravelGaveUp;
+                return finish();
+            case RelocationRetirement::ReturnGaveUp:
+                s.outcome = Outcome::ReturnGaveUp;
+                return finish();
+            case RelocationRetirement::Wait:
+                return false;
+        }
+    }
 
     // AutoWow.Survival.KeepConsumables: sell the greys at a friendly vendor the bot passes (one detour of
     // at most SellDetourMs, then SellRetryMs before the next). No run under way, no flight or zone trip.

@@ -143,7 +143,7 @@ protected:
     // AutoWow.Errands.Enable (ErrandsPolicy.h): town run of an independent bot (sell, repair, restock,
     // train, bind, flight path; real gold) and the way back. True when it consumed the tick. Caller
     // checks the flag.
-    bool ErrandsStep();
+    bool ErrandsStep(bool relocationRetirementOnly = false);
     // AutoWow.Party.Enable (PartyPolicy.h): the tick of a cohort party leader (dungeon approach walk, hold
     // during the run, group quest first). True when it consumed the tick. Caller checks the flag.
     bool PartyStep();

@@ -4,8 +4,11 @@
  * or (at your option) any later version.
  */
 
-#include "ErrandsPolicy.h"
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
+#include "ErrandsPolicy.h"
 #include "gtest/gtest.h"
 
 namespace
@@ -19,6 +22,25 @@ Obs Healthy(std::uint32_t cls, std::uint32_t level)
     o.level = level;
     o.have = {20, 20, 1000, 1000, 5};
     return o;
+}
+
+std::string ReadModuleSource(std::filesystem::path const& relative)
+{
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / relative,
+                        std::ios::in | std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+RelocationRetirementFacts EligibleRelocationRetirement()
+{
+    RelocationRetirementFacts facts;
+    facts.tracked = true;
+    facts.alive = true;
+    facts.inWorld = true;
+    facts.independent = true;
+    facts.mapAvailable = true;
+    facts.movementAllowed = true;
+    return facts;
 }
 
 // ---- needs policy ---------------------------------------------------------------------------------
@@ -951,6 +973,220 @@ TEST(Errands, LegExhaustedByTimeoutOrReissues)
     EXPECT_TRUE(LegExhausted(p, s, 1001 + p.travelTimeoutMs, p.travelTimeoutMs));
     s.reissues = p.maxReissues + 1;
     EXPECT_TRUE(LegExhausted(p, s, 1000, p.travelTimeoutMs));
+}
+
+TEST(Errands, RelocationRetiresOnlyExpiredTravelOrReturn)
+{
+    Params p;
+    BotState s;
+    RelocationRetirementFacts facts = EligibleRelocationRetirement();
+    s.phase = Phase::Travel;
+    s.phaseMs = 1000;
+
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 1000 + p.travelTimeoutMs), RelocationRetirement::Wait);
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 1001 + p.travelTimeoutMs), RelocationRetirement::TravelGaveUp);
+
+    s.phase = Phase::Return;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 1001 + p.returnTimeoutMs), RelocationRetirement::ReturnGaveUp);
+
+    s.phase = Phase::Errands;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 1001 + p.returnTimeoutMs), RelocationRetirement::Wait);
+    s.phase = Phase::None;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 1001 + p.returnTimeoutMs), RelocationRetirement::Wait);
+}
+
+TEST(Errands, RelocationRetirementFailsClosedOnInvalidStateOrClock)
+{
+    Params p;
+    BotState s;
+    RelocationRetirementFacts facts = EligibleRelocationRetirement();
+    s.phase = Phase::Travel;
+    s.phaseMs = 5000;
+    s.reissues = p.maxReissues + 1;
+
+    facts.tracked = false;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 5001 + p.travelTimeoutMs), RelocationRetirement::Wait);
+    facts.tracked = true;
+    s.version = kStateVersion - 1;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 5001 + p.travelTimeoutMs), RelocationRetirement::Wait);
+    s.version = kStateVersion;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 4999), RelocationRetirement::Wait);
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 5000), RelocationRetirement::Wait);
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, 5001 + p.travelTimeoutMs), RelocationRetirement::TravelGaveUp);
+}
+
+TEST(Errands, RelocationRetirementRequiresStrictRuntimeAdmission)
+{
+    RelocationRetirementFacts facts = EligibleRelocationRetirement();
+    EXPECT_TRUE(RelocationRetirementAdmitted(facts));
+    facts.alive = false;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.alive = true;
+    facts.inWorld = false;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.inWorld = true;
+    facts.duringRemove = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.duringRemove = false;
+    facts.inFlight = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.inFlight = false;
+    facts.inCombat = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.inCombat = false;
+    facts.aiCombat = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.aiCombat = false;
+    facts.independent = false;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.independent = true;
+    facts.hasMaster = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.hasMaster = false;
+    facts.selfControlled = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.selfControlled = false;
+    facts.realPlayerMaster = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.realPlayerMaster = false;
+    facts.paused = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.paused = false;
+    facts.grouped = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.grouped = false;
+    facts.oracleManaged = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.oracleManaged = false;
+    facts.mapAvailable = false;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.mapAvailable = true;
+    facts.instance = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.instance = false;
+    facts.transport = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.transport = false;
+    facts.vehicle = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.vehicle = false;
+    facts.teleporting = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.teleporting = false;
+    facts.casting = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.casting = false;
+    facts.rooted = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.rooted = false;
+    facts.stunned = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.stunned = false;
+    facts.movementAllowed = false;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.movementAllowed = true;
+    facts.botMoving = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.botMoving = false;
+    facts.movementPending = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.movementPending = false;
+    facts.nativeSplineActive = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.nativeSplineActive = false;
+    facts.moveFarActive = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.moveFarActive = false;
+    facts.travelIntentActive = true;
+    EXPECT_FALSE(RelocationRetirementAdmitted(facts));
+    facts.travelIntentActive = false;
+    EXPECT_TRUE(RelocationRetirementAdmitted(facts));
+}
+
+TEST(Errands, RelocationRetirementRequiresNoTypedPredecessor)
+{
+    Params p;
+    BotState s;
+    s.phase = Phase::Travel;
+    s.phaseMs = 1000;
+    std::uint64_t const now = 1001 + p.travelTimeoutMs;
+    RelocationRetirementFacts facts = EligibleRelocationRetirement();
+
+    facts.predecessorActive = true;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, now), RelocationRetirement::Wait);
+    facts.predecessorActive = false;
+    EXPECT_EQ(DecideRelocationRetirement(p, s, facts, now), RelocationRetirement::TravelGaveUp);
+}
+
+TEST(Errands, RelocationRetirementResetsRunBeforeNextEscapeTick)
+{
+    Params p;
+    BotState s;
+    s.phase = Phase::Travel;
+    s.phaseMs = 1000;
+    s.town = 10076;
+    s.predecessorGeneration = 44;
+    RelocationRetirementFacts facts = EligibleRelocationRetirement();
+    std::uint64_t const now = 1001 + p.travelTimeoutMs;
+
+    ASSERT_EQ(DecideRelocationRetirement(p, s, facts, now), RelocationRetirement::TravelGaveUp);
+    s.outcome = Outcome::TravelGaveUp;
+    BotState const next = AfterRun(p, s, now);
+    EXPECT_FALSE(IsRunActive(next));
+    EXPECT_EQ(next.town, 0U);
+    EXPECT_EQ(next.predecessorGeneration, 44U);
+    EXPECT_EQ(next.cooldownUntilMs, now + p.cooldownMs);
+    EXPECT_EQ(DecideRelocationRetirement(p, next, facts, now), RelocationRetirement::Wait);
+}
+
+TEST(ErrandsRelocationSourceContract, TerminalReceiptPrecedesEscapeAndUnblocksTheFollowingTick)
+{
+    std::string const action = ReadModuleSource("src/Ai/World/Rpg/Action/NewRpgAction.cpp");
+    std::string const errands = ReadModuleSource("src/Ai/World/Rpg/Action/NewRpgErrands.cpp");
+    std::string const zone = ReadModuleSource("src/Ai/World/Rpg/Action/NewRpgZoneProgression.cpp");
+    ASSERT_FALSE(action.empty());
+    ASSERT_FALSE(errands.empty());
+    ASSERT_FALSE(zone.empty());
+
+    std::size_t const relocationGate =
+        action.find("if (status != RPG_TRAVEL_FLIGHT && bot->IsAlive() && relocationOwners.Any())");
+    std::size_t const terminal = action.find("ErrandsStep(true)", relocationGate);
+    std::size_t const escape = action.find("TryDeathLoopEscape()", terminal);
+    ASSERT_NE(relocationGate, std::string::npos);
+    ASSERT_NE(terminal, std::string::npos);
+    ASSERT_NE(escape, std::string::npos);
+    EXPECT_LT(relocationGate, terminal);
+    EXPECT_LT(terminal, escape);
+    EXPECT_NE(action.substr(terminal, escape - terminal).find("return true;"), std::string::npos);
+    EXPECT_NE(action.find("AcceptRelocationOwners(", escape), std::string::npos);
+
+    std::size_t const step = errands.find("bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)");
+    std::size_t const admission = errands.find("if (!RelocationRetirementAdmitted(retirementFacts))", step);
+    std::size_t const stateRead = errands.find("tracked = ReadStateForDiagnostics(guid, s);", admission);
+    ASSERT_NE(step, std::string::npos);
+    ASSERT_NE(admission, std::string::npos);
+    ASSERT_NE(stateRead, std::string::npos);
+    EXPECT_LT(admission, stateRead);
+
+    std::size_t const finish = errands.find("auto finish = [&]()");
+    std::size_t const retirement = errands.find("if (relocationRetirementOnly)", finish);
+    ASSERT_NE(finish, std::string::npos);
+    ASSERT_NE(retirement, std::string::npos);
+    std::size_t const rescue = errands.find("RescueLeg(", retirement);
+    ASSERT_NE(rescue, std::string::npos);
+    EXPECT_LT(retirement, rescue);
+    std::string const terminalReceipt = errands.substr(finish, retirement - finish);
+    EXPECT_NE(terminalReceipt.find("s = AfterRun(p, s, now);"), std::string::npos);
+    EXPECT_NE(terminalReceipt.find("StoreState(guid, s);"), std::string::npos);
+    EXPECT_NE(terminalReceipt.find("info.ChangeToIdle();"), std::string::npos);
+
+    EXPECT_NE(errands.find("bool Active(std::uint32_t guid) { return IsRunActive(LoadState(guid)); }"),
+              std::string::npos);
+    EXPECT_NE(zone.find("AutoWowErrands::Enabled() && AutoWowErrands::Active(guid)"), std::string::npos);
+    std::size_t const zoneStep = zone.find("bool NewRpgBaseAction::ZoneProgressionStep()");
+    ASSERT_NE(zoneStep, std::string::npos);
+    EXPECT_NE(zone.find("MovementBlock(bot, botAI)", zoneStep), std::string::npos);
+    EXPECT_NE(zone.find("if (!Movable(bot, botAI))", zoneStep), std::string::npos);
 }
 
 TEST(Errands, DurabilityAndBagPercent)

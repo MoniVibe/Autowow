@@ -1774,6 +1774,8 @@ struct BotState
     std::uint32_t mountItem = 0;  // 0 = no mount to buy
 };
 
+[[nodiscard]] inline bool IsRunActive(BotState const& s) { return s.phase != Phase::None; }
+
 // Copies an existing state under the Errands mutex. False means absent; an invalid stored version is
 // still copied so diagnostics can distinguish it from absence. The read never inserts or normalizes.
 bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state);
@@ -1808,6 +1810,72 @@ enum class DiagnosticState : std::uint8_t
 [[nodiscard]] inline bool LegExhausted(Params const& p, BotState const& s, std::uint64_t nowMs, std::uint32_t timeoutMs)
 {
     return (nowMs >= s.phaseMs && nowMs - s.phaseMs > timeoutMs) || s.reissues > p.maxReissues;
+}
+
+enum class RelocationRetirement : std::uint8_t
+{
+    Wait,
+    TravelGaveUp,
+    ReturnGaveUp
+};
+
+struct RelocationRetirementFacts
+{
+    bool tracked = false;
+    bool alive = false;
+    bool inWorld = false;
+    bool duringRemove = false;
+    bool inFlight = false;
+    bool inCombat = false;
+    bool aiCombat = false;
+    bool independent = false;
+    bool hasMaster = false;
+    bool selfControlled = false;
+    bool realPlayerMaster = false;
+    bool paused = false;
+    bool grouped = false;
+    bool oracleManaged = false;
+    bool mapAvailable = false;
+    bool instance = false;
+    bool transport = false;
+    bool vehicle = false;
+    bool teleporting = false;
+    bool casting = false;
+    bool rooted = false;
+    bool stunned = false;
+    bool movementAllowed = false;
+    bool botMoving = false;
+    bool movementPending = false;
+    bool nativeSplineActive = false;
+    bool moveFarActive = false;
+    bool travelIntentActive = false;
+    bool predecessorActive = false;
+};
+
+[[nodiscard]] inline bool RelocationRetirementAdmitted(RelocationRetirementFacts const& facts)
+{
+    return facts.alive && facts.inWorld && !facts.duringRemove && !facts.inFlight && !facts.inCombat &&
+           !facts.aiCombat && facts.independent && !facts.hasMaster && !facts.selfControlled &&
+           !facts.realPlayerMaster && !facts.paused && !facts.grouped && !facts.oracleManaged && facts.mapAvailable &&
+           !facts.instance && !facts.transport && !facts.vehicle && !facts.teleporting && !facts.casting &&
+           !facts.rooted && !facts.stunned && facts.movementAllowed && !facts.botMoving && !facts.movementPending &&
+           !facts.nativeSplineActive && !facts.moveFarActive && !facts.travelIntentActive;
+}
+
+// A pending survival relocation may terminally retire only an errand past its actual Travel/Return deadline.
+// Reissue exhaustion alone is not enough. Live or foreign movement ownership fails closed.
+[[nodiscard]] inline RelocationRetirement DecideRelocationRetirement(Params const& p, BotState const& s,
+                                                                     RelocationRetirementFacts const& facts,
+                                                                     std::uint64_t nowMs)
+{
+    if (!RelocationRetirementAdmitted(facts) || !facts.tracked || s.version != kStateVersion || nowMs < s.phaseMs ||
+        (s.phase != Phase::Travel && s.phase != Phase::Return) || facts.predecessorActive)
+        return RelocationRetirement::Wait;
+
+    std::uint32_t const timeoutMs = s.phase == Phase::Travel ? p.travelTimeoutMs : p.returnTimeoutMs;
+    if (nowMs - s.phaseMs <= timeoutMs)
+        return RelocationRetirement::Wait;
+    return s.phase == Phase::Travel ? RelocationRetirement::TravelGaveUp : RelocationRetirement::ReturnGaveUp;
 }
 
 // AutoWow.Travel.Safe: the rescue leg of an exhausted travel phase, once per run. soak-s16-full-r1: all 15

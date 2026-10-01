@@ -644,6 +644,10 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         AutoWowDeathLoop::RelocationPending(relocationGuid)};
     if (status != RPG_TRAVEL_FLIGHT && bot->IsAlive() && relocationOwners.Any())
     {
+        // A pending relocation otherwise starves the Errands timeout below. Retire only an already-expired,
+        // quiescent Travel/Return run through its normal terminal receipt, then retain relocation for next tick.
+        if (AutoWowErrands::Enabled() && ErrandsStep(true))
+            return true;
         using AutoWowDeathLoop::RelocationAttempt;
         RelocationAttempt attempt = RelocationAttempt::NoRoute;
         if (AutoWowDeathLoop::EscapeEnabled() && AutoWowZoneProgression::Enabled())
