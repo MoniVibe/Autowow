@@ -30,6 +30,7 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "QuestDef.h"
+#include "SelfCraftPolicy.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "SupplyPolicy.h"
@@ -457,6 +458,7 @@ bool NewRpgBaseAction::SupplyStep()
     Params const& p = detail::gParams;
     std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
     RoleState s = LoadRole(guid);
+    AutoWowSelfCraft::ReconcileSmelting(bot, AutoWowSelfCraft::SmeltOwner::Supply);
     NewRpgInfo& info = botAI->rpgInfo;
     if (info.GetStatus() != RPG_IDLE)
         info.ChangeToIdle();
@@ -478,6 +480,7 @@ bool NewRpgBaseAction::SupplyStep()
     Stations const& gst = gearLine ? LineStationsOf(gearId, role.alliance) : st;
     RecipeTable const gtab = geared ? GearTable(LineOf(gearId)) : RecipeTable{};
     ProductLine const* const repGear = role.gear != kNoLine ? &LineOf(static_cast<Line>(role.gear)) : nullptr;
+    bool const gearOpen = geared && gview.product != kNoTier && gview.remaining;
     bool const lineMarket = lined && !lview.buy.empty();
     bool const gearMarket = gearLine && !gview.buy.empty();
     bool const bagMarket = role.bagHouse && !view.buy.empty();
@@ -763,6 +766,17 @@ bool NewRpgBaseAction::SupplyStep()
             next = Task::Market;
             s.marketMs = now + p.tickMs;  // one visit (one BuyBudget) per tick
         }
+        // Native miner smelting is the final idle Supply job. It never preempts an unfinished bag/catalog/gear order;
+        // the existing gear cast and its RoleState receipt retain ownership across ticks. The trip itself is the
+        // existing finite Forge task, including its station, WalkLeg, timeout and return-home behavior.
+        bool const supplyCraftOpen =
+            (artisan && (view.remaining || view.skillup != kNoTier)) ||
+            (lined && role.role == Role::Artisan && (lview.remaining || lview.skillup != kNoTier)) || gearOpen;
+        bool const gearCastPending = s.castSpell || s.castLine != kNoLine;
+        if (next == Task::None &&
+            AutoWowSelfCraft::SupplySmeltMayRun(supplyCraftOpen, gearOpen, gearCastPending) && gst.forge.entry &&
+            AutoWowSelfCraft::SmeltingWanted(botAI, bot, AutoWowSelfCraft::SmeltOwner::Supply))
+            next = Task::Forge;
         if ((next == Task::None || !inTown) && !atHome)
             next = Task::Home;
         if (next != Task::None)
@@ -923,9 +937,27 @@ bool NewRpgBaseAction::SupplyStep()
                 break;
             }
             case Task::Forge:
-            case Task::Anvil:
                 // Lane AA: the order's casts here one at a time (the smelts first) while any is possible; each cast keeps
-                // the trip alive (its timeout restarts), none ends it. Lane tinkers2: the anvil parts likewise.
+                // the trip alive (its timeout restarts), none ends it. Only after the gear order is closed may the
+                // independently gated miner job use the same native forge path.
+                if (gearCraft())
+                {
+                    s.taskSinceMs = now;
+                    StoreRole(guid, s);
+                    return true;
+                }
+                if (AutoWowSelfCraft::SupplySmeltMayRun(
+                        false, gearOpen, s.castSpell || s.castLine != kNoLine) &&
+                    AutoWowSelfCraft::SmeltingWanted(botAI, bot, AutoWowSelfCraft::SmeltOwner::Supply) &&
+                    AutoWowSelfCraft::StartSmelting(botAI, bot, AutoWowSelfCraft::SmeltOwner::Supply))
+                {
+                    s.taskSinceMs = now;
+                    StoreRole(guid, s);
+                    return true;
+                }
+                break;
+            case Task::Anvil:
+                // Lane tinkers2: the order's anvil parts one at a time while any is possible.
                 if (gearCraft())
                 {
                     s.taskSinceMs = now;
@@ -1185,7 +1217,6 @@ bool NewRpgBaseAction::SupplyStep()
 
     // At home, nothing to fetch: the artisan crafts (craft / gearCraft above).
     // An open gear order the artisan works (DemandOnly: no consumer-less skill-up eats its reagents meanwhile).
-    bool const gearOpen = geared && gview.product != kNoTier && gview.remaining;
     if (artisan && atHome && Tiers())
     {
         // Tiers: the product order first, else the skill-up recipe.

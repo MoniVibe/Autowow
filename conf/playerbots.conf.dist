@@ -3815,6 +3815,12 @@ AutoWow.Gear.FlowMinQuality = 1
 # resting / travelling / on an errand or zone trip, health >= CraftMinHpPct and mana >= CraftMinManaPct; at
 # most BatchMax casts per CheckIntervalMs. Ledger `selfcraft` (event 21): learn|craft|use|skip; [SelfCraft] log.
 # Known gap: AutoWow.Supply.RouteCloth still mails reserve cloth stacks (only the sale is held back).
+# Smelting is an independent default-off subfeature: it does not require SelfCraft.Enable and does not turn on
+# FirstAid/Cooking. An eligible autonomous miner uses only known native Mining recipes, its own unprotected
+# reagents, native forge focus / CanCastSpell / CastSpell, and exact before/after receipts. A generic miner makes
+# only a finite detour to a forge already in its nearby-object cache; an idle supply role reuses its configured
+# Forge task after all existing work, including an unfinished gear order, has declined the job. Material-useful
+# bars rank before native skill-up chances; each visit is bounded by SmeltingBatchMax and SmeltingCheckIntervalMs.
 AutoWow.SelfCraft.Enable = 0
 AutoWow.SelfCraft.FirstAid = 1
 AutoWow.SelfCraft.Cooking = 1
@@ -3826,6 +3832,9 @@ AutoWow.SelfCraft.CheckIntervalMs = 20000
 AutoWow.SelfCraft.BatchMax = 5
 AutoWow.SelfCraft.CraftMinHpPct = 70
 AutoWow.SelfCraft.CraftMinManaPct = 50
+AutoWow.SelfCraft.Smelting = 0
+AutoWow.SelfCraft.SmeltingCheckIntervalMs = 60000
+AutoWow.SelfCraft.SmeltingBatchMax = 5
 
 # Automatic class-quest rewards (ClassQuestPolicy.h; default 0; owner ruling 2026-09-27). At login and on every
 # level change a cohort bot (AutoWow.Guilds.CohortGuids, needs AutoWow.Guilds.Enable) or supply role bot learns the

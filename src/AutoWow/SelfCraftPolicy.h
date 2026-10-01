@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "ErrandsPolicy.h"
 
@@ -40,12 +41,18 @@ class PlayerbotAI;
 // fixed table order (ascending recipe rank) with ties to the higher table row.
 namespace AutoWowSelfCraft
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 3;
 inline constexpr std::uint32_t kSkillFirstAid = 129;  // SKILL_FIRST_AID
 inline constexpr std::uint32_t kSkillCooking = 185;   // SKILL_COOKING
+inline constexpr std::uint32_t kSkillMining = 186;    // SKILL_MINING
 inline constexpr std::uint32_t kCampfireSpell = 818;  // Basic Campfire (summons a spell-focus 4 cooking fire)
+inline constexpr std::uint32_t kForgeFocus = 3;        // normal forge spell focus
 inline constexpr std::uint32_t kRecentlyBandaged = 11196;
 inline constexpr std::uint32_t kUseRetryMs = 10000;  // a refused bandage (no aura) is not retried sooner
+inline constexpr std::uint64_t kSmeltingJobTimeoutMs = 180000;
+inline constexpr std::uint64_t kSmeltingMoveTimeoutMs = 30000;
+inline constexpr std::size_t kMaxSmeltReagents = 8;
+inline constexpr std::uint8_t kSmeltMoveProofVersion = 1;
 
 struct Recipe
 {
@@ -99,7 +106,254 @@ struct Params
     std::uint32_t batchMax = 5;            // AutoWow.SelfCraft.BatchMax: casts per check
     std::uint32_t craftMinHpPct = 70;      // AutoWow.SelfCraft.CraftMinHpPct: below, rest comes first
     std::uint32_t craftMinManaPct = 50;    // AutoWow.SelfCraft.CraftMinManaPct (mana users)
+    bool smelting = false;                  // AutoWow.SelfCraft.Smelting (independently default off)
+    std::uint32_t smeltingCheckIntervalMs = 60000;
+    std::uint32_t smeltingBatchMax = 5;
 };
+
+// ---- native Mining smelting -----------------------------------------------------------------------------
+// Immutable DBC-derived recipe catalog entry. Runtime discovery accepts only one deterministic create-item
+// effect, normal forge focus 3, valid item templates and positive, distinct reagents.
+struct SmeltReagent
+{
+    std::uint32_t item = 0;
+    std::uint32_t count = 0;
+};
+
+struct SmeltRecipe
+{
+    std::uint32_t spell = 0;
+    std::uint32_t output = 0;
+    std::uint32_t outputCount = 0;
+    std::uint32_t greyAt = 0;
+    std::uint64_t reagentValue = 0;
+    std::uint8_t reagentCount = 0;
+    std::array<SmeltReagent, kMaxSmeltReagents> reagents{};
+};
+
+enum class SmeltOwner : std::uint8_t
+{
+    None = 0,
+    SelfCraft = 1,
+    Supply = 2
+};
+
+// Pure candidate view used by both runtime paths. Material demand outranks a skill-up; ties use the lower total
+// reagent vendor value and then spell id. A protected reagent, missing reagent, full output or unknown recipe is
+// never admitted. `focusReady` is required only at the final cast, not while deciding whether to visit a forge.
+struct SmeltOption
+{
+    std::uint32_t spell = 0;
+    std::uint64_t reagentValue = 0;
+    bool known = false;
+    bool reagentsReady = false;
+    bool outputRoom = false;
+    bool protectedReagent = false;
+    bool materialWanted = false;
+    bool skillUp = false;
+    bool focusReady = false;
+};
+
+[[nodiscard]] inline int PickSmelt(std::vector<SmeltOption> const& options, bool requireFocus)
+{
+    int pick = -1;
+    for (std::size_t i = 0; i < options.size(); ++i)
+    {
+        SmeltOption const& option = options[i];
+        if (!option.known || !option.reagentsReady || !option.outputRoom || option.protectedReagent ||
+            (!option.materialWanted && !option.skillUp) || (requireFocus && !option.focusReady))
+            continue;
+        if (pick < 0 ||
+            (option.materialWanted != options[pick].materialWanted ? option.materialWanted
+             : option.reagentValue != options[pick].reagentValue ? option.reagentValue < options[pick].reagentValue
+                                                                 : option.spell < options[pick].spell))
+            pick = static_cast<int>(i);
+    }
+    return pick;
+}
+
+[[nodiscard]] inline bool SmeltJobOpen(bool active, std::uint32_t casts, std::uint32_t batchMax,
+                                       std::uint64_t sinceMs, std::uint64_t nowMs,
+                                       std::uint64_t timeoutMs = kSmeltingJobTimeoutMs)
+{
+    return active && batchMax && casts < batchMax && nowMs >= sinceMs && nowMs - sinceMs < timeoutMs;
+}
+
+[[nodiscard]] inline bool SmeltMoveTimedOut(bool active, std::uint64_t sinceMs, std::uint64_t nowMs)
+{
+    return active && nowMs >= sinceMs && nowMs - sinceMs >= kSmeltingMoveTimeoutMs;
+}
+
+[[nodiscard]] inline bool SupplySmeltMayRun(bool supplyCraftOpen, bool gearOpen, bool gearCastPending)
+{
+    return !supplyCraftOpen && !gearOpen && !gearCastPending;
+}
+
+// Generic miners retain exact proof of the forge leg they issued. LastMovement detects even a replacement that
+// has already finished; the native spline identity distinguishes a simultaneous higher-priority mover. MoveFar and
+// travel intents are foreign to this local detour and therefore always win.
+struct SmeltMovePoint
+{
+    std::uint32_t map = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+};
+
+struct SmeltIntentIdentity
+{
+    std::uint8_t version = 0;
+    bool active = false;
+    std::uint32_t goalMap = 0;
+    std::int32_t goalX = 0;
+    std::int32_t goalY = 0;
+    std::int32_t goalZ = 0;
+    std::uint32_t createdMs = 0;
+};
+
+struct SmeltMoveFacts
+{
+    std::uint64_t forgeGuid = 0;
+    bool lastMovementPresent = false;
+    std::uint32_t movementIssuedAtMs = 0;
+    SmeltMovePoint movementEndpoint;
+    bool nativeSplineActive = false;
+    std::uint32_t nativeSplineId = 0;
+    SmeltMovePoint nativeSplineEndpoint;
+    bool moveFarActive = false;
+    SmeltMovePoint moveFarEndpoint;
+    SmeltIntentIdentity travelIntent;
+    bool botMoving = false;
+};
+
+struct SmeltMoveProof
+{
+    std::uint8_t version = 0;
+    std::uint64_t forgeGuid = 0;
+    std::uint32_t movementIssuedAtMs = 0;
+    SmeltMovePoint movementEndpoint;
+    std::uint32_t nativeSplineId = 0;
+    SmeltMovePoint nativeSplineEndpoint;
+    SmeltMovePoint baselineMoveFarEndpoint;
+    SmeltIntentIdentity baselineTravelIntent;
+};
+
+enum class SmeltMoveDecision : std::uint8_t
+{
+    NoLeg = 0,
+    OwnedLive = 1,
+    OwnedArrived = 2,
+    Replaced = 3
+};
+
+[[nodiscard]] inline bool SameSmeltMovePoint(SmeltMovePoint const& left, SmeltMovePoint const& right)
+{
+    return left.map == right.map && left.x == right.x && left.y == right.y && left.z == right.z;
+}
+
+[[nodiscard]] inline bool SameSmeltIntent(SmeltIntentIdentity const& left, SmeltIntentIdentity const& right)
+{
+    return left.version == right.version && left.active == right.active && left.goalMap == right.goalMap &&
+           left.goalX == right.goalX && left.goalY == right.goalY && left.goalZ == right.goalZ &&
+           left.createdMs == right.createdMs;
+}
+
+[[nodiscard]] inline SmeltMoveProof CaptureSmeltMoveProof(SmeltMoveFacts const& facts)
+{
+    if (!facts.forgeGuid || !facts.lastMovementPresent || !facts.nativeSplineActive || !facts.nativeSplineId ||
+        !facts.botMoving || facts.moveFarActive || facts.travelIntent.active)
+        return {};
+    SmeltMoveProof proof;
+    proof.version = kSmeltMoveProofVersion;
+    proof.forgeGuid = facts.forgeGuid;
+    proof.movementIssuedAtMs = facts.movementIssuedAtMs;
+    proof.movementEndpoint = facts.movementEndpoint;
+    proof.nativeSplineId = facts.nativeSplineId;
+    proof.nativeSplineEndpoint = facts.nativeSplineEndpoint;
+    proof.baselineMoveFarEndpoint = facts.moveFarEndpoint;
+    proof.baselineTravelIntent = facts.travelIntent;
+    return proof;
+}
+
+[[nodiscard]] inline SmeltMoveDecision EvaluateSmeltMove(SmeltMoveProof const& proof,
+                                                         SmeltMoveFacts const& facts)
+{
+    if (proof.version != kSmeltMoveProofVersion || !proof.forgeGuid)
+        return SmeltMoveDecision::NoLeg;
+    if (facts.forgeGuid != proof.forgeGuid || facts.moveFarActive || facts.travelIntent.active ||
+        !SameSmeltMovePoint(facts.moveFarEndpoint, proof.baselineMoveFarEndpoint) ||
+        !SameSmeltIntent(facts.travelIntent, proof.baselineTravelIntent) || !facts.lastMovementPresent ||
+        facts.movementIssuedAtMs != proof.movementIssuedAtMs ||
+        !SameSmeltMovePoint(facts.movementEndpoint, proof.movementEndpoint))
+        return SmeltMoveDecision::Replaced;
+    if (facts.nativeSplineActive)
+        return facts.nativeSplineId == proof.nativeSplineId &&
+                   SameSmeltMovePoint(facts.nativeSplineEndpoint, proof.nativeSplineEndpoint)
+            ? SmeltMoveDecision::OwnedLive
+            : SmeltMoveDecision::Replaced;
+    return facts.botMoving ? SmeltMoveDecision::Replaced : SmeltMoveDecision::OwnedArrived;
+}
+
+struct SmeltReagentDelta
+{
+    std::uint32_t before = 0;
+    std::uint32_t after = 0;
+    std::uint32_t required = 0;
+};
+
+enum class SmeltReceipt : std::uint8_t
+{
+    Pending = 0,
+    Success = 1,
+    Interrupted = 2,
+    Ambiguous = 3,
+    WrongOwner = 4
+};
+
+struct SmeltReceiptFacts
+{
+    SmeltOwner expectedOwner = SmeltOwner::None;
+    SmeltOwner actualOwner = SmeltOwner::None;
+    bool stillCasting = false;
+    std::uint32_t outputBefore = 0;
+    std::uint32_t outputAfter = 0;
+    std::uint32_t outputExpected = 0;
+    std::uint8_t reagentCount = 0;
+    std::array<SmeltReagentDelta, kMaxSmeltReagents> reagents{};
+};
+
+[[nodiscard]] inline SmeltReceipt EvaluateSmeltReceipt(SmeltReceiptFacts const& facts)
+{
+    if (facts.expectedOwner == SmeltOwner::None || facts.actualOwner != facts.expectedOwner)
+        return SmeltReceipt::WrongOwner;
+    if (facts.stillCasting)
+        return SmeltReceipt::Pending;
+    bool exact = static_cast<std::uint64_t>(facts.outputAfter) ==
+        static_cast<std::uint64_t>(facts.outputBefore) + facts.outputExpected;
+    bool unchanged = facts.outputAfter == facts.outputBefore;
+    for (std::size_t i = 0; i < facts.reagentCount; ++i)
+    {
+        SmeltReagentDelta const& reagent = facts.reagents[i];
+        exact = exact && static_cast<std::uint64_t>(reagent.after) + reagent.required == reagent.before;
+        unchanged = unchanged && reagent.after == reagent.before;
+    }
+    if (exact)
+        return SmeltReceipt::Success;
+    return unchanged ? SmeltReceipt::Interrupted : SmeltReceipt::Ambiguous;
+}
+
+inline constexpr char const* SmeltReceiptName(SmeltReceipt receipt)
+{
+    switch (receipt)
+    {
+        case SmeltReceipt::Pending: return "pending";
+        case SmeltReceipt::Success: return "success";
+        case SmeltReceipt::Interrupted: return "interrupted";
+        case SmeltReceipt::Ambiguous: return "ambiguous";
+        case SmeltReceipt::WrongOwner: return "wrong_owner";
+    }
+    return "unknown";
+}
 
 // What the bot has of one table row: the recipe known, reagent units in its bags.
 struct Have
@@ -250,6 +504,22 @@ struct BotState
     std::uint32_t crafted = 0;      // casts in this batch
     std::uint32_t skipSpell = 0;    // last `skip` row's spell: one row until a cast starts
     bool bandaging = false;         // our bandage channel in flight
+    std::uint64_t nextSmeltMs = 0;  // independent smelting cadence
+    std::uint64_t smeltSinceMs = 0;
+    std::uint64_t smeltMoveSinceMs = 0;
+    SmeltMoveProof smeltMove;       // exact generic forge-leg identity; Supply uses its own Forge task
+    std::uint32_t smeltCasts = 0;
+    bool smeltActive = false;
+    SmeltOwner smeltOwner = SmeltOwner::None;
+    std::uint32_t smeltSpell = 0;
+    std::uint32_t smeltOutput = 0;
+    std::uint32_t smeltOutputCount = 0;
+    std::uint32_t smeltOutputBefore = 0;
+    std::uint32_t smeltSkillBefore = 0;
+    std::uint64_t smeltIssuedMs = 0;
+    std::uint8_t smeltReagentCount = 0;
+    std::array<SmeltReagent, kMaxSmeltReagents> smeltReagents{};
+    std::array<std::uint32_t, kMaxSmeltReagents> smeltReagentBefore{};
 };
 
 // What the bot knows of the two lines (trainer-stop learn rows).
@@ -267,8 +537,11 @@ namespace detail
 inline bool gEnabled = false;
 inline Params gParams;
 }
-inline bool Enabled() { return detail::gEnabled; }
+// The status-update hook runs when any independently gated SelfCraft subfeature is on. Existing First Aid and
+// Cooking behavior still requires AutoWow.SelfCraft.Enable.
+inline bool Enabled() { return detail::gEnabled || detail::gParams.smelting; }
 inline bool CookingOn() { return detail::gEnabled && detail::gParams.cooking; }
+inline bool SmeltingOn() { return detail::gParams.smelting; }
 
 void LoadConfig();
 // Cooked food of the bot that CountsAsFood at its level (errand food stock).
@@ -278,6 +551,12 @@ bool ReservedCloth(PlayerbotAI* botAI, Player* bot, Item* item);
 // Errand trainer stop: snapshot before the `trainer` action, then one `learn` row per new line / rank / recipe.
 Known KnownOf(Player* bot);
 void NoteLearned(Player* bot, Known const& before);
+// SupplyStep integration: reconcile only the cast owner that issued the native cast, ask whether a bounded job
+// wants the existing forge trip, then start one exact-receipt cast at the forge. Generic miners call the same
+// runtime from SelfCraftStep and use a naturally nearby forge.
+void ReconcileSmelting(Player* bot, SmeltOwner owner);
+bool SmeltingWanted(PlayerbotAI* botAI, Player* bot, SmeltOwner owner);
+bool StartSmelting(PlayerbotAI* botAI, Player* bot, SmeltOwner owner);
 }  // namespace AutoWowSelfCraft
 
 #endif  // AUTOWOW_SELFCRAFT_POLICY_H

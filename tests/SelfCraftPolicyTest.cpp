@@ -164,6 +164,141 @@ TEST(SelfCraftPolicy, FoodPrefersTheHighestProductLevel)
     EXPECT_EQ(PickFood(h, 180, 24, 0, 20), 8);  // the wing is not usable at L24
 }
 
+TEST(SelfCraftPolicy, SmeltingPrefersMaterialDemandThenCheapSkillUp)
+{
+    SmeltOption material;
+    material.spell = 3307;
+    material.reagentValue = 100;
+    material.known = material.reagentsReady = material.outputRoom = material.materialWanted = true;
+    SmeltOption skill = material;
+    skill.spell = 2657;
+    skill.reagentValue = 1;
+    skill.materialWanted = false;
+    skill.skillUp = true;
+    std::vector<SmeltOption> options = {skill, material};
+    EXPECT_EQ(PickSmelt(options, false), 1);  // useful grey material outranks a cheaper non-grey skill-up
+
+    material.materialWanted = false;
+    options = {skill, material};
+    EXPECT_EQ(PickSmelt(options, false), 0);
+    SmeltOption tied = skill;
+    tied.spell = 3304;
+    options.push_back(tied);
+    EXPECT_EQ(PickSmelt(options, false), 0);  // equal value: lower spell id
+}
+
+TEST(SelfCraftPolicy, SmeltingRejectsUnknownMissingFullAndProtected)
+{
+    SmeltOption ready;
+    ready.spell = 2657;
+    ready.known = ready.reagentsReady = ready.outputRoom = ready.materialWanted = true;
+    std::vector<SmeltOption> options = {ready};
+    EXPECT_EQ(PickSmelt(options, false), 0);
+    options[0].known = false;
+    EXPECT_EQ(PickSmelt(options, false), -1);
+    options[0] = ready;
+    options[0].reagentsReady = false;
+    EXPECT_EQ(PickSmelt(options, false), -1);
+    options[0] = ready;
+    options[0].outputRoom = false;
+    EXPECT_EQ(PickSmelt(options, false), -1);
+    options[0] = ready;
+    options[0].protectedReagent = true;
+    EXPECT_EQ(PickSmelt(options, false), -1);
+}
+
+TEST(SelfCraftPolicy, SmeltingReceiptRequiresOwnerAndExactNativeDeltas)
+{
+    SmeltReceiptFacts facts;
+    facts.expectedOwner = facts.actualOwner = SmeltOwner::SelfCraft;
+    facts.outputBefore = 3;
+    facts.outputAfter = 5;
+    facts.outputExpected = 2;
+    facts.reagentCount = 2;
+    facts.reagents[0] = {8, 7, 1};
+    facts.reagents[1] = {4, 3, 1};
+    EXPECT_EQ(EvaluateSmeltReceipt(facts), SmeltReceipt::Success);  // skill may stay grey; inventory proves the cast
+    facts.stillCasting = true;
+    EXPECT_EQ(EvaluateSmeltReceipt(facts), SmeltReceipt::Pending);
+    facts.stillCasting = false;
+    facts.actualOwner = SmeltOwner::Supply;
+    EXPECT_EQ(EvaluateSmeltReceipt(facts), SmeltReceipt::WrongOwner);
+    facts.actualOwner = SmeltOwner::SelfCraft;
+    facts.outputAfter = facts.outputBefore;
+    facts.reagents[0].after = facts.reagents[0].before;
+    facts.reagents[1].after = facts.reagents[1].before;
+    EXPECT_EQ(EvaluateSmeltReceipt(facts), SmeltReceipt::Interrupted);
+    facts.outputAfter = 4;
+    EXPECT_EQ(EvaluateSmeltReceipt(facts), SmeltReceipt::Ambiguous);
+}
+
+TEST(SelfCraftPolicy, SmeltingBatchMovementAndFocusAreBounded)
+{
+    EXPECT_TRUE(SmeltJobOpen(true, 4, 5, 100, 180099));
+    EXPECT_FALSE(SmeltJobOpen(true, 5, 5, 100, 101));
+    EXPECT_FALSE(SmeltJobOpen(true, 4, 5, 100, 180100));
+    EXPECT_FALSE(SmeltJobOpen(false, 0, 5, 0, 0));
+    EXPECT_FALSE(SmeltMoveTimedOut(true, 100, 30099));
+    EXPECT_TRUE(SmeltMoveTimedOut(true, 100, 30100));
+
+    SmeltOption option;
+    option.spell = 2657;
+    option.known = option.reagentsReady = option.outputRoom = option.materialWanted = true;
+    std::vector<SmeltOption> options = {option};
+    EXPECT_EQ(PickSmelt(options, false), 0);  // enough to plan a forge visit
+    EXPECT_EQ(PickSmelt(options, true), -1);  // final cast still requires native focus
+    options[0].focusReady = true;
+    EXPECT_EQ(PickSmelt(options, true), 0);
+}
+
+TEST(SelfCraftPolicy, SmeltingForgeLegRequiresExactMovementOwnership)
+{
+    SmeltMoveFacts facts;
+    facts.forgeGuid = 0x1234;
+    facts.lastMovementPresent = true;
+    facts.movementIssuedAtMs = 77;
+    facts.movementEndpoint = {1, 10.0f, 20.0f, 30.0f};
+    facts.nativeSplineActive = true;
+    facts.nativeSplineId = 9;
+    facts.nativeSplineEndpoint = {1, 11.0f, 21.0f, 31.0f};
+    facts.botMoving = true;
+    SmeltMoveProof const proof = CaptureSmeltMoveProof(facts);
+    ASSERT_EQ(proof.version, kSmeltMoveProofVersion);
+    EXPECT_EQ(EvaluateSmeltMove(proof, facts), SmeltMoveDecision::OwnedLive);
+
+    facts.nativeSplineActive = false;
+    facts.botMoving = false;
+    EXPECT_EQ(EvaluateSmeltMove(proof, facts), SmeltMoveDecision::OwnedArrived);
+
+    // A newer LastMovement remains a replacement after that foreign move has itself finished. The smelter must
+    // release instead of treating the idle bot as an arrived forge leg and casting over the newer goal.
+    facts.movementIssuedAtMs = 78;
+    EXPECT_EQ(EvaluateSmeltMove(proof, facts), SmeltMoveDecision::Replaced);
+
+    facts.movementIssuedAtMs = 77;
+    facts.nativeSplineActive = true;
+    facts.nativeSplineId = 10;
+    facts.botMoving = true;
+    EXPECT_EQ(EvaluateSmeltMove(proof, facts), SmeltMoveDecision::Replaced);
+
+    facts.nativeSplineId = 9;
+    facts.moveFarActive = true;
+    EXPECT_EQ(EvaluateSmeltMove(proof, facts), SmeltMoveDecision::Replaced);
+
+    facts.moveFarActive = false;
+    facts.travelIntent.createdMs = 90;  // a newer intent remains foreign even after it has become inactive
+    EXPECT_FALSE(facts.travelIntent.active);
+    EXPECT_EQ(EvaluateSmeltMove(proof, facts), SmeltMoveDecision::Replaced);
+}
+
+TEST(SelfCraftPolicy, SupplySmeltingNeverPreemptsOwnedCraftWork)
+{
+    EXPECT_TRUE(SupplySmeltMayRun(false, false, false));
+    EXPECT_FALSE(SupplySmeltMayRun(true, false, false));
+    EXPECT_FALSE(SupplySmeltMayRun(false, true, false));
+    EXPECT_FALSE(SupplySmeltMayRun(false, false, true));
+}
+
 TEST(SelfCraftPolicy, LedgerEventAndFields)
 {
     EXPECT_EQ(static_cast<int>(AutoWowQuestLedger::Event::SelfCraft), 21);
@@ -179,6 +314,9 @@ TEST(SelfCraftPolicy, DefaultsAreOffAndSmall)
 {
     Params p;
     EXPECT_FALSE(Enabled());
+    EXPECT_FALSE(p.smelting);
+    EXPECT_EQ(p.smeltingCheckIntervalMs, 60000u);
+    EXPECT_EQ(p.smeltingBatchMax, 5u);
     EXPECT_EQ(p.bandageTarget, 10u);
     EXPECT_EQ(p.bandageCloth, 20u);
     BotState s;
