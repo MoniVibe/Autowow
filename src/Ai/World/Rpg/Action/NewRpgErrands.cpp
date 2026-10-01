@@ -1668,28 +1668,34 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             s.nextTrainRunMs = now + sPlayerbotAIConfig.autoWowProfessionsTrainRunCooldownMs;
             StoreState(guid, s);
         }
-        if (a.urgent & NeedAhGear)
-        {
-            // AutoWow.Gear.AuctionUpgrades only: an auction-run due check spends the level, run or not.
-            s.lastAhGearLevel = bot->GetLevel();
-            StoreState(guid, s);
-        }
         if (!ShouldRun(a.needs, a.urgent))
             return false;
         Leg leg = Leg::None;
         // A run only a missing / capped planned profession asked for goes to a town that teaches it.
         bool const trainOnly = a.urgent == NeedProfTrain;
-        // A run only the auction gear asked for goes to a town with an auctioneer.
-        bool const auctionOnly = a.urgent == NeedAhGear;
+        // Prefer the due auction scan without starving independently admissible local work when no safe auction
+        // town is available. The second bounded selection keeps the existing reachability and backoff controls.
+        bool const auctionPreferred = AuctionTownRequired(a.urgent);
         Town const* town = ChooseTown(
-            bot, team, leg, pendingWalk, s.walkBackoffs, now, a.needs, trainOnly, auctionOnly);
+            bot, team, leg, pendingWalk, s.walkBackoffs, now, a.needs, trainOnly, auctionPreferred);
+        bool const tryNonAuctionTown = ShouldTryNonAuctionTown(town != nullptr, a.needs, a.urgent);
+        if (tryNonAuctionTown)
+        {
+            std::uint32_t const otherNeeds = a.needs & ~NeedAhGear;
+            std::uint32_t const otherUrgent = a.urgent & ~NeedAhGear;
+            bool const otherTrainOnly = otherUrgent == NeedProfTrain;
+            town = ChooseTown(
+                bot, team, leg, pendingWalk, s.walkBackoffs, now, otherNeeds, otherTrainOnly, false);
+        }
         StoreState(guid, s);  // retain failures; nextCheckMs bounds a no-town decision to one per check window
         if (trainOnly)
             LOG_INFO("playerbots", "[Professions] train_due bot={} level={} town={}", bot->GetName(), bot->GetLevel(),
                      town ? town->id : 0);
         if (a.urgent & NeedAhGear)
-            LOG_INFO("playerbots", "[AhGear] run_due bot={} lvl={} avg_ilvl={} money={} only={} town={}", bot->GetName(),
-                     bot->GetLevel(), AvgIlvl(bot), bot->GetMoney(), auctionOnly, town ? town->id : 0);
+            LOG_INFO("playerbots", "[AhGear] run_due bot={} lvl={} avg_ilvl={} money={} preferred={} fallback={} "
+                                     "town={}",
+                     bot->GetName(), bot->GetLevel(), AvgIlvl(bot), bot->GetMoney(), auctionPreferred,
+                     tryNonAuctionTown, town ? town->id : 0);
         if (!town)
             return false;
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));
@@ -2624,7 +2630,10 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
     if (st.ops & OpAuction)
     {
         std::vector<uint32> ahGear;
-        AutoWowTrade::VisitAuctioneer(botAI, bot, npc, ClassTrainBudgetCopper(bot->GetLevel()), &ahGear);
+        bool const ahGearScanned =
+            AutoWowTrade::VisitAuctioneer(botAI, bot, npc, ClassTrainBudgetCopper(bot->GetLevel()), &ahGear);
+        s.lastAhGearLevel =
+            AhGearLevelAfterScan(s.lastAhGearLevel, bot->GetLevel(), s.needs, ahGearScanned);
         for (std::size_t k = 0; k < ahGear.size() && k < s.ahGearItems.size(); ++k)
             s.ahGearItems[k] = ahGear[k];
     }

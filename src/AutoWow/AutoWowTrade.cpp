@@ -447,14 +447,14 @@ bool HasEmptyMail(Player* bot)
     return false;
 }
 
-void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve,
+bool VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve,
                      std::vector<std::uint32_t>* ahGear)
 {
     Params const& p = detail::gParams;
     AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
     AuctionHouseObject* ah = sAuctionMgr->GetAuctionsMap(auctioneer->GetFaction());
     if (!house || !ah)
-        return;
+        return false;
     AiObjectContext* context = botAI->GetAiObjectContext();
     // Read-only pass over the house (ascending auction id): lowest competing buyout per unit, and the
     // listings the bot wants (stock item usage: equip / replace = upgrade, skill = a mat it lacks).
@@ -490,9 +490,11 @@ void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
     // AutoWow.Gear.AuctionUpgrades: the gear plan replaces PlanBuys' one cheapest upgrade and goes first; the mats
     // get the trade budget of what is left.
     std::vector<Buy> gear;
+    bool ahGearScanned = false;
     if (AutoWowGear::AuctionEnabled())
     {
         gear = PlanAhGear(botAI, bot, ah, money > deposits ? money - deposits : 0);
+        ahGearScanned = true;
         listings.erase(std::remove_if(listings.begin(), listings.end(),
                                       [](Listing const& l) { return l.want == Want::Upgrade; }),
                        listings.end());
@@ -508,9 +510,10 @@ void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
     LOG_INFO("playerbots", "[Trade] bot={} auctioneer={} posts={} buys={} money={} reserve={}", bot->GetName(),
              auctioneer->GetEntry(), posts.size(), buys.size(), money, reserve);
     if (posts.empty() && buys.empty())
-        return;
+        return ahGearScanned;
     PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::make_unique<AuctionOperation>(bot->GetGUID(), auctioneer->GetGUID(), std::move(posts), std::move(buys)));
+    return ahGearScanned;
 }
 
 std::uint32_t PostStacks(Player* bot, Creature* auctioneer, std::vector<std::uint32_t> const& itemGuids,

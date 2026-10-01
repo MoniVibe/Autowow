@@ -1786,6 +1786,65 @@ TEST(AhGear, PlanHunterRangedSecondTwoHanderSkipsOffHand)
     EXPECT_TRUE(AutoWowGear::AhPlan(ap, caster, 30, false, 100000).empty());
 }
 
+TEST(AhGear, AuctionTownPreferenceFallsBackOnlyForIndependentWork)
+{
+    EXPECT_FALSE(AuctionTownRequired(0));
+    EXPECT_FALSE(AuctionTownRequired(NeedFood | NeedClassTrain));
+    EXPECT_TRUE(AuctionTownRequired(NeedAhGear));
+    EXPECT_TRUE(AuctionTownRequired(NeedAhGear | NeedFood));
+
+    std::uint32_t const mixedNeeds = NeedAhGear | NeedFood;
+    std::uint32_t const mixedUrgent = NeedAhGear | NeedFood;
+    // A found preferred town is used; fallback is never considered.
+    EXPECT_FALSE(ShouldTryNonAuctionTown(true, mixedNeeds, mixedUrgent));
+    TownFacts withAuction;
+    withAuction.sells = 1u << KindFood;
+    withAuction.auction = true;
+    std::uint32_t const preferredNeeds = mixedNeeds & Serves(withAuction);
+    EXPECT_EQ(preferredNeeds, mixedNeeds);
+    EXPECT_TRUE(ShouldRun(preferredNeeds, mixedUrgent & Serves(withAuction)));
+    EXPECT_EQ(AhGearLevelAfterScan(39, 40, preferredNeeds, true), 40U);
+
+    // With no safe auction town, independently urgent food can still proceed at a food town.
+    EXPECT_TRUE(ShouldTryNonAuctionTown(false, mixedNeeds, mixedUrgent));
+    TownFacts foodTown;
+    foodTown.sells = 1u << KindFood;
+    std::uint32_t const fallbackNeeds = mixedNeeds & Serves(foodTown);
+    EXPECT_EQ(fallbackNeeds, std::uint32_t(NeedFood));
+    EXPECT_TRUE(ShouldRun(fallbackNeeds, mixedUrgent & Serves(foodTown)));
+    EXPECT_EQ(AhGearLevelAfterScan(39, 40, fallbackNeeds, false), 39U);
+
+    // A sole auction need, or one accompanied by only one soft need, cannot bypass the auction requirement.
+    EXPECT_FALSE(ShouldTryNonAuctionTown(false, NeedAhGear, NeedAhGear));
+    EXPECT_FALSE(ShouldTryNonAuctionTown(false, NeedAhGear | NeedFood, NeedAhGear));
+    EXPECT_EQ(AhGearLevelAfterScan(39, 40, NeedAhGear, false), 39U);
+    // Two non-auction soft needs retain the existing ShouldRun admission rule.
+    EXPECT_TRUE(ShouldTryNonAuctionTown(false, NeedAhGear | NeedFood | NeedRepair, NeedAhGear));
+}
+
+TEST(AhGear, LevelIsConsumedOnlyByCompletedDueScan)
+{
+    constexpr std::uint32_t lastLevel = 39;
+    constexpr std::uint32_t level = 40;
+
+    // No town, service rejection, travel failure, stop timeout, and an invalid house all mean no scan.
+    EXPECT_EQ(AhGearLevelAfterScan(lastLevel, level, NeedAhGear, false), lastLevel);
+    // A valid empty/over-cap scan consumes the assessment even when it queues no item.
+    EXPECT_EQ(AhGearLevelAfterScan(lastLevel, level, NeedAhGear, true), level);
+    // A valid scan that queues a buy consumes at the same boundary; purchase/equip is not the release condition.
+    BotState queued;
+    queued.ahGearItems[0] = 9811;
+    queued.lastAhGearLevel = AhGearLevelAfterScan(lastLevel, level, NeedAhGear, true);
+    EXPECT_EQ(queued.lastAhGearLevel, level);
+    EXPECT_EQ(queued.ahGearItems[0], 9811U);
+    // An ordinary auction visit without a due auction-gear need never consumes the level.
+    EXPECT_EQ(AhGearLevelAfterScan(lastLevel, level, NeedFood, true), lastLevel);
+
+    AutoWowGear::AhParams const ap;
+    EXPECT_FALSE(AutoWowGear::AhRunDue(ap, level, queued.lastAhGearLevel, 900000, 0, 29));
+    EXPECT_TRUE(AutoWowGear::AhRunDue(ap, level + 1, queued.lastAhGearLevel, 900000, 0, 29));
+}
+
 TEST(AhGear, NeedIsUrgentServedByAuctionTownAndLevelSurvivesRuns)
 {
     Params p;

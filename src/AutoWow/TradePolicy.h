@@ -443,7 +443,8 @@ bool HasEmptyMail(Player* bot);
 // At the auctioneer (map thread): plan posts and buys (ErrandsPolicy reserve: `reserve` copper kept),
 // queue them for the world thread. AutoWow.Gear.AuctionUpgrades: the gear buys (AutoWowGear::AhPlan) replace the
 // one cheapest upgrade and go first; `ahGear` (optional) receives their item entries.
-void VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve,
+// Returns true only after a valid house completed the synchronous gear scan; an empty plan still counts.
+bool VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint64_t reserve,
                      std::vector<std::uint32_t>* ahGear = nullptr);
 // At the mailbox (map thread): queue the collection for the world thread.
 void VisitMailbox(Player* bot, GameObject* mailbox);

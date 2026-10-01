@@ -484,6 +484,28 @@ struct Assessment
     return urgent != 0 || n >= 2;
 }
 
+// An admitted auction-gear need first tries a town with an auctioneer even when another urgent need is present.
+[[nodiscard]] inline bool AuctionTownRequired(std::uint32_t urgent)
+{
+    return (urgent & NeedAhGear) != 0;
+}
+
+// If no auction town is safely reachable, other work may proceed only when it independently admits a run.
+[[nodiscard]] inline bool ShouldTryNonAuctionTown(bool auctionTownFound, std::uint32_t needs,
+                                                  std::uint32_t urgent)
+{
+    if (auctionTownFound || !AuctionTownRequired(urgent))
+        return false;
+    return ShouldRun(needs & ~NeedAhGear, urgent & ~NeedAhGear);
+}
+
+// The once-per-level auction assessment is consumed only by a completed scan, not by a route or service failure.
+[[nodiscard]] inline std::uint32_t AhGearLevelAfterScan(std::uint32_t lastLevel, std::uint32_t level,
+                                                        std::uint32_t runNeeds, bool scanCompleted)
+{
+    return (runNeeds & NeedAhGear) && scanCompleted ? level : lastLevel;
+}
+
 // AutoWow.Survival.KeepConsumables affordability: money plus the vendor value of the grey loot the town
 // visit sells first covers one pack of every needed kind (the plain rule wants a quarter of the deficit).
 [[nodiscard]] inline bool KeepAffordable(std::uint64_t money, std::uint64_t greyCopper, std::uint64_t onePackCopper)
