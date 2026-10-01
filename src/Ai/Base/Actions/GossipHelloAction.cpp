@@ -77,10 +77,13 @@ void GossipHelloAction::TellGossipMenus()
     }
 }
 
-bool GossipHelloAction::ProcessGossip(int32 menuToSelect, bool silent)
+bool GossipHelloAction::ProcessGossip(ObjectGuid guid, uint32 expectedMenuId, int32 menuToSelect,
+                                      uint32 expectedOptionType, bool validateOptionType, bool silent)
 {
     GossipMenu& menu = bot->PlayerTalkClass->GetGossipMenu();
-    if (menuToSelect != -1 && !menu.GetItem(menuToSelect))
+    GossipMenuItem const* item = menuToSelect == -1 ? nullptr : menu.GetItem(menuToSelect);
+    if (menu.GetSenderGUID() != guid || menu.GetMenuId() != expectedMenuId || !item ||
+        (validateOptionType && (item->OptionType != expectedOptionType || item->IsCoded)))
     {
         if (!silent)
             botAI->TellError("Unknown gossip option");
@@ -89,7 +92,7 @@ bool GossipHelloAction::ProcessGossip(int32 menuToSelect, bool silent)
 
     WorldPacket p;
     std::string code;
-    p << GetMaster()->GetTarget();
+    p << guid;
     p << menu.GetMenuId() << menuToSelect;
     p << code;
     bot->GetSession()->HandleGossipSelectOptionOpcode(p);
@@ -98,6 +101,14 @@ bool GossipHelloAction::ProcessGossip(int32 menuToSelect, bool silent)
         TellGossipMenus();
 
     return true;
+}
+
+bool GossipHelloAction::SelectPrepared(ObjectGuid guid, uint32 expectedMenuId, uint32 menuToSelect,
+                                       uint32 expectedOptionType, bool silent)
+{
+    if (!guid || !bot->PlayerTalkClass)
+        return false;
+    return ProcessGossip(guid, expectedMenuId, static_cast<int32>(menuToSelect), expectedOptionType, true, silent);
 }
 
 bool GossipHelloAction::Execute(ObjectGuid guid, int32 menuToSelect, bool silent)
@@ -143,7 +154,10 @@ bool GossipHelloAction::Execute(ObjectGuid guid, int32 menuToSelect, bool silent
     }
     else
     {
-        if (!ProcessGossip(menuToSelect, silent))
+        GossipMenu const& menu = bot->PlayerTalkClass->GetGossipMenu();
+        // Preserve the chat action's established master-target sender contract. Autonomous callers
+        // that need an exact sender use SelectPrepared instead.
+        if (!ProcessGossip(GetMaster()->GetTarget(), menu.GetMenuId(), menuToSelect, 0, false, silent))
             return false;
     }
 

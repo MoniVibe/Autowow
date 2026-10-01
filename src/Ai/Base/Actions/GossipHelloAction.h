@@ -19,10 +19,14 @@ public:
     bool Execute(Event event) override;
     // Overload for direct usage
     bool Execute(ObjectGuid guid, int32 menuToSelect, bool silent = false);
+    // Select only an option from the exact menu currently prepared by this sender.
+    bool SelectPrepared(ObjectGuid guid, uint32 expectedMenuId, uint32 menuToSelect,
+                        uint32 expectedOptionType, bool silent = false);
 
 private:
     void TellGossipMenus();
-    bool ProcessGossip(int32 menuToSelect, bool silent);
+    bool ProcessGossip(ObjectGuid guid, uint32 expectedMenuId, int32 menuToSelect,
+                       uint32 expectedOptionType, bool validateOptionType, bool silent);
     void TellGossipText(uint32 textId);
 };
 

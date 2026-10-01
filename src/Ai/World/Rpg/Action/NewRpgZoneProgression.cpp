@@ -18,9 +18,12 @@
 #include "Config.h"
 #include "ContractsPolicy.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "DeathLoopBreaker.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
+#include "GossipDef.h"
+#include "GossipHelloAction.h"
 #include "GatherDetourPolicy.h"
 #include "Log.h"
 #include "LootObjectStack.h"
@@ -155,6 +158,298 @@ void AutoWowTransports::LoadConfig()
 // `walk` = NewRpgBaseAction::WalkLeg (one tick of the no-teleport long walk; true = stuck this tick).
 using WalkFn = std::function<bool(WorldPosition const&)>;
 
+enum class ArrivalResult : std::uint8_t
+{
+    Yield = 0,
+    Held = 1,
+    Complete = 2,
+    Failed = 3
+};
+
+static bool ArrivalRequired(AutoWowZoneProgression::BotState const& s,
+                            std::vector<AutoWowTransports::Crossing> const& chain)
+{
+    using namespace AutoWowZoneProgression;
+    return AutoWowTransports::RequiresArrivalService(OutlandEnabled() && IsOutlandEntry(s.route),
+                                                     s.trigger == AutoWowZoneProgression::Trigger::DeathLoop,
+                                                     !chain.empty(),
+                                                     chain.empty() ? 0 : chain.back().object);
+}
+
+static bool ArrivalControlBlocked(Player* bot, PlayerbotAI* botAI)
+{
+    return !botAI->IsAutoWowIndependentParty() || botAI->IsRealPlayer() || botAI->HasRealPlayerMaster() ||
+           botAI->IsAutoWowPaused() || bot->GetGroup() != nullptr;
+}
+
+static bool ArrivalReceiptBlocked(Player* bot, PlayerbotAI* botAI)
+{
+    std::uint32_t const guid = bot->GetGUID().GetCounter();
+    return !bot->IsAlive() || bot->IsInCombat() || ArrivalControlBlocked(bot, botAI) ||
+           AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable() ||
+           (AutoWowErrands::Enabled() && AutoWowErrands::Active(guid));
+}
+
+static bool ArrivalStepTimedOut(AutoWowTransports::ChainState const& c, std::uint64_t now)
+{
+    return c.arrivalStepAt && now >= c.arrivalStepAt &&
+           now - c.arrivalStepAt > AutoWowTransports::detail::gParams.stepTimeoutMs;
+}
+
+static bool HoldArrivalClock(AutoWowTransports::ChainState& c, std::uint64_t now)
+{
+    return AutoWowTransports::HoldArrivalTimer(c, now);
+}
+
+static void ResumeArrivalClock(AutoWowTransports::ChainState& c, std::uint64_t now,
+                               AutoWowZoneProgression::BotState* trip = nullptr)
+{
+    std::uint64_t const heldMs = AutoWowTransports::ResumeArrivalTimer(c, now);
+    if (trip && trip->startMs)
+        trip->startMs += heldMs;
+}
+
+static AutoWowTransports::ArrivalReceipt ObserveArrivalFlight(
+    Player* bot, AutoWowTransports::ArrivalSpec const& spec, AutoWowTransports::ChainState& c,
+    std::uint64_t now, AutoWowZoneProgression::BotState* trip = nullptr)
+{
+    using namespace AutoWowTransports;
+    ArrivalReceipt const receipt = EvaluateArrivalReceipt(
+        spec, c.arrivalPhase, c.arrivalFlightObserved, bot->IsInFlight(), bot->m_taxi.GetTaxiSource(),
+        bot->m_taxi.GetTaxiDestination(), bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
+        bot->GetPositionZ());
+    if (receipt == ArrivalReceipt::FlightStarted || receipt == ArrivalReceipt::FlightActive)
+        ResumeArrivalClock(c, now, trip);
+    if (receipt == ArrivalReceipt::FlightStarted)
+    {
+        c.arrivalPhase = ArrivalPhase::AwaitFlightEnd;
+        c.arrivalStepAt = now;
+        c.arrivalFlightObserved = true;
+    }
+    return receipt;
+}
+
+// Post-Dark-Portal native faction service. WalkLeg owns the prepared navmesh approach. At the NPC the
+// server-prepared, condition-filtered quest ride wins; otherwise the exact DB scripted taxi path is used.
+// Neither branch changes quest state, taxi masks, rewards, XP, items, or position directly.
+static ArrivalResult ArrivalServiceStep(Player* bot, PlayerbotAI* botAI,
+                                        AutoWowZoneProgression::BotState& s,
+                                        AutoWowTransports::ChainState& c, std::uint64_t now,
+                                        WalkFn const& walk)
+{
+    using namespace AutoWowTransports;
+    std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
+    ArrivalSpec const* spec = ArrivalForTeam(team);
+    if (!spec)
+        return ArrivalResult::Failed;
+
+    if (c.arrivalPhase == ArrivalPhase::Complete)
+        return ArrivalResult::Complete;
+    if (c.arrivalPhase == ArrivalPhase::Failed)
+        return ArrivalResult::Failed;
+
+    if (ArrivalControlBlocked(bot, botAI))
+    {
+        HoldArrivalClock(c, now);
+        return ArrivalResult::Yield;
+    }
+
+    std::int32_t const bx = static_cast<std::int32_t>(std::floor(bot->GetPositionX()));
+    std::int32_t const by = static_cast<std::int32_t>(std::floor(bot->GetPositionY()));
+    if (c.arrivalPhase == ArrivalPhase::None)
+    {
+        if (!OwnsArrivalPosition(*spec, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
+                                 bot->GetPositionZ()))
+        {
+            c.arrivalPhase = ArrivalPhase::Failed;
+            LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=source_context team={} map={} pos=({}, {})",
+                     bot->GetName(), team, bot->GetMapId(), bx, by);
+            return ArrivalResult::Failed;
+        }
+        c.arrivalPhase = ArrivalPhase::ApproachService;
+        c.arrivalStepAt = now;
+        c.arrivalExpectedSource = spec->sourceNode;
+        c.arrivalExpectedDestination = spec->destinationNode;
+        LOG_INFO("playerbots", "[Transports] bot={} arrival_service npc={} path={} nodes={}->{}",
+                 bot->GetName(), spec->npc, spec->path, spec->sourceNode, spec->destinationNode);
+    }
+
+    if (bot->GetTransport() || bot->IsBeingTeleported() || bot->IsNonMeleeSpellCast(false) ||
+        bot->HasUnitState(UNIT_STATE_ROOT | UNIT_STATE_STUNNED))
+    {
+        HoldArrivalClock(c, now);
+        return ArrivalResult::Held;
+    }
+    ResumeArrivalClock(c, now, &s);
+
+    if (ArrivalStepTimedOut(c, now))
+    {
+        ArrivalPhase const timedOutPhase = c.arrivalPhase;
+        c.arrivalPhase = ArrivalPhase::Failed;
+        LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=step_timeout phase={} attempts={}",
+                 bot->GetName(), static_cast<std::uint32_t>(timedOutPhase), c.arrivalAttempts);
+        return ArrivalResult::Failed;
+    }
+
+    if (c.arrivalPhase == ArrivalPhase::AwaitFlightStart)
+        return ArrivalResult::Held;
+
+    if (c.arrivalPhase == ArrivalPhase::AwaitFlightEnd)
+    {
+        TaxiNodesEntry const* landing = sTaxiNodesStore.LookupEntry(spec->destinationNode);
+        bool const landingData = landing && landing->map_id == spec->map &&
+                                 std::fabs(landing->x - spec->destinationX) <= 1.0f &&
+                                 std::fabs(landing->y - spec->destinationY) <= 1.0f &&
+                                 std::fabs(landing->z - spec->destinationZ) <= 1.0f;
+        ArrivalReceipt const receipt = landingData
+            ? EvaluateArrivalReceipt(*spec, c.arrivalPhase, c.arrivalFlightObserved, false, 0, 0,
+                                     bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ())
+            : ArrivalReceipt::None;
+        if (receipt == ArrivalReceipt::Landed)
+        {
+            c.arrivalPhase = ArrivalPhase::Complete;
+            c.legs.Open(Leg::Walk, now);
+            LOG_INFO("playerbots", "[Transports] bot={} arrival_landed path={} destination={} map={} pos=({}, {})",
+                     bot->GetName(), spec->path, spec->destinationNode, bot->GetMapId(), bx, by);
+            return ArrivalResult::Complete;
+        }
+        return ArrivalResult::Held;
+    }
+
+    TaxiPathEntry const* path = sTaxiPathStore.LookupEntry(spec->path);
+    TaxiNodesEntry const* source = sTaxiNodesStore.LookupEntry(spec->sourceNode);
+    TaxiNodesEntry const* destination = sTaxiNodesStore.LookupEntry(spec->destinationNode);
+    bool const pathValid = path && source && destination &&
+        NativeArrivalPathMatches(*spec, path->ID, path->from, path->to) && source->map_id == spec->map &&
+        destination->map_id == spec->map && std::fabs(source->x - spec->sourceX) <= 1.0f &&
+        std::fabs(source->y - spec->sourceY) <= 1.0f && std::fabs(source->z - spec->sourceZ) <= 1.0f &&
+        std::fabs(destination->x - spec->destinationX) <= 1.0f &&
+        std::fabs(destination->y - spec->destinationY) <= 1.0f &&
+        std::fabs(destination->z - spec->destinationZ) <= 1.0f;
+    float const serviceDistance = bot->GetExactDist2d(spec->serviceX, spec->serviceY);
+    Creature* service = bot->FindNearestCreature(spec->npc, static_cast<float>(kArrivalServiceSearchYards));
+    bool const serviceValid = service && service->GetEntry() == spec->npc && service->GetMapId() == spec->map &&
+        service->IsAlive() && service->IsFriendlyTo(bot) && service->HasNpcFlag(UNIT_NPC_FLAG_FLIGHTMASTER) && source &&
+        service->GetExactDist2d(spec->serviceX, spec->serviceY) <= kArrivalSourceNodeYards &&
+        service->GetExactDist2d(source->x, source->y) <= kArrivalSourceNodeYards;
+    bool const landingBypass = AtDarkPortalExit(*spec, bot->GetMapId(), bot->GetPositionX(),
+                                                bot->GetPositionY(), bot->GetPositionZ());
+
+    auto activateNative = [&](char const* kind) -> ArrivalResult
+    {
+        ++c.arrivalAttempts;
+        if (!bot->ActivateTaxiPathTo(spec->path, spec->spell))
+        {
+            ++s.reissues;
+            LOG_WARN("playerbots", "[Transports] bot={} arrival_ride={}_refused path={} spell={} fare={} attempt={}",
+                     bot->GetName(), kind, spec->path, spec->spell, path->price, c.arrivalAttempts);
+            return ArrivalResult::Held;
+        }
+        c.arrivalPhase = ArrivalPhase::AwaitFlightStart;
+        c.arrivalStepAt = now;
+        c.legs.Open(Leg::Flight, now);
+        ArrivalReceipt const immediate = ObserveArrivalFlight(bot, *spec, c, now, &s);
+        LOG_INFO("playerbots", "[Transports] bot={} arrival_ride={} path={} spell={} fare={} nodes={}->{}",
+                 bot->GetName(), kind, spec->path, spec->spell, path->price, spec->sourceNode,
+                 spec->destinationNode);
+        if (immediate == ArrivalReceipt::FlightStarted)
+            LOG_INFO("playerbots", "[Transports] bot={} arrival_flight_started path={} nodes={}->{} menu=false immediate=true",
+                     bot->GetName(), spec->path, spec->sourceNode, spec->destinationNode);
+        return ArrivalResult::Held;
+    };
+
+    // Both stock stair approaches terminate at the same unsafe navmesh floor boundary. From the exact
+    // portal exit only, admit the same scripted native flight after validating the loaded faction service
+    // at its source node. The native flight generator starts at the player's current position.
+    if (landingBypass)
+    {
+        if (!pathValid || !serviceValid)
+        {
+            c.arrivalPhase = ArrivalPhase::Failed;
+            LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=landing_bypass_context npc={} path={}",
+                     bot->GetName(), spec->npc, spec->path);
+            return ArrivalResult::Failed;
+        }
+        return activateNative("landing_native");
+    }
+
+    if (!service)
+    {
+        if (serviceDistance <= INTERACTION_DISTANCE * 3.0f)
+        {
+            c.arrivalPhase = ArrivalPhase::Failed;
+            LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=service_missing npc={}",
+                     bot->GetName(), spec->npc);
+            return ArrivalResult::Failed;
+        }
+        if (walk(WorldPosition(spec->map, spec->serviceX, spec->serviceY, spec->serviceZ)))
+            ++s.reissues;
+        return ArrivalResult::Held;
+    }
+    if (!serviceValid)
+    {
+        c.arrivalPhase = ArrivalPhase::Failed;
+        LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=service_invalid npc={}",
+                 bot->GetName(), spec->npc);
+        return ArrivalResult::Failed;
+    }
+    if (bot->GetExactDist(service) >= INTERACTION_DISTANCE)
+    {
+        if (walk(WorldPosition(service->GetMapId(), service->GetPositionX(), service->GetPositionY(),
+                               service->GetPositionZ())))
+            ++s.reissues;
+        return ArrivalResult::Held;
+    }
+    if (bot->isMoving())
+        return ArrivalResult::Held;
+    if (bot->GetNPCIfCanInteractWith(service->GetGUID(), UNIT_NPC_FLAG_NONE) != service)
+    {
+        c.arrivalPhase = ArrivalPhase::Failed;
+        LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=service_not_interactable npc={}",
+                 bot->GetName(), spec->npc);
+        return ArrivalResult::Failed;
+    }
+
+    GossipHelloAction gossip(botAI);
+    bool const opened = gossip.Execute(service->GetGUID(), -1, true);
+    GossipMenuItem const* item = nullptr;
+    GossipMenu const* menu = nullptr;
+    if (opened && bot->PlayerTalkClass)
+    {
+        menu = &bot->PlayerTalkClass->GetGossipMenu();
+        item = menu->GetItem(spec->menuItem);
+    }
+    bool const offered = menu && item &&
+        SelectArrivalRide(*spec, menu->GetSenderGUID() == service->GetGUID(), menu->GetMenuId(), spec->menuItem,
+                          item->OptionType, item->IsCoded) == ArrivalRide::PreparedMenu;
+    if (offered && gossip.SelectPrepared(service->GetGUID(), spec->menu, spec->menuItem,
+                                         GOSSIP_OPTION_GOSSIP, true))
+    {
+        c.arrivalPhase = ArrivalPhase::AwaitFlightStart;
+        c.arrivalStepAt = now;
+        c.arrivalUsedMenu = true;
+        ++c.arrivalAttempts;
+        c.legs.Open(Leg::Flight, now);
+        ArrivalReceipt const immediate = ObserveArrivalFlight(bot, *spec, c, now, &s);
+        LOG_INFO("playerbots", "[Transports] bot={} arrival_ride=menu npc={} menu={} item={} expected_path={}",
+                 bot->GetName(), spec->npc, spec->menu, spec->menuItem, spec->path);
+        if (immediate == ArrivalReceipt::FlightStarted)
+            LOG_INFO("playerbots", "[Transports] bot={} arrival_flight_started path={} nodes={}->{} menu=true immediate=true",
+                     bot->GetName(), spec->path, spec->sourceNode, spec->destinationNode);
+        return ArrivalResult::Held;
+    }
+
+    if (!pathValid || bot->GetExactDist2d(source->x, source->y) > static_cast<float>(kArrivalSourceNodeYards))
+    {
+        c.arrivalPhase = ArrivalPhase::Failed;
+        LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=native_path_invalid path={} nodes={}->{}",
+                 bot->GetName(), spec->path, spec->sourceNode, spec->destinationNode);
+        return ArrivalResult::Failed;
+    }
+
+    return activateNative("native");
+}
+
 static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::BotState& s,
                       AutoWowTransports::ChainState& c, std::uint64_t now, WorldPosition const& hub,
                       WalkFn const& walk)
@@ -184,6 +479,10 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
 
     if (c.leg >= chain.size())
     {
+        // A first Outland entry cannot open the terminal army walk until its exact native arrival
+        // taxi has been observed landing. ArrivalServiceStep owns this state before ChainStep runs.
+        if (!TerminalWalkAllowed(ArrivalRequired(s, chain), c.arrivalPhase))
+            return true;
         c.legs.Open(Leg::Walk, now);
         return walkTo(hub.GetMapId(), hub.GetPositionX(), hub.GetPositionY(), hub.GetPositionZ());
     }
@@ -580,16 +879,47 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     using AutoWowZoneProgression::Route;
     using AutoWowZoneProgression::Trigger;
     uint32 const guid = bot->GetGUID().GetCounter();
-    if (!Movable(bot, botAI))
-        return false;
-
     Params const& p = detail::gParams;
     std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
     BotState s = LoadState(guid);
     NewRpgInfo& info = botAI->rpgInfo;
-
     bool const transports = AutoWowTransports::Enabled();
     AutoWowTransports::ChainState chain = transports ? LoadChain(guid) : AutoWowTransports::ChainState{};
+
+    AutoWowDeathLoop::RelocationBlock const movementBlock = MovementBlock(bot, botAI);
+    if (movementBlock == AutoWowDeathLoop::RelocationBlock::Flight && !ArrivalReceiptBlocked(bot, botAI) && transports &&
+        (chain.arrivalPhase == AutoWowTransports::ArrivalPhase::AwaitFlightStart ||
+         chain.arrivalPhase == AutoWowTransports::ArrivalPhase::AwaitFlightEnd))
+    {
+        std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
+        AutoWowTransports::ArrivalSpec const* spec = AutoWowTransports::ArrivalForTeam(team);
+        std::vector<AutoWowTransports::Crossing> const arrivalChain = AutoWowTransports::ChainFor(
+            AutoWowTransports::detail::gCrossings, team, s.route.from, s.route.to);
+        bool const owned = spec && ArrivalRequired(s, arrivalChain) &&
+                           chain.arrivalExpectedSource == spec->sourceNode &&
+                           chain.arrivalExpectedDestination == spec->destinationNode;
+        AutoWowTransports::ArrivalReceipt const receipt =
+            owned ? ObserveArrivalFlight(bot, *spec, chain, now, &s) : AutoWowTransports::ArrivalReceipt::None;
+        if (receipt == AutoWowTransports::ArrivalReceipt::FlightStarted ||
+            receipt == AutoWowTransports::ArrivalReceipt::FlightActive)
+        {
+            if (receipt == AutoWowTransports::ArrivalReceipt::FlightStarted)
+            {
+                LOG_INFO("playerbots", "[Transports] bot={} arrival_flight_started path={} nodes={}->{} menu={}",
+                         bot->GetName(), spec->path, spec->sourceNode, spec->destinationNode,
+                         chain.arrivalUsedMenu);
+            }
+            StoreChain(guid, chain);
+            StoreState(guid, s);
+            return true;
+        }
+    }
+    if (!Movable(bot, botAI))
+    {
+        if (transports && HoldArrivalClock(chain, now))
+            StoreChain(guid, chain);
+        return false;
+    }
 
     auto finish = [&](bool arrived)
     {
@@ -703,7 +1033,62 @@ bool NewRpgBaseAction::ZoneProgressionStep()
 
     if (s.phase == Phase::Travel)
     {
-        if (AtRouteHub(s.route, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()))
+        std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
+        std::vector<AutoWowTransports::Crossing> const arrivalChain = transports
+            ? AutoWowTransports::ChainFor(AutoWowTransports::detail::gCrossings, team, s.route.from, s.route.to)
+            : std::vector<AutoWowTransports::Crossing>{};
+        bool const arrivalRequired = transports && ArrivalRequired(s, arrivalChain);
+        auto failTrip = [&]()
+        {
+            if (AutoWowUnstickV2::Enabled())
+                AutoWowUnstickV2::NoteGaveUp(guid, now);
+            finish(false);
+            s = BotState{};
+            s.cooldownUntilMs = now + p.cooldownMs;
+            chain = AutoWowTransports::ChainState{};
+            StoreState(guid, s);
+            if (transports)
+                StoreChain(guid, chain);
+            info.ChangeToIdle();
+        };
+
+        // Legacy initial-entry portal state cannot count as the new native arrival receipt.
+        if (arrivalRequired && s.mode == Mode::Portal)
+        {
+            LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=portal_bypass_blocked to={}",
+                     bot->GetName(), s.route.to);
+            failTrip();
+            return true;
+        }
+        if (arrivalRequired && chain.leg >= arrivalChain.size() &&
+            chain.arrivalPhase != AutoWowTransports::ArrivalPhase::Complete)
+        {
+            ArrivalResult const arrival = ArrivalServiceStep(
+                bot, botAI, s, chain, now, [this](WorldPosition const& pos) { return WalkLeg(pos); });
+            StoreState(guid, s);
+            StoreChain(guid, chain);
+            if (arrival == ArrivalResult::Failed)
+            {
+                failTrip();
+                return true;
+            }
+            if (arrival == ArrivalResult::Yield)
+                return false;
+            if (arrival == ArrivalResult::Held)
+            {
+                if (!chain.arrivalHeldAt && chain.arrivalPhase == AutoWowTransports::ArrivalPhase::ApproachService &&
+                    TravelExhausted(p, s, now))
+                {
+                    LOG_WARN("playerbots", "[Transports] bot={} arrival_failed reason=travel_exhausted attempts={}",
+                             bot->GetName(), chain.arrivalAttempts);
+                    failTrip();
+                }
+                return true;
+            }
+        }
+
+        if ((!arrivalRequired || chain.arrivalPhase == AutoWowTransports::ArrivalPhase::Complete) &&
+            AtRouteHub(s.route, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()))
         {
             // At the hub inn: bind the hearthstone there (the innkeeper's own effect), then the flight master.
             if (Creature* inn = bot->FindNearestCreature(s.route.inn, 30.0f))
@@ -728,7 +1113,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             s.mode = Mode::Unreachable;
         }
         // AutoWow.Transports (mode auto/portal; owner ruling 2026-09-24): a spent walk leg portals to the hub.
-        if (transports)
+        if (transports && !arrivalRequired)
         {
             bool const allowed = AutoWowTransports::detail::gParams.mode != AutoWowTransports::TransportMode::Real;
             // AutoWow.ZoneProgression.Outland: an entry trip's chain portals like a walk, on OutlandPortalAfterMs.
@@ -763,13 +1148,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         }
         if (TravelExhausted(p, s, now))
         {
-            if (AutoWowUnstickV2::Enabled())
-                AutoWowUnstickV2::NoteGaveUp(guid, now);  // a group-quest party it leads disbands (PartyRuntime)
-            finish(false);
-            s = BotState{};
-            s.cooldownUntilMs = now + p.cooldownMs;
-            StoreState(guid, s);
-            info.ChangeToIdle();
+            failTrip();
             return true;
         }
         if (transports)

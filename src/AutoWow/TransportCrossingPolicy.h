@@ -8,6 +8,7 @@
 #define AUTOWOW_TRANSPORT_CROSSING_POLICY_H
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -29,7 +30,7 @@
 // DBC (provenance per row in DefaultCrossings).
 namespace AutoWowTransports
 {
-inline constexpr std::uint8_t kStateVersion = 1;
+inline constexpr std::uint8_t kStateVersion = 2;
 
 // How a crossing is taken. Wire-stable (config), append only.
 enum class Via : std::uint8_t
@@ -478,6 +479,148 @@ inline std::string LegsField(LegLog const& log)
     return out;
 }
 
+// The one native same-zone handoff required after a first Dark Portal crossing. The values are the
+// faction service defined by the stock world/DBC data: the condition-filtered gossip ride when it is
+// offered, and the same scripted SEND_TAXI path when that quest option is unavailable. Append only.
+struct ArrivalSpec
+{
+    std::uint32_t team = 0;
+    std::uint32_t npc = 0;
+    std::uint32_t menu = 0;
+    std::uint32_t menuItem = 0;
+    std::uint32_t spell = 0;
+    std::uint32_t path = 0;
+    std::uint32_t sourceNode = 0;
+    std::uint32_t destinationNode = 0;
+    std::uint32_t map = 0;
+    float serviceX = 0.0f;
+    float serviceY = 0.0f;
+    float serviceZ = 0.0f;
+    std::int32_t sourceX = 0;
+    std::int32_t sourceY = 0;
+    float sourceZ = 0.0f;
+    float destinationX = 0.0f;
+    float destinationY = 0.0f;
+    float destinationZ = 0.0f;
+};
+
+inline constexpr ArrivalSpec kHordeArrival = {2, 18930, 7938, 1, 34924, 565, 130, 99, 530,
+                                               -176.42f, 1028.53f, 54.2562f, -178, 1027, 54.19f,
+                                               228.5f, 2633.57f, 87.67f};
+inline constexpr ArrivalSpec kAllianceArrival = {1, 18931, 7939, 1, 34907, 564, 129, 100, 530,
+                                                  -323.81f, 1027.61f, 54.2399f, -327, 1020, 54.25f,
+                                                  -673.42f, 2717.27f, 94.18f};
+inline constexpr std::uint32_t kDarkPortalTrigger = 4354;
+inline constexpr std::int32_t kArrivalServiceSearchYards = 250;
+inline constexpr std::int32_t kArrivalSourceNodeYards = 20;
+inline constexpr std::int32_t kArrivalLandingYards = 60;
+inline constexpr std::int32_t kArrivalVerticalYards = 5;
+inline constexpr std::int32_t kDarkPortalExitX = -248;
+inline constexpr std::int32_t kDarkPortalExitY = 922;
+inline constexpr std::int32_t kDarkPortalExitZ = 84;
+inline constexpr std::int32_t kDarkPortalExitYards = 60;
+
+[[nodiscard]] inline ArrivalSpec const* ArrivalForTeam(std::uint32_t team)
+{
+    if (team == kAllianceArrival.team)
+        return &kAllianceArrival;
+    if (team == kHordeArrival.team)
+        return &kHordeArrival;
+    return nullptr;
+}
+
+// Only a normal first-entry chain ending at the Dark Portal owns this service. Death-loop escapes keep
+// their established portal policy; unrelated chains and same-zone flights are never admitted here.
+[[nodiscard]] inline bool RequiresArrivalService(bool outlandEntry, bool deathLoop, bool hasChain,
+                                                 std::uint32_t finalObject)
+{
+    return outlandEntry && !deathLoop && hasChain && finalObject == kDarkPortalTrigger;
+}
+
+[[nodiscard]] inline bool AtArrivalSource(ArrivalSpec const& spec, std::uint32_t map, float x,
+                                          float y, float z,
+                                          std::int32_t yards = kArrivalSourceNodeYards,
+                                          float verticalYards = static_cast<float>(kArrivalVerticalYards))
+{
+    float const dx = static_cast<float>(spec.sourceX) - x;
+    float const dy = static_cast<float>(spec.sourceY) - y;
+    float const dz = spec.sourceZ - z;
+    return map == spec.map && std::abs(dz) <= verticalYards &&
+           dx * dx + dy * dy + dz * dz <= static_cast<float>(yards * yards);
+}
+
+[[nodiscard]] inline bool AtDarkPortalExit(ArrivalSpec const& spec, std::uint32_t map, float x,
+                                           float y, float z,
+                                           std::int32_t yards = kDarkPortalExitYards,
+                                           float verticalYards = static_cast<float>(kArrivalVerticalYards))
+{
+    float const dx = static_cast<float>(kDarkPortalExitX) - x;
+    float const dy = static_cast<float>(kDarkPortalExitY) - y;
+    float const dz = static_cast<float>(kDarkPortalExitZ) - z;
+    return map == spec.map && std::abs(dz) <= verticalYards &&
+           dx * dx + dy * dy + dz * dz <= static_cast<float>(yards * yards);
+}
+
+[[nodiscard]] inline bool OwnsArrivalPosition(ArrivalSpec const& spec, std::uint32_t map, float x,
+                                              float y, float z)
+{
+    return AtDarkPortalExit(spec, map, x, y, z) || AtArrivalSource(spec, map, x, y, z);
+}
+
+[[nodiscard]] inline bool NativeArrivalPathMatches(ArrivalSpec const& spec, std::uint32_t path,
+                                                   std::uint32_t sourceNode, std::uint32_t destinationNode)
+{
+    return path == spec.path && sourceNode == spec.sourceNode && destinationNode == spec.destinationNode;
+}
+
+[[nodiscard]] inline bool PreparedArrivalRideMatches(ArrivalSpec const& spec, bool senderMatches,
+                                                     std::uint32_t menu, std::uint32_t item,
+                                                     std::uint32_t optionType, bool coded)
+{
+    return senderMatches && menu == spec.menu && item == spec.menuItem && optionType == 1 && !coded;
+}
+
+enum class ArrivalRide : std::uint8_t
+{
+    PreparedMenu = 0,
+    NativePath = 1
+};
+
+[[nodiscard]] inline ArrivalRide SelectArrivalRide(ArrivalSpec const& spec, bool senderMatches,
+                                                   std::uint32_t menu, std::uint32_t item,
+                                                   std::uint32_t optionType, bool coded)
+{
+    return PreparedArrivalRideMatches(spec, senderMatches, menu, item, optionType, coded)
+               ? ArrivalRide::PreparedMenu
+               : ArrivalRide::NativePath;
+}
+
+[[nodiscard]] inline bool MatchingArrivalFlight(ArrivalSpec const& spec, bool inFlight, std::uint32_t sourceNode,
+                                                std::uint32_t destinationNode)
+{
+    return inFlight && sourceNode == spec.sourceNode && destinationNode == spec.destinationNode;
+}
+
+[[nodiscard]] inline bool AtArrivalLanding(ArrivalSpec const& spec, std::uint32_t map, float x, float y, float z,
+                                           float yards = static_cast<float>(kArrivalLandingYards),
+                                           float verticalYards = static_cast<float>(kArrivalVerticalYards))
+{
+    float const dx = spec.destinationX - x;
+    float const dy = spec.destinationY - y;
+    float const dz = spec.destinationZ - z;
+    return map == spec.map && std::abs(dz) <= verticalYards && dx * dx + dy * dy + dz * dz <= yards * yards;
+}
+
+enum class ArrivalPhase : std::uint8_t
+{
+    None = 0,
+    ApproachService = 1,
+    AwaitFlightStart = 2,
+    AwaitFlightEnd = 3,
+    Complete = 4,
+    Failed = 5
+};
+
 // Per-bot chain progress (value-only; kept beside the zone-progression BotState).
 struct ChainState
 {
@@ -487,7 +630,69 @@ struct ChainState
     std::uint64_t stepAt = 0;  // game ms the current step began
     std::uint32_t failedRides = 0;  // this crossing; reset when the chain moves to the next crossing
     LegLog legs;
+    ArrivalPhase arrivalPhase = ArrivalPhase::None;
+    std::uint64_t arrivalStepAt = 0;
+    std::uint64_t arrivalHeldAt = 0;
+    std::uint32_t arrivalAttempts = 0;
+    std::uint32_t arrivalExpectedSource = 0;
+    std::uint32_t arrivalExpectedDestination = 0;
+    bool arrivalFlightObserved = false;
+    bool arrivalUsedMenu = false;
 };
+
+enum class ArrivalReceipt : std::uint8_t
+{
+    None = 0,
+    FlightStarted = 1,
+    FlightActive = 2,
+    Landed = 3
+};
+
+// Receipt decisions are evidence-only. A request does not advance AwaitFlightStart; only the exact
+// source/destination while flying does. Completion additionally needs a prior start and physical landing.
+[[nodiscard]] inline ArrivalReceipt EvaluateArrivalReceipt(ArrivalSpec const& spec, ArrivalPhase phase,
+                                                           bool flightObserved, bool inFlight,
+                                                           std::uint32_t sourceNode,
+                                                           std::uint32_t destinationNode, std::uint32_t map,
+                                                           float x, float y, float z)
+{
+    bool const matching = MatchingArrivalFlight(spec, inFlight, sourceNode, destinationNode);
+    if (phase == ArrivalPhase::AwaitFlightStart)
+        return matching ? ArrivalReceipt::FlightStarted : ArrivalReceipt::None;
+    if (phase != ArrivalPhase::AwaitFlightEnd)
+        return ArrivalReceipt::None;
+    if (matching)
+        return ArrivalReceipt::FlightActive;
+    if (!inFlight && flightObserved && AtArrivalLanding(spec, map, x, y, z))
+        return ArrivalReceipt::Landed;
+    return ArrivalReceipt::None;
+}
+
+inline bool HoldArrivalTimer(ChainState& state, std::uint64_t now)
+{
+    if (state.arrivalPhase == ArrivalPhase::None || state.arrivalPhase == ArrivalPhase::Complete ||
+        state.arrivalPhase == ArrivalPhase::Failed || state.arrivalHeldAt)
+        return false;
+    state.arrivalHeldAt = now;
+    return true;
+}
+
+// Returns the excluded span so the caller can shift its enclosing trip watchdog by the same amount.
+inline std::uint64_t ResumeArrivalTimer(ChainState& state, std::uint64_t now)
+{
+    if (!state.arrivalHeldAt)
+        return 0;
+    std::uint64_t const heldMs = now >= state.arrivalHeldAt ? now - state.arrivalHeldAt : 0;
+    if (state.arrivalStepAt)
+        state.arrivalStepAt += heldMs;
+    state.arrivalHeldAt = 0;
+    return heldMs;
+}
+
+[[nodiscard]] inline bool TerminalWalkAllowed(bool arrivalRequired, ArrivalPhase phase)
+{
+    return !arrivalRequired || phase == ArrivalPhase::Complete;
+}
 
 // A failed ride: a transport step restarted by the timeout, or the bot left the deck mid-sea.
 [[nodiscard]] inline bool FailedRide(Step from, Step to, bool stuck)

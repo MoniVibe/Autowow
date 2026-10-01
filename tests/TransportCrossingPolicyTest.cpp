@@ -251,4 +251,124 @@ TEST(Transports, EveryOutlandEntryRouteEndsAtTheDarkPortal)
     // The Outland chain uses the crossing machine unchanged: flight still wins, else chain.
     EXPECT_EQ(SelectMode(false, false, true, true), Mode::Chain);
 }
+
+TEST(Transports, DarkPortalArrivalSpecsAreFactionExact)
+{
+    ArrivalSpec const* horde = ArrivalForTeam(2);
+    ArrivalSpec const* alliance = ArrivalForTeam(1);
+    ASSERT_NE(horde, nullptr);
+    ASSERT_NE(alliance, nullptr);
+    EXPECT_EQ(horde->npc, 18930u);
+    EXPECT_EQ(horde->menu, 7938u);
+    EXPECT_EQ(horde->spell, 34924u);
+    EXPECT_TRUE(NativeArrivalPathMatches(*horde, 565, 130, 99));
+    EXPECT_FALSE(NativeArrivalPathMatches(*horde, 564, 129, 100));
+    EXPECT_EQ(alliance->npc, 18931u);
+    EXPECT_EQ(alliance->menu, 7939u);
+    EXPECT_EQ(alliance->spell, 34907u);
+    EXPECT_TRUE(NativeArrivalPathMatches(*alliance, 564, 129, 100));
+    EXPECT_FALSE(NativeArrivalPathMatches(*alliance, 565, 130, 99));
+    EXPECT_EQ(ArrivalForTeam(0), nullptr);
+    EXPECT_EQ(ArrivalForTeam(3), nullptr);
+}
+
+TEST(Transports, DarkPortalArrivalOwnershipIsNarrow)
+{
+    EXPECT_TRUE(RequiresArrivalService(true, false, true, 4354));
+    EXPECT_FALSE(RequiresArrivalService(false, false, true, 4354));
+    EXPECT_FALSE(RequiresArrivalService(true, true, true, 4354));
+    EXPECT_FALSE(RequiresArrivalService(true, false, false, 4354));
+    EXPECT_FALSE(RequiresArrivalService(true, false, true, 527));
+
+    ArrivalSpec const& horde = kHordeArrival;
+    EXPECT_TRUE(AtArrivalSource(horde, 530, -178, 1027, 54.19f));
+    EXPECT_FALSE(AtArrivalSource(horde, 0, -178, 1027, 54.19f));
+    EXPECT_FALSE(AtArrivalSource(horde, 530, -178, 1027, 60.0f));
+    EXPECT_FALSE(AtArrivalSource(horde, 530, -248, 922, 84.0f));
+    EXPECT_TRUE(AtDarkPortalExit(horde, 530, -248, 922, 84));
+    EXPECT_TRUE(AtDarkPortalExit(horde, 530, -248, 970, 84));
+    EXPECT_FALSE(AtDarkPortalExit(horde, 530, -248, 922, 90));
+    EXPECT_FALSE(AtDarkPortalExit(horde, 530, -248, 922, 89.1f));
+    EXPECT_FALSE(AtDarkPortalExit(horde, 530, -248, 922, 145));
+    EXPECT_FALSE(AtDarkPortalExit(horde, 0, -248, 922, 84));
+    EXPECT_TRUE(OwnsArrivalPosition(horde, 530, -248, 922, 84.0f));
+    EXPECT_TRUE(OwnsArrivalPosition(horde, 530, -178, 1027, 54.19f));
+    EXPECT_FALSE(OwnsArrivalPosition(horde, 530, -248, 922, 90.0f));
+}
+
+TEST(Transports, DarkPortalPreparedRideOrNativeBypass)
+{
+    ArrivalSpec const& horde = kHordeArrival;
+    EXPECT_EQ(SelectArrivalRide(horde, true, 7938, 1, 1, false), ArrivalRide::PreparedMenu);
+    EXPECT_EQ(SelectArrivalRide(horde, false, 7938, 1, 1, false), ArrivalRide::NativePath);  // stale sender
+    EXPECT_EQ(SelectArrivalRide(horde, true, 7939, 1, 1, false), ArrivalRide::NativePath);  // wrong faction menu
+    EXPECT_EQ(SelectArrivalRide(horde, true, 7938, 0, 4, false), ArrivalRide::NativePath);  // rewarded/taxi menu
+    EXPECT_EQ(SelectArrivalRide(horde, true, 7938, 1, 1, true), ArrivalRide::NativePath);   // coded/invalid
+    EXPECT_EQ(SelectArrivalRide(horde, true, 7938, 99, 0, false), ArrivalRide::NativePath); // option absent
+}
+
+TEST(Transports, DarkPortalFlightNeedsStartAndPhysicalLanding)
+{
+    ArrivalSpec const& horde = kHordeArrival;
+    EXPECT_TRUE(MatchingArrivalFlight(horde, true, 130, 99));
+    EXPECT_FALSE(MatchingArrivalFlight(horde, false, 130, 99));
+    EXPECT_FALSE(MatchingArrivalFlight(horde, true, 129, 99));
+    EXPECT_FALSE(MatchingArrivalFlight(horde, true, 130, 100));
+
+    EXPECT_TRUE(AtArrivalLanding(horde, 530, 229, 2634, 88));
+    EXPECT_TRUE(AtArrivalLanding(horde, 530, 275, 2634, 88));
+    // Exact final TaxiPathNode.dbc points for the scripted intro paths remain inside the
+    // TaxiNodes.dbc destination receipt (565 -> 99 and 564 -> 100 respectively).
+    EXPECT_TRUE(AtArrivalLanding(horde, 530, 227.18196f, 2634.1853f, 89.713875f));
+    EXPECT_TRUE(AtArrivalLanding(kAllianceArrival, 530, -676.94794f, 2716.6277f, 95.62141f));
+    EXPECT_FALSE(AtArrivalLanding(horde, 530, 229, 2634, 140));  // same XY, 52 yd above the node
+    EXPECT_FALSE(AtArrivalLanding(horde, 0, 229, 2634, 88));
+    EXPECT_FALSE(AtArrivalLanding(kAllianceArrival, 530, 229, 2634, 88));
+}
+
+TEST(Transports, DarkPortalArrivalReceiptFlowIsFactionSymmetric)
+{
+    for (ArrivalSpec const* spec : {&kHordeArrival, &kAllianceArrival})
+    {
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightStart, false, false,
+                                         spec->sourceNode, spec->destinationNode, spec->map,
+                                         spec->sourceX, spec->sourceY, spec->serviceZ), ArrivalReceipt::None);
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightStart, false, true,
+                                         spec->sourceNode + 1, spec->destinationNode, spec->map,
+                                         spec->sourceX, spec->sourceY, spec->serviceZ), ArrivalReceipt::None);
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightStart, false, true,
+                                         spec->sourceNode, spec->destinationNode, spec->map,
+                                         spec->sourceX, spec->sourceY, spec->serviceZ), ArrivalReceipt::FlightStarted);
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightEnd, true, true,
+                                         spec->sourceNode, spec->destinationNode, spec->map,
+                                         spec->sourceX, spec->sourceY, spec->serviceZ), ArrivalReceipt::FlightActive);
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightEnd, true, false, 0, 0, spec->map,
+                                         spec->destinationX, spec->destinationY, spec->destinationZ),
+                  ArrivalReceipt::Landed);
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightEnd, true, false, 0, 0,
+                                         spec->map + 1, spec->destinationX, spec->destinationY,
+                                         spec->destinationZ), ArrivalReceipt::None);
+        EXPECT_EQ(EvaluateArrivalReceipt(*spec, ArrivalPhase::AwaitFlightEnd, true, false, 0, 0, spec->map,
+                                         spec->destinationX, spec->destinationY, spec->destinationZ + 52.0f),
+                  ArrivalReceipt::None);
+    }
+}
+
+TEST(Transports, DarkPortalArrivalExcludedTimeAndTerminalWalk)
+{
+    ChainState state;
+    state.arrivalPhase = ArrivalPhase::AwaitFlightStart;
+    state.arrivalStepAt = 1000;
+    ASSERT_TRUE(HoldArrivalTimer(state, 1500));
+    EXPECT_FALSE(HoldArrivalTimer(state, 2000));
+    EXPECT_EQ(ResumeArrivalTimer(state, 11500), 10000u);
+    EXPECT_EQ(state.arrivalStepAt, 11000u);
+    EXPECT_EQ(state.arrivalHeldAt, 0u);
+
+    EXPECT_FALSE(TerminalWalkAllowed(true, ArrivalPhase::None));
+    EXPECT_FALSE(TerminalWalkAllowed(true, ArrivalPhase::AwaitFlightStart));
+    EXPECT_FALSE(TerminalWalkAllowed(true, ArrivalPhase::Failed));
+    EXPECT_TRUE(TerminalWalkAllowed(true, ArrivalPhase::Complete));
+    EXPECT_TRUE(TerminalWalkAllowed(false, ArrivalPhase::Failed));  // unrelated chains remain unchanged
+}
 }  // namespace
