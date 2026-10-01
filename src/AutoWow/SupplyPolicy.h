@@ -931,7 +931,7 @@ inline constexpr std::uint8_t kLeatherStarters = 3;
 // are ordinary paid crafts. The bridge rows keep a real blocked weapon need reachable from skill 1 through Ornate
 // Thorium Handaxe 275.
 inline constexpr LineTier kSmithWeapons[] = {
-    {2660, 2862, 1, 55, 0, {{{2835, 1, Source::Market}}}, kFamilyBridge}, // Rough Sharpening Stone (skill learn)
+    {2660, 2862, 1, 55, 1, {{{2835, 1, Source::Market}}}, kFamilyBridge}, // Rough Sharpening Stone (skill learn)
     {3320, 3470, 25, 85, 0, {{{2835, 2, Source::Market}}}, kFamilyBridge}, // Rough Grinding Stone
     {3326, 3478, 75, 100, 0, {{{2836, 2, Source::Market}}}, kFamilyBridge}, // Coarse Grinding Stone
     {2664, 2854, 90, 140, 14,

@@ -932,7 +932,7 @@ TEST(SupplySmithWeapons, OrdinaryCatalogMatchesTheWorldDb)
         bool bridge;
     };
     Row const rows[] = {
-        {2660, 2862, 1, 55, 0, true},       {3320, 3470, 25, 85, 0, true},
+        {2660, 2862, 1, 55, 1, true},       {3320, 3470, 25, 85, 0, true},
         {3326, 3478, 75, 100, 0, true},     {2664, 2854, 90, 140, 14, true},
         {3337, 3486, 125, 150, 0, true},    {8768, 7071, 150, 155, 0, true},
         {3506, 3842, 155, 205, 26, true},   {15972, 12259, 180, 230, 31, false},
