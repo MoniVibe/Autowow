@@ -6,6 +6,7 @@
 
 #include "PartyPolicy.h"
 
+#include "DungeonGatePolicy.h"
 #include "gtest/gtest.h"
 
 namespace
@@ -301,6 +302,21 @@ TEST(PartyPolicyTest, EncounterMaskDiff)
     EXPECT_TRUE(AllEncountersDone(0b1111, 0b1111));
     EXPECT_FALSE(AllEncountersDone(0b0111, 0b1111));
     EXPECT_FALSE(AllEncountersDone(0, 0));  // no encounter data never counts as done
+}
+
+TEST(PartyPolicyTest, RampartsRecruitRequiresFinalNativeBossState)
+{
+    // Static-spawn discovery yields Gargolmar and Omor (0x3). The explicit precursor gate admits
+    // encounter 2, while unrelated maps and older gate kinds receive no dynamic authorization.
+    EXPECT_EQ(DungeonGate::AuthorizeGateBackedEncounters(543, 0x3u), 0x7u);
+    EXPECT_EQ(DungeonGate::AuthorizeGateBackedEncounters(542, 0x3u), 0x3u);
+    EXPECT_EQ(DungeonGate::AuthorizeGateBackedEncounters(109, 0x3u), 0x3u);
+
+    // Vazruden kill credit may set bit 2 before Nazan dies. The recruited run only accepts that bit
+    // after the passive Herald's native boss state reaches DONE.
+    EXPECT_FALSE(DungeonGate::CompletionConfirmed(543, 2, 0x7u, false));
+    EXPECT_TRUE(DungeonGate::CompletionConfirmed(543, 2, 0x7u, true));
+    EXPECT_TRUE(DungeonGate::CompletionConfirmed(543, 0, 0x1u, false));
 }
 
 TEST(PartyPolicyTest, LedgerFieldsAreStable)

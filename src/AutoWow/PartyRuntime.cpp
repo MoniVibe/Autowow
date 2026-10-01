@@ -17,6 +17,7 @@
 
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
+#include "DungeonGatePolicy.h"
 #include "DungeonProbePolicy.h"
 #include "SupplyPolicy.h"
 #include "UnstickPolicy.h"
@@ -612,9 +613,22 @@ void SetPhase(Party& p, Phase ph, std::uint64_t now)
     p.missingSinceMs = 0;
 }
 
+std::uint32_t ConfirmedEncounterMask(std::uint32_t map, InstanceScript const* script)
+{
+    std::uint32_t mask = script->GetCompletedEncounterMask();
+    for (std::uint32_t encounter = 0; encounter < 32; ++encounter)
+    {
+        std::uint32_t const bit = 1u << encounter;
+        if ((mask & bit) && DungeonGate::RequiresBossStateCompletion(map, encounter) &&
+            script->GetBossState(encounter) != DONE)
+            mask &= ~bit;
+    }
+    return mask;
+}
+
 // AutoWow.Dungeon.Recruit: the dungeon's clearable encounter bits, as the probe runner scores them
-// (DungeonProbeRuntime.cpp): a kill-credit encounter counts only when its creature has a static spawn on the map
-// (a script-summoned boss such as RFK Grubbis can never be reached). Cached per map.
+// (DungeonProbeRuntime.cpp): a kill-credit encounter counts only when its creature has a static spawn on the map,
+// unless an explicit gate row supplies and completes its dynamic precursor. Cached per map.
 std::uint32_t ClearableOf(std::uint32_t map)
 {
     if (auto const it = gClearable.find(map); it != gClearable.end())
@@ -637,7 +651,9 @@ std::uint32_t ClearableOf(std::uint32_t map)
             records.push_back({enc->dbcEntry->encounterIndex, kill, kill && spawned.count(enc->creditEntry) > 0});
         }
     }
-    return gClearable[map] = AutoWowDungeonProbe::ClearableMask(records);
+    return gClearable[map] =
+        DungeonGate::AuthorizeGateBackedEncounters(
+            map, AutoWowDungeonProbe::ClearableMask(records));
 }
 
 // Step through an entrance trigger like a client does (the stock DungeonTransition waits for the whole
@@ -687,7 +703,7 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
             p.allMask &= ClearableOf(p.dungeonMap);
         InstanceMap* im = leader->GetMap()->ToInstanceMap();
         InstanceScript* script = im ? im->GetInstanceScript() : nullptr;
-        p.mask = script ? script->GetCompletedEncounterMask() : 0;
+        p.mask = script ? ConfirmedEncounterMask(p.dungeonMap, script) : 0;
         if (leaderAI->HasStrategy("new rpg", BOT_STATE_NON_COMBAT))
         {
             leaderAI->ChangeStrategy("-new rpg", BOT_STATE_NON_COMBAT);  // the dungeon navigator owns the leader
@@ -842,7 +858,8 @@ Disband RunStep(Party& p, std::vector<Player*> const& bots, Player* leader, std:
             }
             InstanceMap* im = leader->GetMap()->ToInstanceMap();
             InstanceScript* script = im ? im->GetInstanceScript() : nullptr;
-            std::uint32_t const mask = script ? script->GetCompletedEncounterMask() : p.mask;
+            std::uint32_t const mask =
+                script ? ConfirmedEncounterMask(p.dungeonMap, script) : p.mask;
             for (std::uint32_t enc : NewBosses(p.mask, mask))
             {
                 p.mask |= 1u << enc;

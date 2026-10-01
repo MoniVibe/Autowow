@@ -42,6 +42,7 @@ enum class DoneWhen : std::uint8_t
     Unlocked,       // door GO doneData not READY or gone from its loaded grid, or (doneValue != 0) a
                     // party member holds item doneValue
     Hostile,        // the row creature (spawnGuid) is hostile to the navigating bot
+    SuccessorActive,  // native encounter DONE, or a live summoned successor entry doneData/doneValue
 };
 
 struct Step
@@ -189,6 +190,11 @@ inline constexpr Step Steps[] = {
     // grave) runs its SAI (set faction 37). S68: the probe stood on him logging activation_blocked=not_hostile.
     {209, 4, 0, Kind::AreaTrigger, 962, 81524, 1909.27f, 1015.11f, 11.5155f, 5.0f, 0, 1,
         DoneWhen::Hostile, 0, 0, 0, false, 60000},
+    // Hellfire Ramparts: Vazruden (idx2) has no static spawn. The passive Herald summons two sentries;
+    // their deaths start the encounter and summon Vazruden and Nazan. SuccessorActive is a reversible
+    // handoff to ordinary combat: a wipe can reset the sentries until the native boss state is DONE.
+    {543, 2, 0, Kind::KillSet, 17517, 0, -1377.98f, 1718.07f, 82.88f, 60.0f, 0, 1,
+        DoneWhen::SuccessorActive, 17537, 17536, 0, false, 300000},
 };
 
 constexpr std::size_t NoStep = std::numeric_limits<std::size_t>::max();
@@ -271,6 +277,42 @@ inline bool MapHasSteps(std::uint32_t mapId)
         if (step.mapId == mapId)
             return true;
     return false;
+}
+
+inline bool SuccessorActive(bool encounterDone, bool firstSuccessorAlive, bool secondSuccessorAlive)
+{
+    return encounterDone || firstSuccessorAlive || secondSuccessorAlive;
+}
+
+inline bool LatchesDone(DoneWhen doneWhen)
+{
+    return doneWhen != DoneWhen::SuccessorActive;
+}
+
+inline bool RequiresBossStateCompletion(std::uint32_t mapId, std::uint32_t encounterIdx)
+{
+    for (Step const& step : Steps)
+        if (step.mapId == mapId && step.encounterIdx == encounterIdx &&
+            step.doneWhen == DoneWhen::SuccessorActive)
+            return true;
+    return false;
+}
+
+inline std::uint32_t AuthorizeGateBackedEncounters(std::uint32_t mapId, std::uint32_t clearableMask)
+{
+    for (Step const& step : Steps)
+        if (step.mapId == mapId && step.encounterIdx < 32 &&
+            step.doneWhen == DoneWhen::SuccessorActive)
+            clearableMask |= 1u << step.encounterIdx;
+    return clearableMask;
+}
+
+inline bool CompletionConfirmed(std::uint32_t mapId, std::uint32_t encounterIdx,
+    std::uint32_t completedEncounterMask, bool bossStateDone)
+{
+    if (encounterIdx >= 32 || !(completedEncounterMask & (1u << encounterIdx)))
+        return false;
+    return !RequiresBossStateCompletion(mapId, encounterIdx) || bossStateDone;
 }
 
 // Table indices of the encounter's rows, in stepOrder.

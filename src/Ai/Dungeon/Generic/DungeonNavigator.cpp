@@ -14,7 +14,6 @@
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DungeonEncounterActivationPolicy.h"
-#include "DungeonEncounterCompletionPolicy.h"
 #include "DungeonEncounterSelectionPolicy.h"
 #include "DungeonNavigatorCombatPolicy.h"
 #include "DungeonNavigatorConvoyPolicy.h"
@@ -179,10 +178,11 @@ Creature* GateCreature(Map* map, uint32 spawnGuid)
 // Nearest live creature of the row entry to the row position: its exact spawn, or any spawn/summon
 // within the row radius. searched is false when that cannot be known from here (grid not loaded or
 // the bot too far to search).
-Creature* NearestLiveGateCreature(Player* bot, Map* map, DungeonGate::Step const& step, bool& searched)
+Creature* NearestLiveGateCreature(Player* bot, Map* map, DungeonGate::Step const& step, bool& searched,
+    uint32 entryOverride = 0)
 {
     searched = false;
-    if (step.spawnGuid)
+    if (step.spawnGuid && !entryOverride)
     {
         Creature* creature = GateCreature(map, step.spawnGuid);
         searched = creature || map->IsGridLoaded(step.x, step.y);
@@ -195,7 +195,8 @@ Creature* NearestLiveGateCreature(Player* bot, Map* map, DungeonGate::Step const
 
     searched = true;
     std::list<Creature*> found;
-    bot->GetCreatureListWithEntryInGrid(found, step.entry, distance + step.radius);
+    bot->GetCreatureListWithEntryInGrid(found, entryOverride ? entryOverride : step.entry,
+        distance + step.radius);
     Creature* best = nullptr;
     float bestDistance = step.radius;
     for (Creature* creature : found)
@@ -1023,10 +1024,14 @@ DungeonEncounterList const* GetEncounters(Map const* map)
     return sObjectMgr->GetDungeonEncounterList(map->GetId(), normalizedDifficulty);
 }
 
-bool IsEncounterComplete(InstanceScript const* script, uint32 encounterIndex)
+bool IsEncounterComplete(InstanceScript const* script, uint32 mapId, uint32 encounterIndex)
 {
-    return DungeonEncounterCompletion::IsComplete(
-        script->GetCompletedEncounterMask(), encounterIndex);
+    uint32 const mask = script->GetCompletedEncounterMask();
+    if (encounterIndex >= 32 || !(mask & (1u << encounterIndex)))
+        return false;
+    if (!DungeonGate::RequiresBossStateCompletion(mapId, encounterIndex))
+        return true;
+    return script->GetBossState(encounterIndex) == DONE;
 }
 
 bool ProbeReachedStoredDestination(AutoWowDungeonPath::ProbeResult const& probe)
@@ -1069,7 +1074,7 @@ SpellCreditBossFallbackGoal BuildSpellCreditBossFallback(uint32 mapId, uint32 ac
             killCreditEntries.insert(record->creditEntry);
         }
         fallbackEncounters.push_back(
-            {mapId, encounterIndex, IsEncounterComplete(script, encounterIndex),
+            {mapId, encounterIndex, IsEncounterComplete(script, mapId, encounterIndex),
                 hasKillCreatureCredit});
     }
 
@@ -1323,7 +1328,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
     // stationary leader through a freshly proven ordinary path, without teleporting or skipping
     // any dungeon transition.
     bool postCombatConvoyRecovery = false;
-    if (travelRouteInitialized && IsEncounterComplete(script, travelRouteEncounterId))
+    if (travelRouteInitialized && IsEncounterComplete(script, map->GetId(), travelRouteEncounterId))
     {
         uint32 const completedEncounter = travelRouteEncounterId;
         postCombatConvoyRecovery = true;
@@ -2346,7 +2351,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             case DungeonGate::DoneWhen::InstanceData:
                 return script->GetData(step.doneData) >= step.doneValue;
             case DungeonGate::DoneWhen::EncounterDone:
-                return IsEncounterComplete(script, step.encounterIdx);
+                return IsEncounterComplete(script, step.mapId, step.encounterIdx);
             case DungeonGate::DoneWhen::Escorting:
             {
                 Creature* creature = GateCreature(map, step.spawnGuid);
@@ -2356,6 +2361,17 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {
                 Creature* creature = GateCreature(map, step.spawnGuid);
                 return creature && creature->IsAlive() && creature->IsHostileTo(bot);
+            }
+            case DungeonGate::DoneWhen::SuccessorActive:
+            {
+                bool searched = false;
+                bool const firstAlive =
+                    NearestLiveGateCreature(bot, map, step, searched, step.doneData) != nullptr;
+                bool const secondAlive =
+                    NearestLiveGateCreature(bot, map, step, searched, step.doneValue) != nullptr;
+                bool const encounterDone =
+                    IsEncounterComplete(script, step.mapId, step.encounterIdx);
+                return DungeonGate::SuccessorActive(encounterDone, firstAlive, secondAlive);
             }
             case DungeonGate::DoneWhen::Unlocked:
             {
@@ -2384,8 +2400,13 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
             {
                 if (!gateStepDone(rows[index]))
                     return false;
-                gateRuntime[rowIndices[index]].done = true;
-                logGate(rowIndices[index], "done", true);
+                if (DungeonGate::LatchesDone(rows[index].doneWhen))
+                {
+                    gateRuntime[rowIndices[index]].done = true;
+                    logGate(rowIndices[index], "done", true);
+                }
+                else
+                    logGate(rowIndices[index], "successor_active", false);
                 return true;
             });
         return selected == DungeonGate::NoStep ? DungeonGate::NoStep : rowIndices[selected];
@@ -2447,7 +2468,7 @@ bool DungeonNavigateNextEncounterAction::Execute(Event /*event*/)
 
     for (auto const& [encounterIndex, records] : encounterGroups)
     {
-        bool const complete = IsEncounterComplete(script, encounterIndex);
+        bool const complete = IsEncounterComplete(script, map->GetId(), encounterIndex);
         if (complete && travelRouteInitialized && travelRouteEncounterId == encounterIndex)
             ResetTravelRoute();
 

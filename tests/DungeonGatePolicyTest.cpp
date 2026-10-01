@@ -323,6 +323,49 @@ TEST(DungeonGatePolicy, DireMaulWingsSetAsideTheOtherWing)
     EXPECT_EQ(DireMaulEast | DireMaulWestNorth, 0xFFFFu);
 }
 
+TEST(DungeonGatePolicy, RampartsDynamicSentriesHandoffWithoutCompletingTheRun)
+{
+    std::vector<std::size_t> const rows = StepsFor(543, 2);
+    ASSERT_EQ(rows.size(), 1u);
+    Step const& sentries = Steps[rows.front()];
+    EXPECT_EQ(sentries.kind, Kind::KillSet);
+    EXPECT_EQ(sentries.entry, 17517u);
+    EXPECT_EQ(sentries.spawnGuid, 0u);
+    EXPECT_EQ(sentries.doneWhen, DoneWhen::SuccessorActive);
+    EXPECT_EQ(sentries.doneData, 17537u);
+    EXPECT_EQ(sentries.doneValue, 17536u);
+    EXPECT_FALSE(LatchesDone(sentries.doneWhen));
+
+    // Neither an unloaded search nor a loaded platform before the event starts can complete the
+    // precursor. A live successor only relinquishes navigation ownership to ordinary combat.
+    EXPECT_FALSE(SuccessorActive(false, false, false));
+    std::vector<Step> const encounterRows = {sentries};
+    std::vector<StepRuntime> runtime(1);
+    auto const successorAlive = [](std::size_t) { return SuccessorActive(false, true, false); };
+    EXPECT_EQ(SelectStep(encounterRows, runtime, false, noKey, successorAlive), NoStep);
+    EXPECT_FALSE(runtime[0].done);
+    auto const resetToSentries = [](std::size_t) { return SuccessorActive(false, false, false); };
+    EXPECT_EQ(SelectStep(encounterRows, runtime, false, noKey, resetToSentries), 0u);
+    EXPECT_TRUE(SuccessorActive(false, true, false));
+    EXPECT_TRUE(SuccessorActive(false, false, true));
+    EXPECT_TRUE(SuccessorActive(true, false, false));
+
+    // DBC kill credit can set bit 2 when Vazruden dies while Nazan is alive. Ramparts requires the
+    // native Herald BossAI state too; ordinary encounters retain their existing mask-only rule.
+    EXPECT_FALSE(CompletionConfirmed(543, 2, 0x3u, true));
+    EXPECT_FALSE(CompletionConfirmed(543, 2, 0x7u, false));
+    EXPECT_TRUE(CompletionConfirmed(543, 2, 0x7u, true));
+    EXPECT_TRUE(CompletionConfirmed(209, 2, 0x4u, false));
+}
+
+TEST(DungeonGatePolicy, GateBackedClearabilityIsNarrow)
+{
+    EXPECT_EQ(AuthorizeGateBackedEncounters(543, 0x3u), 0x7u);
+    EXPECT_EQ(AuthorizeGateBackedEncounters(543, 0u), 0x4u);
+    EXPECT_EQ(AuthorizeGateBackedEncounters(542, 0x3u), 0x3u);
+    EXPECT_EQ(AuthorizeGateBackedEncounters(109, 0x5u), 0x5u);
+}
+
 TEST(DungeonGatePolicy, PerScanGateLogsAreRateLimited)
 {
     EXPECT_TRUE(ShouldLog(false, 0));
