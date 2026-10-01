@@ -1738,7 +1738,8 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
 }
 
 // GearBootstrap (world thread, overlord): no need of the line has a recipe the artisan knows. The needs of the recipes
-// it can reach (ReachSkill: its rank's cap, or the next rank's its level trains) but does not know; the first one only
+// it can reach (Smiths: every rank its level can train; other lines: its rank or the next trainable rank) but does not
+// know; the first one only
 // skill blocks gets a skill-up order (PlanGearSkillup): SkillupCasts casts of the cheapest known recipe of the line's
 // own skill (Engineering's smelts level Mining) still below grey and not already stocked (held < SkillupCasts). Logged.
 std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art, std::vector<bool> const& known,
@@ -1748,7 +1749,8 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
     ProductLine const& L = LineOf(line);
     RecipeTable const G = GearTable(L);
     std::uint32_t const skill = art->GetSkillValue(L.skillLine), cap = art->GetMaxSkillValue(L.skillLine);
-    std::uint32_t const reach = ReachSkill(cap, art->GetLevel());
+    std::uint32_t const reach = line == Line::MailGear ? BootstrapDemandHorizon(G, cap, art->GetLevel())
+                                                        : ReachSkill(cap, art->GetLevel());
     std::vector<bool> blocked(G.tierCount, false);
     std::vector<SkillupOption> options;
     std::vector<bool> owns(G.tierCount, false);  // GearSkillupRestock: of the line's own skill

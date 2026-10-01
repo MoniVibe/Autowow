@@ -1853,16 +1853,43 @@ template <typename Have>
     return first;
 }
 
+// The existing GearBootstrap rank-cap / level policy. Native trainer tables can differ by profession; these gates
+// preserve the established reach behavior for the supported gear lines.
+inline constexpr std::uint32_t kProfessionRankCap[] = {75, 150, 225, 300, 375, 450};
+inline constexpr std::uint32_t kProfessionRankLevel[] = {5, 10, 20, 35, 50, 65};
+
 // GearBootstrap: the highest profession skill a gear artisan can reach before its next trainer rank is out of reach:
-// its rank's cap (maxSkill), or the next rank's when its level trains it (3.3.5 trainer_spell: Apprentice 75 at level
-// 5, Journeyman 150 at 10, Expert 225 at 20, Artisan 300 at 35, Master 375 at 50, Grand Master 450 at 65).
+// its rank's cap (maxSkill), or the next rank's when its level trains it.
 [[nodiscard]] inline std::uint32_t ReachSkill(std::uint32_t maxSkill, std::uint32_t level)
 {
-    constexpr std::uint32_t kRankCap[] = {75, 150, 225, 300, 375, 450}, kRankLevel[] = {5, 10, 20, 35, 50, 65};
-    for (std::size_t i = 0; i < std::size(kRankCap); ++i)
-        if (kRankCap[i] > maxSkill)
-            return level >= kRankLevel[i] ? kRankCap[i] : maxSkill;
+    for (std::size_t i = 0; i < std::size(kProfessionRankCap); ++i)
+        if (kProfessionRankCap[i] > maxSkill)
+            return level >= kProfessionRankLevel[i] ? kProfessionRankCap[i] : maxSkill;
     return maxSkill;
+}
+
+// Smith bootstrap demand discovery may look through every profession rank the artisan's level can lawfully train.
+// Stop at the line's highest non-bridge member product: bridge/intermediate rows cannot manufacture demand. The rank
+// count bounds the walk, and a non-increasing result rejects a fixed point or cycle.
+[[nodiscard]] inline std::uint32_t BootstrapDemandHorizon(RecipeTable const& g, std::uint32_t maxSkill,
+                                                           std::uint32_t level)
+{
+    std::uint32_t highestDemandSkill = 0;
+    for (std::size_t i = 0; i < g.tierCount; ++i)
+        if (g.tiers[i].reqLevel && g.tiers[i].family != kFamilyBridge)
+            highestDemandSkill = std::max(highestDemandSkill, g.tiers[i].skill);
+    if (!highestDemandSkill)
+        return 0;
+
+    std::uint32_t reach = maxSkill;
+    for (std::size_t i = 0; i < std::size(kProfessionRankCap); ++i)
+    {
+        std::uint32_t const next = ReachSkill(reach, level);
+        if (next <= reach)
+            break;
+        reach = next;
+    }
+    return std::min(reach, highestDemandSkill);
 }
 
 // GearBootstrap: `blocked` = the ranked needs of recipes the artisan can reach but does not know (no known recipe

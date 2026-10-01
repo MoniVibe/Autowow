@@ -1365,6 +1365,50 @@ TEST(SupplyGearBootstrap, ReachIsTheRankCapOrTheNextRankTheLevelTrains)
     EXPECT_EQ(ReachSkill(450, 80), 450u);  // Grand Master: nothing above
 }
 
+TEST(SupplyGearBootstrap, SmithDemandHorizonCrossesBridgeRowsWithinLawfulRanks)
+{
+    RecipeTable const g = GearTable(LineOf(Line::MailGear));
+    std::vector<bool> const unknown(g.tierCount, false);
+    auto demandRows = [&](std::uint32_t reach)
+    {
+        std::vector<std::uint32_t> out;
+        for (std::size_t i = 0; i < g.tierCount; ++i)
+            if (!unknown[i] && g.tiers[i].skill <= reach && g.tiers[i].reqLevel &&
+                g.tiers[i].family != kFamilyBridge)
+                out.push_back(g.tiers[i].spell);
+        return out;
+    };
+
+    // The old single-rank reach admits only bridge rows, which are never member demand.
+    EXPECT_TRUE(demandRows(ReachSkill(75, 51)).empty());
+
+    // The Smith-only horizon walks every rank the artisan's level can train and stops at the catalog's last demand row.
+    EXPECT_EQ(BootstrapDemandHorizon(g, 75, 10), 150u);
+    EXPECT_EQ(BootstrapDemandHorizon(g, 75, 34), 225u);
+    EXPECT_EQ(BootstrapDemandHorizon(g, 75, 35), 275u);
+    EXPECT_EQ(BootstrapDemandHorizon(g, 75, 51), 275u);
+    std::vector<std::uint32_t> const expanded = demandRows(BootstrapDemandHorizon(g, 75, 51));
+    EXPECT_EQ(expanded, (std::vector<std::uint32_t>{15972, 10007, 16969}));
+    EXPECT_EQ(BootstrapDemandHorizon(GearTable(LineOf(Line::ClothGear)), 75, 51), 195u);
+
+    // An approved future weapon need still gates the skill-up; bridge output itself never becomes demand.
+    std::uint8_t const sharpening = TierOf(g, 2862), glinting = TierOf(g, 12259);
+    ASSERT_NE(sharpening, kNoTier);
+    ASSERT_NE(glinting, kNoTier);
+    EXPECT_EQ(g.tiers[sharpening].family, kFamilyBridge);
+    EXPECT_EQ(std::find(expanded.begin(), expanded.end(), g.tiers[sharpening].spell), expanded.end());
+    std::vector<SkillupOption> const options = {
+        {2660, sharpening, false, true, 55, true, 1, true},
+    };
+    std::vector<GearOrder> const order =
+        PlanGearSkillup(g, {{70573, glinting, 15, kNoPriority, 300}}, 1, options, 7);
+    ASSERT_EQ(order.size(), 1u);
+    EXPECT_EQ(order[0].recipe, sharpening);
+    EXPECT_EQ(order[0].units, 7u);
+    EXPECT_EQ(order[0].consumer, 70573u);
+    EXPECT_TRUE(PlanGearSkillup(g, {}, 1, options, 7).empty());
+}
+
 TEST(SupplyGearBootstrap, StarterRowsOnlyWithTheFlag)
 {
     ProductLine const& L = LineOf(Line::LeatherGear);
