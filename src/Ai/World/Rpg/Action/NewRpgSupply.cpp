@@ -471,12 +471,29 @@ bool NewRpgBaseAction::SupplyStep()
     LineView const lview = lined ? LineViewOf(lineId, role.alliance) : LineView{};
     Stations const& lst = lined ? LineStationsOf(lineId, role.alliance) : st;
     // A gear line's artisan (lane V, Products cloth_gear / leather_gear): the line's view, stations and table.
-    bool const geared = role.gear != kNoLine && role.role == Role::Artisan;
-    Line const gearId = geared ? static_cast<Line>(role.gear) : Line::Bags;
-    LineView const gview = geared ? LineViewOf(gearId, role.alliance) : LineView{};
-    Stations const& gst = geared ? LineStationsOf(gearId, role.alliance) : st;
+    bool const gearLine = role.gear != kNoLine;
+    bool const geared = gearLine && role.role == Role::Artisan;
+    Line const gearId = gearLine ? static_cast<Line>(role.gear) : Line::Bags;
+    LineView const gview = gearLine ? LineViewOf(gearId, role.alliance) : LineView{};
+    Stations const& gst = gearLine ? LineStationsOf(gearId, role.alliance) : st;
     RecipeTable const gtab = geared ? GearTable(LineOf(gearId)) : RecipeTable{};
     ProductLine const* const repGear = role.gear != kNoLine ? &LineOf(static_cast<Line>(role.gear)) : nullptr;
+    bool const lineMarket = lined && !lview.buy.empty();
+    bool const gearMarket = gearLine && !gview.buy.empty();
+    bool const bagMarket = role.bagHouse && !view.buy.empty();
+    std::vector<MarketWant> marketWants;
+    if (role.role == Role::Rep)
+    {
+        if (lineMarket)
+            MergeMarketWants(marketWants, lview.buy);
+        if (gearMarket)
+            MergeMarketWants(marketWants, gview.buy);
+        if (bagMarket)
+            MergeMarketWants(marketWants, view.buy);
+    }
+    Stations const& marketStations = lineMarket && lst.auctioneer.entry ? lst
+                                    : gearMarket && gst.auctioneer.entry ? gst
+                                    : st;
 
     // A finished craft cast: count what it made.
     if (s.castSpell)
@@ -732,15 +749,16 @@ bool NewRpgBaseAction::SupplyStep()
         if (lined && role.role == Role::Rep && next == Task::None && lineSurplus)
             next = lst.auctioneer.entry ? Task::Auction : Task::Sell;
         if (lined && role.role == Role::Rep && Market() && next == Task::None && now >= s.marketMs &&
-            lst.auctioneer.entry && !lview.buy.empty())
+            lineMarket && marketStations.auctioneer.entry)
         {
             next = Task::Market;
             s.marketMs = now + p.tickMs;  // one visit (one BuyBudget) per tick
         }
         if (!lined && role.role == Role::Rep && next == Task::None && view.surplus)
             next = st.auctioneer.entry ? Task::Auction : Task::Sell;
-        if (role.role == Role::Rep && role.bagHouse && Market() && next == Task::None && now >= s.marketMs &&
-            st.auctioneer.entry && (!view.buy.empty() || !MarketSellable(bot, view).empty()))
+        if (role.role == Role::Rep && Market() && next == Task::None && now >= s.marketMs &&
+            marketStations.auctioneer.entry &&
+            (!marketWants.empty() || (role.bagHouse && !MarketSellable(bot, view).empty())))
         {
             next = Task::Market;
             s.marketMs = now + p.tickMs;  // one visit (one BuyBudget) per tick
@@ -778,7 +796,8 @@ bool NewRpgBaseAction::SupplyStep()
             : s.task == Task::GearTrainer ? StationFor(gst, Task::Trainer)
             : s.task == Task::GearVendor  ? StationFor(gst, Task::Thread)
             : s.task == Task::Forge || s.task == Task::Anvil || s.task == Task::GearTrainer2 ? StationFor(gst, s.task)
-                                          : StationFor(lined ? lst : st, s.task);
+                                          : StationFor(s.task == Task::Market ? marketStations : lined ? lst : st,
+                                                       s.task);
         if (!station || now - s.taskSinceMs > kTaskTimeoutMs)
         {
             LOG_INFO("playerbots", "[Supply] bot={} drop task={} (station={} timeout)", bot->GetName(), uint32(s.task),
@@ -1126,9 +1145,11 @@ bool NewRpgBaseAction::SupplyStep()
                 }
                 // A line rep only buys (its surplus goes through the Auction / Sell trips). Its own listings of a
                 // wanted item come back first (PlanMarketCancels; the buyouts skip them).
-                std::vector<MarketWant> wants = lined ? lview.buy : view.buy;
+                std::vector<MarketWant> wants = marketWants;
                 std::vector<AutoWowTrade::Post> planned;
-                if (std::vector<std::uint32_t> const sell = lined ? std::vector<std::uint32_t>{} : MarketSellable(bot, view);
+                if (std::vector<std::uint32_t> const sell = role.bagHouse && !lined
+                        ? MarketSellable(bot, view)
+                        : std::vector<std::uint32_t>{};
                     !sell.empty())
                     AutoWowTrade::PostStacks(bot, npc, sell, &planned);
                 for (AutoWowTrade::Post const& post : planned)

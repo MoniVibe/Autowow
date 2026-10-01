@@ -1708,6 +1708,8 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
         std::uint32_t const ilvl = IlvlSum(m), prio = PriorityOf(gPriority, Low(m));
         for (std::uint8_t const r : gGearRank[li])
         {
+            if (G.tiers[r].family == kFamilyBridge)
+                continue;  // paid skill-up output goes to house stock / sale, never a member gear order
             ItemTemplate const* proto = r < known.size() && known[r] ? sObjectMgr->GetItemTemplate(G.tiers[r].product)
                                                                      : nullptr;
             if (!proto || proto->RequiredLevel > m->GetLevel() || m->CanUseItem(proto) != EQUIP_ERR_OK)
@@ -1998,16 +2000,17 @@ void GearTick(Line line, bool alliance, bool overlord)
             else
                 feed(k.item, k.units);
         }
-        // Lane tinkers2 (EngGuns): a tool (kTools: Blacksmith Hammer) a known recipe's cast needs that the artisan lacks
-        // (bags or worn): one, bought at the line vendor.
-        if (EngGuns())
-            for (std::size_t i = 0; i < G.tierCount; ++i)
-                if (art->HasSpell(G.tiers[i].spell))
-                    for (std::uint32_t const c : ToolCategories(G.tiers[i].spell))
-                        if (std::uint32_t const tool = ToolFor(c);
-                            tool && !art->HasItemTotemCategory(c) &&
-                            std::none_of(v.vendor.begin(), v.vendor.end(), [&](MarketWant const& w) { return w.item == tool; }))
-                            v.vendor.push_back({tool, 1, BuyOf(tool)});
+        // A tool (kTools: Blacksmith Hammer) a known recipe's cast needs that the artisan lacks (bags or worn): one,
+        // bought at the line vendor. GearTable already removes disabled Engineering gun rows, so an EngGuns-off line
+        // does not acquire their hammer.
+        for (std::size_t i = 0; i < G.tierCount; ++i)
+            if (art->HasSpell(G.tiers[i].spell))
+                for (std::uint32_t const c : ToolCategories(G.tiers[i].spell))
+                    if (std::uint32_t const tool = ToolFor(c);
+                        tool && !art->HasItemTotemCategory(c) &&
+                        std::none_of(v.vendor.begin(), v.vendor.end(),
+                                     [&](MarketWant const& w) { return w.item == tool; }))
+                        v.vendor.push_back({tool, 1, BuyOf(tool)});
         if (!feedStacks.empty())
         {
             char const* const why = Send(repGuid, Low(art), feedStacks, "AutoWoW materials", "feed");
@@ -2024,6 +2027,14 @@ void GearTick(Line line, bool alliance, bool overlord)
         ts.artisanWant = 0;
     }
 
+    // Market-only reagents for the active gear target. Routed inputs keep their existing house assignment and vendor
+    // inputs stay on the artisan trip; only Source::Market becomes a faction AH / MailOrders want.
+    v.buy.clear();
+    if ((p.market || p.mailOrders) && art && v.product != kNoTier && make)
+        for (Lack const& k : Lacks(G, v.product, make, house))
+            if (k.source == Source::Market)
+                v.buy.push_back({k.item, k.units, SellOf(k.item)});
+
     std::lock_guard<std::mutex> guard(gLock);
     LineState& out = gLines[li][t];
     out.orders = ts.orders;
@@ -2032,6 +2043,7 @@ void GearTick(Line line, bool alliance, bool overlord)
     out.v.product = v.product;
     out.v.productWant = v.productWant;
     out.v.artisanSkill = v.artisanSkill;
+    out.v.buy = v.buy;
     out.v.vendor = v.vendor;
     out.artisanWant = ts.artisanWant;  // no map update runs during the world tick
 }
@@ -2093,7 +2105,7 @@ void OrderTick(bool alliance, bool overlord)
         if (LineOn(Line::Bags) && p.tiers)
             wants.push_back({gBagHouse, gTeams[t].buy});
         for (ProductLine const& L : kCatalog)
-            if (L.tierCount && LineOn(L.id))
+            if ((L.tierCount || L.gearCount) && LineOn(L.id))
                 wants.push_back({gLineHouse[static_cast<std::size_t>(L.id)], gLines[static_cast<std::size_t>(L.id)][t].v.buy});
     }
     std::vector<MailOrder> orders;
@@ -2268,10 +2280,11 @@ private:
 };
 
 // The stations near `home` (within `yards`): the trainer teaching `trainerSpell`, the vendor selling `vendorItem` (no
-// extended cost; `vendorAll`: every item listed), the auctioneer, the banker, the mailbox, a forge and (EngGuns) an
-// anvil, each the nearest (ties the lower spawn id).
+// extended cost; `vendorAll`: every item listed), the auctioneer, the banker, the mailbox, a forge and, when requested,
+// an anvil, each the nearest (ties the lower spawn id).
 void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t trainerSpell, std::uint32_t vendorItem,
-                  std::vector<std::uint32_t> const* vendorAll = nullptr, std::uint32_t yards = kStationYards)
+                  std::vector<std::uint32_t> const* vendorAll = nullptr, std::uint32_t yards = kStationYards,
+                  bool findAnvil = false, std::vector<std::uint32_t> const* trainerAll = nullptr)
 {
     st = Stations{};
     std::array<std::int64_t, 7> best{};
@@ -2299,12 +2312,18 @@ void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t t
         ObjectMgr::ChooseCreatureFlags(ct, npcflag, unitFlags, dynamicFlags, &data);
         if ((npcflag & UNIT_NPC_FLAG_TRAINER_PROFESSION))
             if (Trainer::Trainer* tr = sObjectMgr->GetTrainer(data.id))
-                for (Trainer::Spell const& s : tr->GetSpells())
-                    if (s.SpellId == trainerSpell)
-                    {
-                        consider(0, st.trainer, spawn, data.id, data.posX, data.posY, data.posZ);
-                        break;
-                    }
+            {
+                auto teaches = [&](std::uint32_t id)
+                {
+                    return std::any_of(tr->GetSpells().begin(), tr->GetSpells().end(),
+                                       [&](Trainer::Spell const& s) { return s.SpellId == id; });
+                };
+                bool const serves = trainerAll && !trainerAll->empty()
+                    ? std::all_of(trainerAll->begin(), trainerAll->end(), teaches)
+                    : teaches(trainerSpell);
+                if (serves)
+                    consider(0, st.trainer, spawn, data.id, data.posX, data.posY, data.posZ);
+            }
         if ((npcflag & UNIT_NPC_FLAG_VENDOR) && vendorAll)
         {
             VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id);
@@ -2335,7 +2354,7 @@ void FindStations(Stations& st, bool alliance, Home const& home, std::uint32_t t
             consider(3, st.mailbox, spawn, data.id, data.posX, data.posY, data.posZ);
         if (gt && gt->type == GAMEOBJECT_TYPE_SPELL_FOCUS && gt->spellFocus.focusId == kForgeFocus)
             consider(5, st.forge, spawn, data.id, data.posX, data.posY, data.posZ);
-        if (EngGuns() && gt && gt->type == GAMEOBJECT_TYPE_SPELL_FOCUS && gt->spellFocus.focusId == kAnvilFocus)
+        if (findAnvil && gt && gt->type == GAMEOBJECT_TYPE_SPELL_FOCUS && gt->spellFocus.focusId == kAnvilFocus)
             consider(6, st.anvil, spawn, data.id, data.posX, data.posY, data.posZ);
     }
 }
@@ -2716,9 +2735,9 @@ void LoadConfig()
             bool t = sp && Output(sp) == tier.product && proto && proto->RequiredLevel == tier.reqLevel;
             for (Reagent const& r : tier.reagents)
                 t = t && (!r.item || (ReagentCount(sp, r.item) == r.count && sObjectMgr->GetItemTemplate(r.item)));
-            if (EngGuns())  // lane tinkers2: every tool the cast needs is a kTools vendor item
-                for (std::uint32_t const c : ToolCategories(tier.spell))
-                    t = t && ToolFor(c) && sObjectMgr->GetItemTemplate(ToolFor(c));
+            // Every required tool must have a lawful vendor item. GearTable excludes disabled Engineering gun rows.
+            for (std::uint32_t const c : ToolCategories(tier.spell))
+                t = t && ToolFor(c) && sObjectMgr->GetItemTemplate(ToolFor(c));
             if (!t)
                 LOG_ERROR("server.loading", "[Supply] line {} recipe {} (spell {}, product {}) does not match the "
                           "loaded spells / items", L.name, i, tier.spell, tier.product);
@@ -2790,18 +2809,22 @@ void LoadConfig()
             RecipeTable const G = GearTable(L);
             std::uint32_t trainerSpell = 0;
             std::vector<std::uint32_t> vendorAll;
+            bool findAnvil = false;
             for (std::size_t i = 0; i < G.tierCount; ++i)
             {
                 if (!trainerSpell && G.tiers[i].skill > 1)
                     trainerSpell = G.tiers[i].spell;
+                if (SpellInfo const* sp = sSpellMgr->GetSpellInfo(G.tiers[i].spell);
+                    sp && sp->RequiresSpellFocus == kAnvilFocus)
+                    findAnvil = true;
                 for (Reagent const& r : G.tiers[i].reagents)
                     if (r.item && r.source == Source::Vendor &&
                         std::find(vendorAll.begin(), vendorAll.end(), r.item) == vendorAll.end())
                         vendorAll.push_back(r.item);
-                if (EngGuns())  // lane tinkers2: the line vendor sells its tools too
-                    for (std::uint32_t const c : ToolCategories(G.tiers[i].spell))
-                        if (std::find(vendorAll.begin(), vendorAll.end(), ToolFor(c)) == vendorAll.end())
-                            vendorAll.push_back(ToolFor(c));
+                for (std::uint32_t const c : ToolCategories(G.tiers[i].spell))
+                    if (std::uint32_t const tool = ToolFor(c);
+                        tool && std::find(vendorAll.begin(), vendorAll.end(), tool) == vendorAll.end())
+                        vendorAll.push_back(tool);
             }
             Stations& st = gLineStations[li][T(alliance)];
             // AutoWow.Supply.StationYards.<Key> (lane AA): the Engineering trainers stand 466 / 491 yards from the homes.
@@ -2809,31 +2832,43 @@ void LoadConfig()
             std::uint32_t const yards = sConfigMgr->GetOption<std::uint32_t>(
                 std::string("AutoWow.Supply.StationYards.") + L.key, GearBootstrap() ? kBootstrapYards : kStationYards,
                 false);
-            FindStations(st, alliance, home, trainerSpell, 0, &vendorAll, yards);
+            FindStations(st, alliance, home, trainerSpell, 0, &vendorAll, yards, findAnvil);
             LOG_INFO("server.loading", "[Supply] line {} {} stations: mailbox={} trainer={} vendor={} ({} items)",
                      L.name, alliance ? "alliance" : "horde", st.mailbox.entry, st.trainer.entry, st.threadVendor.entry,
                      vendorAll.size());
-            if (L.id != Line::Engineering)
+            if (L.id != Line::Engineering && L.id != Line::MailGear)
                 continue;
-            // Engineering (lane AA): trainer2 = the trainer of the first learn spell `trainer` does not teach (the mining
-            // ranks and smelting).
+            // A second trainer serves every configured learn spell absent from the primary (Engineering: Mining;
+            // Smiths: Phantom Blade). One secondary trainer is the bounded model; otherwise the line turns off.
             Trainer::Trainer* tr = st.trainer.entry ? sObjectMgr->GetTrainer(st.trainer.entry) : nullptr;
-            std::uint32_t spell2 = 0;
+            std::vector<std::uint32_t> missing;
             for (std::uint32_t const id : gLineLearn[li])
-                if (!spell2 && tr && std::none_of(tr->GetSpells().begin(), tr->GetSpells().end(),
-                                                  [&](Trainer::Spell const& sp) { return sp.SpellId == id; }))
-                    spell2 = id;
-            if (spell2)
+                if (!tr || std::none_of(tr->GetSpells().begin(), tr->GetSpells().end(),
+                                        [&](Trainer::Spell const& sp) { return sp.SpellId == id; }))
+                    missing.push_back(id);
+            if (!missing.empty())
             {
                 Stations other;
-                FindStations(other, alliance, home, spell2, 0, nullptr, yards);
+                FindStations(other, alliance, home, 0, 0, nullptr, yards, false, &missing);
                 st.trainer2 = other.trainer;
             }
-            LOG_INFO("server.loading", "[Supply] line {} {} stations: trainer2={} (spell {}) forge={} yards={}", L.name,
-                     alliance ? "alliance" : "horde", st.trainer2.entry, spell2, st.forge.entry, yards);
-            if (EngGuns())
-                LOG_INFO("server.loading", "[Supply] line {} {} stations: anvil={} at ({},{}) (EngGuns)", L.name,
-                         alliance ? "alliance" : "horde", st.anvil.entry, st.anvil.x, st.anvil.y);
+            Trainer::Trainer* tr2 = st.trainer2.entry ? sObjectMgr->GetTrainer(st.trainer2.entry) : nullptr;
+            bool const served = std::all_of(missing.begin(), missing.end(), [&](std::uint32_t id)
+            {
+                return tr2 && std::any_of(tr2->GetSpells().begin(), tr2->GetSpells().end(),
+                                          [&](Trainer::Spell const& sp) { return sp.SpellId == id; });
+            });
+            if (!served)
+            {
+                LOG_ERROR("server.loading", "[Supply] line {} off: {} learn spells are not served by trainer {} or {}",
+                          L.name, missing.size(), st.trainer.entry, st.trainer2.entry);
+                p.lines &= static_cast<std::uint8_t>(~(1u << li));
+                continue;
+            }
+            LOG_INFO("server.loading",
+                     "[Supply] line {} {} stations: trainer2={} (missing={}) forge={} anvil={} yards={}", L.name,
+                     alliance ? "alliance" : "horde", st.trainer2.entry, missing.size(), st.forge.entry,
+                     st.anvil.entry, yards);
         }
         for (std::size_t i = 0; i < houses.size(); ++i)
         {

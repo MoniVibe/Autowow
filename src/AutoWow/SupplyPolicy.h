@@ -459,6 +459,23 @@ struct MarketWant
     std::uint32_t sellPrice = 0;
 };
 
+// One rep can broker several lines in the same house (the Weavers' bags + cloth gear). Their common holdings cover
+// the largest shortage of an item, not the sum; preserve first-seen order for deterministic market visits.
+inline void MergeMarketWants(std::vector<MarketWant>& out, std::vector<MarketWant> const& add)
+{
+    for (MarketWant const& w : add)
+    {
+        auto const it = std::find_if(out.begin(), out.end(), [&](MarketWant const& x) { return x.item == w.item; });
+        if (it == out.end())
+            out.push_back(w);
+        else
+        {
+            it->units = std::max(it->units, w.units);
+            it->sellPrice = std::max(it->sellPrice, w.sellPrice);
+        }
+    }
+}
+
 // An AH listing (the rep's own excluded by the caller).
 struct MarketListing
 {
@@ -790,7 +807,7 @@ struct Reagent
     Source source = Source::Route;
 };
 
-inline constexpr std::size_t kMaxReagents = 3;
+inline constexpr std::size_t kMaxReagents = 8;  // Spell.dbc has eight reagent slots; trailing entries stay zero
 inline constexpr std::size_t kMaxLineTiers = 8;  // potions: 3 rows + 5 PotionTiers rows (tierExtra)
 
 // A line tier's family (PotionStock need, PotionTiers): a member wants its best tier of each family it uses; within a
@@ -907,6 +924,39 @@ inline constexpr LineTier kLeatherGear[] = {
     {9058, 7276, 1, 70, 4, {{{2318, 2, Source::Route}, {2320, 1, Source::Vendor}, {}}}},   // Handstitched Leather Cloak
 };
 inline constexpr std::uint8_t kLeatherStarters = 3;
+// Blacksmithing (MailGear, Smiths; trainer 60 = Stormwind 5511 / Orgrimmar 3355, trainer 123 = Stormwind 7232 /
+// Orgrimmar 11178): an ordinary, specialization-free weapon line through Artisan skill 300. Bars, stone, leather,
+// cloth, gems, elementals, dye and potions are bought by the Smiths rep instead of taking the Tinkers' routed ore /
+// stone; flux and the Blacksmith Hammer come from one trade-supplies vendor. Intermediates and unwanted bridge products
+// are ordinary paid crafts. The bridge rows keep a real blocked weapon need reachable from skill 1 through Ornate
+// Thorium Handaxe 275.
+inline constexpr LineTier kSmithWeapons[] = {
+    {2660, 2862, 1, 55, 0, {{{2835, 1, Source::Market}}}, kFamilyBridge}, // Rough Sharpening Stone (skill learn)
+    {3320, 3470, 25, 85, 0, {{{2835, 2, Source::Market}}}, kFamilyBridge}, // Rough Grinding Stone
+    {3326, 3478, 75, 100, 0, {{{2836, 2, Source::Market}}}, kFamilyBridge}, // Coarse Grinding Stone
+    {2664, 2854, 90, 140, 14,
+     {{{2840, 10, Source::Market}, {3470, 3, Source::Craft}}}, kFamilyBridge}, // Runed Copper Bracers
+    {3337, 3486, 125, 150, 0, {{{2838, 3, Source::Market}}}, kFamilyBridge}, // Heavy Grinding Stone
+    {8768, 7071, 150, 155, 0, {{{3575, 1, Source::Market}}}, kFamilyBridge}, // Iron Buckle
+    {3506, 3842, 155, 205, 26,
+     {{{3575, 8, Source::Market}, {3486, 1, Source::Craft}, {2605, 1, Source::Market}}}, kFamilyBridge},
+    // Green Iron Leggings
+    {15972, 12259, 180, 230, 31,
+     {{{3859, 10, Source::Market}, {3466, 2, Source::Vendor}, {1206, 1, Source::Market},
+       {7067, 1, Source::Market}, {4234, 1, Source::Market}}}}, // Glinting Steel Dagger
+    {9920, 7966, 200, 210, 0, {{{7912, 4, Source::Market}}}, kFamilyBridge}, // Solid Grinding Stone
+    {9916, 7963, 200, 250, 35,
+     {{{3859, 16, Source::Market}, {3486, 3, Source::Craft}}}, kFamilyBridge}, // Steel Breastplate
+    {10007, 7961, 245, 295, 44,
+     {{{3860, 28, Source::Market}, {7081, 6, Source::Market}, {6037, 8, Source::Market},
+       {3823, 2, Source::Market}, {7909, 6, Source::Market}, {7966, 4, Source::Craft},
+       {4304, 2, Source::Market}}}}, // Phantom Blade
+    {16639, 12644, 250, 260, 0, {{{12365, 4, Source::Market}}}, kFamilyBridge}, // Dense Grinding Stone
+    {16643, 12406, 250, 290, 45, {{{12359, 8, Source::Market}}}, kFamilyBridge}, // Thorium Belt
+    {16969, 12773, 275, 325, 50,
+     {{{12359, 10, Source::Market}, {12799, 2, Source::Market}, {12644, 2, Source::Craft},
+       {8170, 4, Source::Market}}}}, // Ornate Thorium Handaxe
+};
 // Engineering (lane AA, Tinkers; trainer 92 = Stormwind 5518 / Orgrimmar 11017, 466 / 491 yards from the homes) and its
 // smelting (Mining 186, trainer 80 = Stormwind 5513 / Orgrimmar 3357; spell focus 3: a forge near home): gun hunters'
 // shot (200 per cast) from routed stone (House.Stone) and ore (House.Ore). Only reagents the house gets and a consumer
@@ -957,10 +1007,6 @@ inline constexpr Tool kTools[] = {{162, 5956}};  // Blacksmith Hammer
 }
 inline constexpr std::uint32_t kForgeFocus = 3;  // SpellFocusObject.dbc: Forge (smelting)
 inline constexpr std::uint32_t kAnvilFocus = 1;  // SpellFocusObject.dbc: Anvil (engineering parts, lane tinkers2)
-// Blacksmithing (MailGear, Smiths): no table yet. Its bars come from smelting (a Mining spell, not blacksmithing): a
-// Smiths line needs a smelting intermediate the artisan can cast (it must also be a miner) or bars routed / bought, and
-// the blacksmith trainers sit 390-565 yards from the homes (kStationYards 400). Add the rows here and its artisan config.
-
 // Bags: Weavers / tailoring 197, the lane B/C runtime (TeamTick / TierTick over kTiers), unchanged.
 // Potions (Brewers / alchemy 171), checked against the 3.3.5 world DB (item_template, trainer_spell of trainer
 // 67 = Stormwind 5499 / Orgrimmar 3347) and Spell.dbc / SkillLineAbility.dbc; the runtime re-checks outputs and
@@ -1007,8 +1053,9 @@ inline constexpr ProductLine kCatalog[] = {
     // Artisan.Learn already teaches them) plus every trainer-taught table recipe.
     {Line::ClothGear, "cloth_gear", "ClothGear", "Weavers", "3911,3912,3913,12181", 197, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kTailorGear, static_cast<std::uint8_t>(std::size(kTailorGear))},
-    {Line::MailGear, "mail_gear", "MailGear", "Smiths", "", 164, NeedRule::GearSlots, Consumer::EquipGear, {}, 0,
-     nullptr, 0},
+    // Trainer rank wrappers (2020/2021/3539/9786) teach known ranks 2018/3100/3538/9785; the table adds recipes.
+    {Line::MailGear, "mail_gear", "MailGear", "Smiths", "2020,2021,3539,9786", 164, NeedRule::GearSlots,
+     Consumer::EquipGear, {}, 0, kSmithWeapons, static_cast<std::uint8_t>(std::size(kSmithWeapons))},
     {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear)), kLeatherStarters},
     // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
@@ -1699,7 +1746,8 @@ inline constexpr std::uint32_t kNoPriority = 0xFFFFFFFFu;
 }
 
 // A gear line's equipment recipes, best first: highest product item level, ties the lower spell. ilvl[i] = 0 = not
-// equipment (an intermediate): left out.
+// equipment (an intermediate): left out. Bridge equipment remains here so ordinary delivery-to-stock and sale can
+// clear it; ScanGearNeeds excludes it from member demand.
 [[nodiscard]] inline std::vector<std::uint8_t> RankGearRecipes(RecipeTable const& g, std::vector<std::uint32_t> const& ilvl)
 {
     std::vector<std::uint8_t> out;

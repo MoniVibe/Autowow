@@ -666,6 +666,20 @@ TEST(SupplyMarket, OwnListingsOfAWantedItemComeBackFirst)
     EXPECT_EQ(static_cast<int>(Reason::Cancel), 15);
 }
 
+TEST(SupplyMarket, MixedBagAndGearWantsShareOneRepWithoutDoubleBuying)
+{
+    std::vector<MarketWant> wants = {{kWool, 5, 33}, {kSilk, 10, 38}};
+    MergeMarketWants(wants, {{kWool, 12, 33}, {3859, 28, 200}}); // cloth gear + Smith-style market reagent
+    ASSERT_EQ(wants.size(), 3u);
+    EXPECT_EQ(wants[0].item, kWool);
+    EXPECT_EQ(wants[0].units, 12u); // common holdings cover both wants: max, not a duplicate sum
+    EXPECT_EQ(wants[1].item, kSilk);
+    EXPECT_EQ(wants[2].item, 3859u);
+    EXPECT_EQ(wants[2].units, 28u);
+    MergeMarketWants(wants, {});
+    EXPECT_EQ(wants.size(), 3u); // an inactive line leaves the existing bag wants unchanged
+}
+
 TEST(SupplyOutfit, LedgerWireIsStable)
 {
     EXPECT_STREQ(ReasonName(Reason::Outfit), "outfit");
@@ -899,8 +913,107 @@ TEST(SupplyGear, CatalogLinesAndProducts)
     EXPECT_EQ(cloth.tierCount, 0u);  // bespoke runtime: never a LineTick line
     EXPECT_STREQ(LineOf(Line::LeatherGear).house, "Tanners");
     EXPECT_EQ(LineOf(Line::LeatherGear).skillLine, 165u);
-    EXPECT_EQ(LineOf(Line::MailGear).gearCount, 0u);  // data hook: turns itself off at load
-    EXPECT_STREQ(LineOf(Line::MailGear).house, "Smiths");
+    ProductLine const& smith = LineOf(Line::MailGear);
+    EXPECT_STREQ(smith.house, "Smiths");
+    EXPECT_STREQ(smith.key, "MailGear");
+    EXPECT_STREQ(smith.learn, "2020,2021,3539,9786");
+    EXPECT_EQ(smith.skillLine, 164u);
+    EXPECT_EQ(smith.gearCount, 14u);
+    EXPECT_EQ(kMaxReagents, 8u);  // every Spell.dbc reagent slot, including Phantom Blade's seven
+}
+
+TEST(SupplySmithWeapons, OrdinaryCatalogMatchesTheWorldDb)
+{
+    RecipeTable const g = GearTable(LineOf(Line::MailGear));
+    ASSERT_EQ(g.tierCount, 14u);
+    struct Row
+    {
+        std::uint32_t spell, product, skill, grey, reqLevel;
+        bool bridge;
+    };
+    Row const rows[] = {
+        {2660, 2862, 1, 55, 0, true},       {3320, 3470, 25, 85, 0, true},
+        {3326, 3478, 75, 100, 0, true},     {2664, 2854, 90, 140, 14, true},
+        {3337, 3486, 125, 150, 0, true},    {8768, 7071, 150, 155, 0, true},
+        {3506, 3842, 155, 205, 26, true},   {15972, 12259, 180, 230, 31, false},
+        {9920, 7966, 200, 210, 0, true},    {9916, 7963, 200, 250, 35, true},
+        {10007, 7961, 245, 295, 44, false}, {16639, 12644, 250, 260, 0, true},
+        {16643, 12406, 250, 290, 45, true}, {16969, 12773, 275, 325, 50, false},
+    };
+    for (std::size_t i = 0; i < std::size(rows); ++i)
+    {
+        LineTier const& t = g.tiers[i];
+        EXPECT_EQ(t.spell, rows[i].spell);
+        EXPECT_EQ(t.product, rows[i].product);
+        EXPECT_EQ(t.skill, rows[i].skill);
+        EXPECT_EQ(t.grey, rows[i].grey);
+        EXPECT_EQ(t.reqLevel, rows[i].reqLevel);
+        EXPECT_EQ(t.family == kFamilyBridge, rows[i].bridge);
+        EXPECT_LT(t.skill, t.grey);
+        for (Reagent const& r : t.reagents)
+        {
+            if (r.item)
+            {
+                EXPECT_NE(r.source, Source::Route);  // the Tinkers keep every ore / stone route
+            }
+        }
+    }
+    EXPECT_TRUE(RouteItems(LineOf(Line::MailGear)).empty());
+    EXPECT_EQ(TierOf(g, 12259), 7u);
+    EXPECT_EQ(TierOf(g, 7961), 10u);
+    EXPECT_EQ(TierOf(g, 12773), 13u);
+}
+
+TEST(SupplySmithWeapons, PhantomUsesSevenHonestReagents)
+{
+    RecipeTable const g = GearTable(LineOf(Line::MailGear));
+    LineTier const& phantom = g.tiers[TierOf(g, 7961)];
+    Reagent const expected[kMaxReagents] = {
+        {3860, 28, Source::Market}, {7081, 6, Source::Market}, {6037, 8, Source::Market},
+        {3823, 2, Source::Market},  {7909, 6, Source::Market}, {7966, 4, Source::Craft},
+        {4304, 2, Source::Market},  {},
+    };
+    for (std::size_t i = 0; i < kMaxReagents; ++i)
+    {
+        EXPECT_EQ(phantom.reagents[i].item, expected[i].item);
+        EXPECT_EQ(phantom.reagents[i].count, expected[i].count);
+        EXPECT_EQ(phantom.reagents[i].source, expected[i].source);
+    }
+    EXPECT_EQ(ToolFor(162), 5956u);  // its native Blacksmith Hammer category has a lawful vendor item
+}
+
+TEST(SupplySmithWeapons, SkillBridgeHasNoGapToOrnate)
+{
+    RecipeTable const g = GearTable(LineOf(Line::MailGear));
+    for (std::uint32_t skill = 1; skill < 275; ++skill)
+        EXPECT_TRUE(std::any_of(g.tiers, g.tiers + g.tierCount, [&](LineTier const& t)
+                                { return t.skill <= skill && skill < t.grey; }))
+            << skill;
+
+    // Bridge armor remains visible to stock / sale handling but is explicitly protected from member demand.
+    std::vector<std::uint32_t> ilvl(g.tierCount, 1);
+    std::vector<std::uint8_t> const ranked = RankGearRecipes(g, ilvl);
+    EXPECT_NE(std::find(ranked.begin(), ranked.end(), TierOf(g, 2854)), ranked.end());
+    EXPECT_EQ(g.tiers[TierOf(g, 2854)].family, kFamilyBridge);
+    EXPECT_NE(g.tiers[TierOf(g, 12259)].family, kFamilyBridge);
+    EXPECT_EQ(Params{}.lines & (1u << static_cast<std::uint8_t>(Line::MailGear)), 0u); // opt-in stays off
+}
+
+TEST(SupplySmithWeapons, DeliveryAndEngGunsBoundaries)
+{
+    detail::gEnabled = true;
+    detail::gParams.engGuns = false;
+    EXPECT_EQ(GearTable(LineOf(Line::MailGear)).tierCount, 14u);
+    EXPECT_EQ(GearTable(LineOf(Line::Engineering)).tierCount, 9u); // no gun rows / hammer need when EngGuns is off
+    detail::gEnabled = false;
+
+    std::vector<GearNeed> const needs = {{100, 7, 15, 0, 100}, {200, 10, 16, 0, 200}};
+    std::vector<GearDelivery> const deliveries = PlanGearDeliveries(needs, {{10, 900}, {7, 800}, {7, 700}});
+    ASSERT_EQ(deliveries.size(), 2u);
+    EXPECT_EQ(deliveries[0].need, 0u);
+    EXPECT_EQ(deliveries[0].item, 700u);
+    EXPECT_EQ(deliveries[1].need, 1u);
+    EXPECT_EQ(deliveries[1].item, 900u); // recipes and recipients never cross
 }
 
 TEST(SupplyGear, TablesMatchTheWorldDb)

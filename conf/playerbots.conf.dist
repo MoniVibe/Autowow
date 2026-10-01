@@ -3272,7 +3272,8 @@ AutoWow.Supply.ListFloat = 1000
 # Product catalog (lane D; SupplyPolicy.h kCatalog). Products: ','-separated lines the overlord runs, each
 # TickMs per team: bags (Weavers / tailoring; the chain above, unchanged) and potions (Brewers / alchemy).
 # Default "bags" = exactly the chain above. A bad list logs an error and runs bags only. Every `supply` ledger
-# row carries "line":"bags|potions|cloth_gear|leather_gear" (appended field). Gear lines: see DemandOnly below.
+# row carries "line":"bags|potions|cloth_gear|mail_gear|leather_gear|eng" (appended field). Gear lines: see DemandOnly
+# below. mail_gear remains off unless Products explicitly names it.
 AutoWow.Supply.Products = "bags"
 # Potions line: tiers Minor Healing Potion 118 (spell 2330, learned with alchemy, grey 95; Peacebloom 2447 +
 # Silverleaf 765 + Empty Vial 3371), Lesser Healing Potion 858 (spell 2337, alchemy 55, grey 125; Minor Healing
@@ -3336,8 +3337,9 @@ AutoWow.Supply.PotionTiers = 0
 # RouteRaw (lane G): at the errand sell stop a cohort adventurer mails ore (Copper 2770 / Tin 2771 / Iron 2772) to
 # its team's House.Ore rep (default Smiths) and leather (Ruined Leather Scraps 2934 / Light 2318 / Medium 2319) to
 # its House.Leather rep (default Tanners) instead of selling them, each while the rep holds under RawCap of it
-# and has free bag slots. No line consumes them yet (weapons / leather armor lines come next). Rows: `supply`
-# donate with "line":"raw".
+# and has free bag slots. Leather gear and Engineering consume their assigned raw routes; Smith weapons buy bars and
+# stone on the faction market, so House.Ore / House.Stone can remain assigned to Tinkers. Rows: `supply` donate with
+# "line":"raw".
 AutoWow.Supply.RouteRaw = 0
 AutoWow.Supply.RawCap = 100
 AutoWow.Supply.House.Ore = "Smiths"
@@ -3351,12 +3353,16 @@ AutoWow.Supply.House.Leather = "Tanners"
 #   rows their receiver ("consumer":guid; 0 = the rep's stock). The bag want already excludes members holding bags as big
 #   as the product (worn, loose or in the mailbox).
 AutoWow.Supply.DemandOnly = 0
-# Gear lines (Products tokens cloth_gear / leather_gear; mail_gear is a data hook without recipes and turns itself off):
+# Gear lines (Products tokens cloth_gear / mail_gear / leather_gear):
 #   cloth_gear (House.ClothGear, default Weavers = the bag house: the bag artisan also tailors gear) crafts cloth armor
 #   from SupplyPolicy.h kTailorGear (21 trainer-taught recipes, L3-34, from linen / wool / silk bolts + vendor thread /
 #   dye); leather_gear (House.LeatherGear, default Tanners; artisan AutoWow.Supply.Artisan.Tanners.<Team>, leather routed
-#   with RouteRaw) from kLeatherGear (14 recipes, L5-25, Light Leather -> Medium -> Heavy). The tables are checked
-#   against the loaded spells / items at startup (a mismatch turns the line off).
+#   with RouteRaw) from kLeatherGear (14 recipes, L5-25, Light Leather -> Medium -> Heavy); mail_gear (House.MailGear,
+#   default Smiths) uses kSmithWeapons: ordinary Glinting Steel Dagger / Phantom Blade / Ornate Thorium Handaxe plus
+#   a trainer-taught skill bridge from Blacksmithing 1 to 275. Smith bars, stone, leather, gems, elementals and potions
+#   are Source::Market, preserving the Tinkers' raw routes; flux and the Blacksmith Hammer come from one local vendor.
+#   Bridge armor is paid and sold as house stock but never creates a member gear need. The tables are checked against
+#   the loaded spells / items at startup (a mismatch or unserved required trainer spell turns the line off).
 # Need (overlord, every OverlordMs): recipients = AutoWow.Supply.PriorityGuids, the cohort and the squad roster (online
 #   bots of the team, no working role). Per recipient and equipment slot, the best known recipe (item level, then spell)
 #   whose product the stock "item upgrade" value rates EQUIP / REPLACE at the recipient's level (class / spec weights,
@@ -3373,9 +3379,16 @@ AutoWow.Supply.DemandOnly = 0
 #   non-combat "equip upgrades packet action" wears a delivered piece. Rows: `supply` with "line":"cloth_gear" and a
 #   consumer field.
 AutoWow.Supply.House.ClothGear = "Weavers"
+AutoWow.Supply.House.MailGear = "Smiths"
 AutoWow.Supply.House.LeatherGear = "Tanners"
 AutoWow.Supply.Artisan.Learn.ClothGear = "3911,3912,3913,12181"
+# Trainer wrappers 2020 / 2021 / 3539 / 9786 teach known Blacksmithing ranks 2018 / 3100 / 3538 / 9785.
+AutoWow.Supply.Artisan.Learn.MailGear = "2020,2021,3539,9786"
 AutoWow.Supply.Artisan.Learn.LeatherGear = "2155,2154,3812,10663"
+# The ordinary / advanced capital blacksmith trainers are within 600 yards of the Smith homes.
+AutoWow.Supply.StationYards.MailGear = 600
+# AutoWow.Supply.Artisan.Smiths.Alliance = 0
+# AutoWow.Supply.Artisan.Smiths.Horde = 0
 # AutoWow.Supply.Artisan.Tanners.Alliance = 0
 # AutoWow.Supply.Artisan.Tanners.Horde = 0
 AutoWow.Supply.PriorityGuids = ""
