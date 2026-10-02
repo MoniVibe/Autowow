@@ -63,12 +63,37 @@ TEST(PartyPolicyTest, DungeonFormationIgnoresOpenWorldZoneFloors)
     EXPECT_EQ(FormParties(c, DungeonParams(), Defs())[0].reason, Reason::Dungeon);
 }
 
-TEST(PartyPolicyTest, SurvivalEscapeRetiresOnlyOpenWorldGroupQuestParties)
+TEST(PartyPolicyTest, SurvivalEscapeRetiresOpenWorldGroupQuestAndPreEntryRecruitedDungeonParties)
 {
-    EXPECT_TRUE(ShouldLeaveForSurvival(Reason::GroupQuest, false));
-    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Dungeon, false));
-    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Squad, false));
-    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::GroupQuest, true));
+    EXPECT_TRUE(ShouldLeaveForSurvival(Reason::GroupQuest, false, Phase::None, false));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::GroupQuest, false, Phase::Approach, false));
+
+    EXPECT_TRUE(ShouldLeaveForSurvival(Reason::Dungeon, true, Phase::None, false));
+    EXPECT_TRUE(ShouldLeaveForSurvival(Reason::Dungeon, true, Phase::Approach, false));
+    EXPECT_TRUE(ShouldLeaveForSurvival(Reason::Dungeon, true, Phase::Stage, false));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Dungeon, true, Phase::Inside, false));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Dungeon, true, Phase::Exit, false));
+
+    // A native/proximity dungeon formation was not recruited into the owned run.
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Dungeon, false, Phase::None, false));
+    // Instance admission is durable evidence even if a caller presents a pre-entry phase.
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Dungeon, true, Phase::None, true));
+    EXPECT_FALSE(ShouldLeaveForSurvival(Reason::Squad, true, Phase::None, false));
+}
+
+TEST(PartyPolicyTest, SurvivalEscapeConsumptionRequiresLiveOwnedAutonomousOpenWorldRoster)
+{
+    SurvivalLeaveLiveFacts live{true, true, true};
+    EXPECT_TRUE(ShouldConsumeSurvivalLeave(Reason::Dungeon, true, Phase::Stage, false, live));
+
+    live.allOpenWorld = false;  // Stored Stage/instance=0 may lag physical entry.
+    EXPECT_FALSE(ShouldConsumeSurvivalLeave(Reason::Dungeon, true, Phase::Stage, false, live));
+
+    live = {false, true, true};  // Missing or changed native group ownership fails closed.
+    EXPECT_FALSE(ShouldConsumeSurvivalLeave(Reason::Dungeon, true, Phase::Stage, false, live));
+
+    live = {true, false, true};  // A user, Oracle, gather worker, or otherwise non-autonomous member owns it.
+    EXPECT_FALSE(ShouldConsumeSurvivalLeave(Reason::Dungeon, true, Phase::Stage, false, live));
 }
 
 std::vector<DungeonDef> Defs() { return ParseDungeons("389:13:18:H,36:17:26:A,43:17:24:AH"); }

@@ -823,13 +823,6 @@ inline Disband ShouldDisband(KeepFacts const& f, KeepParams const& p)
     return Disband::None;
 }
 
-// A hard escape may retire only an ordinary tracked group-quest party. Dungeon runs and squad parties
-// have separate lifecycle owners and native/user parties are never represented by this policy.
-[[nodiscard]] inline bool ShouldLeaveForSurvival(Reason why, bool inDungeonRun)
-{
-    return why == Reason::GroupQuest && !inDungeonRun;
-}
-
 // ---- group combat roles -------------------------------------------------------------------------------
 // A hostile attacking a party member (the tank's view).
 struct Threat
@@ -977,6 +970,32 @@ enum class Phase : std::uint8_t
     Inside = 3,    // dungeon navigator clears encounters; followers follow
     Exit = 4       // hearthstone out (or the core boots the party after the disband)
 };
+
+// A death-loop escape may retire an ordinary open-world group-quest party or a recruited dungeon party
+// before instance admission. Native/user/untracked groups never reach this tracked-party policy.
+[[nodiscard]] inline bool ShouldLeaveForSurvival(Reason why, bool recruited, Phase phase, bool entered)
+{
+    if (why == Reason::GroupQuest)
+        return phase == Phase::None;
+    bool const preEntry = phase == Phase::None || phase == Phase::Approach || phase == Phase::Stage;
+    return why == Reason::Dungeon && recruited && preEntry && !entered;
+}
+
+struct SurvivalLeaveLiveFacts
+{
+    bool exactOwnedGroup = false;
+    bool allAutonomous = false;
+    bool allOpenWorld = false;
+};
+
+// The request is made on a map thread, so its stored phase can lag physical admission. Revalidate the
+// native roster and every member's current ownership/location immediately before the world thread acts.
+[[nodiscard]] inline bool ShouldConsumeSurvivalLeave(Reason why, bool recruited, Phase phase, bool entered,
+                                                     SurvivalLeaveLiveFacts const& live)
+{
+    return ShouldLeaveForSurvival(why, recruited, phase, entered) && live.exactOwnedGroup &&
+           live.allAutonomous && live.allOpenWorld;
+}
 
 // Wire-stable ledger `dungeon` reasons; append only.
 enum class RunEvent : std::uint8_t

@@ -27,6 +27,7 @@
 #include "DungeonNavigator.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
+#include "GatheringWorkerState.h"
 #include "Group.h"
 #include "GroupMgr.h"
 #include "InstanceScript.h"
@@ -1012,17 +1013,65 @@ bool RecruitGather(Party& p, std::uint64_t now)
 }
 
 // ---- supervision ----------------------------------------------------------------------------------------
+SurvivalLeaveLiveFacts ObserveSurvivalLeave(Party const& p)
+{
+    SurvivalLeaveLiveFacts out;
+    if (p.slots.empty())
+        return out;
+
+    Group* group = nullptr;
+    for (Slot const& s : p.slots)
+    {
+        Player* bot = Find(s.guid);
+        PlayerbotAI* ai = AiOf(bot);
+        if (!bot || !ai || !bot->IsInWorld() || bot->IsBeingTeleported() || !bot->GetMap())
+            return out;
+        if (!ai->IsAutoWowIndependentParty() || ai->IsRealPlayer() || ai->HasRealPlayerMaster() ||
+            AutoWowOracleRuntime::IsManagedBot(s.guid) || AutoWowDungeonProbe::IsProbeBot(s.guid) ||
+            AutoWowGather::IsExplicitWorker(s.guid))
+            return out;
+        if (bot->GetInstanceId() != 0 || bot->GetMap()->Instanceable() || bot->InBattleground() ||
+            bot->GetMap()->IsBattlegroundOrArena())
+            return out;
+        if (!group)
+            group = bot->GetGroup();
+        if (!group || bot->GetGroup() != group)
+            return out;
+    }
+
+    out.allAutonomous = true;
+    out.allOpenWorld = true;
+    if (group->isRaidGroup() || group->isBGGroup() || group->isBFGroup() || group->isLFGGroup() ||
+        group->GetMembersCount() != p.slots.size())
+        return out;
+    for (Group::MemberSlot const& member : group->GetMemberSlots())
+        if (std::none_of(p.slots.begin(), p.slots.end(), [&](Slot const& s)
+            { return s.guid == member.guid.GetCounter(); }))
+            return out;
+    out.exactOwnedGroup = true;
+    return out;
+}
+
 void Supervise(std::uint32_t id, std::uint64_t now)
 {
     Party p;
-    bool survivalLeave = false;
+    bool survivalRequested = false;
     {
         std::lock_guard<std::mutex> guard(gLock);
         auto const it = gParties.find(id);
         if (it == gParties.end())
             return;
         p = it->second;
-        survivalLeave = gSurvivalLeave.erase(id) && ShouldLeaveForSurvival(p.why, p.phase != Phase::None);
+        survivalRequested = gSurvivalLeave.count(id) != 0;
+    }
+    bool survivalLeave = false;
+    if (survivalRequested)
+    {
+        SurvivalLeaveLiveFacts const live = ObserveSurvivalLeave(p);
+        std::lock_guard<std::mutex> guard(gLock);
+        bool const stillRequested = gSurvivalLeave.erase(id) != 0;  // one-shot even when live facts deny it
+        survivalLeave = stillRequested &&
+                        ShouldConsumeSurvivalLeave(p.why, p.recruited, p.phase, p.instance != 0, live);
     }
     if (survivalLeave)
     {
@@ -1524,7 +1573,7 @@ void RequestSurvivalLeave(std::uint32_t guid)
     if (member == gOf.end())
         return;
     Party const& p = gParties.at(member->second);
-    if (ShouldLeaveForSurvival(p.why, p.phase != Phase::None))
+    if (ShouldLeaveForSurvival(p.why, p.recruited, p.phase, p.instance != 0))
         gSurvivalLeave.insert(member->second);
 }
 
