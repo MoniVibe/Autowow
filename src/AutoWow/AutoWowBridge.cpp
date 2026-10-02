@@ -34,6 +34,7 @@
 #include <boost/asio.hpp>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -943,6 +944,17 @@ char const* ErrandsPhaseName(AutoWowErrands::Phase phase)
     return "invalid";
 }
 
+char const* PreparedWalkProofName(AutoWowErrands::PreparedWalkProofKind proof)
+{
+    switch (proof)
+    {
+        case AutoWowErrands::PreparedWalkProofKind::None: return "none";
+        case AutoWowErrands::PreparedWalkProofKind::Direct: return "direct";
+        case AutoWowErrands::PreparedWalkProofKind::TravelMgr: return "travel_mgr";
+    }
+    return "invalid";
+}
+
 void AppendAge64(std::ostringstream& out, std::uint64_t timestampMs, std::uint64_t nowMs)
 {
     out << "{\"valid\":" << (timestampMs ? "true" : "false")
@@ -1094,6 +1106,9 @@ std::string SurvivalStatusJson(Player* bot, PlayerbotAI* botAI)
         AppendJsonNumber(out, info.moveFarPos.GetPositionY());
         out << ",\"z\":";
         AppendJsonNumber(out, info.moveFarPos.GetPositionZ());
+        out << ",\"x_bits\":" << std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionX())
+            << ",\"y_bits\":" << std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionY())
+            << ",\"z_bits\":" << std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionZ());
     }
     out << "},\"travel_intent\":{\"active\":" << (info.travelIntent.active ? "true" : "false")
         << ",\"version\":" << static_cast<std::uint32_t>(info.travelIntent.version)
@@ -1188,7 +1203,17 @@ std::string SurvivalStatusJson(Player* bot, PlayerbotAI* botAI)
         AppendAge64(out, errands.phaseMs, gameNow);
         out << ",\"leg_age\":";
         AppendAge64(out, errands.legMs, gameNow);
-        out << ",\"predecessor\":";
+        out << ",\"prepared_walk\":{\"active\":"
+            << (errands.preparedWalk.active ? "true" : "false") << ",\"goal\":";
+        AppendWalkGoal(out, errands.preparedWalk.goal);
+        out << ",\"endpoint\":";
+        AppendWalkGoal(out, errands.preparedWalk.endpoint);
+        out << ",\"source_map\":" << errands.preparedWalk.sourceMap
+            << ",\"source_zone\":" << errands.preparedWalk.sourceZone
+            << ",\"spline_id\":" << errands.preparedWalk.splineId
+            << ",\"proof_id\":" << static_cast<std::uint32_t>(errands.preparedWalk.proof)
+            << ",\"proof\":" << JsonString(PreparedWalkProofName(errands.preparedWalk.proof)) << '}'
+            << ",\"predecessor\":";
         AppendErrandsPredecessor(out, errands.predecessor);
         out << '}';
     }

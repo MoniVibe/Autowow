@@ -392,6 +392,29 @@ TEST(SafeReviveDiagnostics, MissingGetterDoesNotCreateOrConsumeState)
     EXPECT_FALSE(AutoWowSafeRevive::RelocationPending(guid));
 }
 
+TEST(SurvivalStatusDiagnostics, ExposesReadOnlyErrandsOwnershipIdentities)
+{
+    std::string const source = ReadSurvivalStatusSource();
+    ASSERT_FALSE(source.empty());
+
+    EXPECT_NE(source.find("AutoWowErrands::ReadStateForDiagnostics(guid, errands)"), std::string::npos);
+    EXPECT_EQ(source.find("AutoWowErrands::LoadState("), std::string::npos);
+    EXPECT_EQ(source.find("AutoWowErrands::StoreState("), std::string::npos);
+
+    for (std::string_view const expression : {
+             "std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionX())",
+             "std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionY())",
+             "std::bit_cast<std::uint32_t>(info.moveFarPos.GetPositionZ())",
+             "AppendWalkGoal(out, errands.preparedWalk.goal)",
+             "AppendWalkGoal(out, errands.preparedWalk.endpoint)",
+             "errands.preparedWalk.sourceMap",
+             "errands.preparedWalk.sourceZone",
+             "errands.preparedWalk.splineId",
+             "static_cast<std::uint32_t>(errands.preparedWalk.proof)",
+             "PreparedWalkProofName(errands.preparedWalk.proof)"})
+        EXPECT_NE(source.find(expression), std::string::npos) << expression;
+}
+
 TEST(SurvivalStatusDiagnostics, GuardsAbsentLastMovementAndFiniteEncodesCoordinates)
 {
     std::string const source = ReadSurvivalStatusSource();
