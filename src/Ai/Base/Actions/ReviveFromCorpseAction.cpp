@@ -5,26 +5,28 @@
  */
 
 #include "ReviveFromCorpseAction.h"
-#include "Config.h"
 
+#include <cmath>
+
+#include "../../World/Gathering/GatheringWorkerState.h"
 #include "AutoWowBridge.h"
 #include "AutoWowQuestLedger.h"
+#include "Config.h"
+#include "Corpse.h"
 #include "DeathLoopBreaker.h"
 #include "DungeonPathSafety.h"
-#include "Corpse.h"
 #include "Event.h"
 #include "FleeManager.h"
 #include "GameGraveyard.h"
+#include "Group.h"
 #include "MapMgr.h"
+#include "PartyPolicy.h"
+#include "PersistentCorpseApproachPolicy.h"
 #include "PlayerbotTextMgr.h"
 #include "Playerbots.h"
-#include "PersistentCorpseApproachPolicy.h"
 #include "RandomPlayerbotMgr.h"
 #include "ServerFacade.h"
 #include "SurvivalRecovery.h"
-#include "../../World/Gathering/GatheringWorkerState.h"
-
-#include <cmath>
 
 namespace
 {
@@ -38,6 +40,34 @@ CorpseRouteRetryPolicy::RouteEndpoint ToRouteEndpoint(GraveyardStruct const* gra
         return {};
 
     return {grave->ID, grave->Map, grave->x, grave->y, grave->z};
+}
+
+struct PartyInstanceWitness
+{
+    uint32 guid = 0;
+    uint32 instance = 0;
+};
+
+PartyInstanceWitness WitnessPartyInstance(Player* bot, uint32 corpseMap)
+{
+    Group* group = bot ? bot->GetGroup() : nullptr;
+    if (!group)
+        return {};
+
+    PartyInstanceWitness witness;
+    for (GroupReference* reference = group->GetFirstMember(); reference; reference = reference->next())
+    {
+        Player* member = reference->GetSource();
+        if (!member || member == bot || !member->IsAlive() || !member->IsInWorld() || member->GetMapId() != corpseMap ||
+            !member->GetInstanceId())
+            continue;
+        if (witness.instance && witness.instance != member->GetInstanceId())
+            return {};
+        if (!witness.instance || member->GetGUID().GetCounter() < witness.guid)
+            witness.guid = member->GetGUID().GetCounter();
+        witness.instance = member->GetInstanceId();
+    }
+    return witness;
 }
 }
 
@@ -218,6 +248,16 @@ bool FindCorpseAction::Execute(Event /*event*/)
         AutoWowDeathLoop::WantsSpiritHealer(bot->GetGUID().GetCounter()) &&
         botAI->DoSpecificAction("spirit healer", Event("death loop"), true))
         return true;
+
+    // A recruited Inside party owns its exact run corpse while a live member witnesses the run
+    // instance. Unknown/foreign instances fail closed; Exit/drop/disband have no registry owner.
+    if (persistentNoTeleport && bot->HasCorpse() && bot->GetCorpseLocation().GetMapId() != bot->GetMapId())
+    {
+        uint32 const corpseMap = bot->GetCorpseLocation().GetMapId();
+        PartyInstanceWitness const witness = WitnessPartyInstance(bot, corpseMap);
+        if (AutoWowParty::OwnsDungeonRecovery(bot->GetGUID().GetCounter(), corpseMap, witness.guid, witness.instance))
+            return false;
+    }
 
     // Player::GetCorpse() only searches the player's current Map.  A released ghost whose body is
     // on another continent or inside an unloaded instance still has an authoritative persisted

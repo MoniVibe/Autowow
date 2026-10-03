@@ -27,6 +27,18 @@ std::string ReadRepopActionBody()
         return {};
     return source.substr(start, end - start);
 }
+
+std::string ReadFindCorpseActionBody()
+{
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() /
+                        "src/Ai/Base/Actions/ReviveFromCorpseAction.cpp");
+    std::string const source{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    std::size_t const start = source.find("bool FindCorpseAction::Execute");
+    std::size_t const end = source.find("bool FindCorpseAction::isUseful", start);
+    if (start == std::string::npos || end == std::string::npos)
+        return {};
+    return source.substr(start, end - start);
+}
 }
 
 TEST(DungeonDeathRecoveryPolicy, WaitsForAliveHealerInSameDungeonInstance)
@@ -154,4 +166,46 @@ TEST(DungeonDeathRecoveryPolicy, RuntimeUsesPersistentCorpseLocationAndNormalMov
     EXPECT_EQ(body.find("TeleportTo"), std::string::npos);
     EXPECT_EQ(body.find("ResurrectPlayer"), std::string::npos);
     EXPECT_EQ(body.find("CharacterDatabase"), std::string::npos);
+}
+
+TEST(DungeonDeathRecoveryPolicy, ExactPartyOwnerFailsClosedOutsideMatchingInsideRun)
+{
+    using namespace DungeonDeathRecovery;
+    PartyRecoveryOwnerFacts facts;
+    facts.exactRecruitedMember = true;
+    facts.exactWitnessMember = true;
+    facts.inside = true;
+    facts.runMap = 543;
+    facts.runInstance = 5;
+    facts.corpseMap = 543;
+    facts.witnessedInstance = 5;
+    EXPECT_TRUE(HasExactPartyRecoveryOwner(facts));
+
+    facts.exactRecruitedMember = false;
+    EXPECT_FALSE(HasExactPartyRecoveryOwner(facts));
+    facts.exactRecruitedMember = true;
+    facts.exactWitnessMember = false;
+    EXPECT_FALSE(HasExactPartyRecoveryOwner(facts));
+    facts.exactWitnessMember = true;
+    facts.inside = false;
+    EXPECT_FALSE(HasExactPartyRecoveryOwner(facts));
+    facts.inside = true;
+    facts.corpseMap = 429;
+    EXPECT_FALSE(HasExactPartyRecoveryOwner(facts));
+    facts.corpseMap = 543;
+    facts.witnessedInstance = 0;
+    EXPECT_FALSE(HasExactPartyRecoveryOwner(facts));
+    facts.witnessedInstance = 6;
+    EXPECT_FALSE(HasExactPartyRecoveryOwner(facts));
+}
+
+TEST(DungeonDeathRecoveryPolicy, ActivePartyOwnerGuardPrecedesGenericCrossMapRecovery)
+{
+    std::string const body = ReadFindCorpseActionBody();
+    ASSERT_FALSE(body.empty());
+    std::size_t const owner = body.find("OwnsDungeonRecovery");
+    std::size_t const generic = body.find("phase=cross_map_corpse_location");
+    ASSERT_NE(owner, std::string::npos);
+    ASSERT_NE(generic, std::string::npos);
+    EXPECT_LT(owner, generic);
 }

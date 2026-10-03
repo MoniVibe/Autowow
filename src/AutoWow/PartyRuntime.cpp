@@ -17,14 +17,13 @@
 
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
-#include "DungeonGatePolicy.h"
-#include "DungeonProbePolicy.h"
-#include "SupplyPolicy.h"
-#include "UnstickPolicy.h"
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
+#include "DungeonDeathRecoveryPolicy.h"
+#include "DungeonGatePolicy.h"
 #include "DungeonNavigator.h"
+#include "DungeonProbePolicy.h"
 #include "ErrandsPolicy.h"
 #include "GameTime.h"
 #include "GatheringWorkerState.h"
@@ -39,6 +38,8 @@
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
+#include "SupplyPolicy.h"
+#include "UnstickPolicy.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 #include "ZoneProgressionPolicy.h"
@@ -919,6 +920,20 @@ bool RecruitGather(Party& p, std::uint64_t now)
         p.gatherMs = now;
     bool const deadline = p.gatherMs && now >= p.gatherMs + gParams.recruitGatherPortalMs;
     Entrance const e = gEntrances.at(p.dungeonMap);
+    bool allOnlineMembersDead = p.phase == Phase::Inside;
+    std::uint32_t witnessedInstance = 0;
+    for (Slot const& s : p.slots)
+    {
+        Player* member = Find(s.guid);
+        if (!member || member->IsAlive())
+            allOnlineMembersDead = false;
+        if (member && member->IsAlive() && member->GetMapId() == p.dungeonMap && member->GetInstanceId() == p.instance)
+            witnessedInstance = p.instance;
+    }
+    // All-dead is RunStep's immediate wipe terminal. Do not let gather admission remove a role first.
+    if (allOnlineMembersDead)
+        return true;
+
     std::vector<std::pair<std::uint32_t, char const*>> drops;
     for (Slot const& s : p.slots)
     {
@@ -932,6 +947,9 @@ bool RecruitGather(Party& p, std::uint64_t now)
             f.arrived = f.inDungeon || (bot->GetMapId() == e.map &&
                                         bot->GetExactDist2d(e.x, e.y) <= float(gParams.stageYards));
             f.portaled = std::find(p.gatherPortaled.begin(), p.gatherPortaled.end(), s.guid) != p.gatherPortaled.end();
+            f.runDeathWitnessed = p.phase == Phase::Inside && p.instance != 0 && !f.alive && bot->HasCorpse() &&
+                                  bot->GetCorpseLocation().GetMapId() == p.dungeonMap &&
+                                  witnessedInstance == p.instance;
         }
         // The leader stays unless it is offline (then the run is given up below).
         switch (s.guid == p.leader && f.online ? GatherAct::None : DecideGather(f, deadline))
@@ -1564,6 +1582,24 @@ bool InRecruitedParty(std::uint32_t guid)
     std::lock_guard<std::mutex> guard(gLock);
     auto const it = gOf.find(guid);
     return it != gOf.end() && gParties.at(it->second).recruited;
+}
+
+bool OwnsDungeonRecovery(std::uint32_t guid, std::uint32_t corpseMap, std::uint32_t witnessGuid,
+                         std::uint32_t witnessedInstance)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const member = gOf.find(guid);
+    if (member == gOf.end())
+        return false;
+    auto const party = gParties.find(member->second);
+    if (party == gParties.end())
+        return false;
+
+    Party const& p = party->second;
+    auto const witness = gOf.find(witnessGuid);
+    bool const exactWitness = witness != gOf.end() && witness->second == member->second;
+    return DungeonDeathRecovery::HasExactPartyRecoveryOwner(
+        {p.recruited, exactWitness, p.phase == Phase::Inside, p.dungeonMap, p.instance, corpseMap, witnessedInstance});
 }
 
 void RequestSurvivalLeave(std::uint32_t guid)

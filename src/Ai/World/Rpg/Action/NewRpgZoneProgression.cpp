@@ -678,6 +678,73 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
         LOG_INFO("playerbots", "[Transports] bot={} to={} leg={} via={} obj={} portal={} fails={} step={}->{}",
                  bot->GetName(), s.route.to, c.leg, static_cast<std::uint32_t>(x.via), x.object, portal,
                  c.failedRides, StepName(c.step), StepName(next));
+        bool const boardDiagnostic = northrendOwned && team == kGromgolOrgrimmar.team && native == &kGromgolOrgrimmar &&
+                                     x.object == kGromgolOrgrimmar.entry &&
+                                     s.route.to == AutoWowZoneProgression::kBoreanZone &&
+                                     (next == Step::Board || c.step == Step::Board);
+        if (boardDiagnostic && next == Step::Board && ship)
+        {
+            LoadedTransportFacts const candidateFacts = LoadedFacts(*native, ship);
+            CurrentTransportFacts const candidateCurrent = CurrentFacts(ship);
+            LOG_INFO("playerbots",
+                     "[Transports] bot={} boarding_diag phase=issued step={}->{} candidate_guid={} entry={} path={} "
+                     "node={} stopped={} ship=({},{},{}) bot=({},{},{}) target=({},{},{}) moving={}",
+                     bot->GetName(), StepName(c.step), StepName(next), ship->GetGUID().GetRawValue(), ship->GetEntry(),
+                     candidateFacts.taxiPath, candidateCurrent.nodeIndex, candidateCurrent.stoppedFrame,
+                     ship->GetPositionX(), ship->GetPositionY(), ship->GetPositionZ(), bot->GetPositionX(),
+                     bot->GetPositionY(), bot->GetPositionZ(), ship->GetPositionX(), ship->GetPositionY(), approachZ,
+                     bot->isMoving());
+        }
+        else if (boardDiagnostic && c.step == Step::Board)
+        {
+            Transport* const raw = bot->GetTransport();
+            LoadedTransportFacts const rawFacts = raw ? LoadedFacts(*native, raw) : LoadedTransportFacts{};
+            bool const rawMatch = raw && raw->GetEntry() == x.object && LoadedTransportMatches(*native, rawFacts);
+            Transport* const candidate = ship ? ship : (rawMatch ? raw : nullptr);
+            CurrentTransportFacts const candidateCurrent = CurrentFacts(candidate);
+            if (raw)
+            {
+                LOG_INFO("playerbots",
+                         "[Transports] bot={} boarding_diag phase=evaluated step={}->{} bot=({},{},{}) moving={} "
+                         "raw_guid={} raw_entry={} raw_match={} candidate_guid={} node={} stopped={} ship=({},{},{}) "
+                         "raw_path={}",
+                         bot->GetName(), StepName(c.step), StepName(next), bot->GetPositionX(), bot->GetPositionY(),
+                         bot->GetPositionZ(), bot->isMoving(), raw->GetGUID().GetRawValue(), raw->GetEntry(), rawMatch,
+                         candidate ? candidate->GetGUID().GetRawValue() : std::uint64_t{0}, candidateCurrent.nodeIndex,
+                         candidateCurrent.stoppedFrame, candidate ? candidate->GetPositionX() : 0.0f,
+                         candidate ? candidate->GetPositionY() : 0.0f, candidate ? candidate->GetPositionZ() : 0.0f,
+                         rawFacts.taxiPath);
+                if (!rawMatch)
+                    LOG_INFO("playerbots",
+                             "[Transports] bot={} boarding_diag phase=raw_rejected raw_guid={} motion={} path={} "
+                             "src=({},{},{},{},{},{},{}) dst=({},{},{},{},{},{},{})",
+                             bot->GetName(), raw->GetGUID().GetRawValue(), rawFacts.motionTransport, rawFacts.taxiPath,
+                             rawFacts.sourceNodePresent, rawFacts.sourceIndex, rawFacts.sourceMap, rawFacts.sourceDelay,
+                             rawFacts.sourceX, rawFacts.sourceY, rawFacts.sourceZ, rawFacts.destinationNodePresent,
+                             rawFacts.destinationIndex, rawFacts.destinationMap, rawFacts.destinationDelay,
+                             rawFacts.destinationX, rawFacts.destinationY, rawFacts.destinationZ);
+            }
+            else
+            {
+                Transport* const positional = bot->GetMap()->GetTransportForPos(
+                    bot->GetPhaseMask(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot);
+                LoadedTransportFacts const positionalFacts =
+                    positional ? LoadedFacts(*native, positional) : LoadedTransportFacts{};
+                bool const positionalMatch = positional && positional->GetEntry() == x.object &&
+                                             LoadedTransportMatches(*native, positionalFacts);
+                LOG_INFO("playerbots",
+                         "[Transports] bot={} boarding_diag phase=evaluated step={}->{} bot=({},{},{}) moving={} "
+                         "raw_present=false candidate_guid={} node={} stopped={} ship=({},{},{}) positional_guid={} "
+                         "positional_entry={} positional_path={} positional_match={}",
+                         bot->GetName(), StepName(c.step), StepName(next), bot->GetPositionX(), bot->GetPositionY(),
+                         bot->GetPositionZ(), bot->isMoving(),
+                         candidate ? candidate->GetGUID().GetRawValue() : std::uint64_t{0}, candidateCurrent.nodeIndex,
+                         candidateCurrent.stoppedFrame, candidate ? candidate->GetPositionX() : 0.0f,
+                         candidate ? candidate->GetPositionY() : 0.0f, candidate ? candidate->GetPositionZ() : 0.0f,
+                         positional ? positional->GetGUID().GetRawValue() : std::uint64_t{0},
+                         positional ? positional->GetEntry() : 0, positionalFacts.taxiPath, positionalMatch);
+            }
+        }
         c.step = next;
         c.stepAt = now;
     }

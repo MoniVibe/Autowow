@@ -14,6 +14,25 @@ constexpr std::uint8_t MaxEntranceAttempts = 4;
 constexpr std::uint32_t MaxCorpseRunSeconds = 8 * 60;
 constexpr std::uint32_t RetryBackoffSeconds = 5;
 
+struct PartyRecoveryOwnerFacts
+{
+    bool exactRecruitedMember = false;
+    bool exactWitnessMember = false;
+    bool inside = false;
+    std::uint32_t runMap = 0;
+    std::uint32_t runInstance = 0;
+    std::uint32_t corpseMap = 0;
+    std::uint32_t witnessedInstance = 0;
+};
+
+// A released corpse has no persisted instance id. Ownership therefore needs a live member in the
+// exact run instance as its witness; unknown or foreign instances fail closed.
+constexpr bool HasExactPartyRecoveryOwner(PartyRecoveryOwnerFacts const& facts)
+{
+    return facts.exactRecruitedMember && facts.exactWitnessMember && facts.inside && facts.runMap == facts.corpseMap &&
+           facts.runInstance != 0 && facts.runInstance == facts.witnessedInstance;
+}
+
 // A grouped dungeon player should leave a resurrectable body for an alive healer. Releasing
 // immediately strands the ghost outside the instance and prevents the party from recovering.
 constexpr bool ShouldWaitForHealer(bool grouped, bool sameInstanceDungeon, bool aliveHealerPresent)

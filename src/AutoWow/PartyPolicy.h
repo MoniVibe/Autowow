@@ -750,6 +750,7 @@ struct GatherFacts
     bool inDungeon = false;  // on the dungeon's map
     bool arrived = false;    // in the dungeon, or at the entrance (within StageYards on its map)
     bool portaled = false;   // the gather portal was already tried
+    bool runDeathWitnessed = false;  // corpse map matches this run and a live member witnesses its instance
 };
 
 enum class GatherAct : std::uint8_t
@@ -766,7 +767,7 @@ inline GatherAct DecideGather(GatherFacts const& f, bool deadlinePassed)
     if (f.arrived || !deadlinePassed)
         return GatherAct::None;
     if (!f.alive)
-        return f.inDungeon ? GatherAct::None : GatherAct::Drop;
+        return f.inDungeon || f.runDeathWitnessed ? GatherAct::None : GatherAct::Drop;
     return f.portaled ? GatherAct::None : GatherAct::Portal;
 }
 
@@ -1113,6 +1114,9 @@ void CombatUpdate(PlayerbotAI* botAI);
 std::uint32_t PartySize(std::uint32_t guid, bool* dungeonParty = nullptr);
 // True when `guid` is a member of a recruited dungeon party (AutoWow.Dungeon.Recruit); any thread.
 bool InRecruitedParty(std::uint32_t guid);
+// Mutex-guarded registry snapshot: exact recruited Inside owner for this corpse map and witnessed instance.
+bool OwnsDungeonRecovery(std::uint32_t guid, std::uint32_t corpseMap, std::uint32_t witnessGuid,
+                         std::uint32_t witnessedInstance);
 // Map-thread safe: queue retirement of guid's tracked open-world group-quest party on the world thread.
 void RequestSurvivalLeave(std::uint32_t guid);
 // True when `guid` leads a cohort party; fills its order.

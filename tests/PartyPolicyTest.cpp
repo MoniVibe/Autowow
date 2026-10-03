@@ -544,6 +544,9 @@ TEST(PartyPolicyTest, RecruitGatherPortalsLateMembersAndDropsThoseWhoCannotCome)
     f.alive = false;
     EXPECT_EQ(DecideGather(f, false), GatherAct::None);
     EXPECT_EQ(DecideGather(f, true), GatherAct::Drop);     // dead outside the dungeon after the deadline
+    f.runDeathWitnessed = true;
+    EXPECT_EQ(DecideGather(f, true), GatherAct::None);  // released run corpse: grace / wipe decide
+    f.runDeathWitnessed = false;
     f.inDungeon = true;
     f.arrived = true;
     EXPECT_EQ(DecideGather(f, true), GatherAct::None);     // dead inside: the healer / grace decide
