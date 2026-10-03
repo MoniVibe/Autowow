@@ -3613,6 +3613,19 @@ AutoWow.Market.SellerYards = 120
 AutoWow.Squad.Enable = 0
 AutoWow.Squad.Alliance = ""
 AutoWow.Squad.Horde = ""
+# Default off: preserve the two legacy faction squads above exactly. When on, those two roster keys are ignored
+# and the eight optional, mutually-exclusive primary crews below are validated atomically (at most five per crew
+# and ten per faction). Empty crews are valid;
+# duplicate/zero/over-cap guids reject the complete material-crew layout. Learned secondary professions stay.
+AutoWow.Squad.MaterialCrews = 0
+AutoWow.Squad.Alliance.Cloth = ""
+AutoWow.Squad.Alliance.Herb = ""
+AutoWow.Squad.Alliance.Ore = ""
+AutoWow.Squad.Alliance.Leather = ""
+AutoWow.Squad.Horde.Cloth = ""
+AutoWow.Squad.Horde.Herb = ""
+AutoWow.Squad.Horde.Ore = ""
+AutoWow.Squad.Horde.Leather = ""
 AutoWow.Squad.TickMs = 30000
 AutoWow.Squad.StintMs = 1800000
 AutoWow.Squad.LevelAbove = 1

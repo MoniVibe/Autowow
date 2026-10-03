@@ -11,6 +11,7 @@
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -38,7 +39,39 @@ class Player;
 namespace AutoWowSquad
 {
 inline constexpr std::uint8_t kStateVersion = 2;  // 2: LevelWindow zone cooldown (cooldownZone, anchorZone)
-inline constexpr std::size_t kMaxMembers = 10;  // per team roster; config guids beyond are ignored
+inline constexpr std::size_t kMaxMembers = 10;    // per team across all material crews
+inline constexpr std::size_t kMaxCrewMembers = 5;  // native ordinary-group capacity
+inline constexpr std::size_t kTeamCount = 2;
+inline constexpr std::size_t kKindCount = 4;
+inline constexpr std::size_t kCrewCount = kTeamCount * kKindCount;
+
+struct GuidSpan
+{
+    std::uint32_t lo = 0;
+    std::uint32_t hi = 0;
+};
+
+// Expands a parsed provenance roster atomically. The destination changes only when every span fits the cap.
+[[nodiscard]] inline bool ExpandGuidSpansBounded(std::vector<GuidSpan> const& spans, std::size_t cap,
+                                                 std::vector<std::uint32_t>& out)
+{
+    std::vector<std::uint32_t> candidate;
+    for (GuidSpan const& span : spans)
+    {
+        if (!span.lo || span.hi < span.lo)
+            return false;
+        std::uint64_t const count = std::uint64_t(span.hi) - std::uint64_t(span.lo) + 1;
+        if (count > cap || candidate.size() > cap - static_cast<std::size_t>(count))
+            return false;
+        for (std::uint64_t guid = span.lo; guid <= span.hi; ++guid)
+            candidate.push_back(static_cast<std::uint32_t>(guid));
+    }
+    std::sort(candidate.begin(), candidate.end());
+    candidate.erase(std::unique(candidate.begin(), candidate.end()), candidate.end());
+    out.swap(candidate);
+    return true;
+}
+
 using AutoWowContracts::Cluster;
 using AutoWowContracts::Spawn;
 
@@ -61,6 +94,93 @@ inline constexpr char const* KindName(Kind k)
         case Kind::Leather: return "leather";
     }
     return "cloth";
+}
+
+[[nodiscard]] inline constexpr std::size_t KindIndex(Kind kind) { return static_cast<std::size_t>(kind); }
+
+[[nodiscard]] inline constexpr std::size_t CrewIndex(std::size_t team, Kind kind)
+{
+    return team * kKindCount + KindIndex(kind);
+}
+
+[[nodiscard]] inline constexpr std::size_t CrewTeam(std::size_t crew) { return crew / kKindCount; }
+[[nodiscard]] inline constexpr Kind CrewKind(std::size_t crew) { return static_cast<Kind>(crew % kKindCount); }
+
+// An opt-in material-crew layout is accepted whole or rejected whole. A guid has one primary crew; secondary
+// learned professions are untouched. Empty crews are valid. Stable slot order is team, then wire-stable Kind.
+enum class CrewLayoutError : std::uint8_t
+{
+    None = 0,
+    ZeroGuid,
+    DuplicateGuid,
+    CrewOverCap,
+    TeamOverCap
+};
+
+struct CrewLayout
+{
+    CrewLayoutError error = CrewLayoutError::None;
+    std::array<std::vector<std::uint32_t>, kCrewCount> crews;
+    std::array<std::vector<std::uint32_t>, kTeamCount> teams;
+
+    [[nodiscard]] bool Valid() const { return error == CrewLayoutError::None; }
+};
+
+[[nodiscard]] inline CrewLayout BuildCrewLayout(std::array<std::vector<std::uint32_t>, kCrewCount> const& configured)
+{
+    CrewLayout out;
+    std::vector<std::uint32_t> seen;
+    for (std::size_t crew = 0; crew < kCrewCount; ++crew)
+    {
+        if (configured[crew].size() > kMaxCrewMembers)
+        {
+            out = {};
+            out.error = CrewLayoutError::CrewOverCap;
+            return out;
+        }
+        for (std::uint32_t const guid : configured[crew])
+        {
+            if (!guid)
+            {
+                out = {};
+                out.error = CrewLayoutError::ZeroGuid;
+                return out;
+            }
+            if (std::find(seen.begin(), seen.end(), guid) != seen.end())
+            {
+                out = {};
+                out.error = CrewLayoutError::DuplicateGuid;
+                return out;
+            }
+            seen.push_back(guid);
+            out.crews[crew].push_back(guid);
+            out.teams[CrewTeam(crew)].push_back(guid);
+        }
+        std::sort(out.crews[crew].begin(), out.crews[crew].end());
+    }
+    for (auto& team : out.teams)
+    {
+        if (team.size() > kMaxMembers)
+        {
+            out = {};
+            out.error = CrewLayoutError::TeamOverCap;
+            return out;
+        }
+        std::sort(team.begin(), team.end());
+    }
+    return out;
+}
+
+// Never reuse a stint id in this process. Exhaustion fails closed rather than wrapping to an old id.
+[[nodiscard]] inline bool NextStintId(std::uint32_t& last, std::uint32_t& next)
+{
+    if (last == std::numeric_limits<std::uint32_t>::max())
+    {
+        next = 0;
+        return false;
+    }
+    next = ++last;
+    return true;
 }
 
 // The materials the squad can source (3.3.5 item ids, checked against the world DB loot tables), tier order
@@ -156,6 +276,14 @@ struct Want
                       return a.first;
                   return a.count != b.count ? a.count > b.count : MaterialIndex(a.item) < MaterialIndex(b.item);
               });
+    return out;
+}
+
+[[nodiscard]] inline std::vector<Want> RankDemandForKind(std::vector<AutoWowSupply::MaterialNeed> const& needs,
+                                                         std::uint32_t minDemand, Kind kind)
+{
+    std::vector<Want> out = RankDemand(needs, minDemand);
+    out.erase(std::remove_if(out.begin(), out.end(), [kind](Want const& w) { return w.kind != kind; }), out.end());
     return out;
 }
 

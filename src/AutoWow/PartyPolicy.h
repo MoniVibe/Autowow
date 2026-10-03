@@ -1084,6 +1084,71 @@ inline std::string RunSummaryFields(std::uint32_t bosses, std::uint32_t total, b
            ",\"recruit\":1";
 }
 
+// ---- material-crew migration ---------------------------------------------------------------------------
+
+// The persisted legacy squad group may span successor material crews after a restart. Retirement is admitted only
+// when the successors are an exact, exclusive partition of the expected legacy roster and at least two are nonempty.
+[[nodiscard]] inline bool SameGuidSet(std::vector<std::uint32_t> left, std::vector<std::uint32_t> right)
+{
+    std::sort(left.begin(), left.end());
+    std::sort(right.begin(), right.end());
+    return left == right;
+}
+
+[[nodiscard]] inline bool SplitSquadPlanMatches(std::vector<std::uint32_t> const& legacy,
+                                                std::vector<std::vector<std::uint32_t>> const& successors)
+{
+    if (legacy.empty())
+        return false;
+    std::vector<std::uint32_t> joined;
+    std::size_t nonempty = 0;
+    for (auto const& roster : successors)
+    {
+        nonempty += roster.empty() ? 0 : 1;
+        joined.insert(joined.end(), roster.begin(), roster.end());
+    }
+    std::vector<std::uint32_t> unique = joined;
+    std::sort(unique.begin(), unique.end());
+    if (std::adjacent_find(unique.begin(), unique.end()) != unique.end())
+        return false;
+    return nonempty >= 2 && SameGuidSet(legacy, joined);
+}
+
+enum class SplitNativeShape : std::uint8_t
+{
+    Ungrouped = 0,
+    ExactSuccessors,
+    ExactLegacy,
+    Foreign
+};
+
+enum class SplitRetireDecision : std::uint8_t
+{
+    Noop = 0,
+    Defer,
+    RetireOwned,
+    RetireOrphan
+};
+
+[[nodiscard]] inline SplitRetireDecision DecideSplitRetire(bool planMatches, SplitNativeShape shape, bool ordinaryGroup,
+                                                           bool safe, bool registeredOwnedSquad, bool orphan)
+{
+    if (!planMatches || !safe)
+        return SplitRetireDecision::Defer;
+    if (shape == SplitNativeShape::Ungrouped || shape == SplitNativeShape::ExactSuccessors)
+        return SplitRetireDecision::Noop;
+    if (shape != SplitNativeShape::ExactLegacy || !ordinaryGroup)
+        return SplitRetireDecision::Defer;
+    if (registeredOwnedSquad)
+        return SplitRetireDecision::RetireOwned;
+    return orphan ? SplitRetireDecision::RetireOrphan : SplitRetireDecision::Defer;
+}
+
+[[nodiscard]] inline bool ShouldDisbandOrphan(bool enabled, bool orphan, bool pendingSplit)
+{
+    return enabled && orphan && !pendingSplit;
+}
+
 // ---- runtime (AutoWow/PartyRuntime.cpp, leader walk in NewRpgParty.cpp) ------------------------------
 namespace detail
 {
@@ -1123,6 +1188,10 @@ void RequestSurvivalLeave(std::uint32_t guid);
 bool GetLeaderOrder(std::uint32_t guid, LeaderOrder& out);
 // One Approach walk tick of the leader (stuck = WalkLeg reported no progress).
 void NoteApproachTick(std::uint32_t guid, bool stuck);
+// Material-crews migration (world thread): retire only an exact safe legacy squad group which spans an exact
+// successor partition. True means no such legacy group blocks successor EnsureSquad calls; false means defer.
+bool RetireSplitSquad(std::vector<std::uint32_t> const& legacy,
+                      std::vector<std::vector<std::uint32_t>> const& successors);
 // AutoWow.Squad (world thread, any Party flag state): keep one team's squad roster (guid ascending) as one party
 // (reason squad, leader = the lowest online guid, all dps, no follower mode: every member keeps its own New-RPG loop).
 // Exempt from formation (its guids never join a formed party) and from supervision / the keep rules: a changed

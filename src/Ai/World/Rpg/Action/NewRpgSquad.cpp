@@ -56,18 +56,25 @@ struct MemberState
     bool benchEscape = false;        // (5): one escape trip pending for the new bench (member step takes it)
 };
 
-// Read-only after LoadConfig.
-std::array<std::vector<std::uint32_t>, 2> gRoster;          // [0] alliance, [1] horde; guid ascending
-std::unordered_map<std::uint32_t, std::size_t> gTeamOf;      // roster guid -> team index
+// Read-only after LoadConfig. Legacy mode keeps the original two rosters/states. Material-crews mode owns
+// eight fixed team/kind slots and exposes only their sorted team unions through Roster().
+bool gMaterialCrews = false;
+std::array<std::vector<std::uint32_t>, kTeamCount> gRoster;  // team union; legacy roster when the opt-in is off
+std::unordered_map<std::uint32_t, std::size_t> gTeamOf;      // legacy roster guid -> team index
+std::array<std::vector<std::uint32_t>, kCrewCount> gCrewRoster;
+std::array<std::vector<std::uint32_t>, kTeamCount> gLegacyRoster;  // opt-in migration provenance only
+std::array<bool, kTeamCount> gTransitionPending = {};
+std::unordered_map<std::uint32_t, std::size_t> gCrewOf;  // material crew guid -> fixed crew slot
 // item -> map -> source spawns (spawn id ascending): creatures (cloth, leather) or nodes (herb, ore; level 1..1).
 std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<Spawn>>> gIndex;
 std::unordered_map<std::uint32_t, std::uint32_t> gNodeReq;  // node gameobject entry -> lock skill value
 
 // The world thread writes the team state, members' map threads read copies and write their member state.
 std::mutex gLock;
-std::array<TeamState, 2> gTeams;
+std::array<TeamState, kTeamCount> gTeams;
+std::array<TeamState, kCrewCount> gCrewStates;
 std::unordered_map<std::uint32_t, MemberState> gMembers;  // roster guids only (never grows after LoadConfig)
-std::uint32_t gNextId = 0;                                 // stint ids, run-scoped, never reused
+std::uint32_t gNextId = 0;  // process-scoped; never reset on config reload and never wraps
 
 // World thread only.
 std::uint32_t gTickAcc = 0;
@@ -224,10 +231,10 @@ std::uint32_t Held(std::vector<Player*> const& members, std::uint32_t item)
     return n;
 }
 
-void ResetMembers(std::size_t t)
+void ResetMembers(std::vector<std::uint32_t> const& roster)
 {
     std::lock_guard<std::mutex> guard(gLock);
-    for (std::uint32_t const g : gRoster[t])
+    for (std::uint32_t const g : roster)
         if (auto const it = gMembers.find(g); it != gMembers.end())
         {
             it->second.hunting = false;
@@ -317,7 +324,11 @@ bool Search(TeamState& s, std::vector<Want> const& demand, std::vector<Player*> 
         std::uint32_t id = 0;
         {
             std::lock_guard<std::mutex> guard(gLock);
-            id = ++gNextId;
+            if (!NextStintId(gNextId, id))
+            {
+                LOG_ERROR("server.loading", "[Squad] stint id exhausted; refusing new stints");
+                return false;
+            }
         }
         Issue(s, w, *pick, mapId, leaderGuid, id, Held(members, w.item), now);
         s.anchorZone = AutoWowDeathLoop::ZoneAt(map, float(pick->x), float(pick->y));
@@ -330,14 +341,15 @@ bool Search(TeamState& s, std::vector<Want> const& demand, std::vector<Player*> 
 }
 
 // One world tick of a team's squad.
-void TeamTick(std::size_t t, std::uint64_t now)
+void TeamTick(std::size_t slot, std::uint64_t now)
 {
     Params const& p = detail::gParams;
-    bool const alliance = t == 0;
-    AutoWowParty::EnsureSquad(gRoster[t]);
+    bool const alliance = (gMaterialCrews ? CrewTeam(slot) : slot) == 0;
+    std::vector<std::uint32_t> const& roster = gMaterialCrews ? gCrewRoster[slot] : gRoster[slot];
+    AutoWowParty::EnsureSquad(roster);
 
     std::vector<Player*> members;  // online, guid ascending
-    for (std::uint32_t const g : gRoster[t])
+    for (std::uint32_t const g : roster)
         if (Player* m = Online(g); m && m->IsInWorld())
             members.push_back(m);
     TeamState s;
@@ -345,7 +357,7 @@ void TeamTick(std::size_t t, std::uint64_t now)
     std::vector<std::uint64_t> benchUntil(members.size(), 0);  // AutoWow.Squad.LevelWindow (5)
     {
         std::lock_guard<std::mutex> guard(gLock);
-        s = gTeams[t];
+        s = gMaterialCrews ? gCrewStates[slot] : gTeams[slot];
         if (auto const it = gMembers.find(s.leader); it != gMembers.end())
             leaderStuck = it->second.stuck;
         for (std::size_t k = 0; k < members.size(); ++k)
@@ -362,8 +374,10 @@ void TeamTick(std::size_t t, std::uint64_t now)
         }
 
     std::vector<Want> const demand =
-        leader && AutoWowSupply::Enabled() ? RankDemand(AutoWowSupply::MaterialDemand(alliance), p.minDemand)
-                                           : std::vector<Want>{};
+        leader && AutoWowSupply::Enabled()
+            ? (gMaterialCrews ? RankDemandForKind(AutoWowSupply::MaterialDemand(alliance), p.minDemand, CrewKind(slot))
+                              : RankDemand(AutoWowSupply::MaterialDemand(alliance), p.minDemand))
+            : std::vector<Want>{};
     std::vector<std::uint32_t> levels;
     Skills skills;
     skills.anySkill = sPlayerbotAIConfig.autoWowGatherAnySkill;
@@ -438,14 +452,15 @@ void TeamTick(std::size_t t, std::uint64_t now)
             if (anchorCluster && std::string_view(cause) == "danger")
                 CoolZone(s, p, s.anchorZone, now);  // AutoWow.Squad.LevelWindow (4): the squad leaves the zone
             Finish(s, p, now);
-            ResetMembers(t);
+            ResetMembers(roster);
         }
     }
     if (s.phase == Phase::None && leader && TooManyBenched(p, benched, members.size()))
     {
         // AutoWow.Squad.LevelWindow (5): no stint while most of the squad sits out; the members quest.
         if (s.holding)
-            Emit(leader, Reason::Release, s, Kind::Cloth, 0, static_cast<std::uint32_t>(benched), now, "benched");
+            Emit(leader, Reason::Release, s, gMaterialCrews ? CrewKind(slot) : Kind::Cloth, 0,
+                 static_cast<std::uint32_t>(benched), now, "benched");
         s.holding = false;
     }
     else if (s.phase == Phase::None && now >= s.nextSearchMs && leader)
@@ -454,11 +469,15 @@ void TeamTick(std::size_t t, std::uint64_t now)
         bool const had = s.holding;
         s.holding = false;
         if (!Search(s, demand, members, leader, avg, skills, alliance, now) && had)
-            Emit(leader, Reason::Release, s, Kind::Cloth, 0, static_cast<std::uint32_t>(demand.size()), now,
-                 demand.empty() ? "no_demand" : "no_source", ",\"avg_level\":" + std::to_string(avg));
+            Emit(leader, Reason::Release, s, gMaterialCrews ? CrewKind(slot) : Kind::Cloth, 0,
+                 static_cast<std::uint32_t>(demand.size()), now, demand.empty() ? "no_demand" : "no_source",
+                 ",\"avg_level\":" + std::to_string(avg));
     }
     std::lock_guard<std::mutex> guard(gLock);
-    gTeams[t] = s;
+    if (gMaterialCrews)
+        gCrewStates[slot] = s;
+    else
+        gTeams[slot] = s;
 }
 
 bool Hunting(std::uint32_t guid)
@@ -482,6 +501,7 @@ void NoteStep(std::uint32_t guid, bool hunting, bool stuck)
 void LoadConfig()
 {
     detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Squad.Enable", false);
+    gMaterialCrews = sConfigMgr->GetOption<bool>("AutoWow.Squad.MaterialCrews", false);
     Params& p = detail::gParams;
     p.tickMs = std::max<std::uint32_t>(1000, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.TickMs", 30000));
     p.stintMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.StintMs", 1800000);
@@ -503,7 +523,13 @@ void LoadConfig()
     p.benchMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.BenchMs", 1800000);
     for (auto& r : gRoster)
         r.clear();
+    for (auto& r : gCrewRoster)
+        r.clear();
+    for (auto& r : gLegacyRoster)
+        r.clear();
+    gTransitionPending = {};
     gTeamOf.clear();
+    gCrewOf.clear();
     gIndex.clear();
     gNodeReq.clear();
     gTickAcc = 0;
@@ -511,48 +537,173 @@ void LoadConfig()
     {
         std::lock_guard<std::mutex> guard(gLock);
         gTeams = {};
+        gCrewStates = {};
         gMembers.clear();
     }
     if (!detail::gEnabled)
         return;
-    for (std::size_t t = 0; t < 2; ++t)
+
+    if (!gMaterialCrews)
     {
-        std::string const key = t == 0 ? "AutoWow.Squad.Alliance" : "AutoWow.Squad.Horde";
-        std::string const text = sConfigMgr->GetOption<std::string>(key, "");
-        std::vector<AutoWowGuilds::GuidRange> ranges;
-        if (text.empty())
-            continue;
-        if (!AutoWowGuilds::ParseGuidRanges(text, ranges))
+        // Preserve the legacy parser and duplicate handling exactly when the opt-in is absent/off.
+        for (std::size_t t = 0; t < kTeamCount; ++t)
         {
-            LOG_ERROR("server.loading", "[Squad] bad {} '{}': no roster", key, text);
-            continue;
+            std::string const key = t == 0 ? "AutoWow.Squad.Alliance" : "AutoWow.Squad.Horde";
+            std::string const text = sConfigMgr->GetOption<std::string>(key, "");
+            std::vector<AutoWowGuilds::GuidRange> ranges;
+            if (text.empty())
+                continue;
+            if (!AutoWowGuilds::ParseGuidRanges(text, ranges))
+            {
+                LOG_ERROR("server.loading", "[Squad] bad {} '{}': no roster", key, text);
+                continue;
+            }
+            std::vector<std::uint32_t>& roster = gRoster[t];
+            for (AutoWowGuilds::GuidRange const& r : ranges)
+                for (std::uint64_t g = r.lo; g <= r.hi && roster.size() < kMaxMembers; ++g)
+                    if (!gTeamOf.count(static_cast<std::uint32_t>(g)))
+                        roster.push_back(static_cast<std::uint32_t>(g));
+            std::sort(roster.begin(), roster.end());
+            roster.erase(std::unique(roster.begin(), roster.end()), roster.end());
+            for (std::uint32_t const g : roster)
+            {
+                gTeamOf[g] = t;
+                std::lock_guard<std::mutex> guard(gLock);
+                gMembers[g] = MemberState{};
+            }
         }
-        std::vector<std::uint32_t>& roster = gRoster[t];
-        for (AutoWowGuilds::GuidRange const& r : ranges)
-            for (std::uint64_t g = r.lo; g <= r.hi && roster.size() < kMaxMembers; ++g)
-                if (!gTeamOf.count(static_cast<std::uint32_t>(g)))
-                    roster.push_back(static_cast<std::uint32_t>(g));
-        std::sort(roster.begin(), roster.end());
-        roster.erase(std::unique(roster.begin(), roster.end()), roster.end());
-        for (std::uint32_t const g : roster)
+    }
+    else
+    {
+        std::array<std::vector<std::uint32_t>, kCrewCount> configured;
+        bool parsed = true;
+        // The old keys are provenance for retiring only the exact persisted legacy squad during this split.
+        for (std::size_t team = 0; team < kTeamCount; ++team)
         {
-            gTeamOf[g] = t;
+            std::string const key = team == 0 ? "AutoWow.Squad.Alliance" : "AutoWow.Squad.Horde";
+            std::string const text = sConfigMgr->GetOption<std::string>(key, "");
+            std::vector<AutoWowGuilds::GuidRange> ranges;
+            if (text.empty())
+                continue;
+            if (!AutoWowGuilds::ParseGuidRanges(text, ranges))
+            {
+                LOG_ERROR("server.loading", "[Squad] material crews rejected: bad legacy provenance {} '{}'", key,
+                          text);
+                parsed = false;
+                continue;
+            }
+            std::vector<GuidSpan> spans;
+            for (AutoWowGuilds::GuidRange const& range : ranges)
+                spans.push_back(GuidSpan{range.lo, range.hi});
+            std::vector<std::uint32_t> legacy;
+            if (!ExpandGuidSpansBounded(spans, kMaxMembers, legacy))
+            {
+                LOG_ERROR("server.loading", "[Squad] material crews rejected: legacy provenance {} exceeds {} members",
+                          key, kMaxMembers);
+                parsed = false;
+                continue;
+            }
+            gLegacyRoster[team] = legacy;
+        }
+        for (std::size_t crew = 0; crew < kCrewCount; ++crew)
+        {
+            std::string const team = CrewTeam(crew) == 0 ? "Alliance" : "Horde";
+            Kind const kind = CrewKind(crew);
+            char const* const kindKey = kind == Kind::Cloth  ? "Cloth"
+                                        : kind == Kind::Herb ? "Herb"
+                                        : kind == Kind::Ore  ? "Ore"
+                                                             : "Leather";
+            std::string const key = "AutoWow.Squad." + team + "." + kindKey;
+            std::string const text = sConfigMgr->GetOption<std::string>(key, "");
+            if (text.empty())
+                continue;
+            std::vector<AutoWowGuilds::GuidRange> ranges;
+            if (!AutoWowGuilds::ParseGuidRanges(text, ranges))
+            {
+                LOG_ERROR("server.loading", "[Squad] material crews rejected: bad {} '{}'", key, text);
+                parsed = false;
+                continue;
+            }
+            for (AutoWowGuilds::GuidRange const& range : ranges)
+            {
+                std::uint64_t const count = range.hi >= range.lo ? static_cast<std::uint64_t>(range.hi) -
+                                                                       static_cast<std::uint64_t>(range.lo) + 1
+                                                                 : 0;
+                if (!count || count > kMaxCrewMembers || configured[crew].size() + count > kMaxCrewMembers)
+                {
+                    LOG_ERROR("server.loading", "[Squad] material crews rejected: {} exceeds {} members", key,
+                              kMaxCrewMembers);
+                    parsed = false;
+                    break;
+                }
+                for (std::uint64_t guid = range.lo; guid <= range.hi; ++guid)
+                    configured[crew].push_back(static_cast<std::uint32_t>(guid));
+            }
+        }
+        CrewLayout const layout = parsed ? BuildCrewLayout(configured) : CrewLayout{};
+        if (!parsed || !layout.Valid())
+        {
+            LOG_ERROR("server.loading", "[Squad] disabled: invalid material-crew layout error={}",
+                      parsed ? static_cast<unsigned>(layout.error) : 255u);
+            detail::gEnabled = false;
+            return;
+        }
+        gCrewRoster = layout.crews;
+        gRoster = layout.teams;
+        for (std::size_t team = 0; team < kTeamCount; ++team)
+        {
+            if (!gLegacyRoster[team].empty() && !AutoWowParty::SameGuidSet(gLegacyRoster[team], gRoster[team]))
+            {
+                LOG_ERROR("server.loading", "[Squad] disabled: material crew union does not match legacy {} roster",
+                          team == 0 ? "Alliance" : "Horde");
+                detail::gEnabled = false;
+                return;
+            }
+            std::vector<std::vector<std::uint32_t>> successors;
+            for (std::size_t kind = 0; kind < kKindCount; ++kind)
+                successors.push_back(gCrewRoster[team * kKindCount + kind]);
+            gTransitionPending[team] = AutoWowParty::SplitSquadPlanMatches(gLegacyRoster[team], successors);
+        }
+        for (std::size_t crew = 0; crew < kCrewCount; ++crew)
+            for (std::uint32_t const guid : gCrewRoster[crew])
+                gCrewOf[guid] = crew;
+        {
             std::lock_guard<std::mutex> guard(gLock);
-            gMembers[g] = MemberState{};
+            for (auto const& team : gRoster)
+                for (std::uint32_t const guid : team)
+                    gMembers[guid] = MemberState{};
         }
+        for (std::size_t crew = 0; crew < kCrewCount; ++crew)
+            if (!gCrewRoster[crew].empty())
+            {
+                std::string roster;
+                for (std::uint32_t const guid : gCrewRoster[crew])
+                    roster += (roster.empty() ? "" : ",") + std::to_string(guid);
+                LOG_INFO("server.loading", "[Squad] material crew team={} kind={} roster={}",
+                         CrewTeam(crew) == 0 ? "alliance" : "horde", KindName(CrewKind(crew)), roster);
+            }
     }
     if (gRoster[0].empty() && gRoster[1].empty())
     {
-        LOG_ERROR("server.loading", "[Squad] disabled: AutoWow.Squad.Alliance / .Horde list no guids");
+        LOG_ERROR("server.loading", "[Squad] disabled: configured layout has no guids");
         detail::gEnabled = false;
         return;
     }
     if (!AutoWowSupply::Enabled())
         LOG_ERROR("server.loading", "[Squad] AutoWow.Supply is off: no material demand, the squad only quests");
     BuildIndex();
-    LOG_INFO("server.loading", "[Squad] enabled: alliance={} horde={} stint_ms={} level_above={} search_yards={} "
-             "leash={} min_demand={} level_window={} death_cluster={}", gRoster[0].size(), gRoster[1].size(),
-             p.stintMs, p.levelAbove, p.searchYards, p.leashYards, p.minDemand, p.levelWindow, p.deathCluster);
+    if (gMaterialCrews)
+        LOG_INFO("server.loading",
+                 "[Squad] enabled: mode=material_crews alliance={} horde={} stint_ms={} level_above={} "
+                 "search_yards={} leash={} min_demand={} level_window={} death_cluster={}",
+                 gRoster[0].size(), gRoster[1].size(), p.stintMs, p.levelAbove, p.searchYards, p.leashYards,
+                 p.minDemand, p.levelWindow, p.deathCluster);
+    else
+        LOG_INFO("server.loading",
+                 "[Squad] enabled: alliance={} horde={} stint_ms={} level_above={} search_yards={} "
+                 "leash={} min_demand={} level_window={} death_cluster={}",
+                 gRoster[0].size(), gRoster[1].size(), p.stintMs, p.levelAbove, p.searchYards, p.leashYards,
+                 p.minDemand, p.levelWindow, p.deathCluster);
 }
 
 void WorldUpdate(std::uint32_t diff)
@@ -566,17 +717,52 @@ void WorldUpdate(std::uint32_t diff)
     gFirstTick = false;
     gTickAcc = 0;
     std::uint64_t const now = NowMs();
-    for (std::size_t t = 0; t < 2; ++t)
-        if (!gRoster[t].empty())
-            TeamTick(t, now);
+    if (gMaterialCrews)
+    {
+        for (std::size_t team = 0; team < kTeamCount; ++team)
+        {
+            if (gTransitionPending[team])
+            {
+                std::vector<std::vector<std::uint32_t>> successors;
+                for (std::size_t kind = 0; kind < kKindCount; ++kind)
+                    successors.push_back(gCrewRoster[team * kKindCount + kind]);
+                if (!AutoWowParty::RetireSplitSquad(gLegacyRoster[team], successors))
+                    continue;
+                gTransitionPending[team] = false;
+            }
+            for (std::size_t kind = 0; kind < kKindCount; ++kind)
+            {
+                std::size_t const crew = team * kKindCount + kind;
+                if (!gCrewRoster[crew].empty())
+                    TeamTick(crew, now);
+            }
+        }
+    }
+    else
+        for (std::size_t team = 0; team < kTeamCount; ++team)
+            if (!gRoster[team].empty())
+                TeamTick(team, now);
 }
 
-bool IsMember(std::uint32_t guid) { return detail::gEnabled && gTeamOf.count(guid) != 0; }
+bool IsMember(std::uint32_t guid)
+{
+    return detail::gEnabled && (gMaterialCrews ? gCrewOf.count(guid) != 0 : gTeamOf.count(guid) != 0);
+}
 std::vector<std::uint32_t> Roster(bool alliance) { return detail::gEnabled ? gRoster[alliance ? 0 : 1] : std::vector<std::uint32_t>{}; }
 
 TeamState SnapshotOf(std::uint32_t guid)
 {
-    auto const it = detail::gEnabled ? gTeamOf.find(guid) : gTeamOf.end();
+    if (!detail::gEnabled)
+        return TeamState{};
+    if (gMaterialCrews)
+    {
+        auto const it = gCrewOf.find(guid);
+        if (it == gCrewOf.end())
+            return TeamState{};
+        std::lock_guard<std::mutex> guard(gLock);
+        return gCrewStates[it->second];
+    }
+    auto const it = gTeamOf.find(guid);
     if (it == gTeamOf.end())
         return TeamState{};
     std::lock_guard<std::mutex> guard(gLock);

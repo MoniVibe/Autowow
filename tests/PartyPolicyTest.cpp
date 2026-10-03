@@ -602,4 +602,34 @@ TEST(PartyPolicyTest, RecruitRequireTankNeedsATankBesidesTheHealer)
     EXPECT_EQ(pl.roles, (std::vector<Role>{Role::Healer, Role::Dps, Role::Dps, Role::Dps, Role::Tank}));
     EXPECT_EQ(pl.leader, 5u);
 }
+
+TEST(PartyPolicyTest, SplitSquadPlanRequiresExactExclusivePartition)
+{
+    std::vector<std::uint32_t> const legacy = {1, 2, 3, 4, 5};
+    EXPECT_TRUE(SplitSquadPlanMatches(legacy, {{1, 2, 3}, {4, 5}, {}, {}}));
+    EXPECT_TRUE(SplitSquadPlanMatches({5, 4, 3, 2, 1}, {{5, 3, 1}, {4, 2}}));
+    EXPECT_FALSE(SplitSquadPlanMatches(legacy, {{1, 2, 3, 4, 5}}));       // no split
+    EXPECT_FALSE(SplitSquadPlanMatches(legacy, {{1, 2, 3}, {4}}));        // partial
+    EXPECT_FALSE(SplitSquadPlanMatches(legacy, {{1, 2, 3}, {4, 5, 6}}));  // superset
+    EXPECT_FALSE(SplitSquadPlanMatches(legacy, {{1, 2, 3}, {3, 4, 5}}));  // duplicate membership
+}
+
+TEST(PartyPolicyTest, SplitSquadRetirementFailsClosedForControlsAndForeignOwnership)
+{
+    using D = SplitRetireDecision;
+    using S = SplitNativeShape;
+    EXPECT_EQ(DecideSplitRetire(false, S::Ungrouped, true, true, false, false), D::Defer);
+    EXPECT_EQ(DecideSplitRetire(true, S::Ungrouped, true, true, false, false), D::Noop);
+    EXPECT_EQ(DecideSplitRetire(true, S::ExactSuccessors, true, true, false, false), D::Noop);
+    EXPECT_EQ(DecideSplitRetire(true, S::Foreign, true, true, true, true), D::Defer);
+    EXPECT_EQ(DecideSplitRetire(true, S::ExactLegacy, true, false, true, true), D::Defer);
+    EXPECT_EQ(DecideSplitRetire(true, S::ExactLegacy, false, true, true, true), D::Defer);
+    EXPECT_EQ(DecideSplitRetire(true, S::ExactLegacy, true, true, true, false), D::RetireOwned);
+    EXPECT_EQ(DecideSplitRetire(true, S::ExactLegacy, true, true, false, true), D::RetireOrphan);
+    EXPECT_EQ(DecideSplitRetire(true, S::ExactLegacy, true, true, false, false), D::Defer);
+    EXPECT_TRUE(ShouldDisbandOrphan(true, true, false));  // permanent squad membership does not suppress cleanup
+    EXPECT_FALSE(ShouldDisbandOrphan(true, true, true));  // pending split owns native mutation
+    EXPECT_FALSE(ShouldDisbandOrphan(false, true, false));
+}
+
 }  // namespace

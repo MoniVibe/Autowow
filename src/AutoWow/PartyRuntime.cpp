@@ -155,6 +155,7 @@ std::unordered_map<std::uint32_t, std::uint64_t> gLeftMs;
 std::unordered_map<std::uint32_t, std::uint64_t> gNextCastMs;
 std::uint32_t gNextId = 1;
 std::unordered_set<std::uint32_t> gSquadGuids;  // AutoWow.Squad rosters (EnsureSquad), bounded by its config
+std::unordered_set<std::uint32_t> gSplitPendingGuids;  // exact validated union while native handoff is pending
 std::uint32_t gSinceForm = 0;
 std::uint32_t gSinceSupervise = 0;
 std::uint32_t gSinceRecruit = 0;
@@ -366,6 +367,22 @@ bool IsOrphan(Group* g)
     return true;
 }
 
+bool GroupHasPendingSplitMember(Group* group)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    for (Group::MemberSlot const& member : group->GetMemberSlots())
+        if (gSplitPendingGuids.count(member.guid.GetCounter()))
+            return true;
+    return false;
+}
+
+void ClearSplitReservation(std::vector<std::uint32_t> const& guids)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    for (std::uint32_t const guid : guids)
+        gSplitPendingGuids.erase(guid);
+}
+
 // AutoWow.Unstick.V2: quest-log fold of the party members (quest ids, status, kill / item counters; slot order).
 std::uint64_t QuestSig(std::vector<Player*> const& bots)
 {
@@ -508,8 +525,12 @@ void Form(std::uint64_t now)
     for (auto const& [guid, bot] : ObjectAccessor::GetPlayers())
     {
         PlayerbotAI* ai = AiOf(bot);
-        if (Group* g = ai && bot->IsInWorld() ? bot->GetGroup() : nullptr; g && gParams.disbandOrphans && IsOrphan(g))
+        Group* group = ai && bot->IsInWorld() ? bot->GetGroup() : nullptr;
+        bool const orphan = group && gParams.disbandOrphans && IsOrphan(group);
+        bool const reserved = orphan && GroupHasPendingSplitMember(group);
+        if (ShouldDisbandOrphan(gParams.disbandOrphans, orphan, reserved))
         {
+            Group* g = group;
             std::vector<Player*> members;
             for (Group::MemberSlot const& m : g->GetMemberSlots())
                 members.push_back(ObjectAccessor::FindPlayer(m.guid));
@@ -1458,6 +1479,10 @@ void Recruit(std::uint64_t now)
 // ---- public ---------------------------------------------------------------------------------------------
 void LoadConfig()
 {
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        gSplitPendingGuids.clear();
+    }
     detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Party.Enable", false);
     detail::gDungeons = detail::gEnabled && sConfigMgr->GetOption<bool>("AutoWow.Dungeon.Enable", false);
     detail::gRoles = detail::gEnabled && sConfigMgr->GetOption<bool>("AutoWow.Party.Roles", true);
@@ -1644,6 +1669,149 @@ void NoteApproachTick(std::uint32_t guid, bool stuck)
     p.stuckTicks = stuck ? p.stuckTicks + 1 : 0;
     if (p.stuckTicks >= gParams.approachStuckTicks)
         p.approachGaveUp = true;
+}
+
+bool SplitMemberSafe(std::uint32_t guid)
+{
+    Player* bot = Find(guid);
+    PlayerbotAI* ai = AiOf(bot);
+    return bot && ai && bot->IsInWorld() && !ai->IsRealPlayer() && !ai->HasRealPlayerMaster() &&
+           !AutoWowOracleRuntime::IsManagedBot(guid) && !AutoWowDungeonProbe::IsProbeBot(guid) &&
+           !bot->InBattleground() && bot->GetMap() && !bot->GetMap()->Instanceable() && !bot->GetTransport() &&
+           !bot->IsInFlight() && !bot->IsInCombat() && !bot->IsBeingTeleported();
+}
+
+std::vector<std::uint32_t> NativeRoster(Group* group)
+{
+    std::vector<std::uint32_t> roster;
+    if (group)
+        for (Group::MemberSlot const& member : group->GetMemberSlots())
+            roster.push_back(member.guid.GetCounter());
+    std::sort(roster.begin(), roster.end());
+    return roster;
+}
+
+bool OrdinaryGroup(Group* group)
+{
+    return group && !group->isRaidGroup() && !group->isBGGroup() && !group->isBFGroup() && !group->isLFGGroup();
+}
+
+bool SuccessorsAlreadyNative(std::vector<std::vector<std::uint32_t>> const& successors)
+{
+    for (auto const& roster : successors)
+    {
+        if (roster.empty())
+            continue;
+        Group* group = nullptr;
+        for (std::uint32_t const guid : roster)
+        {
+            Player* member = Find(guid);
+            Group* current = member ? member->GetGroup() : nullptr;
+            if (roster.size() == 1)
+            {
+                if (current)
+                    return false;
+                continue;
+            }
+            if (!group)
+                group = current;
+            if (!group || current != group)
+                return false;
+        }
+        if (roster.size() > 1 && (!OrdinaryGroup(group) || !SameGuidSet(roster, NativeRoster(group))))
+            return false;
+    }
+    return true;
+}
+
+bool RetireSplitSquad(std::vector<std::uint32_t> const& legacy,
+                      std::vector<std::vector<std::uint32_t>> const& successors)
+{
+    if (legacy.empty())
+        return true;  // first install has no old-group provenance and performs no migration mutation
+    bool const planMatches = SplitSquadPlanMatches(legacy, successors);
+    if (!planMatches)
+        return false;
+    {
+        // Reserve the validated union before any defer. Formation/recruitment and generic orphan cleanup must not
+        // take or mutate these members while the exact native handoff waits for a safe world-thread tick.
+        std::lock_guard<std::mutex> guard(gLock);
+        gSquadGuids.insert(legacy.begin(), legacy.end());
+        gSplitPendingGuids.insert(legacy.begin(), legacy.end());
+    }
+    for (std::uint32_t const guid : legacy)
+        if (!SplitMemberSafe(guid))
+            return false;
+
+    bool anyGrouped = false;
+    Group* native = nullptr;
+    for (std::uint32_t const guid : legacy)
+    {
+        Player* member = Find(guid);
+        Group* current = member ? member->GetGroup() : nullptr;
+        anyGrouped = anyGrouped || current;
+        if (current && !native)
+            native = current;
+    }
+    bool const oneNative = native && std::all_of(legacy.begin(), legacy.end(),
+                                                 [native](std::uint32_t guid)
+                                                 {
+                                                     Player* member = Find(guid);
+                                                     return member && member->GetGroup() == native;
+                                                 });
+
+    SplitNativeShape shape = SplitNativeShape::Foreign;
+    if (!anyGrouped)
+        shape = SplitNativeShape::Ungrouped;
+    else if (SuccessorsAlreadyNative(successors))
+        shape = SplitNativeShape::ExactSuccessors;
+    else if (native && oneNative && SameGuidSet(legacy, NativeRoster(native)))
+        shape = SplitNativeShape::ExactLegacy;
+
+    if (shape == SplitNativeShape::Ungrouped || shape == SplitNativeShape::ExactSuccessors)
+    {
+        bool const complete =
+            DecideSplitRetire(planMatches, shape, true, true, false, false) == SplitRetireDecision::Noop;
+        if (complete)
+            ClearSplitReservation(legacy);
+        return complete;
+    }
+
+    std::uint32_t ownedId = 0;
+    if (shape == SplitNativeShape::ExactLegacy)
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        for (auto const& [id, party] : gParties)
+            if (party.why == Reason::Squad && SameGuidSet(legacy, Guids(party)))
+            {
+                ownedId = id;
+                break;
+            }
+    }
+    bool const ordinary = shape == SplitNativeShape::ExactLegacy && OrdinaryGroup(native);
+    bool const orphan = ordinary && !ownedId && IsOrphan(native);
+    SplitRetireDecision const decision = DecideSplitRetire(planMatches, shape, ordinary, true, ownedId != 0, orphan);
+    if (decision == SplitRetireDecision::RetireOwned)
+    {
+        LOG_INFO("playerbots", "[Party] retiring registered legacy squad pid={} for material crews", ownedId);
+        Dissolve(ownedId, Disband::Disabled, NowMs());
+        ClearSplitReservation(legacy);
+        return true;
+    }
+    if (decision != SplitRetireDecision::RetireOrphan)
+        return false;  // partial, superset, foreign, special, or controlled groups hold the atomic handoff
+
+    std::vector<Player*> members;
+    for (std::uint32_t const guid : legacy)
+        members.push_back(Find(guid));
+    LOG_INFO("playerbots", "[Party] retiring persisted legacy squad leader={} members={} for material crews",
+             legacy.front(), legacy.size());
+    native->Disband();
+    for (Player* member : members)
+        if (PlayerbotAI* ai = AiOf(member))
+            ai->SetMaster(nullptr);  // same owned orphan-group cleanup as EnsureSquad
+    ClearSplitReservation(legacy);
+    return true;
 }
 
 void EnsureSquad(std::vector<std::uint32_t> const& roster)

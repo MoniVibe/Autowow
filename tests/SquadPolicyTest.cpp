@@ -48,6 +48,19 @@ TeamState Running(Kind kind = Kind::Cloth)
     return s;
 }
 
+TEST(Squad, LegacyProvenanceExpansionIsAtomicAndBounded)
+{
+    std::vector<std::uint32_t> out = {99};
+    EXPECT_FALSE(ExpandGuidSpansBounded({GuidSpan{1, 11}}, kMaxMembers, out));
+    EXPECT_EQ(out, (std::vector<std::uint32_t>{99}));
+    EXPECT_FALSE(ExpandGuidSpansBounded({GuidSpan{1, 6}, GuidSpan{20, 24}}, kMaxMembers, out));
+    EXPECT_EQ(out, (std::vector<std::uint32_t>{99}));
+    EXPECT_FALSE(ExpandGuidSpansBounded({GuidSpan{4, 3}}, kMaxMembers, out));
+    EXPECT_EQ(out, (std::vector<std::uint32_t>{99}));
+    EXPECT_TRUE(ExpandGuidSpansBounded({GuidSpan{5, 7}, GuidSpan{1, 2}}, kMaxMembers, out));
+    EXPECT_EQ(out, (std::vector<std::uint32_t>{1, 2, 5, 6, 7}));
+}
+
 TEST(Squad, DemandRanksLargestFirstTiesByTierAndDropsSmallOrUnknown)
 {
     std::vector<AutoWowSupply::MaterialNeed> const needs = {
@@ -353,4 +366,110 @@ TEST(Squad, SupplyUsableNowFollowsArtisanSkill)
     EXPECT_TRUE(AutoWowSupply::UsableNow(potions, 2450, 55));
     EXPECT_FALSE(AutoWowSupply::UsableNow(potions, 2453, 109)); // bruiseweed: alchemy 110
 }
+
+TEST(Squad, MaterialCrewLayoutIsAtomicExclusiveAndDeterministic)
+{
+    std::array<std::vector<std::uint32_t>, kCrewCount> configured;
+    configured[CrewIndex(0, Kind::Ore)] = {30, 10, 20};
+    configured[CrewIndex(0, Kind::Herb)] = {50, 40};
+    configured[CrewIndex(1, Kind::Ore)] = {80, 60, 70};
+    configured[CrewIndex(1, Kind::Herb)] = {100, 90};
+    CrewLayout const layout = BuildCrewLayout(configured);
+    ASSERT_TRUE(layout.Valid());
+    EXPECT_EQ(layout.crews[CrewIndex(0, Kind::Ore)], (std::vector<std::uint32_t>{10, 20, 30}));
+    EXPECT_EQ(layout.crews[CrewIndex(1, Kind::Leather)], (std::vector<std::uint32_t>{}));
+    EXPECT_EQ(layout.teams[0], (std::vector<std::uint32_t>{10, 20, 30, 40, 50}));
+    EXPECT_EQ(layout.teams[1], (std::vector<std::uint32_t>{60, 70, 80, 90, 100}));
+    EXPECT_EQ(CrewTeam(CrewIndex(1, Kind::Herb)), 1u);
+    EXPECT_EQ(CrewKind(CrewIndex(1, Kind::Herb)), Kind::Herb);
+
+    configured[CrewIndex(1, Kind::Cloth)] = {10};  // cross-crew duplicate: reject everything
+    CrewLayout const duplicate = BuildCrewLayout(configured);
+    EXPECT_EQ(duplicate.error, CrewLayoutError::DuplicateGuid);
+    for (auto const& crew : duplicate.crews)
+        EXPECT_TRUE(crew.empty());
+    for (auto const& team : duplicate.teams)
+        EXPECT_TRUE(team.empty());
+
+    configured = {};
+    configured[CrewIndex(0, Kind::Ore)] = {10, 10};  // within-crew duplicate is equally invalid
+    EXPECT_EQ(BuildCrewLayout(configured).error, CrewLayoutError::DuplicateGuid);
+}
+
+TEST(Squad, MaterialCrewLayoutRejectsMalformedAndOverCap)
+{
+    std::array<std::vector<std::uint32_t>, kCrewCount> configured;
+    configured[CrewIndex(0, Kind::Ore)] = {0};
+    EXPECT_EQ(BuildCrewLayout(configured).error, CrewLayoutError::ZeroGuid);
+
+    configured = {};
+    for (std::uint32_t guid = 1; guid <= kMaxCrewMembers + 1; ++guid)
+        configured[CrewIndex(0, Kind::Ore)].push_back(guid);
+    EXPECT_EQ(BuildCrewLayout(configured).error, CrewLayoutError::CrewOverCap);
+
+    configured = {};
+    for (std::uint32_t guid = 1; guid <= 5; ++guid)
+        configured[CrewIndex(0, Kind::Ore)].push_back(guid);
+    for (std::uint32_t guid = 6; guid <= 10; ++guid)
+        configured[CrewIndex(0, Kind::Herb)].push_back(guid);
+    configured[CrewIndex(0, Kind::Cloth)] = {11};
+    EXPECT_EQ(BuildCrewLayout(configured).error, CrewLayoutError::TeamOverCap);
+}
+
+TEST(Squad, MaterialCrewDemandIsKindScopedWhileLegacyDemandIsUnchanged)
+{
+    std::vector<AutoWowSupply::MaterialNeed> const needs = {{2770, 30}, {2835, 20}, {2447, 40}, {2589, 50}};
+    std::vector<Want> const legacy = RankDemand(needs, 5);
+    ASSERT_EQ(legacy.size(), 4u);
+    EXPECT_EQ(legacy.front().item, 2589u);
+    std::vector<Want> const ore = RankDemandForKind(needs, 5, Kind::Ore);
+    ASSERT_EQ(ore.size(), 2u);
+    EXPECT_EQ(ore[0].item, 2770u);
+    EXPECT_EQ(ore[1].item, 2835u);
+    std::vector<Want> const herb = RankDemandForKind(needs, 5, Kind::Herb);
+    ASSERT_EQ(herb.size(), 1u);
+    EXPECT_EQ(herb[0].item, 2447u);
+    EXPECT_TRUE(RankDemandForKind(needs, 5, Kind::Leather).empty());
+}
+
+TEST(Squad, MaterialCrewStatesAndCooldownsAreIndependent)
+{
+    std::array<TeamState, kCrewCount> states;
+    std::size_t const ore = CrewIndex(0, Kind::Ore);
+    std::size_t const herb = CrewIndex(0, Kind::Herb);
+    Cluster cluster;
+    cluster.center = 7;
+    cluster.x = 1000;
+    cluster.y = 1000;
+    Issue(states[ore], Want{2770, 20, Kind::Ore}, cluster, 0, 10, 1, 0, 1000);
+    Issue(states[herb], Want{2447, 10, Kind::Herb}, cluster, 0, 40, 2, 0, 1000);
+    TeamState const herbBefore = states[herb];
+    NoteHeld(states[ore], 5);
+    Finish(states[ore], Params{}, 5000);
+    EXPECT_EQ(states[ore].phase, Phase::None);
+    EXPECT_TRUE(AnchorCooling(Params{}, states[ore], 0, 1000, 1000, 5001));
+    EXPECT_EQ(states[herb].phase, herbBefore.phase);
+    EXPECT_EQ(states[herb].id, herbBefore.id);
+    EXPECT_EQ(states[herb].item, herbBefore.item);
+    EXPECT_EQ(states[herb].gathered, herbBefore.gathered);
+    EXPECT_EQ(states[herb].cooldownUntilMs, herbBefore.cooldownUntilMs);
+    EXPECT_TRUE(Holds(states[herb], false));
+}
+
+TEST(Squad, StintIdsNeverReuseOrWrap)
+{
+    std::uint32_t last = 0, first = 0, second = 0;
+    EXPECT_TRUE(NextStintId(last, first));
+    EXPECT_TRUE(NextStintId(last, second));
+    EXPECT_EQ(first, 1u);
+    EXPECT_EQ(second, 2u);
+    EXPECT_NE(first, second);
+    last = std::numeric_limits<std::uint32_t>::max() - 1;
+    EXPECT_TRUE(NextStintId(last, first));
+    EXPECT_EQ(first, std::numeric_limits<std::uint32_t>::max());
+    EXPECT_FALSE(NextStintId(last, second));
+    EXPECT_EQ(second, 0u);
+    EXPECT_EQ(last, std::numeric_limits<std::uint32_t>::max());
+}
+
 }  // namespace
