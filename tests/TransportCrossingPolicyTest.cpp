@@ -6,6 +6,7 @@
 
 #include "TransportCrossingPolicy.h"
 
+#include <cmath>
 #include <limits>
 
 #include "gtest/gtest.h"
@@ -221,6 +222,52 @@ TEST(Transports, NorthrendChainsOwnEveryNativePrefixInOrder)
                 ChainFor(table, team, source.zone, AutoWowZoneProgression::kBoreanZone);
             ASSERT_FALSE(chain.empty()) << team << " " << source.zone;
             EXPECT_EQ(chain.size(), source.map == AutoWowZoneProgression::kOutlandMap ? (team == 1 ? 2U : 3U) : 1U);
+        }
+}
+
+TEST(Transports, NorthrendOutlandAreaTriggerApproachIsInsideCanonicalNativeTrigger)
+{
+    // Live acore_world.areatrigger entry 4352, loaded by ObjectMgr and checked by
+    // Player::IsInAreaTriggerRadius. Orientation is zero, so the core compares
+    // length on X and width on Y. The old Y=922 point was outside the narrow width.
+    constexpr float centerX = -247.677f;
+    constexpr float centerY = 895.675f;
+    constexpr float centerZ = 84.3622f;
+    constexpr float halfLength = 72.83f / 2.0f;
+    constexpr float halfWidth = 6.611f / 2.0f;
+    constexpr float halfHeight = 53.81f / 2.0f;
+    auto inside = [=](float x, float y, float z)
+    {
+        return std::fabs(x - centerX) <= halfLength && std::fabs(y - centerY) <= halfWidth &&
+               std::fabs(z - centerZ) <= halfHeight;
+    };
+
+    EXPECT_FALSE(inside(-248.0f, 922.0f, 84.0f));
+    EXPECT_TRUE(inside(-248.0f, 896.0f, 84.0f));
+
+    std::vector<Crossing> const table = NorthrendCrossings();
+    for (std::uint32_t team : {1U, 2U})
+        for (AutoWowZoneProgression::HubSource const& source :
+             AutoWowZoneProgression::NorthrendEntryZones(team))
+        {
+            if (source.map != AutoWowZoneProgression::kOutlandMap)
+                continue;
+            std::vector<Crossing> const chain =
+                ChainFor(table, team, source.zone, AutoWowZoneProgression::kBoreanZone);
+            ASSERT_FALSE(chain.empty());
+            Crossing const& areaTrigger = chain.front();
+            EXPECT_EQ(areaTrigger.via, Via::AreaTrigger);  // adapter keeps native CMSG_AREATRIGGER
+            EXPECT_EQ(areaTrigger.object, 4352U);
+            EXPECT_EQ(areaTrigger.map, 530U);
+            EXPECT_EQ(areaTrigger.x, -248);
+            EXPECT_EQ(areaTrigger.y, 896);
+            EXPECT_EQ(areaTrigger.z, 84);
+            EXPECT_TRUE(inside(static_cast<float>(areaTrigger.x), static_cast<float>(areaTrigger.y),
+                               static_cast<float>(areaTrigger.z)));
+            bool const genericPortal =
+                areaTrigger.via == Via::Transport &&
+                UsePortal(EffectiveMode(true, areaTrigger.via, {}, TransportMode::Auto, areaTrigger.object), 999, 0);
+            EXPECT_FALSE(genericPortal);
         }
 }
 

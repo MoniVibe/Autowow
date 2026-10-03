@@ -294,7 +294,8 @@ inline std::vector<Crossing> NorthrendCrossings()
             };
             if (source.map == kOutlandMap)
             {
-                add({0, 0, 0, 0, Via::AreaTrigger, 4352, 530, -248, 922, 84, 0, 0,
+                // areatrigger 4352 center (-247.677, 895.675, 84.3622); nearest integer stays inside its box.
+                add({0, 0, 0, 0, Via::AreaTrigger, 4352, 530, -248, 896, 84, 0, 0,
                      0, -11878, -3204, -18, 0, 0});
                 if (team == 2)
                     add({0, 0, 0, 0, Via::Transport, 175080, 0, -12441, 215, 31, -12464, 232,
