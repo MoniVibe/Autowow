@@ -161,6 +161,7 @@ struct Member
     std::uint32_t smaller = 0;
     std::uint32_t incoming = 0;
     bool rep = false;  // a house rep (RepStore): the hubs' storage ranks before every member
+    bool priority = false;  // AutoWow.Supply.PriorityGuids: one tier after reps, before ordinary members
 };
 
 [[nodiscard]] inline std::uint32_t Wants(Member const& m)
@@ -169,7 +170,8 @@ struct Member
     return want > m.incoming ? want - m.incoming : 0;
 }
 
-// Members that want a bag, reps first, then most empty slots, then most smaller bags, ties the lower guid.
+// Members that want a bag: reps first, then the configured priority tier, then most empty slots, most smaller bags,
+// and the lower guid. Priority-list order does not override capacity inside the tier.
 [[nodiscard]] inline std::vector<Member> RankNeeds(std::vector<Member> members)
 {
     members.erase(std::remove_if(members.begin(), members.end(), [](Member const& m) { return !Wants(m); }),
@@ -178,6 +180,8 @@ struct Member
               {
                   if (a.rep != b.rep)
                       return a.rep;
+                  if (a.priority != b.priority)
+                      return a.priority;
                   if (a.empty != b.empty)
                       return a.empty > b.empty;
                   if (a.smaller != b.smaller)

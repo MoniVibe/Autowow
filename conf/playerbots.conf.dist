@@ -3400,6 +3400,8 @@ AutoWow.Supply.StationYards.MailGear = 600
 # AutoWow.Supply.Artisan.Smiths.Horde = 0
 # AutoWow.Supply.Artisan.Tanners.Alliance = 0
 # AutoWow.Supply.Artisan.Tanners.Horde = 0
+# Shared recipient priority: bag demand/delivery ranks these members as one tier after protected house reps and before
+# ordinary members (capacity then GUID within each tier); gear lines retain the configured list order.
 AutoWow.Supply.PriorityGuids = ""
 AutoWow.Supply.RepStockPerItem = 2
 AutoWow.Supply.GearMaxOrder = 4

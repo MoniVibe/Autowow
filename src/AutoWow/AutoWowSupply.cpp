@@ -345,7 +345,11 @@ std::vector<Member> Members(bool alliance, std::uint32_t slots)
         {
             Player* m = Online(static_cast<std::uint32_t>(g));
             if (m && m->IsInWorld() && (m->GetTeamId() == TEAM_ALLIANCE) == alliance && !IsRole(m))
-                members.push_back(MemberOf(m, slots));
+            {
+                Member member = MemberOf(m, slots);
+                member.priority = PriorityOf(gPriority, member.guid) != kNoPriority;
+                members.push_back(member);
+            }
         }
     for (std::size_t i = 0; detail::gParams.repStore && i < AutoWowGuilds::Houses().size(); ++i)
         if (Player* rep = RoleRep(i, alliance))

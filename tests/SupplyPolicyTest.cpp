@@ -17,6 +17,7 @@ using namespace AutoWowSupply;
 
 TEST(SupplyPolicy, RanksMostEmptyFirstTiesLowerGuid)
 {
+    // Default priority=false preserves the original ordering for every ordinary member.
     std::vector<Member> const ranked = RankNeeds({
         {30, 2, 0, 0},
         {10, 4, 0, 0},
@@ -32,6 +33,29 @@ TEST(SupplyPolicy, RanksMostEmptyFirstTiesLowerGuid)
     EXPECT_EQ(ranked[3].guid, 30u);
     EXPECT_EQ(TotalWant(ranked), 4u + 3u + 2u + 2u);
     EXPECT_EQ(Wants({1, 3, 0, 1}), 2u);
+}
+
+TEST(SupplyPolicy, RanksPriorityTierAfterRepsBeforeOrdinary)
+{
+    Member rep{200, 1, 0, 0};
+    rep.rep = true;
+    Member priorityMoreRoom{100, 2, 0, 0};
+    priorityMoreRoom.priority = true;
+    Member priorityLowGuid{80, 1, 1, 0};
+    priorityLowGuid.priority = true;
+    Member priorityHighGuid{90, 1, 1, 0};
+    priorityHighGuid.priority = true;
+    Member priorityCovered{70, 4, 0, 4};
+    priorityCovered.priority = true;
+
+    std::vector<Member> const ranked =
+        RankNeeds({{1, 4, 0, 0}, priorityHighGuid, rep, priorityCovered, priorityLowGuid, priorityMoreRoom});
+    ASSERT_EQ(ranked.size(), 5u);
+    EXPECT_EQ(ranked[0].guid, 200u);  // protected rep remains first
+    EXPECT_EQ(ranked[1].guid, 100u);  // capacity ordering inside the priority tier
+    EXPECT_EQ(ranked[2].guid, 80u);   // capacity tie: lower guid
+    EXPECT_EQ(ranked[3].guid, 90u);
+    EXPECT_EQ(ranked[4].guid, 1u);  // priority tier beats a lower-guid ordinary member with more empty slots
 }
 
 TEST(SupplyPolicy, OrderSizeIsWantWithinMaterialsAndCap)
