@@ -2031,6 +2031,49 @@ TEST(Mounts, StateAndWireBits)
               ",\"site\":81389,\"tier\":1,\"spell\":33388,\"copper\":40000,\"learned\":true");
 }
 
+TEST(ErrandsMaterialStintAdmission, AllowsOnlyAbsentOrCurrentIdleUnownedState)
+{
+    BotState state;
+    state.version = kStateVersion - 1;
+    state.phase = Phase::Return;
+    state.predecessor.active = true;
+    EXPECT_FALSE(ShouldDeferMaterialStintAdmission(false, state));
+
+    state = {};
+    EXPECT_FALSE(ShouldDeferMaterialStintAdmission(true, state));
+
+    state.predecessor.source = ErrandsPredecessorSource::ServiceStop;
+    EXPECT_FALSE(ShouldDeferMaterialStintAdmission(true, state));
+}
+
+TEST(ErrandsMaterialStintAdmission, DefersEveryActivePhaseAndInvalidState)
+{
+    BotState state;
+    for (Phase const phase : {Phase::Travel, Phase::Errands, Phase::Return})
+    {
+        state.phase = phase;
+        EXPECT_TRUE(ShouldDeferMaterialStintAdmission(true, state));
+    }
+
+    state.phase = Phase::None;
+    state.version = kStateVersion - 1;
+    EXPECT_TRUE(ShouldDeferMaterialStintAdmission(true, state));
+}
+
+TEST(ErrandsMaterialStintAdmission, DefersAnyActivePredecessorSource)
+{
+    BotState state;
+    state.predecessor.active = true;
+    for (ErrandsPredecessorSource const source :
+         {ErrandsPredecessorSource::TravelFlight, ErrandsPredecessorSource::ReturnFlight,
+          ErrandsPredecessorSource::ServiceStop, ErrandsPredecessorSource::None,
+          static_cast<ErrandsPredecessorSource>(0xff)})
+    {
+        state.predecessor.source = source;
+        EXPECT_TRUE(ShouldDeferMaterialStintAdmission(true, state));
+    }
+}
+
 TEST(ErrandsDiagnostics, ClassifiesAbsentCurrentAndInvalidStoredState)
 {
     EXPECT_EQ(ClassifyDiagnosticState(false, 0, kStateVersion), DiagnosticState::Absent);

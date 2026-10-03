@@ -472,4 +472,66 @@ TEST(Squad, StintIdsNeverReuseOrWrap)
     EXPECT_EQ(last, std::numeric_limits<std::uint32_t>::max());
 }
 
+TEST(Squad, MaterialStintDeferralOnlySchedulesTheExistingRetry)
+{
+    Params p;
+    TeamState state;
+    state.id = 19;
+    state.item = 2835;
+    state.kind = Kind::Ore;
+    state.target = 40;
+    state.gathered = 21;
+    state.lastHeld = 31;
+    state.leader = 924056;
+    state.map = 1;
+    state.x = -500;
+    state.y = 700;
+    state.z = 90;
+    state.anchorSpawn = 1234;
+    state.entries[0] = 1731;
+    state.entryCount = 1;
+    state.startMs = 3000;
+    state.nextSearchMs = 4000;
+    state.together = false;
+    state.holding = true;
+    state.cooldownMap = 1;
+    state.cooldownX = -550;
+    state.cooldownY = 750;
+    state.cooldownUntilMs = 9000;
+    state.anchorZone = 11;
+    state.cooldownZone = 12;
+    state.zoneCooldownUntilMs = 10000;
+    TeamState const before = state;
+
+    ScheduleMaterialStintSearchRetry(state, p, 5000);
+
+    EXPECT_EQ(state.nextSearchMs, 5000u + p.searchRetryMs);
+    EXPECT_EQ(state.version, before.version);
+    EXPECT_EQ(state.phase, before.phase);
+    EXPECT_EQ(state.id, before.id);
+    EXPECT_EQ(state.item, before.item);
+    EXPECT_EQ(state.kind, before.kind);
+    EXPECT_EQ(state.target, before.target);
+    EXPECT_EQ(state.gathered, before.gathered);
+    EXPECT_EQ(state.lastHeld, before.lastHeld);
+    EXPECT_EQ(state.leader, before.leader);
+    EXPECT_EQ(state.map, before.map);
+    EXPECT_EQ(state.x, before.x);
+    EXPECT_EQ(state.y, before.y);
+    EXPECT_EQ(state.z, before.z);
+    EXPECT_EQ(state.anchorSpawn, before.anchorSpawn);
+    EXPECT_EQ(state.entries, before.entries);
+    EXPECT_EQ(state.entryCount, before.entryCount);
+    EXPECT_EQ(state.startMs, before.startMs);
+    EXPECT_EQ(state.together, before.together);
+    EXPECT_EQ(state.holding, before.holding);
+    EXPECT_EQ(state.cooldownMap, before.cooldownMap);
+    EXPECT_EQ(state.cooldownX, before.cooldownX);
+    EXPECT_EQ(state.cooldownY, before.cooldownY);
+    EXPECT_EQ(state.cooldownUntilMs, before.cooldownUntilMs);
+    EXPECT_EQ(state.anchorZone, before.anchorZone);
+    EXPECT_EQ(state.cooldownZone, before.cooldownZone);
+    EXPECT_EQ(state.zoneCooldownUntilMs, before.zoneCooldownUntilMs);
+}
+
 }  // namespace

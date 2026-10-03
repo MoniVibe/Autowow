@@ -1798,6 +1798,16 @@ struct BotState
 
 [[nodiscard]] inline bool IsRunActive(BotState const& s) { return s.phase != Phase::None; }
 
+// A new material stint may start only when Errands has no active run or predecessor owner. Missing state is idle;
+// invalid stored state fails closed without being normalized by this read path.
+[[nodiscard]] inline bool ShouldDeferMaterialStintAdmission(bool tracked, BotState const& state)
+{
+    return tracked && (state.version != kStateVersion || state.phase != Phase::None || state.predecessor.active);
+}
+
+// Read-only, non-inserting admission check under the Errands mutex.
+bool MaterialStintAdmissionBlocked(std::uint32_t guid);
+
 // Copies an existing state under the Errands mutex. False means absent; an invalid stored version is
 // still copied so diagnostics can distinguish it from absence. The read never inserts or normalizes.
 bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state);

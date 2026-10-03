@@ -465,13 +465,16 @@ void TeamTick(std::size_t slot, std::uint64_t now)
     }
     else if (s.phase == Phase::None && now >= s.nextSearchMs && leader)
     {
-        s.nextSearchMs = now + p.searchRetryMs;
-        bool const had = s.holding;
-        s.holding = false;
-        if (!Search(s, demand, members, leader, avg, skills, alliance, now) && had)
-            Emit(leader, Reason::Release, s, gMaterialCrews ? CrewKind(slot) : Kind::Cloth, 0,
-                 static_cast<std::uint32_t>(demand.size()), now, demand.empty() ? "no_demand" : "no_source",
-                 ",\"avg_level\":" + std::to_string(avg));
+        ScheduleMaterialStintSearchRetry(s, p, now);
+        if (!gMaterialCrews || !AutoWowErrands::MaterialStintAdmissionBlocked(Low(leader)))
+        {
+            bool const had = s.holding;
+            s.holding = false;
+            if (!Search(s, demand, members, leader, avg, skills, alliance, now) && had)
+                Emit(leader, Reason::Release, s, gMaterialCrews ? CrewKind(slot) : Kind::Cloth, 0,
+                     static_cast<std::uint32_t>(demand.size()), now, demand.empty() ? "no_demand" : "no_source",
+                     ",\"avg_level\":" + std::to_string(avg));
+        }
     }
     std::lock_guard<std::mutex> guard(gLock);
     if (gMaterialCrews)

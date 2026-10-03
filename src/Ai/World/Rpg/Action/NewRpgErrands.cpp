@@ -1325,6 +1325,13 @@ void ObserveFlightPredecessorCall(
 
 bool Active(std::uint32_t guid) { return IsRunActive(LoadState(guid)); }
 
+bool MaterialStintAdmissionBlocked(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gStates.find(guid);
+    return it != gStates.end() && ShouldDeferMaterialStintAdmission(true, it->second);
+}
+
 bool ReadStateForDiagnostics(std::uint32_t guid, BotState& state)
 {
     std::lock_guard<std::mutex> guard(gLock);

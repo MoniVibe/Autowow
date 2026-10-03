@@ -444,6 +444,12 @@ struct TeamState
     std::uint64_t zoneCooldownUntilMs = 0;  // ... skipped by the search until then
 };
 
+// A deferred material-stint admission uses the ordinary search cadence and changes no other stint state.
+inline void ScheduleMaterialStintSearchRetry(TeamState& state, Params const& p, std::uint64_t nowMs)
+{
+    state.nextSearchMs = nowMs + p.searchRetryMs;
+}
+
 inline void Issue(TeamState& s, Want const& w, Cluster const& c, std::uint32_t map, std::uint32_t leader,
                   std::uint32_t id, std::uint32_t held, std::uint64_t nowMs)
 {
