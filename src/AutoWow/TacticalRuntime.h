@@ -15,6 +15,7 @@
 #include "PackRisk.h"
 #include "TacticalPolicy.h"
 
+class Creature;
 class ObjectGuid;
 class Player;
 class PlayerbotAI;
@@ -41,6 +42,12 @@ inline bool gObserve = false;
 inline bool gEnable = false;  // T2 master; tracking also runs under it
 inline bool gShadowLevelingSpec = false;
 inline bool gObserveExtra = false;  // AutoWow.Tactics.ObserveClasses non-empty (TacticalPolicy.h Tracked)
+
+// Add one already-filtered idle creature to the snapshot when it can lawfully assist at least one real attacker.
+// Production and the native-object regression share this adapter so assistance, LOS, distance and load stay one path.
+void AccumulateAssistEligibleLinkedAdd(EngagementSnapshot& snapshot, Creature* candidate,
+                                       std::vector<Unit*> const& attackers, Player* bot, std::int32_t botLevel,
+                                       LoadParams const& load, std::uint32_t linkRadiusYd);
 }  // namespace detail
 
 inline bool Tracking() { return detail::gObserve || detail::gEnable || detail::gObserveExtra; }

@@ -216,6 +216,28 @@ MobFacts FactsOf(Unit* unit)
     return f;
 }
 
+void AccumulateAssistEligibleLinkedAddImpl(EngagementSnapshot& snapshot, Creature* candidate,
+                                           std::vector<Unit*> const& attackers, Player* bot,
+                                           std::int32_t botLevel, LoadParams const& load,
+                                           std::uint32_t linkRadiusYd)
+{
+    if (!candidate || !bot || !linkRadiusYd)
+        return;
+
+    for (Unit* attacker : attackers)
+    {
+        if (!attacker || candidate->GetDistance(attacker) > float(linkRadiusYd) ||
+            !attacker->IsWithinLOSInMap(candidate) || !candidate->CanAssistTo(attacker, bot))
+            continue;
+
+        MobFacts const f = FactsOf(candidate);
+        ++snapshot.addsNear;
+        snapshot.load +=
+            MobWeight(f.rank, static_cast<std::int32_t>(candidate->GetLevel()) - botLevel, f.caster, load);
+        return;
+    }
+}
+
 // The assessment value (plan 2.1). deathEtaMs is filled by the tracker from its own HP samples.
 // fearableMelee counts melee attackers not immune to the family's control tool (priest: Psychic Scream).
 EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, Family family)
@@ -270,18 +292,8 @@ EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, Family family)
                 unit->GetCreatureType() == CREATURE_TYPE_CRITTER ||
                 std::find(attackers.begin(), attackers.end(), unit) != attackers.end())
                 continue;
-            bool linked = false;
-            for (Unit* attacker : attackers)
-                if (unit->GetDistance(attacker) <= float(gSettings.linkRadiusYd))
-                {
-                    linked = true;
-                    break;
-                }
-            if (!linked)
-                continue;
-            MobFacts const f = FactsOf(unit);
-            ++s.addsNear;
-            s.load += MobWeight(f.rank, static_cast<std::int32_t>(unit->GetLevel()) - botLevel, f.caster, load);
+            detail::AccumulateAssistEligibleLinkedAdd(s, unit->ToCreature(), attackers, bot, botLevel, load,
+                                                      gSettings.linkRadiusYd);
         }
     }
 
@@ -294,6 +306,14 @@ EngagementSnapshot BuildSnapshot(PlayerbotAI* botAI, Player* bot, Family family)
     return s;
 }
 }  // namespace
+
+void detail::AccumulateAssistEligibleLinkedAdd(EngagementSnapshot& snapshot, Creature* candidate,
+                                               std::vector<Unit*> const& attackers, Player* bot,
+                                               std::int32_t botLevel, LoadParams const& load,
+                                               std::uint32_t linkRadiusYd)
+{
+    AccumulateAssistEligibleLinkedAddImpl(snapshot, candidate, attackers, bot, botLevel, load, linkRadiusYd);
+}
 
 void LoadConfig()
 {
