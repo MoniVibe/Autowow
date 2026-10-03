@@ -77,8 +77,9 @@ inline constexpr Material kMaterials[] = {
                                                                                                // silverleaf, briarthorn,
                                                                                                // bruiseweed
     {2770, Kind::Ore},     {2771, Kind::Ore},     {2772, Kind::Ore},                          // copper, tin, iron ore
-    {2934, Kind::Leather}, {2318, Kind::Leather}, {2319, Kind::Leather}};                     // ruined scraps, light,
+    {2934, Kind::Leather}, {2318, Kind::Leather}, {2319, Kind::Leather},                      // ruined scraps, light,
                                                                                                // medium leather
+    {2835, Kind::Ore}};                                                                         // rough stone
 inline constexpr std::size_t kMaterialCount = std::size(kMaterials);
 inline constexpr std::size_t kNoMaterial = kMaterialCount;
 

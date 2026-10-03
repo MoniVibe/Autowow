@@ -72,6 +72,32 @@ TEST(Squad, DemandRanksLargestFirstTiesByTierAndDropsSmallOrUnknown)
     EXPECT_EQ(f[1].item, 2770u);
 }
 
+TEST(Squad, RoughStoneDemandUsesMiningNodeContract)
+{
+    ASSERT_GT(kMaterialCount, 0u);
+    EXPECT_EQ(kMaterials[kMaterialCount - 1].item, 2835u);  // append-only: preserve existing material tie order
+    EXPECT_EQ(kMaterials[kMaterialCount - 1].kind, Kind::Ore);
+
+    std::vector<Want> const ranked = RankDemand({{2835, 6}, {2835, 10}, {2592, 5, true}}, 5);
+    ASSERT_EQ(ranked.size(), 2u);
+    EXPECT_EQ(ranked[0].item, 2592u);  // current-tier cloth priority remains unchanged
+    EXPECT_TRUE(ranked[0].first);
+    EXPECT_EQ(ranked[1].item, 2835u);
+    EXPECT_EQ(ranked[1].count, 10u);  // duplicate needs keep the larger count
+    EXPECT_EQ(ranked[1].kind, Kind::Ore);
+    EXPECT_TRUE(RankDemand({{2835, 4}}, 5).empty());
+
+    std::vector<Spawn> const copperNodes = {Src(1, 1731, 0, 0, 1, 1)};
+    auto lock = [](std::uint32_t entry) { return entry == 1731 ? 65u : ~0u; };
+    Skills skills;  // runtime publishes Mining here only when a squad member also owns an admitted pick
+    EXPECT_TRUE(Workable(copperNodes, Kind::Ore, skills, lock).empty());
+    skills.mining = 64;
+    EXPECT_TRUE(Workable(copperNodes, Kind::Ore, skills, lock).empty());
+    skills.mining = 65;
+    ASSERT_EQ(Workable(copperNodes, Kind::Ore, skills, lock).size(), 1u);
+    EXPECT_EQ(Workable(copperNodes, Kind::Ore, skills, lock).front().entry, 1731u);
+}
+
 TEST(Squad, SkinningRequirementAndWorkability)
 {
     EXPECT_EQ(SkinReq(5), 0u);
