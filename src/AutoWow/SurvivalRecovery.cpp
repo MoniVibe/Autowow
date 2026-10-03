@@ -34,6 +34,7 @@
 #include "Playerbots.h"
 #include "RestGate.h"
 #include "TravelMgr.h"
+#include "ZoneProgressionPolicy.h"
 
 static_assert(AutoWowSafeRevive::kReachYards + 5 == CORPSE_RECLAIM_RADIUS, "reach tracks the core reclaim radius");
 
@@ -672,6 +673,13 @@ bool Step(PlayerbotAI* botAI, std::uint32_t destMap, float destX, float destY, f
         bot->HasItemCount(kHearthstoneItem, 1, false) && !bot->HasSpellCooldown(kHearthstoneSpell);
     bool const hearthFar = bot->m_homebindMapId != bot->GetMapId() ||
                            bot->GetExactDist2d(bot->m_homebindX, bot->m_homebindY) > float(kHearthMinYards);
+    bool const protectedGoal = AutoWowZoneProgression::NorthrendEnabled() &&
+                               StormwindValianceGoal(destMap, destX, destY, destZ) &&
+                               AutoWowZoneProgression::Active(guid);
+    bool const hearthAdvances =
+        !protectedGoal ||
+        HearthAdvancesDestination(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->m_homebindMapId,
+                                  bot->m_homebindX, bot->m_homebindY, destMap, destX, destY);
     // Navmesh probe: 8 bearings x kProbeYards, complete or partial mmap paths only (no far-from-poly ends).
     std::array<std::uint32_t, kProbes> escape{};
     std::uint32_t escapeMax = 0;
@@ -698,7 +706,7 @@ bool Step(PlayerbotAI* botAI, std::uint32_t destMap, float destX, float destY, f
         hole = NavmeshHole(escape, p.minEscapeYards);
     }
 
-    Action action = Decide(hearthReady, hearthFar, hole);
+    Action action = DecideForGoal(hearthReady, hearthFar, hole, protectedGoal, hearthAdvances);
     bool done = false;
     if (action == Action::Hearth)
     {
@@ -719,11 +727,12 @@ bool Step(PlayerbotAI* botAI, std::uint32_t destMap, float destX, float destY, f
         }
     }
     LOG_INFO("playerbots",
-             "[Unstick] bot={} trigger={} action={} ok={} hole={} escape_max={} hearth_ready={} hearth_far={} map={} "
-             "x={} y={} z={} zone={} area={} still_ms={} exhausted={} dest=({},{},{},{})",
+             "[Unstick] bot={} trigger={} action={} ok={} hole={} escape_max={} hearth_ready={} hearth_far={} "
+             "protected_goal={} hearth_advances={} map={} x={} y={} z={} zone={} area={} still_ms={} exhausted={} "
+             "dest=({},{},{},{})",
              bot->GetName(), TriggerName(trigger), ActionName(action), done, hole, escapeMax, hearthReady, hearthFar,
-             bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), bot->GetZoneId(),
-             bot->GetAreaId(), stillMs, exhausted, destMap, destX, destY, destZ);
+             protectedGoal, hearthAdvances, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(),
+             bot->GetPositionZ(), bot->GetZoneId(), bot->GetAreaId(), stillMs, exhausted, destMap, destX, destY, destZ);
     {
         std::lock_guard<std::mutex> guard(gLock);
         if (BotState* s = Find(gUnstick, guid))

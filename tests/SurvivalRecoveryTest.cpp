@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,6 +52,18 @@ std::string ReadSurvivalStatusSource()
     std::string const source{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
     std::size_t const start = source.find("void AppendWalkGoal(");
     std::size_t const end = source.find("std::string SnapshotJson(", start);
+    if (start == std::string::npos || end == std::string::npos)
+        return {};
+    return source.substr(start, end - start);
+}
+
+std::string ReadUnstickStepSource()
+{
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() /
+                        "src/AutoWow/SurvivalRecovery.cpp");
+    std::string const source{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    std::size_t const start = source.find("bool Step(PlayerbotAI* botAI");
+    std::size_t const end = source.find("}  // namespace AutoWowUnstick", start);
     if (start == std::string::npos || end == std::string::npos)
         return {};
     return source.substr(start, end - start);
@@ -262,6 +275,93 @@ TEST(Unstick, NavmeshHoleAndDecision)
     EXPECT_EQ(Decide(false, true, true), Action::Portal);  // on cooldown / no stone, in a hole
     EXPECT_EQ(Decide(false, true, false), Action::None);   // walkable: nothing
     EXPECT_STREQ(ActionName(Action::Portal), "portal");
+}
+
+TEST(Unstick, IdentifiesOnlyTheExactStormwindValianceGoal)
+{
+    using namespace AutoWowUnstick;
+    AutoWowTransports::NorthrendTransportSpec const& alliance = AutoWowTransports::kStormwindValiance;
+    AutoWowTransports::NorthrendTransportSpec const& horde = AutoWowTransports::kOrgrimmarWarsong;
+
+    EXPECT_TRUE(StormwindValianceGoal(alliance.sourceMap, alliance.sourceX, alliance.sourceY, alliance.sourceZ));
+    EXPECT_FALSE(StormwindValianceGoal(horde.sourceMap, horde.sourceX, horde.sourceY, horde.sourceZ));
+    EXPECT_FALSE(
+        StormwindValianceGoal(alliance.sourceMap, alliance.sourceX + 0.001f, alliance.sourceY, alliance.sourceZ));
+    EXPECT_FALSE(StormwindValianceGoal(alliance.sourceMap, alliance.sourceX, alliance.sourceY, 4.8740597f));
+    EXPECT_FALSE(StormwindValianceGoal(alliance.sourceMap, std::numeric_limits<float>::quiet_NaN(), alliance.sourceY,
+                                       alliance.sourceZ));
+}
+
+TEST(Unstick, ProtectedHearthMustAdvanceTowardItsDestination)
+{
+    using namespace AutoWowUnstick;
+    AutoWowTransports::NorthrendTransportSpec const& goal = AutoWowTransports::kStormwindValiance;
+
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 530, 2758.0f, 5423.0f, goal.sourceMap,
+                                           goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.76f, -1871.8265f, 530, 2699.0f, 5421.0f, goal.sourceMap,
+                                           goal.sourceX, goal.sourceY));
+    EXPECT_TRUE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 0, -8300.0f, 1400.0f, goal.sourceMap,
+                                          goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 0, -10334.814f, -1871.9325f, goal.sourceMap,
+                                           goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -9000.0f, 1000.0f, 0, -12000.0f, -3000.0f, goal.sourceMap, goal.sourceX,
+                                           goal.sourceY));
+    EXPECT_TRUE(
+        HearthAdvancesDestination(530, 0.0f, 0.0f, 0, -9000.0f, 1000.0f, goal.sourceMap, goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(
+        HearthAdvancesDestination(530, 0.0f, 0.0f, 1, -9000.0f, 1000.0f, goal.sourceMap, goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.0f, -1871.0f, 0, std::numeric_limits<float>::infinity(), 1000.0f,
+                                           goal.sourceMap, goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.0f, -1871.0f, 0, -9000.0f, 1000.0f, goal.sourceMap,
+                                           std::numeric_limits<float>::quiet_NaN(), goal.sourceY));
+}
+
+TEST(Unstick, ProtectedDenialIsNoneAndKeepsTheExistingFiniteCooldown)
+{
+    using namespace AutoWowUnstick;
+    EXPECT_EQ(DecideForGoal(true, true, true, true, false), Action::None);
+    EXPECT_EQ(DecideForGoal(true, true, true, true, true), Action::Hearth);
+    for (bool hearthReady : {false, true})
+        for (bool hearthFar : {false, true})
+            for (bool hole : {false, true})
+                EXPECT_EQ(DecideForGoal(hearthReady, hearthFar, hole, false, false),
+                          Decide(hearthReady, hearthFar, hole));
+
+    Params p;
+    BotState s;
+    s.anchored = true;
+    s.exhausted = p.replanExhausted;
+    Acted(p, s, 7000);
+    EXPECT_FALSE(s.anchored);
+    EXPECT_EQ(s.exhausted, 0u);
+    EXPECT_EQ(s.cooldownUntilMs, 7000 + p.cooldownMs);
+}
+
+TEST(Unstick, ProtectedDenialDoesNotBroadenProbeOrPortalEligibility)
+{
+    std::string const source = ReadUnstickStepSource();
+    ASSERT_FALSE(source.empty());
+    std::size_t const scope = source.find("AutoWowZoneProgression::NorthrendEnabled() &&");
+    std::size_t const identity = source.find("StormwindValianceGoal(destMap, destX, destY, destZ) &&", scope);
+    std::size_t const active = source.find("AutoWowZoneProgression::Active(guid);", identity);
+    std::size_t const probe = source.find("if (!hearthReady || !hearthFar)");
+    std::size_t const decision = source.find("Action action = DecideForGoal(");
+    std::size_t const portal = source.find("else if (action == Action::Portal)");
+    std::size_t const acted = source.find("Acted(p, *s, nowMs);");
+    ASSERT_NE(scope, std::string::npos);
+    ASSERT_NE(identity, std::string::npos);
+    ASSERT_NE(active, std::string::npos);
+    ASSERT_NE(probe, std::string::npos);
+    ASSERT_NE(decision, std::string::npos);
+    ASSERT_NE(portal, std::string::npos);
+    ASSERT_NE(acted, std::string::npos);
+    EXPECT_LT(scope, identity);
+    EXPECT_LT(identity, active);
+    EXPECT_LT(active, probe);
+    EXPECT_LT(probe, decision);
+    EXPECT_LT(decision, portal);
+    EXPECT_LT(portal, acted);
 }
 
 // ---- SafeRevive.V2 --------------------------------------------------------------------------------------

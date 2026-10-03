@@ -9,12 +9,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "TransportCrossingPolicy.h"
 #include "TravelIntentPolicy.h"
 #include "WalkingV2Policy.h"
 
@@ -525,11 +527,41 @@ inline void NoteReplanExhausted(Params const& p, BotState& s, std::uint64_t nowM
     return true;
 }
 
+[[nodiscard]] inline bool StormwindValianceGoal(std::uint32_t destMap, float destX, float destY, float destZ)
+{
+    AutoWowTransports::NorthrendTransportSpec const& goal = AutoWowTransports::kStormwindValiance;
+    return destMap == goal.sourceMap && destX == goal.sourceX && destY == goal.sourceY && destZ == goal.sourceZ;
+}
+
+[[nodiscard]] inline bool HearthAdvancesDestination(std::uint32_t currentMap, float currentX, float currentY,
+                                                    std::uint32_t homeMap, float homeX, float homeY,
+                                                    std::uint32_t destMap, float destX, float destY)
+{
+    if (!std::isfinite(currentX) || !std::isfinite(currentY) || !std::isfinite(homeX) || !std::isfinite(homeY) ||
+        !std::isfinite(destX) || !std::isfinite(destY) || homeMap != destMap)
+        return false;
+    if (currentMap != destMap)
+        return true;
+    double const homeDx = static_cast<double>(homeX) - destX;
+    double const homeDy = static_cast<double>(homeY) - destY;
+    double const currentDx = static_cast<double>(currentX) - destX;
+    double const currentDy = static_cast<double>(currentY) - destY;
+    return homeDx * homeDx + homeDy * homeDy < currentDx * currentDx + currentDy * currentDy;
+}
+
 [[nodiscard]] inline Action Decide(bool hearthReady, bool hearthFar, bool navmeshHole)
 {
     if (hearthReady && hearthFar)
         return Action::Hearth;
     return navmeshHole ? Action::Portal : Action::None;
+}
+
+[[nodiscard]] inline Action DecideForGoal(bool hearthReady, bool hearthFar, bool navmeshHole, bool protectedGoal,
+                                          bool hearthAdvances)
+{
+    if (protectedGoal && hearthReady && hearthFar && !hearthAdvances)
+        return Action::None;
+    return Decide(hearthReady, hearthFar, navmeshHole);
 }
 
 // A decision was taken (any action, none included): counters reset, cooldown starts.
