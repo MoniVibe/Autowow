@@ -1625,6 +1625,9 @@ void RandomPlayerbotMgr::Revive(Player* player)
 
 void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation>& locs, bool hearth)
 {
+    if (AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter()))
+        return;
+
     // Every random/level/revive/rpg relocation routes through here. An Oracle-managed bot keeps its
     // position (and so the zone its quest log belongs to) when AutoWow.OracleRuntime.NoRandomTeleport.
     if (AutoWowOracleRuntime::BlocksRandomTeleport(bot->GetGUID().GetCounter()))
@@ -1948,6 +1951,9 @@ void RandomPlayerbotMgr::RandomTeleportGrindForLevel(Player* bot)
 
 void RandomPlayerbotMgr::RandomTeleport(Player* bot)
 {
+    if (AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter()))
+        return;
+
     if (bot->InBattleground())
         return;
 

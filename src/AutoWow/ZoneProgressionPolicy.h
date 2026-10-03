@@ -8,6 +8,7 @@
 #define AUTOWOW_ZONE_PROGRESSION_POLICY_H
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -275,6 +276,71 @@ inline void AddOutland(std::vector<Route>& routes)
 // walk leg (FallbackMode), on its own clock (AutoWow.ZoneProgression.OutlandPortalAfterMs).
 [[nodiscard]] inline bool IsOutlandEntry(Route const& r) { return r.map == kOutlandMap && r.crossing && r.to == kHellfireZone; }
 
+// AutoWow.ZoneProgression.Northrend (default 0): native admission to the two faction Borean hubs.
+// Admission is deliberately separate from Borean's quest bracket (installed default 68-75): once the
+// configured floor is reached, passage stays eligible through the server's configured maximum level.
+inline constexpr std::uint32_t kNorthrendMinLevel = 68;
+inline constexpr std::uint32_t kNorthrendMap = 571;
+inline constexpr std::uint32_t kBoreanZone = 3537;
+inline constexpr std::uint32_t kStormwindZone = 1519;
+inline constexpr std::uint32_t kOrgrimmarZone = 1637;
+
+[[nodiscard]] inline Hub NorthrendArrivalHub(std::uint32_t team)
+{
+    if (team == 1)
+        return {1, 11, kBoreanZone, 68, 75, kNorthrendMap, 2282, 5210, 12, 25245, 25245};
+    return {2, 11, kBoreanZone, 68, 75, kNorthrendMap, 2803, 6154, 85, 25278, 25278};
+}
+
+// Capital plus every zone in the existing Outland frontier. Ascending (map, zone), deterministic.
+[[nodiscard]] inline std::vector<HubSource> NorthrendEntryZones(std::uint32_t team)
+{
+    std::vector<HubSource> out = {{team, team == 1 ? 0U : 1U, team == 1 ? kStormwindZone : kOrgrimmarZone}};
+    for (Hub const& h : OutlandHubs())
+        if (h.team == team)
+            out.push_back({team, h.map, h.zone});
+    for (HubSource const& s : OutlandSources())
+        if (s.team == team)
+            out.push_back(s);
+    std::sort(out.begin(), out.end(), [](HubSource const& a, HubSource const& b)
+              { return a.map != b.map ? a.map < b.map : a.zone < b.zone; });
+    out.erase(std::unique(out.begin(), out.end(), [](HubSource const& a, HubSource const& b)
+                          { return a.map == b.map && a.zone == b.zone; }),
+              out.end());
+    return out;
+}
+
+[[nodiscard]] inline std::vector<Route> NorthrendEntryRoutes(std::uint32_t maxPlayerLevel,
+                                                             std::uint32_t admissionMinLevel = kNorthrendMinLevel)
+{
+    std::vector<Route> out;
+    if (maxPlayerLevel < admissionMinLevel)
+        return out;
+    for (std::uint32_t team : {1U, 2U})
+    {
+        Hub const h = NorthrendArrivalHub(team);
+        for (HubSource const& s : NorthrendEntryZones(team))
+            out.push_back(Route{team, s.zone, h.zone, admissionMinLevel, maxPlayerLevel, h.map, h.x, h.y, h.z,
+                                h.inn, true});
+    }
+    return out;
+}
+
+// Append admission without mutating the shared Outland bands used by death-loop escape selection.
+inline void AddNorthrend(std::vector<Route>& routes, std::uint32_t maxPlayerLevel,
+                         std::uint32_t admissionMinLevel = kNorthrendMinLevel)
+{
+    if (maxPlayerLevel < admissionMinLevel)
+        return;
+    for (Route const& r : NorthrendEntryRoutes(maxPlayerLevel, admissionMinLevel))
+        routes.push_back(r);
+}
+
+[[nodiscard]] inline bool IsNorthrendEntry(Route const& r)
+{
+    return r.map == kNorthrendMap && r.crossing && r.to == kBoreanZone;
+}
+
 // Config override AutoWow.ZoneProgression.Routes: ';'-separated routes, each
 // "team,from,to,minLevel,maxLevel,map,x,y,z,inn,crossing" (integers; crossing 0|1). Replaces the
 // built-in table. False (out untouched) on any malformed entry.
@@ -337,15 +403,20 @@ inline void AddOutland(std::vector<Route>& routes)
     return true;
 }
 
-// Destination: the routes leaving `fromZone` for the bot's team whose band holds `level`, in table
-// order; the bot takes candidate (guid % count) so a cohort spreads deterministically. nullptr = none.
+// Destination: the routes leaving `fromZone` for the bot's team whose band holds `level`. An eligible
+// Northrend admission has deterministic priority; otherwise table order and guid spreading stay unchanged.
 [[nodiscard]] inline Route const* PickRoute(std::vector<Route> const& routes, std::uint32_t team,
                                             std::uint32_t fromZone, std::uint32_t level, std::uint32_t guid)
 {
     std::vector<Route const*> fit;
     for (Route const& r : routes)
-        if (r.from == fromZone && (r.team == 0 || r.team == team) && level >= r.minLevel && level <= r.maxLevel)
-            fit.push_back(&r);
+    {
+        if (r.from != fromZone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+            continue;
+        if (IsNorthrendEntry(r))
+            return &r;
+        fit.push_back(&r);
+    }
     return fit.empty() ? nullptr : fit[guid % fit.size()];
 }
 
@@ -362,7 +433,8 @@ inline void AddOutland(std::vector<Route>& routes)
     std::int64_t bestDist2 = 0;
     for (Route const& r : routes)
     {
-        if (r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+        if (IsNorthrendEntry(r) || r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel ||
+            level > r.maxLevel)
             continue;
         bool const sameMap = r.map == map;
         std::int64_t const dx = std::int64_t(r.x) - x;
@@ -390,7 +462,8 @@ inline void AddOutland(std::vector<Route>& routes)
     std::int64_t bestDist2 = 0;
     for (Route const& r : routes)
     {
-        if (r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+        if (IsNorthrendEntry(r) || r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel ||
+            level > r.maxLevel)
             continue;
         bool const sameMap = r.map == map;
         std::int64_t const dx = std::int64_t(r.x) - x;
@@ -432,6 +505,28 @@ inline constexpr float kHubArrivalYards = 15.0f;
     return dx * dx + dy * dy < kHubArrivalYards * kHubArrivalYards;
 }
 
+struct PhysicalHubFacts
+{
+    bool anyTransport = false;
+    bool inFlight = false;
+    bool teleporting = false;
+    std::uint32_t map = 0;
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+};
+
+[[nodiscard]] inline bool AtPhysicalNorthrendHub(Route const& route, PhysicalHubFacts const& f,
+                                                 float verticalYards = 3.0f)
+{
+    if (!IsNorthrendEntry(route) || f.anyTransport || f.inFlight || f.teleporting || f.map != route.map ||
+        !std::isfinite(f.x) || !std::isfinite(f.y) || !std::isfinite(f.z) || !std::isfinite(verticalYards) ||
+        verticalYards < 0.0f)
+        return false;
+    float const dx = float(route.x) - f.x;
+    float const dy = float(route.y) - f.y;
+    return dx * dx + dy * dy < kHubArrivalYards * kHubArrivalYards &&
+           std::fabs(float(route.z) - f.z) <= verticalYards;
+}
+
 template <class ZoneAt, class Danger>
 [[nodiscard]] inline bool SegmentCrossesDanger(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by,
                                                std::uint32_t stepYards, std::uint32_t skipZone, ZoneAt const& zoneAt,
@@ -471,7 +566,8 @@ template <class Crosses>
     std::vector<Candidate> fit;
     for (Route const& r : routes)
     {
-        if (r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel || level > r.maxLevel)
+        if (IsNorthrendEntry(r) || r.to == zone || (r.team != 0 && r.team != team) || level < r.minLevel ||
+            level > r.maxLevel)
             continue;
         std::int64_t const dx = std::int64_t(r.x) - x;
         std::int64_t const dy = std::int64_t(r.y) - y;
@@ -500,7 +596,7 @@ template <class Unsafe>
                                                               std::uint32_t zone, std::uint32_t map, std::int32_t x,
                                                               std::int32_t y, Unsafe const& unsafe)
 {
-    if (crossZoneHub)
+    if (crossZoneHub && !IsNorthrendEntry(*crossZoneHub))
         return crossZoneHub;
     struct Candidate
     {
@@ -510,8 +606,8 @@ template <class Unsafe>
     std::vector<Candidate> fit;
     for (Route const& r : routes)
     {
-        if (r.to != zone || r.map != map || (r.team != 0 && r.team != team) || level < r.minLevel ||
-            level > r.maxLevel || AtRouteHub(r, map, float(x), float(y)))
+        if (IsNorthrendEntry(r) || r.to != zone || r.map != map || (r.team != 0 && r.team != team) ||
+            level < r.minLevel || level > r.maxLevel || AtRouteHub(r, map, float(x), float(y)))
             continue;
         bool const duplicate = std::any_of(fit.begin(), fit.end(), [&](Candidate const& c)
         {
@@ -812,11 +908,13 @@ namespace detail
 {
 inline bool gEnabled = false;
 inline bool gOutland = false;  // AutoWow.ZoneProgression.Outland
+inline bool gNorthrend = false;  // AutoWow.ZoneProgression.Northrend
 inline Params gParams;
 inline std::vector<Route> gRoutes;
 }
 inline bool Enabled() { return detail::gEnabled; }
 inline bool OutlandEnabled() { return detail::gEnabled && detail::gOutland; }
+inline bool NorthrendEnabled() { return detail::gEnabled && detail::gOutland && detail::gNorthrend; }
 
 void LoadConfig();
 // A graduation (travel or flight-path learning) is under way for this bot. Town runs wait for it.

@@ -6,6 +6,8 @@
 
 #include "TransportCrossingPolicy.h"
 
+#include <limits>
+
 #include "gtest/gtest.h"
 
 namespace
@@ -158,6 +160,189 @@ TEST(Transports, PortalModeSelection)
     EXPECT_TRUE(UsePortal(TransportMode::Portal, 0, 2));
     EXPECT_FALSE(UsePortal(TransportMode::Auto, 1, 2));
     EXPECT_TRUE(UsePortal(TransportMode::Auto, 2, 2));
+}
+
+TEST(Transports, NorthrendPassagesKeepExactNativeIdentityAndFractionalAnchors)
+{
+    EXPECT_EQ(kStormwindValiance.passage, NorthrendPassageId::StormwindValiance);
+    EXPECT_EQ(kStormwindValiance.entry, 190536U);
+    EXPECT_EQ(kStormwindValiance.taxiPath, 965U);
+    EXPECT_EQ(kStormwindValiance.sourceStop, 4U);
+    EXPECT_EQ(kStormwindValiance.destinationStop, 16U);
+    EXPECT_FLOAT_EQ(kStormwindValiance.sourceX, -8302.65f);
+    EXPECT_FLOAT_EQ(kStormwindValiance.destinationY, 5129.31f);
+
+    EXPECT_EQ(kOrgrimmarWarsong.passage, NorthrendPassageId::OrgrimmarWarsong);
+    EXPECT_EQ(kOrgrimmarWarsong.entry, 186238U);
+    EXPECT_EQ(kOrgrimmarWarsong.taxiPath, 712U);
+    EXPECT_EQ(kOrgrimmarWarsong.sourceStop, 19U);
+    EXPECT_EQ(kOrgrimmarWarsong.destinationStop, 4U);
+    EXPECT_FLOAT_EQ(kOrgrimmarWarsong.sourceX, 1174.13f);
+    EXPECT_FLOAT_EQ(kOrgrimmarWarsong.destinationZ, 122.207f);
+
+    EXPECT_EQ(kGromgolOrgrimmar.passage, NorthrendPassageId::None);
+    EXPECT_EQ(kGromgolOrgrimmar.entry, 175080U);
+    EXPECT_EQ(kGromgolOrgrimmar.taxiPath, 285U);
+    EXPECT_EQ(kGromgolOrgrimmar.sourceStop, 3U);
+    EXPECT_EQ(kGromgolOrgrimmar.destinationStop, 14U);
+    EXPECT_EQ(kGromgolOrgrimmar.sourceMap, 0U);
+    EXPECT_EQ(kGromgolOrgrimmar.destinationMap, 1U);
+    EXPECT_FLOAT_EQ(kGromgolOrgrimmar.sourceX, -12441.0f);
+    EXPECT_FLOAT_EQ(kGromgolOrgrimmar.destinationZ, 54.0f);
+}
+
+TEST(Transports, NorthrendChainsOwnEveryNativePrefixInOrder)
+{
+    std::vector<Crossing> const table = NorthrendCrossings();
+    std::vector<Crossing> alliance = ChainFor(table, 1, 3523, AutoWowZoneProgression::kBoreanZone);
+    ASSERT_EQ(alliance.size(), 2U);
+    EXPECT_EQ(alliance[0].via, Via::AreaTrigger);
+    EXPECT_EQ(alliance[0].object, 4352U);
+    EXPECT_EQ(alliance[1].object, 190536U);
+
+    std::vector<Crossing> horde = ChainFor(table, 2, 3523, AutoWowZoneProgression::kBoreanZone);
+    ASSERT_EQ(horde.size(), 3U);
+    EXPECT_EQ(horde[0].object, 4352U);
+    EXPECT_EQ(horde[1].object, 175080U);
+    EXPECT_EQ(horde[1].map, 0U);
+    EXPECT_EQ(horde[1].exitMap, 1U);
+    EXPECT_EQ(horde[2].object, 186238U);
+
+    EXPECT_EQ(ChainFor(table, 1, AutoWowZoneProgression::kStormwindZone,
+                       AutoWowZoneProgression::kBoreanZone).size(), 1U);
+    EXPECT_EQ(ChainFor(table, 2, AutoWowZoneProgression::kOrgrimmarZone,
+                       AutoWowZoneProgression::kBoreanZone).size(), 1U);
+
+    for (std::uint32_t team : {1U, 2U})
+        for (AutoWowZoneProgression::HubSource const& source :
+             AutoWowZoneProgression::NorthrendEntryZones(team))
+        {
+            std::vector<Crossing> const chain =
+                ChainFor(table, team, source.zone, AutoWowZoneProgression::kBoreanZone);
+            ASSERT_FALSE(chain.empty()) << team << " " << source.zone;
+            EXPECT_EQ(chain.size(), source.map == AutoWowZoneProgression::kOutlandMap ? (team == 1 ? 2U : 3U) : 1U);
+        }
+}
+
+TEST(Transports, EveryNorthrendTransportLegIsForcedRealOnlyForOwnedTrip)
+{
+    std::vector<ModeOverride> overrides = {{190536, TransportMode::Portal},
+                                           {175080, TransportMode::Portal},
+                                           {186238, TransportMode::Portal}};
+    for (std::uint32_t entry : {190536U, 175080U, 186238U})
+    {
+        EXPECT_EQ(EffectiveMode(true, Via::Transport, overrides, TransportMode::Portal, entry),
+                  TransportMode::Real);
+        EXPECT_FALSE(UsePortal(EffectiveMode(true, Via::Transport, overrides, TransportMode::Auto, entry), 999, 0));
+    }
+    EXPECT_EQ(EffectiveMode(false, Via::Transport, overrides, TransportMode::Auto, 175080),
+              TransportMode::Portal);
+    EXPECT_EQ(EffectiveMode(true, Via::AreaTrigger, overrides, TransportMode::Auto, 4352),
+              TransportMode::Auto);
+}
+
+TEST(Transports, NorthrendLoadedIdentityFailsClosedOnEveryMaterialMismatch)
+{
+    auto facts = [](NorthrendTransportSpec const& s)
+    {
+        return LoadedTransportFacts{true, s.entry, s.taxiPath,
+                                    true, s.sourceStop, s.sourceMap, s.sourceDelay,
+                                    s.sourceStopX, s.sourceStopY, s.sourceStopZ,
+                                    true, s.destinationStop, s.destinationMap, s.destinationDelay,
+                                    s.destinationStopX, s.destinationStopY, s.destinationStopZ};
+    };
+    LoadedTransportFacts good = facts(kStormwindValiance);
+    EXPECT_TRUE(LoadedTransportMatches(kStormwindValiance, good));
+    auto bad = good; bad.motionTransport = false; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; ++bad.entry; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; ++bad.taxiPath; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; ++bad.sourceIndex; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; ++bad.destinationMap; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; bad.sourceDelay = 0; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; bad.destinationX += 2.0f; EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+    bad = good; bad.sourceZ = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(LoadedTransportMatches(kStormwindValiance, bad));
+}
+
+TEST(Transports, NorthrendNativeStopRequiresExactFrameFinitePositionAndNarrowVerticalMatch)
+{
+    CurrentTransportFacts source{true, kStormwindValiance.sourceStop, kStormwindValiance.sourceMap,
+                                 kStormwindValiance.sourceStopX, kStormwindValiance.sourceStopY,
+                                 kStormwindValiance.sourceStopZ};
+    EXPECT_TRUE(AtNativeStop(kStormwindValiance, false, source));
+    auto bad = source; ++bad.nodeIndex; EXPECT_FALSE(AtNativeStop(kStormwindValiance, false, bad));
+    bad = source; bad.x = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(AtNativeStop(kStormwindValiance, false, bad));
+    bad = source; bad.z += 3.01f; EXPECT_FALSE(AtNativeStop(kStormwindValiance, false, bad));
+
+    CurrentTransportFacts destination{true, kStormwindValiance.destinationStop,
+                                      kStormwindValiance.destinationMap,
+                                      kStormwindValiance.destinationStopX,
+                                      kStormwindValiance.destinationStopY,
+                                      kStormwindValiance.destinationStopZ};
+    EXPECT_TRUE(AtNativeStop(kStormwindValiance, true, destination));
+    destination.map = kStormwindValiance.sourceMap;
+    EXPECT_FALSE(AtNativeStop(kStormwindValiance, true, destination));
+}
+
+TEST(Transports, NorthrendPhysicalDisembarkRejectsTransportFlightAndInvalidThreeDimensionalArrival)
+{
+    DisembarkFacts good{false, false, false, kStormwindValiance.destinationMap,
+                        kStormwindValiance.destinationX, kStormwindValiance.destinationY,
+                        kStormwindValiance.destinationZ};
+    EXPECT_TRUE(PhysicalDisembark(kStormwindValiance, good, 60.0f));
+    auto bad = good; bad.anyTransport = true; EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+    bad = good; bad.inFlight = true; EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+    bad = good; bad.teleporting = true; EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+    bad = good; ++bad.map; EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+    bad = good; bad.y = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+    bad = good; bad.z = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+    bad = good; bad.z += 3.01f; EXPECT_FALSE(PhysicalDisembark(kStormwindValiance, bad, 60.0f));
+}
+
+TEST(Transports, NorthrendReceiptNeedsOrderedSameInstanceBoardRideStopAndDisembark)
+{
+    constexpr std::uint64_t ship = 0xA11CE;
+    constexpr std::uint64_t replacement = 0xB0A7;
+    ChainState s;
+    s.passage = NorthrendPassageId::StormwindValiance;
+    ObservePassage(s, {s.passage, 0, false, false, false, true, true});
+    EXPECT_FALSE(PassageComplete(s));
+    ObservePassage(s, {NorthrendPassageId::OrgrimmarWarsong, ship, true, true, false, false, false});
+    EXPECT_FALSE(s.passageBoarded);
+    ObservePassage(s, {s.passage, ship, true, true, false, false, false});
+    EXPECT_TRUE(s.passageBoarded);
+    EXPECT_EQ(s.passageTransportGuid, ship);
+
+    // A replacement same-entry/path ship cannot continue the receipt.
+    ObservePassage(s, {s.passage, replacement, true, false, false, false, false});
+    EXPECT_FALSE(s.passageDepartedSource);
+    ObservePassage(s, {s.passage, ship, true, false, false, false, false});
+    EXPECT_TRUE(s.passageDepartedSource);
+    ObservePassage(s, {s.passage, replacement, true, false, false, true, false});
+    EXPECT_FALSE(s.passageOnDestinationMap);
+    ObservePassage(s, {s.passage, ship, true, false, false, true, false});
+    EXPECT_TRUE(s.passageOnDestinationMap);
+    ObservePassage(s, {s.passage, ship, true, false, true, true, false});
+    EXPECT_TRUE(s.passageAtDestinationStop);
+    EXPECT_FALSE(PassageComplete(s));
+    ObservePassage(s, {s.passage, 0, false, false, false, true, true});
+    EXPECT_TRUE(PassageComplete(s));
+    std::string const field = PassageField(s, &kStormwindValiance);
+    EXPECT_NE(field.find("\"passage_id\":1"), std::string::npos);
+    EXPECT_NE(field.find("\"transport_guid\":" + std::to_string(ship)), std::string::npos);
+    EXPECT_NE(field.find("\"path\":965"), std::string::npos);
+}
+
+TEST(Transports, ChainVersionResetPreservesActiveForeignAndNewerOwnership)
+{
+    EXPECT_TRUE(CanResetChainVersion(2, false, false));
+    EXPECT_FALSE(CanResetChainVersion(2, true, false));
+    EXPECT_FALSE(CanResetChainVersion(2, false, true));
+    EXPECT_FALSE(CanResetChainVersion(kStateVersion, false, false));
+    EXPECT_FALSE(CanResetChainVersion(kStateVersion + 1, false, false));
 }
 
 TEST(Transports, ParseCrossings)

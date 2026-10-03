@@ -30,7 +30,7 @@
 // DBC (provenance per row in DefaultCrossings).
 namespace AutoWowTransports
 {
-inline constexpr std::uint8_t kStateVersion = 2;
+inline constexpr std::uint8_t kStateVersion = 3;
 
 // How a crossing is taken. Wire-stable (config), append only.
 enum class Via : std::uint8_t
@@ -134,6 +134,178 @@ inline std::vector<Crossing> OutlandCrossings()
                 add({0, 0, 0, 0, Via::GameObject, 195141, 1, 9662, 2510, 1332, 0, 0, 0, -11708, -3168, -5, 0, 0});
             }
             add({0, 0, 0, 0, Via::AreaTrigger, 4354, 0, -11909, -3209, -15, 0, 0, 530, -248, 922, 84, 0, 0});
+        }
+    return out;
+}
+
+// Append-only identity for the two terminal native Northrend passages. The Horde Grom'gol return is a
+// required native prefix, not a terminal admission receipt.
+enum class NorthrendPassageId : std::uint8_t
+{
+    None = 0,
+    StormwindValiance = 1,
+    OrgrimmarWarsong = 2
+};
+
+struct NorthrendTransportSpec
+{
+    NorthrendPassageId passage = NorthrendPassageId::None;
+    std::uint32_t team = 0;
+    std::uint32_t entry = 0;
+    std::uint32_t taxiPath = 0;
+    std::uint32_t sourceStop = 0;
+    std::uint32_t destinationStop = 0;
+    std::uint32_t sourceMap = 0;
+    std::uint32_t destinationMap = 0;
+    float sourceStopX = 0.0f, sourceStopY = 0.0f, sourceStopZ = 0.0f;
+    float destinationStopX = 0.0f, destinationStopY = 0.0f, destinationStopZ = 0.0f;
+    float sourceX = 0.0f, sourceY = 0.0f, sourceZ = 0.0f;
+    float destinationX = 0.0f, destinationY = 0.0f, destinationZ = 0.0f;
+    std::uint32_t sourceDelay = 60;
+    std::uint32_t destinationDelay = 60;
+};
+
+inline constexpr NorthrendTransportSpec kStormwindValiance = {
+    NorthrendPassageId::StormwindValiance, 1, 190536, 965, 4, 16, 0, 571,
+    -8288.8164f, 1424.7025f, 0.0f, 2218.3906f, 5119.5884f, 0.0f,
+    -8302.65f, 1401.96f, 5.31355f, 2235.69f, 5129.31f, 5.42705f, 60, 60};
+inline constexpr NorthrendTransportSpec kGromgolOrgrimmar = {
+    NorthrendPassageId::None, 2, 175080, 285, 3, 14, 0, 1,
+    -12464.0088f, 231.5648f, 49.5344f, 1360.8538f, -4631.3115f, 71.8597f,
+    -12441.0f, 215.0f, 31.0f, 1354.0f, -4643.0f, 54.0f, 60, 60};
+inline constexpr NorthrendTransportSpec kOrgrimmarWarsong = {
+    NorthrendPassageId::OrgrimmarWarsong, 2, 186238, 712, 19, 4, 1, 571,
+    1185.0225f, -4144.2085f, 70.6255f, 2837.9077f, 6187.4429f, 140.1648f,
+    1174.13f, -4152.37f, 51.746f, 2817.72f, 6177.08f, 122.207f, 60, 60};
+
+[[nodiscard]] inline NorthrendTransportSpec const* NorthrendTransportFor(std::uint32_t team,
+                                                                         std::uint32_t entry)
+{
+    for (NorthrendTransportSpec const* spec : {&kStormwindValiance, &kGromgolOrgrimmar, &kOrgrimmarWarsong})
+        if (spec->team == team && spec->entry == entry)
+            return spec;
+    return nullptr;
+}
+
+[[nodiscard]] inline NorthrendTransportSpec const* NorthrendPassageFor(std::uint32_t team)
+{
+    return team == 1 ? &kStormwindValiance : team == 2 ? &kOrgrimmarWarsong : nullptr;
+}
+
+struct LoadedTransportFacts
+{
+    bool motionTransport = false;
+    std::uint32_t entry = 0;
+    std::uint32_t taxiPath = 0;
+    bool sourceNodePresent = false;
+    std::uint32_t sourceIndex = 0, sourceMap = 0, sourceDelay = 0;
+    float sourceX = 0.0f, sourceY = 0.0f, sourceZ = 0.0f;
+    bool destinationNodePresent = false;
+    std::uint32_t destinationIndex = 0, destinationMap = 0, destinationDelay = 0;
+    float destinationX = 0.0f, destinationY = 0.0f, destinationZ = 0.0f;
+};
+
+[[nodiscard]] inline bool LoadedTransportMatches(NorthrendTransportSpec const& spec,
+                                                 LoadedTransportFacts const& f, float epsilon = 1.0f)
+{
+    auto const near = [epsilon](float a, float b)
+    {
+        return std::isfinite(a) && std::isfinite(b) && std::isfinite(epsilon) && epsilon >= 0.0f &&
+               std::fabs(a - b) <= epsilon;
+    };
+    return f.motionTransport && f.entry == spec.entry && f.taxiPath == spec.taxiPath &&
+           f.sourceNodePresent && f.sourceIndex == spec.sourceStop && f.sourceMap == spec.sourceMap &&
+           f.sourceDelay == spec.sourceDelay && near(f.sourceX, spec.sourceStopX) &&
+           near(f.sourceY, spec.sourceStopY) && near(f.sourceZ, spec.sourceStopZ) &&
+           f.destinationNodePresent && f.destinationIndex == spec.destinationStop &&
+           f.destinationMap == spec.destinationMap && f.destinationDelay == spec.destinationDelay &&
+           near(f.destinationX, spec.destinationStopX) && near(f.destinationY, spec.destinationStopY) &&
+           near(f.destinationZ, spec.destinationStopZ);
+}
+
+struct CurrentTransportFacts
+{
+    bool stoppedFrame = false;
+    std::uint32_t nodeIndex = 0;
+    std::uint32_t map = 0;
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+};
+
+// Runtime stop proof combines the actual active stopped frame with the transport's world position.
+// Horizontal tolerance covers the core's position-update cadence; vertical tolerance remains narrow.
+[[nodiscard]] inline bool AtNativeStop(NorthrendTransportSpec const& spec, bool destination,
+                                       CurrentTransportFacts const& f, float horizontalYards = 8.0f,
+                                       float verticalYards = 3.0f)
+{
+    std::uint32_t const index = destination ? spec.destinationStop : spec.sourceStop;
+    std::uint32_t const map = destination ? spec.destinationMap : spec.sourceMap;
+    float const x = destination ? spec.destinationStopX : spec.sourceStopX;
+    float const y = destination ? spec.destinationStopY : spec.sourceStopY;
+    float const z = destination ? spec.destinationStopZ : spec.sourceStopZ;
+    if (!f.stoppedFrame || f.nodeIndex != index || f.map != map || !std::isfinite(f.x) ||
+        !std::isfinite(f.y) || !std::isfinite(f.z) || !std::isfinite(horizontalYards) ||
+        !std::isfinite(verticalYards) || horizontalYards < 0.0f || verticalYards < 0.0f)
+        return false;
+    float const dx = f.x - x;
+    float const dy = f.y - y;
+    return dx * dx + dy * dy <= horizontalYards * horizontalYards &&
+           std::fabs(f.z - z) <= verticalYards;
+}
+
+struct DisembarkFacts
+{
+    bool anyTransport = false;
+    bool inFlight = false;
+    bool teleporting = false;
+    std::uint32_t map = 0;
+    float x = 0.0f, y = 0.0f, z = 0.0f;
+};
+
+[[nodiscard]] inline bool PhysicalDisembark(NorthrendTransportSpec const& spec, DisembarkFacts const& f,
+                                             float horizontalYards, float verticalYards = 3.0f)
+{
+    if (f.anyTransport || f.inFlight || f.teleporting || f.map != spec.destinationMap ||
+        !std::isfinite(f.x) || !std::isfinite(f.y) || !std::isfinite(f.z) ||
+        !std::isfinite(horizontalYards) || !std::isfinite(verticalYards) || horizontalYards < 0.0f ||
+        verticalYards < 0.0f)
+        return false;
+    float const dx = spec.destinationX - f.x;
+    float const dy = spec.destinationY - f.y;
+    return dx * dx + dy * dy <= horizontalYards * horizontalYards &&
+           std::fabs(spec.destinationZ - f.z) <= verticalYards;
+}
+
+// Native chains from each admitted source. Walks between rows are supplied by the existing ChainStep.
+inline std::vector<Crossing> NorthrendCrossings()
+{
+    using namespace AutoWowZoneProgression;
+    std::vector<Crossing> out;
+    for (std::uint32_t team : {1U, 2U})
+        for (HubSource const& source : NorthrendEntryZones(team))
+        {
+            std::uint32_t seq = 0;
+            auto add = [&](Crossing c)
+            {
+                c.team = team;
+                c.from = source.zone;
+                c.to = kBoreanZone;
+                c.seq = seq++;
+                out.push_back(c);
+            };
+            if (source.map == kOutlandMap)
+            {
+                add({0, 0, 0, 0, Via::AreaTrigger, 4352, 530, -248, 922, 84, 0, 0,
+                     0, -11878, -3204, -18, 0, 0});
+                if (team == 2)
+                    add({0, 0, 0, 0, Via::Transport, 175080, 0, -12441, 215, 31, -12464, 232,
+                         1, 1354, -4643, 54, 1361, -4631});
+            }
+            if (team == 1)
+                add({0, 0, 0, 0, Via::Transport, 190536, 0, -8303, 1402, 5, -8289, 1425,
+                     571, 2236, 5129, 5, 2218, 5120});
+            else
+                add({0, 0, 0, 0, Via::Transport, 186238, 1, 1174, -4152, 52, 1185, -4144,
+                     571, 2818, 6177, 122, 2838, 6187});
         }
     return out;
 }
@@ -418,6 +590,15 @@ struct ModeOverride
     return global;
 }
 
+// A Northrend admission owns its whole chain: the Horde return prefix and both terminal passages are
+// native regardless of global or per-entry fallback configuration. Other routes retain existing behavior.
+[[nodiscard]] inline TransportMode EffectiveMode(bool northrendOwned, Via via,
+                                                 std::vector<ModeOverride> const& overrides,
+                                                 TransportMode global, std::uint32_t object)
+{
+    return northrendOwned && via == Via::Transport ? TransportMode::Real : ModeFor(overrides, global, object);
+}
+
 // True when this transport crossing is taken by portal now.
 [[nodiscard]] inline bool UsePortal(TransportMode mode, std::uint32_t failedRides, std::uint32_t autoPortalAfter)
 {
@@ -638,7 +819,80 @@ struct ChainState
     std::uint32_t arrivalExpectedDestination = 0;
     bool arrivalFlightObserved = false;
     bool arrivalUsedMenu = false;
+    NorthrendPassageId passage = NorthrendPassageId::None;
+    std::uint64_t passageTransportGuid = 0;  // exact boarded instance; never a pointer
+    bool passageBoarded = false;
+    bool passageDepartedSource = false;
+    bool passageOnDestinationMap = false;
+    bool passageAtDestinationStop = false;
+    bool passageDisembarked = false;
 };
+
+[[nodiscard]] inline bool CanResetChainVersion(std::uint8_t storedVersion, bool tripActive, bool foreignMotion)
+{
+    return storedVersion < kStateVersion && !tripActive && !foreignMotion;
+}
+
+struct PassageObservation
+{
+    NorthrendPassageId passage = NorthrendPassageId::None;
+    std::uint64_t transportGuid = 0;
+    bool exactTransport = false;
+    bool atSourceStop = false;
+    bool atDestinationStop = false;
+    bool onDestinationMap = false;
+    bool offTransportAtDestinationAnchor = false;
+};
+
+// Ordered positive receipt. Discovery or a MovePoint request never advances it. After boarding, every
+// aboard observation must come from the same nonzero transport GUID; a replacement same-entry ship fails closed.
+inline void ObservePassage(ChainState& state, PassageObservation const& o)
+{
+    if (state.version != kStateVersion || state.passage == NorthrendPassageId::None ||
+        o.passage != state.passage)
+        return;
+    if (!state.passageBoarded && o.exactTransport && o.atSourceStop && o.transportGuid)
+    {
+        state.passageTransportGuid = o.transportGuid;
+        state.passageBoarded = true;
+    }
+    bool const sameTransport = o.exactTransport && o.transportGuid &&
+                               o.transportGuid == state.passageTransportGuid;
+    if (state.passageBoarded && !state.passageDepartedSource && sameTransport && !o.atSourceStop)
+        state.passageDepartedSource = true;
+    else if (state.passageDepartedSource && !state.passageOnDestinationMap && sameTransport && o.onDestinationMap)
+        state.passageOnDestinationMap = true;
+    else if (state.passageOnDestinationMap && !state.passageAtDestinationStop && sameTransport &&
+             o.atDestinationStop)
+        state.passageAtDestinationStop = true;
+    else if (state.passageAtDestinationStop && !o.exactTransport && o.transportGuid == 0 &&
+             o.offTransportAtDestinationAnchor)
+        state.passageDisembarked = true;
+}
+
+[[nodiscard]] inline bool PassageComplete(ChainState const& state)
+{
+    return state.version == kStateVersion && state.passage != NorthrendPassageId::None &&
+           state.passageBoarded && state.passageDepartedSource && state.passageOnDestinationMap &&
+           state.passageAtDestinationStop && state.passageDisembarked;
+}
+
+inline std::string PassageField(ChainState const& state, NorthrendTransportSpec const* spec)
+{
+    if (!spec || state.passage == NorthrendPassageId::None)
+        return {};
+    return ",\"passage\":{" +
+           std::string("\"passage_id\":") + std::to_string(static_cast<std::uint32_t>(state.passage)) +
+           ",\"transport_guid\":" + std::to_string(state.passageTransportGuid) +
+           ",\"entry\":" + std::to_string(spec->entry) + ",\"path\":" + std::to_string(spec->taxiPath) +
+           ",\"source_stop\":" + std::to_string(spec->sourceStop) +
+           ",\"destination_stop\":" + std::to_string(spec->destinationStop) +
+           ",\"boarded\":" + (state.passageBoarded ? "true" : "false") +
+           ",\"departed\":" + (state.passageDepartedSource ? "true" : "false") +
+           ",\"map571\":" + (state.passageOnDestinationMap ? "true" : "false") +
+           ",\"destination\":" + (state.passageAtDestinationStop ? "true" : "false") +
+           ",\"disembarked\":" + (state.passageDisembarked ? "true" : "false") + "}";
+}
 
 enum class ArrivalReceipt : std::uint8_t
 {

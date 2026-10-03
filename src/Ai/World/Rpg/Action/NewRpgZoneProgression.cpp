@@ -40,6 +40,7 @@
 #include "TravelNode.h"
 #include "SquadPolicy.h"
 #include "UnstickPolicy.h"
+#include "World.h"
 #include "ZoneProgressionPolicy.h"
 
 namespace AutoWowZoneProgression
@@ -74,6 +75,11 @@ void LoadConfig()
     p.outlandPortalAfterMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.ZoneProgression.OutlandPortalAfterMs", 2400000);
     if (detail::gOutland)
         AddOutland(detail::gRoutes);
+    // Native Northrend admission is independently rollout-gated and depends on the existing Outland ladder.
+    detail::gNorthrend = detail::gOutland &&
+        sConfigMgr->GetOption<bool>("AutoWow.ZoneProgression.Northrend", false);
+    if (detail::gNorthrend)
+        AddNorthrend(detail::gRoutes, static_cast<std::uint32_t>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
     std::string const routes = sConfigMgr->GetOption<std::string>("AutoWow.ZoneProgression.Routes", "");
     if (!routes.empty() && !ParseRoutes(routes, detail::gRoutes))
         LOG_ERROR("server.loading", "[ZoneProgression] AutoWow.ZoneProgression.Routes malformed; built-in table kept");
@@ -145,6 +151,9 @@ void AutoWowTransports::LoadConfig()
     // AutoWow.ZoneProgression.Outland: the Dark Portal chains of the Outland entry routes.
     if (AutoWowZoneProgression::detail::gOutland)
         for (Crossing const& c : OutlandCrossings())
+            detail::gCrossings.push_back(c);
+    if (AutoWowZoneProgression::detail::gNorthrend)
+        for (Crossing const& c : NorthrendCrossings())
             detail::gCrossings.push_back(c);
     // Routes only a crossing can serve join the zone-progression table (runs after its LoadConfig).
     if (detail::gEnabled)
@@ -450,6 +459,73 @@ static ArrivalResult ArrivalServiceStep(Player* bot, PlayerbotAI* botAI,
     return activateNative("native");
 }
 
+static AutoWowTransports::LoadedTransportFacts LoadedFacts(AutoWowTransports::NorthrendTransportSpec const& spec,
+                                                           Transport const* transport)
+{
+    using namespace AutoWowTransports;
+    LoadedTransportFacts f;
+    if (!transport)
+        return f;
+    f.entry = transport->GetEntry();
+    GameObjectTemplate const* info = transport->GetGOInfo();
+    f.motionTransport = info && info->type == GAMEOBJECT_TYPE_MO_TRANSPORT;
+    f.taxiPath = f.motionTransport ? info->moTransport.taxiPathId : 0;
+    if (spec.taxiPath >= sTaxiPathNodesByPath.size())
+        return f;
+    TaxiPathNodeList const& nodes = sTaxiPathNodesByPath[spec.taxiPath];
+    if (spec.sourceStop < nodes.size() && nodes[spec.sourceStop])
+    {
+        TaxiPathNodeEntry const* n = nodes[spec.sourceStop];
+        f.sourceNodePresent = true;
+        f.sourceIndex = n->index;
+        f.sourceMap = n->mapid;
+        f.sourceDelay = n->delay;
+        f.sourceX = n->x;
+        f.sourceY = n->y;
+        f.sourceZ = n->z;
+    }
+    if (spec.destinationStop < nodes.size() && nodes[spec.destinationStop])
+    {
+        TaxiPathNodeEntry const* n = nodes[spec.destinationStop];
+        f.destinationNodePresent = true;
+        f.destinationIndex = n->index;
+        f.destinationMap = n->mapid;
+        f.destinationDelay = n->delay;
+        f.destinationX = n->x;
+        f.destinationY = n->y;
+        f.destinationZ = n->z;
+    }
+    return f;
+}
+
+static AutoWowTransports::CurrentTransportFacts CurrentFacts(Transport const* transport)
+{
+    using namespace AutoWowTransports;
+    CurrentTransportFacts f;
+    MotionTransport const* motion = transport ? transport->ToMotionTransport() : nullptr;
+    if (!motion || !motion->GetPeriod())
+        return f;
+    std::uint32_t const timer = motion->GetPathProgress() % motion->GetPeriod();
+    for (KeyFrame const& frame : motion->GetKeyFrames())
+    {
+        if (!frame.Node || !frame.IsStopFrame())
+            continue;
+        bool const stopped = frame.ArriveTime > frame.DepartureTime
+                                 ? timer >= frame.ArriveTime || timer < frame.DepartureTime
+                                 : timer >= frame.ArriveTime && timer < frame.DepartureTime;
+        if (!stopped)
+            continue;
+        f.stoppedFrame = true;
+        f.nodeIndex = frame.Node->index;
+        f.map = motion->GetMapId();
+        f.x = motion->GetPositionX();
+        f.y = motion->GetPositionY();
+        f.z = motion->GetPositionZ();
+        return f;
+    }
+    return f;
+}
+
 static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::BotState& s,
                       AutoWowTransports::ChainState& c, std::uint64_t now, WorldPosition const& hub,
                       WalkFn const& walk)
@@ -459,6 +535,7 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
     Params const& p = detail::gParams;
     std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
     std::vector<Crossing> const chain = ChainFor(detail::gCrossings, team, s.route.from, s.route.to);
+    bool const northrendOwned = AutoWowZoneProgression::IsNorthrendEntry(s.route);
 
     // Walk toward `pos`: the New RPG long walk while far, an exact MovePoint for the last yards.
     auto walkTo = [&](std::uint32_t map, float x, float y, float z) -> bool
@@ -479,6 +556,8 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
 
     if (c.leg >= chain.size())
     {
+        if (northrendOwned && !PassageComplete(c))
+            return true;
         // A first Outland entry cannot open the terminal army walk until its exact native arrival
         // taxi has been observed landing. ArrivalServiceStep owns this state before ChainStep runs.
         if (!TerminalWalkAllowed(ArrivalRequired(s, chain), c.arrivalPhase))
@@ -487,40 +566,108 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
         return walkTo(hub.GetMapId(), hub.GetPositionX(), hub.GetPositionY(), hub.GetPositionZ());
     }
     Crossing const& x = chain[c.leg];
+    NorthrendTransportSpec const* native = northrendOwned && x.via == Via::Transport
+                                               ? NorthrendTransportFor(team, x.object)
+                                               : nullptr;
+    float const approachX = native ? native->sourceX : static_cast<float>(x.x);
+    float const approachY = native ? native->sourceY : static_cast<float>(x.y);
+    float const approachZ = native ? native->sourceZ : static_cast<float>(x.z);
+    float const exitX = native ? native->destinationX : static_cast<float>(x.exitX);
+    float const exitY = native ? native->destinationY : static_cast<float>(x.exitY);
+    float const exitZ = native ? native->destinationZ : static_cast<float>(x.exitZ);
     std::int32_t const bx = static_cast<std::int32_t>(bot->GetPositionX());
     std::int32_t const by = static_cast<std::int32_t>(bot->GetPositionY());
     std::int64_t const approach2 = std::int64_t(p.approachYards) * p.approachYards;
     std::int64_t const exit2 = std::int64_t(p.exitYards) * p.exitYards;
     std::int64_t const docked2 = std::int64_t(p.dockedYards) * p.dockedYards;
+    auto const within = [](float ax, float ay, float bx, float by, float yards)
+    {
+        float const dx = ax - bx;
+        float const dy = ay - by;
+        return dx * dx + dy * dy <= yards * yards;
+    };
 
     Obs o;
-    o.atApproach = bot->GetMapId() == x.map && Dist2(x.x, x.y, bx, by) <= approach2;
-    o.atExit = bot->GetMapId() == x.exitMap && Dist2(x.exitX, x.exitY, bx, by) <= exit2;
+    o.atApproach = bot->GetMapId() == x.map &&
+        (native ? within(approachX, approachY, bot->GetPositionX(), bot->GetPositionY(), float(p.approachYards))
+                : Dist2(x.x, x.y, bx, by) <= approach2);
+    o.atExit = bot->GetMapId() == x.exitMap &&
+        (native ? within(exitX, exitY, bot->GetPositionX(), bot->GetPositionY(), float(p.exitYards))
+                : Dist2(x.exitX, x.exitY, bx, by) <= exit2);
     bool const portal = x.via == Via::Transport &&
-                        UsePortal(ModeFor(detail::gOverrides, p.mode, x.object), c.failedRides, p.autoPortalAfter);
+                        UsePortal(EffectiveMode(northrendOwned, x.via, detail::gOverrides, p.mode, x.object),
+                                  c.failedRides, p.autoPortalAfter);
     bool const ride = x.via == Via::Transport && !portal;
     Transport* ship = nullptr;  // this crossing's transport docked at the boarding stop
+    bool exactTransport = false;
+    bool atSourceStop = false;
+    std::uint64_t transportGuid = 0;
     if (ride)
     {
         Transport* const t = bot->GetTransport();
-        o.onTransport = t && t->GetEntry() == x.object;
+        auto const matches = [&](Transport const* candidate)
+        {
+            if (!candidate || candidate->GetEntry() != x.object)
+                return false;
+            return !northrendOwned || (native && LoadedTransportMatches(*native, LoadedFacts(*native, candidate)));
+        };
+        o.onTransport = matches(t);
         if (o.onTransport)
-            o.dockedExit = bot->GetMapId() == x.exitMap &&
-                           Dist2(x.exitStopX, x.exitStopY, static_cast<std::int32_t>(t->GetPositionX()),
-                                 static_cast<std::int32_t>(t->GetPositionY())) <= docked2;
+        {
+            if (native)
+            {
+                CurrentTransportFacts const current = CurrentFacts(t);
+                atSourceStop = AtNativeStop(*native, false, current, float(p.dockedYards));
+                o.dockedExit = AtNativeStop(*native, true, current, float(p.dockedYards));
+            }
+            else
+            {
+                atSourceStop = bot->GetMapId() == x.map &&
+                    Dist2(x.stopX, x.stopY, static_cast<std::int32_t>(t->GetPositionX()),
+                          static_cast<std::int32_t>(t->GetPositionY())) <= docked2;
+                o.dockedExit = bot->GetMapId() == x.exitMap &&
+                    Dist2(x.exitStopX, x.exitStopY, static_cast<std::int32_t>(t->GetPositionX()),
+                          static_cast<std::int32_t>(t->GetPositionY())) <= docked2;
+            }
+            exactTransport = native && native->passage != NorthrendPassageId::None;
+            transportGuid = exactTransport ? t->GetGUID().GetRawValue() : 0;
+        }
         else if (bot->GetMapId() == x.map)
             for (Transport* candidate : bot->GetMap()->GetAllTransports())
-                if (candidate->GetEntry() == x.object &&
-                    Dist2(x.stopX, x.stopY, static_cast<std::int32_t>(candidate->GetPositionX()),
-                          static_cast<std::int32_t>(candidate->GetPositionY())) <= docked2)
+            {
+                bool const stoppedHere = native
+                    ? AtNativeStop(*native, false, CurrentFacts(candidate), float(p.dockedYards))
+                    : Dist2(x.stopX, x.stopY, static_cast<std::int32_t>(candidate->GetPositionX()),
+                            static_cast<std::int32_t>(candidate->GetPositionY())) <= docked2;
+                if (matches(candidate) && stoppedHere)
                 {
                     ship = candidate;
                     o.dockedHere = true;
                     break;
                 }
+            }
+    }
+
+    if (native && native->passage != NorthrendPassageId::None)
+    {
+        bool const before = PassageComplete(c);
+        DisembarkFacts const disembark{bot->GetTransport() != nullptr, bot->IsInFlight(),
+                                       bot->IsBeingTeleported(), bot->GetMapId(), bot->GetPositionX(),
+                                       bot->GetPositionY(), bot->GetPositionZ()};
+        ObservePassage(c, PassageObservation{native->passage, transportGuid, exactTransport, atSourceStop,
+                                             o.dockedExit,
+                                             exactTransport && bot->GetMapId() == native->destinationMap,
+                                             PhysicalDisembark(*native, disembark, float(p.exitYards))});
+        if (!before && PassageComplete(c))
+            LOG_INFO("playerbots", "[Transports] bot={} passage_id={} transport_guid={} entry={} path={} "
+                                   "stops={}->{} receipt=complete",
+                     bot->GetName(), static_cast<std::uint32_t>(native->passage), c.passageTransportGuid,
+                     native->entry, native->taxiPath, native->sourceStop, native->destinationStop);
     }
 
     Step next = ride ? NextTransportStep(c.step, o) : NextObjectStep(o);
+    if (native && native->passage != NorthrendPassageId::None && next == Step::Done && !PassageComplete(c))
+        next = Step::Disembark;
     bool const stuck = next == c.step && StepStuck(p, c.step, c.stepAt, now);
     if (stuck)
         next = Step::Approach;  // stuck step: restart this crossing
@@ -539,7 +686,7 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
     {
         case Step::Approach:
             c.legs.Open(Leg::Walk, now);
-            return walkTo(x.map, float(x.x), float(x.y), float(x.z));
+            return walkTo(x.map, approachX, approachY, approachZ);
         case Step::Use:
         {
             c.legs.Open(portal ? Leg::Portal : LegOf(x.via), now);
@@ -584,13 +731,13 @@ static bool ChainStep(Player* bot, PlayerbotAI* botAI, AutoWowZoneProgression::B
             // Straight onto the deck at dock height; the core makes the bot a passenger once the deck is
             // under it (PlayerbotAI transport check, Map::GetTransportForPos).
             if (ship && !bot->isMoving())
-                bot->GetMotionMaster()->MovePoint(0, ship->GetPositionX(), ship->GetPositionY(), float(x.z),
+                bot->GetMotionMaster()->MovePoint(0, ship->GetPositionX(), ship->GetPositionY(), approachZ,
                                                   FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false);
             return true;
         case Step::Disembark:
             c.legs.Open(Leg::Transport, now);
             if (!bot->isMoving())
-                bot->GetMotionMaster()->MovePoint(0, float(x.exitX), float(x.exitY), float(x.exitZ),
+                bot->GetMotionMaster()->MovePoint(0, exitX, exitY, exitZ,
                                                   FORCED_MOVEMENT_NONE, 0.0f, 0.0f, false);
             return true;
         case Step::Done:
@@ -672,8 +819,11 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
     std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
     std::vector<AutoWowTransports::Crossing> const chain =
         AutoWowTransports::ChainFor(AutoWowTransports::detail::gCrossings, team, s.route.from, s.route.to);
-    Mode const mode = AutoWowTransports::SelectMode(flight, bot->GetMapId() == s.route.map,
-                                                    s.route.crossing && bot->GetZoneId() != s.route.to, !chain.empty());
+    Mode const mode = AutoWowZoneProgression::IsNorthrendEntry(s.route) && !chain.empty()
+                          ? Mode::Chain
+                          : AutoWowTransports::SelectMode(flight, bot->GetMapId() == s.route.map,
+                                                         s.route.crossing && bot->GetZoneId() != s.route.to,
+                                                         !chain.empty());
     if (mode != Mode::Unreachable)
         s.mode = mode;
     if (mode == Mode::Chain)
@@ -683,6 +833,12 @@ static bool TransportsTravelStep(Player* bot, PlayerbotAI* botAI, AutoWowZonePro
                                             static_cast<std::int32_t>(AutoWowTransports::detail::gParams.joinYards));
         c.step = AutoWowTransports::Step::Approach;
         c.stepAt = now;
+        if (AutoWowZoneProgression::IsNorthrendEntry(s.route))
+        {
+            AutoWowTransports::NorthrendTransportSpec const* passage =
+                AutoWowTransports::NorthrendPassageFor(team);
+            c.passage = passage ? passage->passage : AutoWowTransports::NorthrendPassageId::None;
+        }
         LOG_INFO("playerbots", "[Transports] bot={} chain to={} crossings={} start_leg={}", bot->GetName(),
                  s.route.to, chain.size(), c.leg);
         bool const acted = ChainStep(bot, botAI, s, c, now, target, walk);
@@ -712,9 +868,13 @@ static void EmitMove(Player* bot, AutoWowZoneProgression::BotState const& s, Aut
     {
         // AutoWow.Transports: append the per-leg log (fields append-only, event id unchanged).
         chain.legs.Close(now);
-        AutoWowQuestLedger::EmitZoneMove(bot, TriggerName(s.trigger),
+        std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
+        AutoWowTransports::NorthrendTransportSpec const* passage =
+            IsNorthrendEntry(s.route) ? AutoWowTransports::NorthrendPassageFor(team) : nullptr;
+        AutoWowQuestLedger::EmitZoneMove(
+            bot, TriggerName(s.trigger),
             LedgerFields(s.fromZone, s.route.to, now >= s.startMs ? now - s.startMs : 0, arrived, s.mode) +
-                AutoWowTransports::LegsField(chain.legs));
+                AutoWowTransports::LegsField(chain.legs) + AutoWowTransports::PassageField(chain, passage));
     }
     else if (AutoWowQuestLedger::Enabled())
         AutoWowQuestLedger::EmitZoneMove(bot, TriggerName(s.trigger),
@@ -752,6 +912,14 @@ static AutoWowDeathLoop::RelocationBlock MovementBlock(Player* bot, PlayerbotAI*
 static bool Movable(Player* bot, PlayerbotAI* botAI)
 {
     return MovementBlock(bot, botAI) == AutoWowDeathLoop::RelocationBlock::None;
+}
+
+// Stricter admission ownership is local to Northrend. MovementBlock also serves existing grouped
+// death-loop/escape behavior and must retain its S97 contract.
+static bool NorthrendControlBlocked(Player* bot, PlayerbotAI* botAI)
+{
+    return botAI->IsRealPlayer() || botAI->HasRealPlayerMaster() || botAI->IsAutoWowPaused() ||
+           bot->GetGroup() != nullptr;
 }
 
 static void NoteEscapeBlock(Player* bot, AutoWowDeathLoop::RelocationBlock reason)
@@ -886,6 +1054,20 @@ bool NewRpgBaseAction::ZoneProgressionStep()
     bool const transports = AutoWowTransports::Enabled();
     AutoWowTransports::ChainState chain = transports ? LoadChain(guid) : AutoWowTransports::ChainState{};
 
+    if (transports && chain.version != AutoWowTransports::kStateVersion)
+    {
+        bool const tripActive = s.phase != Phase::None;
+        bool const foreignMotion = bot->GetTransport() || bot->IsBeingTeleported() || bot->isMoving() ||
+                                   info.GetStatus() != RPG_IDLE;
+        if (!AutoWowTransports::CanResetChainVersion(chain.version, tripActive, foreignMotion))
+            return false;  // preserve active/foreign or newer ownership; never clear its motion
+        chain = AutoWowTransports::ChainState{};
+        StoreChain(guid, chain);
+    }
+
+    if (s.phase != Phase::None && IsNorthrendEntry(s.route) && NorthrendControlBlocked(bot, botAI))
+        return false;
+
     AutoWowDeathLoop::RelocationBlock const movementBlock = MovementBlock(bot, botAI);
     if (movementBlock == AutoWowDeathLoop::RelocationBlock::Flight && !ArrivalReceiptBlocked(bot, botAI) && transports &&
         (chain.arrivalPhase == AutoWowTransports::ArrivalPhase::AwaitFlightStart ||
@@ -988,6 +1170,11 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             StoreState(guid, s);
             return false;
         }
+        if (route && IsNorthrendEntry(*route) && NorthrendControlBlocked(bot, botAI))
+        {
+            StoreState(guid, s);
+            return false;
+        }
         s.phase = Phase::Travel;
         s.route = *route;
         s.trigger = trigger;
@@ -1052,6 +1239,15 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             info.ChangeToIdle();
         };
 
+        bool const northrendEntry = IsNorthrendEntry(s.route);
+        if (northrendEntry && s.mode == Mode::Portal)
+        {
+            LOG_WARN("playerbots", "[Transports] bot={} northrend_failed reason=portal_mode_blocked to={}",
+                     bot->GetName(), s.route.to);
+            failTrip();
+            return true;
+        }
+
         // Legacy initial-entry portal state cannot count as the new native arrival receipt.
         if (arrivalRequired && s.mode == Mode::Portal)
         {
@@ -1087,8 +1283,13 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             }
         }
 
+        PhysicalHubFacts const hubFacts{bot->GetTransport() != nullptr, bot->IsInFlight(),
+                                            bot->IsBeingTeleported(), bot->GetMapId(), bot->GetPositionX(),
+                                            bot->GetPositionY(), bot->GetPositionZ()};
+        bool const atHub = northrendEntry ? AtPhysicalNorthrendHub(s.route, hubFacts)
+                                          : AtRouteHub(s.route, hubFacts.map, hubFacts.x, hubFacts.y);
         if ((!arrivalRequired || chain.arrivalPhase == AutoWowTransports::ArrivalPhase::Complete) &&
-            AtRouteHub(s.route, bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY()))
+            (!northrendEntry || AutoWowTransports::PassageComplete(chain)) && atHub)
         {
             // At the hub inn: bind the hearthstone there (the innkeeper's own effect), then the flight master.
             if (Creature* inn = bot->FindNearestCreature(s.route.inn, 30.0f))
@@ -1096,6 +1297,17 @@ bool NewRpgBaseAction::ZoneProgressionStep()
                                                inn->GetPositionZ(), inn->GetOrientation()),
                                  inn->GetAreaId());
             finish(true);
+            if (northrendEntry)
+            {
+                // Passage admission ends here. Flight points remain ordinary earned world state.
+                s = BotState{};
+                s.nextCheckMs = now + p.checkIntervalMs;
+                chain = AutoWowTransports::ChainState{};
+                StoreState(guid, s);
+                StoreChain(guid, chain);
+                info.ChangeToIdle();
+                return true;
+            }
             s.phase = Phase::LearnFp;
             s.reissues = 0;
             info.ChangeToIdle();
@@ -1113,7 +1325,7 @@ bool NewRpgBaseAction::ZoneProgressionStep()
             s.mode = Mode::Unreachable;
         }
         // AutoWow.Transports (mode auto/portal; owner ruling 2026-09-24): a spent walk leg portals to the hub.
-        if (transports && !arrivalRequired)
+        if (transports && !arrivalRequired && !northrendEntry)
         {
             bool const allowed = AutoWowTransports::detail::gParams.mode != AutoWowTransports::TransportMode::Real;
             // AutoWow.ZoneProgression.Outland: an entry trip's chain portals like a walk, on OutlandPortalAfterMs.

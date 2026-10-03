@@ -7,6 +7,8 @@
 #include "ZoneProgressionPolicy.h"
 #include "TransportCrossingPolicy.h"
 
+#include <limits>
+
 #include "gtest/gtest.h"
 
 namespace
@@ -719,6 +721,116 @@ TEST(ZoneProgression, OutlandLadderClimbsTo70)
     // No band past 70 (no Northrend ladder).
     for (Route const& x : routes)
         EXPECT_LE(x.maxLevel, kOutlandMaxLevel);
+}
+
+TEST(ZoneProgression, NorthrendAdmissionCoversCapitalsAndWholeOutlandFrontier)
+{
+    std::vector<Route> const admissions = NorthrendEntryRoutes(80, 68);
+    for (std::uint32_t team : {1U, 2U})
+        for (HubSource const& source : NorthrendEntryZones(team))
+        {
+            Route const* r = PickRoute(admissions, team, source.zone, 74, 62955);
+            ASSERT_NE(r, nullptr) << team << " " << source.zone;
+            EXPECT_TRUE(IsNorthrendEntry(*r));
+            EXPECT_EQ(r->to, kBoreanZone);
+            EXPECT_EQ(r->map, kNorthrendMap);
+            EXPECT_EQ(r->minLevel, 68U);
+            EXPECT_EQ(r->maxLevel, 80U);
+        }
+    EXPECT_NE(PickRoute(admissions, 1, kStormwindZone, 68, 1), nullptr);
+    EXPECT_NE(PickRoute(admissions, 2, kOrgrimmarZone, 80, 1), nullptr);
+    EXPECT_EQ(PickRoute(admissions, 1, kStormwindZone, 67, 1), nullptr);
+    EXPECT_EQ(PickRoute(admissions, 2, kOrgrimmarZone, 81, 1), nullptr);
+}
+
+TEST(ZoneProgression, NorthrendAdmissionBoundsAreSeparateFromBoreanQuestBand)
+{
+    Hub const alliance = NorthrendArrivalHub(1);
+    Hub const horde = NorthrendArrivalHub(2);
+    EXPECT_EQ(alliance.minLevel, 68U);
+    EXPECT_EQ(alliance.maxLevel, 75U);
+    EXPECT_EQ(horde.minLevel, 68U);
+    EXPECT_EQ(horde.maxLevel, 75U);
+
+    std::vector<Route> const baseline = OutlandTable();
+    std::vector<Route> routes = baseline;
+    AddNorthrend(routes, 80, 68);
+    ASSERT_GE(routes.size(), baseline.size());
+    for (std::size_t i = 0; i < baseline.size(); ++i)
+    {
+        EXPECT_EQ(routes[i].minLevel, baseline[i].minLevel);
+        EXPECT_EQ(routes[i].maxLevel, baseline[i].maxLevel);
+    }
+    for (std::uint32_t team : {1U, 2U})
+        for (HubSource const& source : NorthrendEntryZones(team))
+            for (std::uint32_t level = 68; level <= 80; ++level)
+                for (std::uint32_t guid : {0U, 1U, 62961U})
+                {
+                    Route const* selected = PickRoute(routes, team, source.zone, level, guid);
+                    ASSERT_NE(selected, nullptr) << team << " " << source.zone << " " << level << " " << guid;
+                    EXPECT_TRUE(IsNorthrendEntry(*selected));
+                }
+}
+
+TEST(ZoneProgression, NorthrendAdmissionNeverEntersAnyEscapePicker)
+{
+    std::vector<Route> const baseline = OutlandTable();
+    std::vector<Route> enabled = baseline;
+    AddNorthrend(enabled, 80, 68);
+    auto same = [](Route const* a, Route const* b)
+    {
+        return a && b && a->team == b->team && a->to == b->to && a->map == b->map &&
+               a->x == b->x && a->y == b->y && a->z == b->z && a->inn == b->inn;
+    };
+    auto safe = [](Route const&) { return false; };
+    for (std::uint32_t team : {1U, 2U})
+        for (HubSource const& source : NorthrendEntryZones(team))
+        {
+            if (source.map != kOutlandMap)
+                continue;
+            for (std::uint32_t level = 68; level <= 70; ++level)
+            {
+                Route const* baseNearest = PickEscapeRoute(baseline, team, level, source.zone, source.map, 0, 0);
+                Route const* newNearest = PickEscapeRoute(enabled, team, level, source.zone, source.map, 0, 0);
+                ASSERT_TRUE(same(baseNearest, newNearest)) << team << " " << source.zone << " " << level;
+                EXPECT_FALSE(IsNorthrendEntry(*newNearest));
+                EXPECT_EQ(newNearest->map, kOutlandMap);
+
+                Route const* baseLow = PickLowEscapeRoute(baseline, team, level, source.zone, source.map, 0, 0);
+                Route const* newLow = PickLowEscapeRoute(enabled, team, level, source.zone, source.map, 0, 0);
+                ASSERT_TRUE(same(baseLow, newLow));
+                EXPECT_FALSE(IsNorthrendEntry(*newLow));
+
+                Route const* baseSafe =
+                    PickSafeEscapeRoute(baseline, team, level, source.zone, source.map, 0, 0, safe);
+                Route const* newSafe =
+                    PickSafeEscapeRoute(enabled, team, level, source.zone, source.map, 0, 0, safe);
+                ASSERT_TRUE(same(baseSafe, newSafe));
+                EXPECT_FALSE(IsNorthrendEntry(*newSafe));
+            }
+        }
+    Route const* north = PickRoute(enabled, 1, kStormwindZone, 68, 0);
+    ASSERT_NE(north, nullptr);
+    ASSERT_TRUE(IsNorthrendEntry(*north));
+    EXPECT_EQ(PickEscapeOrSafeSameZoneHub(north, enabled, 1, 68, kBoreanZone, kNorthrendMap,
+                                           2200, 5100, safe),
+              nullptr);
+}
+
+TEST(ZoneProgression, PhysicalNorthrendHubRejectsCustodyAndInvalidThreeDimensionalArrival)
+{
+    Route const route = NorthrendEntryRoutes(80).front();
+    PhysicalHubFacts good{false, false, false, route.map, float(route.x), float(route.y), float(route.z)};
+    EXPECT_TRUE(AtPhysicalNorthrendHub(route, good));
+    auto bad = good; bad.anyTransport = true; EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
+    bad = good; bad.inFlight = true; EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
+    bad = good; bad.teleporting = true; EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
+    bad = good; ++bad.map; EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
+    bad = good; bad.x = std::numeric_limits<float>::quiet_NaN();
+    EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
+    bad = good; bad.z = std::numeric_limits<float>::infinity();
+    EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
+    bad = good; bad.z += 3.01f; EXPECT_FALSE(AtPhysicalNorthrendHub(route, bad));
 }
 
 // Outland hub npcs: creature_template.faction and FactionTemplate.dbc enemy group (2 alliance, 4 horde).
