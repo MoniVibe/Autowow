@@ -484,6 +484,8 @@ bool NewRpgBaseAction::SupplyStep()
     bool const lineMarket = lined && !lview.buy.empty();
     bool const gearMarket = gearLine && !gview.buy.empty();
     bool const bagMarket = role.bagHouse && !view.buy.empty();
+    FinishedBagView const finishedBagView = role.bagHouse ? FinishedBagViewOf(role.alliance) : FinishedBagView{};
+    bool const finishedBagMarket = role.bagHouse && BagMarket() && !finishedBagView.needs.empty();
     std::vector<MarketWant> marketWants;
     if (role.role == Role::Rep)
     {
@@ -751,6 +753,12 @@ bool NewRpgBaseAction::SupplyStep()
             lineSurplus += u;
         if (lined && role.role == Role::Rep && next == Task::None && lineSurplus)
             next = lst.auctioneer.entry ? Task::Auction : Task::Sell;
+        if (role.role == Role::Rep && finishedBagMarket && next == Task::None && now >= s.marketMs &&
+            marketStations.auctioneer.entry)
+        {
+            next = Task::Market;
+            s.marketMs = now + p.tickMs;
+        }
         if (lined && role.role == Role::Rep && Market() && next == Task::None && now >= s.marketMs &&
             lineMarket && marketStations.auctioneer.entry)
         {
@@ -1177,11 +1185,10 @@ bool NewRpgBaseAction::SupplyStep()
                 }
                 // A line rep only buys (its surplus goes through the Auction / Sell trips). Its own listings of a
                 // wanted item come back first (PlanMarketCancels; the buyouts skip them).
-                std::vector<MarketWant> wants = marketWants;
+                std::vector<MarketWant> wants = Market() ? marketWants : std::vector<MarketWant>{};
                 std::vector<AutoWowTrade::Post> planned;
-                if (std::vector<std::uint32_t> const sell = role.bagHouse && !lined
-                        ? MarketSellable(bot, view)
-                        : std::vector<std::uint32_t>{};
+                if (std::vector<std::uint32_t> const sell =
+                        Market() && role.bagHouse && !lined ? MarketSellable(bot, view) : std::vector<std::uint32_t>{};
                     !sell.empty())
                     AutoWowTrade::PostStacks(bot, npc, sell, &planned);
                 for (AutoWowTrade::Post const& post : planned)
@@ -1200,10 +1207,53 @@ bool NewRpgBaseAction::SupplyStep()
                 std::vector<MarketListing> cancels = PlanMarketCancels(std::move(own), wants);
                 std::vector<MarketListing> buys = PlanMarketBuys(std::move(listings), wants,
                                                                  detail::gParams.buyMaxPct, detail::gParams.buyBudget);
-                LOG_INFO("playerbots", "[Supply] bot={} market ah={} listed={} wants={} buys={} cancels={}",
-                         bot->GetName(), house->houseId, planned.size(), wants.size(), buys.size(), cancels.size());
+                std::vector<FinishedBagListing> finished;
+                std::uint32_t const expectedFinishedBagHouse =
+                    uint32(role.alliance ? AuctionHouseId::Alliance : AuctionHouseId::Horde);
+                if (BagMarket() && role.bagHouse && house->houseId == expectedFinishedBagHouse)
+                    for (auto const& [id, auction] : ah->GetAuctions())
+                    {
+                        ItemTemplate const* proto =
+                            auction ? sObjectMgr->GetItemTemplate(auction->item_template) : nullptr;
+                        if (!auction || !proto)
+                            continue;
+                        FinishedBagListing listing;
+                        listing.auctionId = id;
+                        listing.item = auction->item_template;
+                        listing.itemGuid = auction->item_guid.GetRawValue();
+                        listing.ownerGuid = auction->owner.GetRawValue();
+                        listing.owner = static_cast<std::uint32_t>(auction->owner.GetCounter());
+                        listing.count = auction->itemCount;
+                        listing.buyout = auction->buyout;
+                        listing.sellPrice = proto->SellPrice;
+                        listing.slots = proto->ContainerSlots;
+                        listing.itemClass = proto->Class;
+                        listing.subClass = proto->SubClass;
+                        listing.inventoryType = proto->InventoryType;
+                        listing.bagFamily = proto->BagFamily;
+                        listing.requiredLevel = proto->RequiredLevel;
+                        listing.allowableClass = proto->AllowableClass;
+                        listing.allowableRace = proto->AllowableRace;
+                        listing.requiredSkill = proto->RequiredSkill;
+                        listing.requiredSkillRank = proto->RequiredSkillRank;
+                        listing.requiredSpell = proto->RequiredSpell;
+                        listing.requiredHonorRank = proto->RequiredHonorRank;
+                        listing.requiredCityRank = proto->RequiredCityRank;
+                        listing.requiredReputationFaction = proto->RequiredReputationFaction;
+                        listing.requiredReputationRank = proto->RequiredReputationRank;
+                        // This scan is the validated non-neutral faction AuctionHouseObject.
+                        listing.sameFaction = true;
+                        if (OrdinaryFinishedBag(listing))
+                            finished.push_back(std::move(listing));
+                    }
+                LOG_INFO("playerbots",
+                         "[Supply] bot={} market ah={} listed={} wants={} buys={} cancels={} "
+                         "finished_bag_offers={}",
+                         bot->GetName(), house->houseId, planned.size(), wants.size(), buys.size(), cancels.size(),
+                         finished.size());
                 QueueMarketCancels(bot, npc->GetGUID().GetRawValue(), std::move(cancels));
                 QueueMarketBuys(bot, npc->GetGUID().GetRawValue(), std::move(buys));
+                QueueFinishedBagBuys(bot, npc->GetGUID().GetRawValue(), std::move(finished));
                 break;
             }
             default:

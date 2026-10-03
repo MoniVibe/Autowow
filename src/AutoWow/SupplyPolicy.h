@@ -31,12 +31,14 @@ class Player;
 
 namespace AutoWowSupply
 {
-inline constexpr std::uint32_t kStateVersion = 10;  // RoleState / TeamState layout; bump on change (2: tiers, market;
-                                                    // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
-                                                    // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
-                                                    // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
-                                                    // 8: TeamState gearCloth; 9: TeamState extraRooms; 10: kMaxLineTiers
-                                                    // 8 (LineView surplus, LineState wants), LineTier family)
+inline constexpr std::uint32_t kStateVersion =
+    11;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+         // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
+         // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
+         // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
+         // 8: TeamState gearCloth; 9: TeamState extraRooms; 10: kMaxLineTiers
+         // 8 (LineView surplus, LineState wants), LineTier family;
+         // 11: finished-bag market view / in-flight purchase contract)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -66,6 +68,8 @@ struct Params
     bool market = false;                // AutoWow.Supply.Market: the bag-house rep trades on the faction AH
     std::uint32_t buyMaxPct = 400;      // AutoWow.Supply.BuyMaxPct: AH unit price <= vendor sell value * this
     std::uint32_t buyBudget = 500;      // AutoWow.Supply.BuyBudget: copper the rep may spend per market visit
+    bool bagMarket = false;             // AutoWow.Supply.BagMarket: buy finished bags for priority members
+    std::uint32_t bagBuyBudget = 0;     // AutoWow.Supply.BagBuyBudget: separate finished-bag copper per visit
     std::uint32_t sellKeep = 60;        // AutoWow.Supply.SellKeep: units of an out-of-reach cloth kept, not listed
     std::uint32_t listFloat = 1000;     // AutoWow.Supply.ListFloat: copper the bank keeps on the rep for deposits
     // Product catalog (AutoWow.Supply.Products; bit i = kCatalog[i]; default bags only):
@@ -488,6 +492,306 @@ struct MarketListing
     std::uint32_t count = 0;
     std::uint32_t buyout = 0;  // 0 = bid only (never bought)
 };
+
+// ---- finished bags from the faction AH (AutoWow.Supply.BagMarket) ----
+//
+// These are immutable facts copied between the world-thread owner and a bag-house rep's map-thread AH visit.
+// Stable auction and item identities cross the queue; no Player, Item or AuctionEntry pointer does.
+inline constexpr std::uint32_t kContainerItemClass = 1;
+inline constexpr std::uint32_t kGeneralContainerSubclass = 0;
+inline constexpr std::uint32_t kBagInventoryType = 18;
+
+enum class FinishedBagCoverageSource : std::uint8_t
+{
+    RecipientLoose = 0,
+    RecipientMail = 1,
+    RepresentativeLoose = 2,
+    RepresentativeMail = 3,
+    InFlight = 4
+};
+
+struct FinishedBagMember
+{
+    std::uint32_t guid = 0;
+    std::uint32_t level = 0;
+    std::uint32_t classMask = 0;
+    std::uint32_t raceMask = 0;
+    bool priority = false;
+    bool representative = false;
+    bool ordinary = true;
+    bool sameFaction = true;
+    std::array<std::uint32_t, 4> equippedSlots{};
+    std::array<bool, 4> replaceable{true, true, true, true};  // empty or an ordinary general bag
+};
+
+// One replaceable equipped ordinary-bag slot. currentSlots=0 is an empty bag-equipment slot. The profile fields
+// let a map-thread AH scan make a conservative static usability decision without reading another live Player.
+struct FinishedBagNeed
+{
+    std::uint32_t recipient = 0;
+    std::uint8_t slot = 0;
+    std::uint32_t currentSlots = 0;
+    std::uint32_t level = 0;
+    std::uint32_t classMask = 0;
+    std::uint32_t raceMask = 0;
+};
+
+[[nodiscard]] inline std::vector<FinishedBagNeed> FinishedBagNeeds(std::vector<FinishedBagMember> const& members)
+{
+    std::vector<FinishedBagNeed> out;
+    for (FinishedBagMember const& m : members)
+    {
+        if (!m.guid || !m.priority || m.representative || !m.ordinary || !m.sameFaction)
+            continue;
+        for (std::size_t i = 0; i < m.equippedSlots.size(); ++i)
+            if (m.replaceable[i])
+                out.push_back(
+                    {m.guid, static_cast<std::uint8_t>(i), m.equippedSlots[i], m.level, m.classMask, m.raceMask});
+    }
+    return out;
+}
+
+// A bag already travelling toward a need. recipient=0 is shared representative/in-flight stock; otherwise it can
+// cover only that recipient. Capacity is compared to every proposed target, so a smaller incoming bag never masks a
+// larger improvement.
+struct FinishedBagCoverage
+{
+    std::uint32_t recipient = 0;
+    std::uint32_t slots = 0;
+    std::uint32_t count = 0;
+    FinishedBagCoverageSource source = FinishedBagCoverageSource::RecipientLoose;
+    std::vector<std::uint32_t> usableRecipients;  // empty = unrestricted; shared live stock publishes this
+    std::uint32_t auctionId = 0;                  // exact in-flight provenance; 0 for physical stock/mail
+};
+
+struct FinishedBagView
+{
+    std::uint32_t version = kStateVersion;
+    std::vector<FinishedBagNeed> needs;
+    std::vector<FinishedBagCoverage> coverage;
+};
+
+inline void ClearFinishedBagCoverage(FinishedBagView& view, std::uint32_t auctionId)
+{
+    view.coverage.erase(std::remove_if(view.coverage.begin(), view.coverage.end(),
+                                       [&](FinishedBagCoverage const& c) { return c.auctionId == auctionId; }),
+                        view.coverage.end());
+}
+
+// One whole auction lot. itemGuid is the native AH item ObjectGuid raw value and, together with auctionId, prevents a
+// stale listing from being mistaken for a replacement row. The requirement fields are immutable ItemTemplate facts.
+struct FinishedBagListing
+{
+    std::uint32_t auctionId = 0;
+    std::uint32_t item = 0;
+    std::uint64_t itemGuid = 0;
+    std::uint64_t ownerGuid = 0;
+    std::uint32_t owner = 0;  // player GUID low for same-representative policy checks
+    std::uint32_t count = 0;
+    std::uint32_t buyout = 0;
+    std::uint32_t sellPrice = 0;
+    std::uint32_t slots = 0;
+    std::uint32_t itemClass = 0;
+    std::uint32_t subClass = 0;
+    std::uint32_t inventoryType = 0;
+    std::uint32_t bagFamily = 0;
+    std::uint32_t requiredLevel = 0;
+    std::uint32_t allowableClass = 0;
+    std::uint32_t allowableRace = 0;
+    std::uint32_t requiredSkill = 0;
+    std::uint32_t requiredSkillRank = 0;
+    std::uint32_t requiredSpell = 0;
+    std::uint32_t requiredHonorRank = 0;
+    std::uint32_t requiredCityRank = 0;
+    std::uint32_t requiredReputationFaction = 0;
+    std::uint32_t requiredReputationRank = 0;
+    bool sameFaction = false;
+};
+
+struct FinishedBagBuy
+{
+    FinishedBagListing listing;
+    std::vector<std::uint32_t> recipients;  // one distinct uncovered slot per unit, deterministic order
+};
+
+struct FinishedBagHeld
+{
+    std::uint32_t item = 0;
+    std::uint32_t itemGuid = 0;
+    std::uint32_t slots = 0;
+    bool ordinary = false;
+    bool tradeable = false;
+    std::vector<std::uint32_t> usableRecipients;
+};
+
+struct FinishedBagDelivery
+{
+    std::uint32_t item = 0;
+    std::uint32_t itemGuid = 0;
+    std::uint32_t slots = 0;
+    std::uint32_t recipient = 0;
+};
+
+[[nodiscard]] inline bool OrdinaryFinishedBag(FinishedBagListing const& l)
+{
+    return l.itemClass == kContainerItemClass && l.subClass == kGeneralContainerSubclass &&
+           l.inventoryType == kBagInventoryType && !l.bagFamily && l.slots;
+}
+
+// Fail closed on requirements that need live spell/skill/reputation state. Execute revalidates every selected
+// recipient with Player::CanUseItem immediately before the native bid.
+[[nodiscard]] inline bool StaticallyUsableFinishedBag(FinishedBagListing const& l, FinishedBagNeed const& n)
+{
+    return n.level >= l.requiredLevel && (!l.allowableClass || (l.allowableClass & n.classMask)) &&
+           (!l.allowableRace || (l.allowableRace & n.raceMask)) && !l.requiredSkill && !l.requiredSkillRank &&
+           !l.requiredSpell && !l.requiredHonorRank && !l.requiredCityRank && !l.requiredReputationFaction &&
+           !l.requiredReputationRank;
+}
+
+[[nodiscard]] inline std::vector<FinishedBagNeed> UncoveredFinishedBagNeeds(
+    FinishedBagView const& view, std::uint32_t targetSlots, std::vector<FinishedBagCoverage> const& additional = {},
+    std::vector<std::uint32_t> const* candidateRecipients = nullptr)
+{
+    std::vector<FinishedBagNeed> out;
+    for (FinishedBagNeed const& n : view.needs)
+        if (n.currentSlots < targetSlots)
+            out.push_back(n);
+    std::sort(out.begin(), out.end(),
+              [](FinishedBagNeed const& a, FinishedBagNeed const& b)
+              {
+                  if ((a.currentSlots == 0) != (b.currentSlots == 0))
+                      return a.currentSlots == 0;
+                  if (a.currentSlots != b.currentSlots)
+                      return a.currentSlots < b.currentSlots;
+                  if (a.recipient != b.recipient)
+                      return a.recipient < b.recipient;
+                  return a.slot < b.slot;
+              });
+    std::vector<FinishedBagCoverage> coverage = view.coverage;
+    coverage.insert(coverage.end(), additional.begin(), additional.end());
+    // Recipient-bound stock first. Shared stock can then cover the earliest remaining need without stealing a slot
+    // which only a recipient-bound bag can satisfy.
+    std::stable_sort(coverage.begin(), coverage.end(),
+                     [](FinishedBagCoverage const& a, FinishedBagCoverage const& b)
+                     {
+                         if ((a.recipient != 0) != (b.recipient != 0))
+                             return a.recipient != 0;
+                         if (a.slots != b.slots)
+                             return a.slots > b.slots;
+                         if (a.recipient != b.recipient)
+                             return a.recipient < b.recipient;
+                         return static_cast<std::uint8_t>(a.source) < static_cast<std::uint8_t>(b.source);
+                     });
+    for (FinishedBagCoverage const& c : coverage)
+        for (std::uint32_t i = 0; i < c.count && c.slots >= targetSlots; ++i)
+        {
+            auto covers = [&](FinishedBagNeed const& n)
+            {
+                return (!c.recipient || n.recipient == c.recipient) &&
+                       (c.usableRecipients.empty() || std::find(c.usableRecipients.begin(), c.usableRecipients.end(),
+                                                                n.recipient) != c.usableRecipients.end());
+            };
+            auto candidateCanUse = [&](FinishedBagNeed const& n)
+            {
+                return candidateRecipients && std::find(candidateRecipients->begin(), candidateRecipients->end(),
+                                                        n.recipient) != candidateRecipients->end();
+            };
+            // Preserve a need the proposed bag can serve when this coverage can serve a different one.
+            auto it = candidateRecipients ? std::find_if(out.begin(), out.end(), [&](FinishedBagNeed const& n)
+                                                         { return covers(n) && !candidateCanUse(n); })
+                                          : out.end();
+            if (it == out.end())
+                it = std::find_if(out.begin(), out.end(), covers);
+            if (it == out.end())
+                break;
+            out.erase(it);
+        }
+    if (candidateRecipients)
+        out.erase(std::remove_if(out.begin(), out.end(),
+                                 [&](FinishedBagNeed const& n)
+                                 {
+                                     return std::find(candidateRecipients->begin(), candidateRecipients->end(),
+                                                      n.recipient) == candidateRecipients->end();
+                                 }),
+                  out.end());
+    return out;
+}
+
+[[nodiscard]] inline std::vector<FinishedBagBuy> PlanFinishedBagBuys(std::vector<FinishedBagListing> listings,
+                                                                     FinishedBagView const& view,
+                                                                     std::uint32_t representative, std::uint32_t maxPct,
+                                                                     std::uint64_t budget)
+{
+    std::sort(listings.begin(), listings.end(),
+              [](FinishedBagListing const& a, FinishedBagListing const& b)
+              {
+                  if (a.slots != b.slots)
+                      return a.slots > b.slots;
+                  if (a.buyout != b.buyout)
+                      return a.buyout < b.buyout;
+                  return a.auctionId < b.auctionId;
+              });
+    std::vector<FinishedBagBuy> out;
+    std::vector<FinishedBagCoverage> planned;
+    for (FinishedBagListing const& l : listings)
+    {
+        if (!l.auctionId || !l.item || !l.itemGuid || !l.count || !l.buyout || !l.sellPrice || !l.sameFaction ||
+            l.owner == representative || !OrdinaryFinishedBag(l) || l.buyout > budget ||
+            std::uint64_t(l.buyout) * 100 > std::uint64_t(l.sellPrice) * maxPct * l.count)
+            continue;
+        std::vector<std::uint32_t> usableRecipients;
+        for (FinishedBagNeed const& need : view.needs)
+            if (StaticallyUsableFinishedBag(l, need) &&
+                std::find(usableRecipients.begin(), usableRecipients.end(), need.recipient) == usableRecipients.end())
+                usableRecipients.push_back(need.recipient);
+        std::vector<FinishedBagNeed> needs = UncoveredFinishedBagNeeds(view, l.slots, planned, &usableRecipients);
+        if (l.count > needs.size())
+            continue;  // whole-auction quantity would exceed distinct uncovered need
+        FinishedBagBuy b;
+        b.listing = l;
+        for (std::uint32_t i = 0; i < l.count; ++i)
+        {
+            b.recipients.push_back(needs[i].recipient);
+            planned.push_back({needs[i].recipient, l.slots, 1, FinishedBagCoverageSource::InFlight});
+        }
+        budget -= l.buyout;
+        out.push_back(std::move(b));
+    }
+    return out;
+}
+
+[[nodiscard]] inline std::vector<FinishedBagDelivery> PlanFinishedBagDeliveries(std::vector<FinishedBagHeld> held,
+                                                                                FinishedBagView const& view)
+{
+    std::sort(held.begin(), held.end(),
+              [](FinishedBagHeld const& a, FinishedBagHeld const& b)
+              {
+                  if (a.slots != b.slots)
+                      return a.slots > b.slots;
+                  if (a.item != b.item)
+                      return a.item < b.item;
+                  return a.itemGuid < b.itemGuid;
+              });
+    std::vector<FinishedBagDelivery> out;
+    std::vector<FinishedBagCoverage> planned;
+    for (FinishedBagHeld const& h : held)
+    {
+        if (!h.item || !h.itemGuid || !h.slots || !h.ordinary || !h.tradeable)
+            continue;
+        std::vector<FinishedBagNeed> needs = UncoveredFinishedBagNeeds(view, h.slots, planned, &h.usableRecipients);
+        auto const it = std::find_if(needs.begin(), needs.end(),
+                                     [&](FinishedBagNeed const& n)
+                                     {
+                                         return std::find(h.usableRecipients.begin(), h.usableRecipients.end(),
+                                                          n.recipient) != h.usableRecipients.end();
+                                     });
+        if (it == needs.end())
+            continue;
+        out.push_back({h.item, h.itemGuid, h.slots, it->recipient});
+        planned.push_back({it->recipient, h.slots, 1, FinishedBagCoverageSource::RecipientMail});
+    }
+    return out;
+}
 
 // The rep's own listings to take back for one visit (its buyouts skip them): per want (in order), its listings of
 // that item by auction id while the want is open (the last may overshoot); each want shrinks by what they cover
@@ -2245,12 +2549,20 @@ void RouteCloth(Player* bot);
 bool HeldForDonation(std::uint32_t itemGuid);
 inline bool Tiers() { return detail::gEnabled && detail::gParams.tiers; }
 inline bool Market() { return Tiers() && detail::gParams.market; }
+inline bool BagMarket() { return detail::gEnabled && detail::gParams.bagMarket && detail::gParams.bagBuyBudget; }
 inline bool RepStore() { return detail::gEnabled && detail::gParams.repStore; }
 std::uint32_t PriceOf(std::uint32_t item);      // vendor buy price per unit (thread), 0 = unknown
 std::uint32_t SellPriceOf(std::uint32_t item);  // vendor sell value per unit, 0 = unknown
 // Market, map thread (the rep at its faction auctioneer): queue these buyouts; the world thread pays the rep
 // their total from the house bank, bids, and deposits whatever a rejected bid did not spend back.
 void QueueMarketBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<MarketListing> buys);
+// Finished-bag market, map thread: reserve selected exact auction identities under the shared lock, then revalidate
+// demand, native usability, listing identity and treasury on the world thread before any native bid.
+FinishedBagView FinishedBagViewOf(bool alliance);
+void QueueFinishedBagBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<FinishedBagListing> listings);
+// Any thread: protect a successful courier purchase from rep auto-equip/sale until native delivery consumes it.
+bool ReservedFinishedBagItem(Player* representative, std::uint64_t itemRawGuid);
+bool ReservedFinishedBagEntry(Player* representative, std::uint32_t item);
 // Market, map thread: cancel these own listings (PlanMarketCancels) on the world thread; the items come back by mail
 // (the deposit stays spent), a `cancel` row each.
 void QueueMarketCancels(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<MarketListing> cancels);

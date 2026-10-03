@@ -5,7 +5,11 @@
  */
 
 #include "ItemUsageValue.h"
+
+#include <unordered_set>
+
 #include "AiFactory.h"
+#include "Bag.h"
 #include "ChatHelper.h"
 #include "GuildTaskMgr.h"
 #include "Item.h"
@@ -16,8 +20,24 @@
 #include "RandomItemMgr.h"
 #include "ServerFacade.h"
 #include "StatsWeightCalculator.h"
+#include "SupplyPolicy.h"
 
-#include <unordered_set>
+namespace playerbots::item_usage_detail
+{
+uint32 SmallestEquippedBagSize(Player const& player)
+{
+    uint32 smallest = 0;
+    for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+    {
+        Bag const* bag = static_cast<Bag const*>(player.GetItemByPos(INVENTORY_SLOT_BAG_0, slot));
+        if (!bag)
+            return 0;
+        if (!smallest || bag->GetBagSize() < smallest)
+            smallest = bag->GetBagSize();
+    }
+    return smallest;
+}
+}  // namespace playerbots::item_usage_detail
 
 ItemUsage ItemUsageValue::Calculate()
 {
@@ -95,6 +115,11 @@ ItemUsage ItemUsageValue::Calculate()
 
     if (bot->GetGuildId() && GuildTaskMgr::instance().IsGuildTaskItem(itemId, bot->GetGuildId()))
         return ITEM_USAGE_GUILD_TASK;
+
+    // A supply representative is the courier for an exact native AH bag purchase. Keep that entry loose until the
+    // world-thread delivery consumes the exact reserved GUID; the normal item-push path must not wear or sell it.
+    if (proto->Class == ITEM_CLASS_CONTAINER && AutoWowSupply::ReservedFinishedBagEntry(bot, itemId))
+        return ITEM_USAGE_KEEP;
 
     ItemUsage equip = QueryItemUsageForEquip(proto, randomPropertyId);
     if (equip != ITEM_USAGE_NONE)
@@ -455,27 +480,8 @@ ParsedItemUsage ItemUsageValue::GetItemIdFromQualifier()
         parsed.itemId = atoi(qualifier.c_str());
     return parsed;
 }
-// Return smaltest bag size equipped
-uint32 ItemUsageValue::GetSmallestBagSize()
-{
-    int8 curSlot = 0;
-    uint32 curSlots = 0;
-    for (uint8 bag = INVENTORY_SLOT_BAG_START + 1; bag < INVENTORY_SLOT_BAG_END; ++bag)
-    {
-        if (Bag const* pBag = (Bag*)bot->GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
-        {
-            if (curSlot > 0 && curSlots < pBag->GetBagSize())
-                continue;
-
-            curSlot = pBag->GetSlot();
-            curSlots = pBag->GetBagSize();
-        }
-        else
-            return 0;
-    }
-
-    return curSlots;
-}
+// Return the smallest of all four equipped bag slots; an empty slot is the smallest possible target.
+uint32 ItemUsageValue::GetSmallestBagSize() { return playerbots::item_usage_detail::SmallestEquippedBagSize(*bot); }
 
 bool ItemUsageValue::IsItemUsefulForQuest(Player* player, ItemTemplate const* proto)
 {

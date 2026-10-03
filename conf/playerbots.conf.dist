@@ -3273,6 +3273,15 @@ AutoWow.Supply.Tiers = 0
 AutoWow.Supply.Market = 0
 AutoWow.Supply.BuyMaxPct = 400
 AutoWow.Supply.BuyBudget = 500
+# Finished-bag market (default 0; independent of Supply.Market): the bag-house representative scans the same
+# faction auction house for ordinary general bags for online PriorityGuids members. It buys the largest lawful
+# improvement first (then lowest whole-lot buyout, auction id), using BuyMaxPct and this separate per-visit budget.
+# Equipped, loose, incoming-mail, representative and queued/purchased stock cover demand by capacity; native auction
+# mail and Supply.MailPickup/SendItems/item-push/equip complete the route. Representatives are couriers, never
+# recipients.
+# Production proposal: BagMarket=1 and BagBuyBudget=30000 (profile-owned; defaults remain off/zero here).
+AutoWow.Supply.BagMarket = 0
+AutoWow.Supply.BagBuyBudget = 0
 AutoWow.Supply.SellKeep = 60
 # ListFloat: copper the house bank keeps on the rep for listing deposits (topped up each TickMs; a sale refunds
 # the deposit to the rep, an expiry loses it: a gold sink). Only the sale proceeds (bid - cut) go to the bank.

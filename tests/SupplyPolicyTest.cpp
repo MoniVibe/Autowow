@@ -310,6 +310,206 @@ TEST(SupplyMarket, BuysUnderThePriceCeilingWithinBudget)
     EXPECT_TRUE(PlanMarketBuys(listings, {{kLinen, 25, 13}}, 100, 100000).empty());
 }
 
+FinishedBagListing FinishedBag(std::uint32_t auction, std::uint32_t item, std::uint32_t slots, std::uint32_t buyout,
+                               std::uint32_t sellPrice)
+{
+    FinishedBagListing out;
+    out.auctionId = auction;
+    out.item = item;
+    out.itemGuid = 100000 + auction;
+    out.ownerGuid = 9000 + auction;
+    out.owner = 9000 + auction;
+    out.count = 1;
+    out.buyout = buyout;
+    out.sellPrice = sellPrice;
+    out.slots = slots;
+    out.itemClass = kContainerItemClass;
+    out.subClass = kGeneralContainerSubclass;
+    out.inventoryType = kBagInventoryType;
+    out.allowableClass = 0xFFFFFFFFu;
+    out.allowableRace = 0xFFFFFFFFu;
+    out.sameFaction = true;
+    return out;
+}
+
+FinishedBagView BagView(std::initializer_list<std::uint32_t> slots)
+{
+    FinishedBagView out;
+    std::uint32_t guid = 10;
+    for (std::uint32_t const size : slots)
+        out.needs.push_back({guid++, 0, size, 80, 1, 1});
+    return out;
+}
+
+TEST(SupplyFinishedBagMarket, DefaultsOffAndUsesAnIndependentBudget)
+{
+    Params const p;
+    EXPECT_FALSE(p.bagMarket);
+    EXPECT_EQ(p.bagBuyBudget, 0u);
+    EXPECT_EQ(p.buyBudget, 500u);  // the material market budget is unchanged
+}
+
+TEST(SupplyFinishedBagMarket, OnlyPriorityOrdinarySameFactionMembersGenerateNeeds)
+{
+    FinishedBagMember priority{10, 30, 1, 1, true, false, true, true, {0, 8, 10, 12}};
+    FinishedBagMember ordinary = priority;
+    ordinary.guid = 11;
+    ordinary.priority = false;
+    FinishedBagMember rep = priority;
+    rep.guid = 12;
+    rep.representative = true;
+    FinishedBagMember foreign = priority;
+    foreign.guid = 13;
+    foreign.sameFaction = false;
+    FinishedBagMember role = priority;
+    role.guid = 14;
+    role.ordinary = false;
+    std::vector<FinishedBagNeed> const needs = FinishedBagNeeds({ordinary, rep, foreign, role, priority});
+    ASSERT_EQ(needs.size(), 4u);
+    for (FinishedBagNeed const& n : needs)
+        EXPECT_EQ(n.recipient, 10u);
+}
+
+TEST(SupplyFinishedBagMarket, RejectsNonOrdinaryUnusableOwnAndNonImprovingOffers)
+{
+    FinishedBagView const view = BagView({12});
+    FinishedBagListing good = FinishedBag(1, 10050, 14, 1000, 500);
+    ASSERT_EQ(PlanFinishedBagBuys({good}, view, 77, 400, 1000).size(), 1u);
+    for (std::uint32_t field = 0; field < 8; ++field)
+    {
+        FinishedBagListing bad = good;
+        bad.auctionId += 10 + field;
+        bad.itemGuid += 10 + field;
+        switch (field)
+        {
+            case 0:
+                bad.bagFamily = 1;
+                break;  // specialty bag
+            case 1:
+                bad.inventoryType = 0;
+                break;  // not INVTYPE_BAG
+            case 2:
+                bad.requiredSkill = 197;
+                break;  // conservative static unusable
+            case 3:
+                bad.buyout = 0;
+                break;
+            case 4:
+                bad.owner = 77;
+                break;
+            case 5:
+                bad.sameFaction = false;
+                break;
+            case 6:
+                bad.itemClass = 2;
+                break;
+            case 7:
+                bad.subClass = 1;
+                break;
+        }
+        EXPECT_TRUE(PlanFinishedBagBuys({bad}, view, 77, 400, 1000).empty()) << field;
+    }
+    EXPECT_TRUE(PlanFinishedBagBuys({FinishedBag(2, 4245, 12, 1000, 500)}, view, 77, 400, 1000).empty());
+}
+
+TEST(SupplyFinishedBagMarket, PicksLargestThenPriceThenAuctionWithoutAFixedFloor)
+{
+    FinishedBagView const view = BagView({8});
+    FinishedBagListing fourteen = FinishedBag(9, 14000, 14, 900, 300);
+    ASSERT_EQ(PlanFinishedBagBuys({fourteen}, view, 77, 400, 5000)[0].listing.slots, 14u);
+    FinishedBagListing sixteenHigh = FinishedBag(8, 16001, 16, 1200, 400);
+    FinishedBagListing sixteenLowId = FinishedBag(3, 16002, 16, 1000, 400);
+    FinishedBagListing sixteenHighId = FinishedBag(4, 16003, 16, 1000, 400);
+    std::vector<FinishedBagBuy> const buys =
+        PlanFinishedBagBuys({fourteen, sixteenHigh, sixteenHighId, sixteenLowId}, view, 77, 400, 5000);
+    ASSERT_EQ(buys.size(), 1u);  // one uncovered slot; a selected larger bag covers smaller alternatives
+    EXPECT_EQ(buys[0].listing.auctionId, 3u);
+    EXPECT_EQ(buys[0].listing.slots, 16u);
+}
+
+TEST(SupplyFinishedBagMarket, CoverageIsCapacityAwareAtEveryStage)
+{
+    for (FinishedBagCoverageSource const source :
+         {FinishedBagCoverageSource::RecipientLoose, FinishedBagCoverageSource::RecipientMail,
+          FinishedBagCoverageSource::RepresentativeLoose, FinishedBagCoverageSource::RepresentativeMail,
+          FinishedBagCoverageSource::InFlight})
+    {
+        FinishedBagView view = BagView({8});
+        std::uint32_t const recipient =
+            source == FinishedBagCoverageSource::RecipientLoose || source == FinishedBagCoverageSource::RecipientMail
+                ? 10
+                : 0;
+        view.coverage.push_back({recipient, 16, 1, source});
+        EXPECT_TRUE(PlanFinishedBagBuys({FinishedBag(1, 4500, 16, 26250, 8750)}, view, 77, 400, 30000).empty())
+            << static_cast<unsigned>(source);
+    }
+    FinishedBagView smallMail = BagView({8});
+    smallMail.coverage.push_back({10, 14, 1, FinishedBagCoverageSource::RecipientMail});
+    EXPECT_EQ(PlanFinishedBagBuys({FinishedBag(1, 4500, 16, 26250, 8750)}, smallMail, 77, 400, 30000).size(),
+              1u);  // a smaller mailed bag cannot cover the larger target
+}
+
+TEST(SupplyFinishedBagMarket, SharedCoveragePreservesTheNeedOnlyTheCandidateCanServe)
+{
+    FinishedBagView view;
+    view.needs = {{10, 0, 8, 80, 1, 1}, {11, 0, 8, 80, 2, 1}};
+    // The shared rep bag is usable only by B. The class-1 candidate must still be assigned to A.
+    view.coverage.push_back({0, 16, 1, FinishedBagCoverageSource::RepresentativeMail, {11}});
+    FinishedBagListing candidate = FinishedBag(1, 14000, 14, 1000, 500);
+    candidate.allowableClass = 1;
+    std::vector<FinishedBagBuy> const buys = PlanFinishedBagBuys({candidate}, view, 77, 400, 1000);
+    ASSERT_EQ(buys.size(), 1u);
+    ASSERT_EQ(buys[0].recipients.size(), 1u);
+    EXPECT_EQ(buys[0].recipients[0], 10u);
+}
+
+TEST(SupplyFinishedBagMarket, RefusalClearsOnlyItsExactInFlightCoverage)
+{
+    FinishedBagView view = BagView({8, 8});
+    view.coverage.push_back({10, 16, 1, FinishedBagCoverageSource::InFlight, {}, 101});
+    view.coverage.push_back({11, 16, 1, FinishedBagCoverageSource::InFlight, {}, 202});
+    ClearFinishedBagCoverage(view, 101);
+    ASSERT_EQ(view.coverage.size(), 1u);
+    EXPECT_EQ(view.coverage[0].auctionId, 202u);
+    EXPECT_EQ(view.coverage[0].recipient, 11u);
+}
+
+TEST(SupplyFinishedBagMarket, DeliveryViewExcludesTheHeldCandidateButKeepsOtherCoverage)
+{
+    FinishedBagHeld held{4500, 7, 16, true, true, {10}};
+    FinishedBagView view = BagView({8});
+    ASSERT_EQ(PlanFinishedBagDeliveries({held}, view).size(), 1u);
+    view.coverage.push_back({10, 16, 1, FinishedBagCoverageSource::RecipientMail});
+    EXPECT_TRUE(PlanFinishedBagDeliveries({held}, view).empty());
+}
+
+TEST(SupplyFinishedBagMarket, EnforcesPriceBudgetAndWholeAuctionDemand)
+{
+    FinishedBagView const one = BagView({8});
+    FinishedBagListing captured = FinishedBag(1, 4500, 16, 26250, 8750);  // 300% of sell value
+    EXPECT_EQ(PlanFinishedBagBuys({captured}, one, 77, 400, 30000).size(), 1u);
+    EXPECT_TRUE(PlanFinishedBagBuys({captured}, one, 77, 400, 2000).empty());  // independent material-sized budget
+    EXPECT_TRUE(PlanFinishedBagBuys({captured}, one, 77, 200, 30000).empty());
+    captured.count = 2;
+    EXPECT_TRUE(PlanFinishedBagBuys({captured}, one, 77, 400, 60000).empty());
+}
+
+TEST(SupplyFinishedBagMarket, DeliveryIsLargestFirstDeterministicAndOnlyImprovesUsableRecipients)
+{
+    FinishedBagView view = BagView({8, 10});
+    FinishedBagHeld unusable{9, 1, 20, true, true, {99}};
+    FinishedBagHeld fourteenHighGuid{3, 9, 14, true, true, {10, 11}};
+    FinishedBagHeld fourteenLowGuid{3, 4, 14, true, true, {10, 11}};
+    FinishedBagHeld sixteen{7, 8, 16, true, true, {10, 11}};
+    std::vector<FinishedBagDelivery> const deliveries =
+        PlanFinishedBagDeliveries({fourteenHighGuid, unusable, sixteen, fourteenLowGuid}, view);
+    ASSERT_EQ(deliveries.size(), 2u);
+    EXPECT_EQ(deliveries[0].itemGuid, 8u);
+    EXPECT_EQ(deliveries[0].recipient, 10u);
+    EXPECT_EQ(deliveries[1].itemGuid, 4u);  // item then item GUID tie-break
+    EXPECT_EQ(deliveries[1].recipient, 11u);
+}
+
 TEST(SupplyMarket, SellsWholeStacksAboveTheKeep)
 {
     // 20 + 20 + 15 wool, keep 20: list the stacks while 20 stay (ascending guid).
@@ -597,7 +797,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 10u);
+    EXPECT_EQ(kStateVersion, 11u);
     EXPECT_EQ(kPouch, 4496u);
 }
 

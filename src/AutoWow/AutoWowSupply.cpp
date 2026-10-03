@@ -141,6 +141,28 @@ std::array<std::vector<MailOrder>, 2> gOrders;
 std::map<std::tuple<std::uint32_t, std::uint32_t, std::uint32_t>, CodPending> gCodPending;
 constexpr std::size_t kMaxCodPending = 4096;
 
+// Finished-bag market: the world thread publishes live-member snapshots; map threads reserve exact auction identities
+// under gLock before dispatch. Successful reservations remain coverage until their exact native item GUID appears in
+// the representative's bags or mailbox. No Player, Item or AuctionEntry pointer crosses the queue.
+enum class FinishedBagPurchaseState : std::uint8_t
+{
+    Queued = 0,
+    Purchased = 1,
+    Arrived = 2
+};
+
+struct FinishedBagPending
+{
+    FinishedBagBuy buy;
+    std::uint32_t representative = 0;
+    bool alliance = false;
+    FinishedBagPurchaseState state = FinishedBagPurchaseState::Queued;
+};
+
+std::array<FinishedBagView, 2> gFinishedBagViews;
+std::map<std::uint32_t, FinishedBagPending> gFinishedBagPending;  // auction id -> exact immutable purchase
+constexpr std::size_t kMaxFinishedBagPending = 64;
+
 // Raw materials (RouteRaw, lane G): kind 0 = ore -> AutoWow.Supply.House.Ore, 1 = leather -> .House.Leather, 2 = stone
 // -> .House.Stone (lane AA; default Tinkers, not a default house: off unless AutoWow.Guilds.Houses names it).
 constexpr std::size_t kRawKinds = 3, kRawItems = 3;
@@ -277,7 +299,8 @@ char const* Send(std::uint32_t from, std::uint32_t to, std::vector<std::uint32_t
 
 bool GeneralBag(ItemTemplate const* proto)
 {
-    return proto && proto->Class == ITEM_CLASS_CONTAINER && proto->SubClass == ITEM_SUBCLASS_CONTAINER;
+    return proto && proto->Class == ITEM_CLASS_CONTAINER && proto->SubClass == ITEM_SUBCLASS_CONTAINER &&
+           proto->InventoryType == INVTYPE_BAG && !proto->BagFamily && proto->ContainerSlots;
 }
 
 // The member's bag want (SupplyPolicy Member) for a product bag of `slots`.
@@ -300,7 +323,8 @@ Member MemberOf(Player* m, std::uint32_t slots)
     for (Mail const* mail : m->GetMails())
         if (mail && mail->state != MAIL_STATE_DELETED)
             for (MailItemInfo const& mi : mail->items)
-                if (GeneralBag(sObjectMgr->GetItemTemplate(mi.item_template)))
+                if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(mi.item_template);
+                    GeneralBag(proto) && proto->ContainerSlots >= slots)
                     ++out.incoming;
     return out;
 }
@@ -360,6 +384,250 @@ std::vector<Member> Members(bool alliance, std::uint32_t slots)
     return members;
 }
 
+void AddFinishedBagMailCoverage(Player* holder, std::uint32_t recipient, FinishedBagCoverageSource source,
+                                FinishedBagView& view)
+{
+    if (!holder)
+        return;
+    for (Mail const* mail : holder->GetMails())
+        if (mail && mail->state != MAIL_STATE_DELETED)
+            for (MailItemInfo const& mi : mail->items)
+                if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(mi.item_template); GeneralBag(proto))
+                {
+                    Player* recipientPlayer = recipient ? Online(recipient) : nullptr;
+                    if ((recipient && (!recipientPlayer || recipientPlayer->CanUseItem(proto) != EQUIP_ERR_OK)) ||
+                        (!recipient && (proto->Bonding == BIND_QUEST_ITEM || holder->HasQuestForItem(proto->ItemId))))
+                        continue;
+                    FinishedBagCoverage coverage{recipient, proto->ContainerSlots, 1, source, {}};
+                    if (!recipient)
+                        for (FinishedBagNeed const& need : view.needs)
+                            if (Player* member = Online(need.recipient);
+                                member && member->CanUseItem(proto) == EQUIP_ERR_OK &&
+                                std::find(coverage.usableRecipients.begin(), coverage.usableRecipients.end(),
+                                          need.recipient) == coverage.usableRecipients.end())
+                                coverage.usableRecipients.push_back(need.recipient);
+                    if (recipient || !coverage.usableRecipients.empty())
+                        view.coverage.push_back(std::move(coverage));
+                }
+}
+
+FinishedBagView SnapshotFinishedBags(bool alliance, Player* representative,
+                                     std::unordered_set<std::uint32_t> const& excludedAuctions = {},
+                                     bool includeRepresentativeLoose = true)
+{
+    FinishedBagView out;
+    std::vector<FinishedBagMember> members;
+    std::vector<Player*> recipients;
+    for (AutoWowGuilds::GuidRange const& range : AutoWowGuilds::Cohort())
+        for (std::uint64_t raw = range.lo; raw <= range.hi; ++raw)
+        {
+            Player* member = Online(static_cast<std::uint32_t>(raw));
+            std::uint32_t const guid = member ? Low(member) : 0;
+            if (!member || !member->IsInWorld() || (member->GetTeamId() == TEAM_ALLIANCE) != alliance ||
+                IsRole(member) || PriorityOf(gPriority, guid) == kNoPriority)
+                continue;
+            FinishedBagMember facts;
+            facts.guid = guid;
+            facts.level = member->GetLevel();
+            facts.classMask = member->getClassMask();
+            facts.raceMask = member->getRaceMask();
+            facts.priority = true;
+            for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+            {
+                std::size_t const i = slot - INVENTORY_SLOT_BAG_START;
+                Bag* bag = member->GetBagByPos(slot);
+                facts.replaceable[i] = !bag || GeneralBag(bag->GetTemplate());
+                facts.equippedSlots[i] = bag && facts.replaceable[i] ? bag->GetBagSize() : 0;
+            }
+            members.push_back(facts);
+            recipients.push_back(member);
+        }
+    out.needs = FinishedBagNeeds(members);
+    for (Player* member : recipients)
+    {
+        std::uint32_t const guid = Low(member);
+        ForEachLoose(member,
+                     [&](Item* item)
+                     {
+                         if (GeneralBag(item->GetTemplate()) && !item->IsNotEmptyBag() &&
+                             member->CanUseItem(item->GetTemplate()) == EQUIP_ERR_OK)
+                             out.coverage.push_back({guid, item->GetTemplate()->ContainerSlots, item->GetCount(),
+                                                     FinishedBagCoverageSource::RecipientLoose});
+                     });
+        AddFinishedBagMailCoverage(member, guid, FinishedBagCoverageSource::RecipientMail, out);
+    }
+    if (representative)
+    {
+        if (includeRepresentativeLoose)
+            ForEachLoose(representative,
+                         [&](Item* item)
+                         {
+                             ItemTemplate const* proto = item->GetTemplate();
+                             if (GeneralBag(proto) && !item->IsNotEmptyBag() && item->CanBeTraded(true) &&
+                                 proto->Bonding != BIND_QUEST_ITEM && !representative->HasQuestForItem(proto->ItemId))
+                             {
+                                 FinishedBagCoverage coverage{0,
+                                                              proto->ContainerSlots,
+                                                              item->GetCount(),
+                                                              FinishedBagCoverageSource::RepresentativeLoose,
+                                                              {}};
+                                 for (FinishedBagNeed const& need : out.needs)
+                                     if (Player* member = Online(need.recipient);
+                                         member && member->CanUseItem(proto) == EQUIP_ERR_OK &&
+                                         std::find(coverage.usableRecipients.begin(), coverage.usableRecipients.end(),
+                                                   need.recipient) == coverage.usableRecipients.end())
+                                         coverage.usableRecipients.push_back(need.recipient);
+                                 if (!coverage.usableRecipients.empty())
+                                     out.coverage.push_back(std::move(coverage));
+                             }
+                         });
+        AddFinishedBagMailCoverage(representative, 0, FinishedBagCoverageSource::RepresentativeMail, out);
+    }
+    std::lock_guard<std::mutex> guard(gLock);
+    for (auto const& [auction, pending] : gFinishedBagPending)
+        if (pending.alliance == alliance && pending.state != FinishedBagPurchaseState::Arrived &&
+            !excludedAuctions.count(auction))
+            for (std::uint32_t const recipient : pending.buy.recipients)
+                out.coverage.push_back(
+                    {recipient, pending.buy.listing.slots, 1, FinishedBagCoverageSource::InFlight, {}, auction});
+    return out;
+}
+
+bool FinishedBagItemVisible(Player* representative, std::uint64_t rawGuid)
+{
+    bool found = false;
+    ForEachLoose(representative, [&](Item* item) { found = found || item->GetGUID().GetRawValue() == rawGuid; });
+    if (found)
+        return true;
+    for (Mail const* mail : representative->GetMails())
+        if (mail && mail->state != MAIL_STATE_DELETED)
+            for (MailItemInfo const& mi : mail->items)
+                if (mi.item_guid == ObjectGuid(rawGuid).GetCounter())
+                    return true;
+    return false;
+}
+
+void ClearFinishedBagPending(std::uint32_t auction)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    gFinishedBagPending.erase(auction);
+    for (FinishedBagView& view : gFinishedBagViews)
+        ClearFinishedBagCoverage(view, auction);
+}
+
+void UpdateFinishedBagRecipients(std::uint32_t auction, std::vector<std::uint32_t> const& recipients)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gFinishedBagPending.find(auction);
+    if (it == gFinishedBagPending.end())
+        return;
+    it->second.buy.recipients = recipients;
+    for (FinishedBagView& view : gFinishedBagViews)
+        ClearFinishedBagCoverage(view, auction);
+    FinishedBagView& view = gFinishedBagViews[T(it->second.alliance)];
+    for (std::uint32_t const recipient : recipients)
+        view.coverage.push_back(
+            {recipient, it->second.buy.listing.slots, 1, FinishedBagCoverageSource::InFlight, {}, auction});
+}
+
+void MarkFinishedBagPurchased(std::uint32_t auction)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gFinishedBagPending.find(auction);
+    if (it != gFinishedBagPending.end())
+        it->second.state = FinishedBagPurchaseState::Purchased;
+}
+
+void FinishedBagReceipt(Player* representative, FinishedBagListing const& listing, std::uint32_t recipient,
+                        char const* result)
+{
+    LOG_INFO("playerbots",
+             "[Supply] finished_bag team={} rep={} auction={} item={} item_guid={} slots={} count={} "
+             "buyout={} recipient={} result={}",
+             representative->GetTeamId() == TEAM_ALLIANCE ? "alliance" : "horde", Low(representative),
+             listing.auctionId, listing.item, listing.itemGuid, listing.slots, listing.count, listing.buyout, recipient,
+             result);
+}
+
+void FinishedBagTick(bool alliance)
+{
+    Player* representative = RoleRep(gBagHouse, alliance);
+    if (!representative)
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        gFinishedBagViews[T(alliance)] = FinishedBagView{};
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        for (auto& [auction, pending] : gFinishedBagPending)
+            if (pending.alliance == alliance && pending.state == FinishedBagPurchaseState::Purchased &&
+                FinishedBagItemVisible(representative, pending.buy.listing.itemGuid))
+                pending.state = FinishedBagPurchaseState::Arrived;
+    }
+
+    // Exclude the loose bags from this delivery view: they are the candidates, not pre-existing coverage. Recipient
+    // stock/mail, representative auction mail and other in-flight purchases still suppress duplicate delivery.
+    FinishedBagView const deliveryView = SnapshotFinishedBags(alliance, representative, {}, false);
+    std::vector<FinishedBagHeld> held;
+    ForEachLoose(representative,
+                 [&](Item* item)
+                 {
+                     ItemTemplate const* proto = item->GetTemplate();
+                     bool const ordinary = GeneralBag(proto);
+                     bool const tradeable = ordinary && !item->IsNotEmptyBag() && item->CanBeTraded(true) &&
+                                            proto->Bonding != BIND_QUEST_ITEM &&
+                                            !representative->HasQuestForItem(proto->ItemId);
+                     FinishedBagHeld bag{item->GetEntry(),
+                                         static_cast<std::uint32_t>(item->GetGUID().GetCounter()),
+                                         proto ? proto->ContainerSlots : 0,
+                                         ordinary,
+                                         tradeable,
+                                         {}};
+                     if (tradeable)
+                         for (FinishedBagNeed const& need : deliveryView.needs)
+                             if (Player* recipient = Online(need.recipient);
+                                 recipient && recipient->CanUseItem(proto) == EQUIP_ERR_OK &&
+                                 std::find(bag.usableRecipients.begin(), bag.usableRecipients.end(), need.recipient) ==
+                                     bag.usableRecipients.end())
+                                 bag.usableRecipients.push_back(need.recipient);
+                     held.push_back(std::move(bag));
+                 });
+    for (FinishedBagDelivery const& delivery : PlanFinishedBagDeliveries(std::move(held), deliveryView))
+    {
+        char const* why =
+            Send(Low(representative), delivery.recipient, {delivery.itemGuid}, "AutoWoW finished bag", "bag_market");
+        LOG_INFO("playerbots",
+                 "[Supply] finished_bag_delivery team={} rep={} item={} item_guid={} slots={} "
+                 "recipient={} result={}",
+                 alliance ? "alliance" : "horde", Low(representative), delivery.item, delivery.itemGuid, delivery.slots,
+                 delivery.recipient, why ? why : "sent");
+        if (!why)
+        {
+            {
+                std::lock_guard<std::mutex> guard(gLock);
+                for (auto it = gFinishedBagPending.begin(); it != gFinishedBagPending.end(); ++it)
+                    if (it->second.representative == Low(representative) &&
+                        ObjectGuid(it->second.buy.listing.itemGuid).GetCounter() == delivery.itemGuid)
+                    {
+                        std::uint32_t const auction = it->first;
+                        gFinishedBagPending.erase(it);
+                        for (FinishedBagView& view : gFinishedBagViews)
+                            ClearFinishedBagCoverage(view, auction);
+                        break;
+                    }
+            }
+            Emit(representative, Reason::Deliver, 0, delivery.item, 1, 0, Low(representative), delivery.recipient,
+                 "bag_market", delivery.recipient);
+        }
+    }
+
+    FinishedBagView view = SnapshotFinishedBags(alliance, representative);
+    std::lock_guard<std::mutex> guard(gLock);
+    gFinishedBagViews[T(alliance)] = std::move(view);
+}
+
 // RepStore (world thread): a rep wears its own loose general bags in its empty bag slots (BagsToWear), with the stock
 // swap the equip action uses. The bags are house output it holds (delivered by mail or kept), never created.
 void EquipOwnBags(Player* rep)
@@ -371,10 +639,14 @@ void EquipOwnBags(Player* rep)
     if (empty.empty())
         return;
     std::vector<LooseBag> bags;
-    ForEachLoose(rep, [&](Item* item) {
-        if (GeneralBag(item->GetTemplate()) && !item->IsNotEmptyBag())
-            bags.push_back({static_cast<std::uint32_t>(item->GetGUID().GetCounter()), item->GetTemplate()->ContainerSlots});
-    });
+    ForEachLoose(rep,
+                 [&](Item* item)
+                 {
+                     if (GeneralBag(item->GetTemplate()) && !item->IsNotEmptyBag() &&
+                         !ReservedFinishedBagItem(rep, item->GetGUID().GetRawValue()))
+                         bags.push_back({static_cast<std::uint32_t>(item->GetGUID().GetCounter()),
+                                         item->GetTemplate()->ContainerSlots});
+                 });
     std::size_t k = 0;
     for (std::uint32_t const g : BagsToWear(std::move(bags), static_cast<std::uint32_t>(empty.size())))
     {
@@ -2198,7 +2470,17 @@ public:
     {
     }
 
-    bool Execute() override
+    MarketBuyOperation(ObjectGuid bot, ObjectGuid auctioneer, std::vector<FinishedBagBuy> buys)
+        : bot_(bot), auctioneer_(auctioneer), bagBuys_(std::move(buys))
+    {
+    }
+
+    bool Execute() override { return bagBuys_.empty() ? ExecuteMaterials() : ExecuteFinishedBags(); }
+    ObjectGuid GetBotGuid() const override { return bot_; }
+    std::string GetName() const override { return "AutoWowSupplyMarketBuy"; }
+
+private:
+    bool ExecuteMaterials()
     {
         Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
         if (!bot || !bot->IsInWorld() || !bot->GetSession() || buys_.empty())
@@ -2232,13 +2514,180 @@ public:
             AutoWowGuilds::Deposit(bot, back);
         return spent != 0;
     }
-    ObjectGuid GetBotGuid() const override { return bot_; }
-    std::string GetName() const override { return "AutoWowSupplyMarketBuy"; }
 
-private:
+    bool ExecuteFinishedBags()
+    {
+        Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
+        auto clearAll = [&]()
+        {
+            for (FinishedBagBuy const& buy : bagBuys_)
+                ClearFinishedBagPending(buy.listing.auctionId);
+        };
+        if (!bot || !bot->IsInWorld() || !bot->GetSession())
+        {
+            clearAll();
+            return false;
+        }
+        Creature* npc = bot->GetNPCIfCanInteractWith(auctioneer_, UNIT_NPC_FLAG_AUCTIONEER);
+        AuctionHouseEntry const* house =
+            npc ? AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(npc->GetFaction()) : nullptr;
+        AuctionHouseObject* ah = npc ? sAuctionMgr->GetAuctionsMap(npc->GetFaction()) : nullptr;
+        std::uint32_t const expectedHouse =
+            uint32(bot->GetTeamId() == TEAM_ALLIANCE ? AuctionHouseId::Alliance : AuctionHouseId::Horde);
+        if (!house || !ah || house->houseId != expectedHouse)
+        {
+            clearAll();
+            return false;
+        }
+
+        std::unordered_set<std::uint32_t> excluded;
+        for (FinishedBagBuy const& buy : bagBuys_)
+            excluded.insert(buy.listing.auctionId);
+        FinishedBagView live = SnapshotFinishedBags(bot->GetTeamId() == TEAM_ALLIANCE, bot, excluded);
+        std::vector<FinishedBagCoverage> planned;
+        std::vector<FinishedBagBuy> accepted;
+        std::uint64_t budget = detail::gParams.bagBuyBudget;
+        std::sort(bagBuys_.begin(), bagBuys_.end(),
+                  [](FinishedBagBuy const& a, FinishedBagBuy const& b)
+                  {
+                      if (a.listing.slots != b.listing.slots)
+                          return a.listing.slots > b.listing.slots;
+                      if (a.listing.buyout != b.listing.buyout)
+                          return a.listing.buyout < b.listing.buyout;
+                      return a.listing.auctionId < b.listing.auctionId;
+                  });
+        for (FinishedBagBuy queued : bagBuys_)
+        {
+            FinishedBagListing const& listing = queued.listing;
+            AuctionEntry const* auction = ah->GetAuction(listing.auctionId);
+            Item* auctionItem = auction ? sAuctionMgr->GetAItem(auction->item_guid) : nullptr;
+            ItemTemplate const* proto = auctionItem ? auctionItem->GetTemplate() : nullptr;
+            bool const exact = auction && auctionItem && auction->item_template == listing.item &&
+                               auction->item_guid.GetRawValue() == listing.itemGuid &&
+                               auction->itemCount == listing.count && auction->buyout == listing.buyout &&
+                               auction->owner.GetRawValue() == listing.ownerGuid && auction->owner != bot->GetGUID() &&
+                               GeneralBag(proto) && proto->ContainerSlots == listing.slots &&
+                               proto->SellPrice == listing.sellPrice;
+            std::vector<std::uint32_t> usableRecipients;
+            if (exact)
+                for (FinishedBagNeed const& need : live.needs)
+                    if (Player* recipient = Online(need.recipient);
+                        recipient && recipient->IsInWorld() &&
+                        (recipient->GetTeamId() == TEAM_ALLIANCE) == (bot->GetTeamId() == TEAM_ALLIANCE) &&
+                        !IsRole(recipient) && PriorityOf(gPriority, need.recipient) != kNoPriority &&
+                        recipient->CanUseItem(proto) == EQUIP_ERR_OK &&
+                        std::find(usableRecipients.begin(), usableRecipients.end(), need.recipient) ==
+                            usableRecipients.end())
+                        usableRecipients.push_back(need.recipient);
+            std::vector<FinishedBagNeed> needs =
+                exact ? UncoveredFinishedBagNeeds(live, listing.slots, planned, &usableRecipients)
+                      : std::vector<FinishedBagNeed>{};
+            bool const affordable = exact && listing.buyout <= budget &&
+                                    std::uint64_t(listing.buyout) * 100 <=
+                                        std::uint64_t(listing.sellPrice) * detail::gParams.buyMaxPct * listing.count;
+            if (!affordable || listing.count > needs.size())
+            {
+                FinishedBagReceipt(bot, listing, 0, exact ? "demand_or_budget" : "stale");
+                ClearFinishedBagPending(listing.auctionId);
+                continue;
+            }
+            queued.recipients.clear();
+            for (std::uint32_t i = 0; i < listing.count; ++i)
+            {
+                queued.recipients.push_back(needs[i].recipient);
+                planned.push_back({needs[i].recipient, listing.slots, 1, FinishedBagCoverageSource::InFlight});
+            }
+            budget -= listing.buyout;
+            UpdateFinishedBagRecipients(listing.auctionId, queued.recipients);
+            accepted.push_back(std::move(queued));
+        }
+        if (accepted.empty())
+            return false;
+
+        std::uint64_t total = 0;
+        for (FinishedBagBuy const& buy : accepted)
+            total += buy.listing.buyout;
+        std::uint32_t const guild = AutoWowGuilds::HouseGuildOf(bot);
+        if (!guild || !AutoWowGuilds::Pay(guild, bot, total))
+        {
+            for (FinishedBagBuy const& buy : accepted)
+            {
+                FinishedBagReceipt(bot, buy.listing, buy.recipients.front(), "treasury");
+                ClearFinishedBagPending(buy.listing.auctionId);
+            }
+            return false;
+        }
+
+        std::uint64_t spent = 0;
+        for (FinishedBagBuy const& buy : accepted)
+        {
+            FinishedBagListing const& listing = buy.listing;
+            AuctionEntry const* auction = ah->GetAuction(listing.auctionId);  // reacquire immediately before CMSG
+            Item* auctionItem = auction ? sAuctionMgr->GetAItem(auction->item_guid) : nullptr;
+            ItemTemplate const* proto = auctionItem ? auctionItem->GetTemplate() : nullptr;
+            bool exact = auction && auctionItem && auction->item_template == listing.item &&
+                         auction->item_guid.GetRawValue() == listing.itemGuid && auction->itemCount == listing.count &&
+                         auction->buyout == listing.buyout && auction->owner.GetRawValue() == listing.ownerGuid &&
+                         auction->owner != bot->GetGUID() && GeneralBag(proto) &&
+                         proto->ContainerSlots == listing.slots && proto->SellPrice == listing.sellPrice;
+            FinishedBagView immediate =
+                SnapshotFinishedBags(bot->GetTeamId() == TEAM_ALLIANCE, bot, {listing.auctionId});
+            std::vector<std::uint32_t> usableRecipients;
+            if (exact)
+                for (std::uint32_t const recipientGuid : buy.recipients)
+                    if (Player* recipient = Online(recipientGuid);
+                        recipient && recipient->IsInWorld() && !IsRole(recipient) &&
+                        (recipient->GetTeamId() == TEAM_ALLIANCE) == (bot->GetTeamId() == TEAM_ALLIANCE) &&
+                        PriorityOf(gPriority, recipientGuid) != kNoPriority &&
+                        recipient->CanUseItem(proto) == EQUIP_ERR_OK)
+                        usableRecipients.push_back(recipientGuid);
+            std::vector<FinishedBagNeed> immediateNeeds =
+                exact ? UncoveredFinishedBagNeeds(immediate, listing.slots, {}, &usableRecipients)
+                      : std::vector<FinishedBagNeed>{};
+            for (std::uint32_t const recipientGuid : buy.recipients)
+            {
+                auto const need = std::find_if(immediateNeeds.begin(), immediateNeeds.end(),
+                                               [&](FinishedBagNeed const& n) { return n.recipient == recipientGuid; });
+                if (need == immediateNeeds.end())
+                {
+                    exact = false;
+                    break;
+                }
+                immediateNeeds.erase(need);  // one whole-lot unit consumes one distinct current slot
+            }
+            if (!exact || buy.recipients.size() != listing.count)
+            {
+                FinishedBagReceipt(bot, listing, buy.recipients.front(), "stale_or_demand_before_bid");
+                ClearFinishedBagPending(listing.auctionId);
+                continue;
+            }
+            std::uint64_t const moneyBefore = bot->GetMoney();
+            WorldPacket packet(CMSG_AUCTION_PLACE_BID, 8 + 4 + 4);
+            packet << auctioneer_ << uint32(listing.auctionId) << uint32(listing.buyout);
+            bot->GetSession()->HandleAuctionPlaceBid(packet);
+            if (bot->GetMoney() >= moneyBefore)
+            {
+                FinishedBagReceipt(bot, listing, buy.recipients.front(), "native_refused");
+                ClearFinishedBagPending(listing.auctionId);
+                continue;
+            }
+            std::uint64_t const debit = moneyBefore - bot->GetMoney();
+            spent += debit;
+            MarkFinishedBagPurchased(listing.auctionId);
+            FinishedBagReceipt(bot, listing, buy.recipients.front(), "purchased");
+            Emit(bot, Reason::Buy, 0, listing.item, listing.count, debit, Low(bot), buy.recipients.front(),
+                 "bag_market", buy.recipients.front());
+        }
+        std::uint64_t const back = std::min<std::uint64_t>(total > spent ? total - spent : 0, bot->GetMoney());
+        if (back)
+            AutoWowGuilds::Deposit(bot, back);
+        return spent != 0;
+    }
+
     ObjectGuid bot_;
     ObjectGuid auctioneer_;
     std::vector<MarketListing> buys_;
+    std::vector<FinishedBagBuy> bagBuys_;
 };
 
 // World thread: the rep cancels its own listings of wanted items (stock cancel handler: the item comes back by mail,
@@ -2480,6 +2929,8 @@ void LoadConfig()
     p.market = sConfigMgr->GetOption<bool>("AutoWow.Supply.Market", false);
     p.buyMaxPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.BuyMaxPct", 400);
     p.buyBudget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.BuyBudget", 500);
+    p.bagMarket = sConfigMgr->GetOption<bool>("AutoWow.Supply.BagMarket", false);
+    p.bagBuyBudget = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.BagBuyBudget", 0);
     p.sellKeep = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.SellKeep", 60);
     p.listFloat = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ListFloat", 1000);
     p.routeHerbs = sConfigMgr->GetOption<bool>("AutoWow.Supply.RouteHerbs", false);
@@ -2520,6 +2971,11 @@ void LoadConfig()
     p.gearSkillupRestock = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearSkillupRestock", false);
     p.potionTiers = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionTiers", false);
     gPriority.clear();
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        gFinishedBagViews = {};
+        gFinishedBagPending.clear();
+    }
     std::string const priority = sConfigMgr->GetOption<std::string>("AutoWow.Supply.PriorityGuids", "");
     if (!ParseGuids(priority, gPriority))
         LOG_ERROR("server.loading", "[Supply] bad AutoWow.Supply.PriorityGuids '{}': no priority list", priority);
@@ -2922,6 +3378,8 @@ void LoadConfig()
         LOG_INFO("server.loading", "[Supply] tiers on: {} tiers, cloth cap {} per cloth; market={} buy_max_pct={} "
                  "buy_budget={} sell_keep={} list_float={}", kTierCount, p.clothCap, p.market, p.buyMaxPct, p.buyBudget,
                  p.sellKeep, p.listFloat);
+    LOG_INFO("server.loading", "[Supply] finished bag market={} budget={} buy_max_pct={} priority={}", p.bagMarket,
+             p.bagBuyBudget, p.buyMaxPct, gPriority.size());
     for (std::size_t li = 0; li < kLineCount; ++li)
         if (kCatalog[li].gearCount && LineOn(kCatalog[li].id))
             LOG_INFO("server.loading", "[Supply] line {} on: house={} artisan A={} H={} learn={} recipes={} equipment={} "
@@ -2975,6 +3433,11 @@ void WorldUpdate(std::uint32_t diff)
         for (bool const alliance : {true, false})
             if (Player* rep = RoleRep(i, alliance))
                 EquipOwnBags(rep);
+    if (BagMarket())
+    {
+        FinishedBagTick(true);
+        FinishedBagTick(false);
+    }
     // The overlord walks every enabled catalog line per team: bags on its bespoke chain, the rest on LineTick.
     if (LineOn(Line::Bags))
     {
@@ -3312,6 +3775,72 @@ void QueueMarketBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<M
         return;
     PlayerbotWorldThreadProcessor::instance().QueueOperation(
         std::make_unique<MarketBuyOperation>(rep->GetGUID(), ObjectGuid(auctioneerRawGuid), std::move(buys)));
+}
+
+FinishedBagView FinishedBagViewOf(bool alliance)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    return gFinishedBagViews[T(alliance)];
+}
+
+void QueueFinishedBagBuys(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<FinishedBagListing> listings)
+{
+    if (!BagMarket() || !rep || listings.empty())
+        return;
+    std::vector<FinishedBagBuy> buys;
+    {
+        std::lock_guard<std::mutex> guard(gLock);
+        std::size_t const team = T(rep->GetTeamId() == TEAM_ALLIANCE);
+        buys = PlanFinishedBagBuys(std::move(listings), gFinishedBagViews[team], Low(rep), detail::gParams.buyMaxPct,
+                                   detail::gParams.bagBuyBudget);
+        std::vector<FinishedBagBuy> reserved;
+        for (FinishedBagBuy const& buy : buys)
+        {
+            if (gFinishedBagPending.size() >= kMaxFinishedBagPending ||
+                gFinishedBagPending.count(buy.listing.auctionId))
+                continue;
+            gFinishedBagPending.emplace(
+                buy.listing.auctionId,
+                FinishedBagPending{buy, Low(rep), rep->GetTeamId() == TEAM_ALLIANCE, FinishedBagPurchaseState::Queued});
+            for (std::uint32_t const recipient : buy.recipients)
+                gFinishedBagViews[team].coverage.push_back(
+                    {recipient, buy.listing.slots, 1, FinishedBagCoverageSource::InFlight, {}, buy.listing.auctionId});
+            reserved.push_back(buy);
+        }
+        buys = std::move(reserved);
+    }
+    if (!buys.empty())
+        PlayerbotWorldThreadProcessor::instance().QueueOperation(
+            std::make_unique<MarketBuyOperation>(rep->GetGUID(), ObjectGuid(auctioneerRawGuid), std::move(buys)));
+}
+
+bool ReservedFinishedBagItem(Player* representative, std::uint64_t itemRawGuid)
+{
+    if (!representative || !itemRawGuid)
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    return std::any_of(gFinishedBagPending.begin(), gFinishedBagPending.end(),
+                       [&](auto const& row)
+                       {
+                           FinishedBagPending const& pending = row.second;
+                           return pending.representative == Low(representative) &&
+                                  pending.state != FinishedBagPurchaseState::Queued &&
+                                  pending.buy.listing.itemGuid == itemRawGuid;
+                       });
+}
+
+bool ReservedFinishedBagEntry(Player* representative, std::uint32_t item)
+{
+    if (!representative || !item)
+        return false;
+    std::lock_guard<std::mutex> guard(gLock);
+    return std::any_of(gFinishedBagPending.begin(), gFinishedBagPending.end(),
+                       [&](auto const& row)
+                       {
+                           FinishedBagPending const& pending = row.second;
+                           return pending.representative == Low(representative) &&
+                                  pending.state != FinishedBagPurchaseState::Queued && pending.buy.listing.item == item;
+                       });
 }
 
 void QueueMarketCancels(Player* rep, std::uint64_t auctioneerRawGuid, std::vector<MarketListing> cancels)
