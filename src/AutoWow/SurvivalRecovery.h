@@ -527,10 +527,11 @@ inline void NoteReplanExhausted(Params const& p, BotState& s, std::uint64_t nowM
     return true;
 }
 
-[[nodiscard]] inline bool StormwindValianceGoal(std::uint32_t destMap, float destX, float destY, float destZ)
+[[nodiscard]] inline bool ProtectedNorthrendBoardingGoal(std::uint32_t destMap, float destX, float destY, float destZ)
 {
-    AutoWowTransports::NorthrendTransportSpec const& goal = AutoWowTransports::kStormwindValiance;
-    return destMap == goal.sourceMap && destX == goal.sourceX && destY == goal.sourceY && destZ == goal.sourceZ;
+    auto const matches = [=](AutoWowTransports::NorthrendTransportSpec const& goal)
+    { return destMap == goal.sourceMap && destX == goal.sourceX && destY == goal.sourceY && destZ == goal.sourceZ; };
+    return matches(AutoWowTransports::kStormwindValiance) || matches(AutoWowTransports::kGromgolOrgrimmar);
 }
 
 [[nodiscard]] inline bool HearthAdvancesDestination(std::uint32_t currentMap, float currentX, float currentY,

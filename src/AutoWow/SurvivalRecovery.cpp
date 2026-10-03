@@ -674,7 +674,7 @@ bool Step(PlayerbotAI* botAI, std::uint32_t destMap, float destX, float destY, f
     bool const hearthFar = bot->m_homebindMapId != bot->GetMapId() ||
                            bot->GetExactDist2d(bot->m_homebindX, bot->m_homebindY) > float(kHearthMinYards);
     bool const protectedGoal = AutoWowZoneProgression::NorthrendEnabled() &&
-                               StormwindValianceGoal(destMap, destX, destY, destZ) &&
+                               ProtectedNorthrendBoardingGoal(destMap, destX, destY, destZ) &&
                                AutoWowZoneProgression::Active(guid);
     bool const hearthAdvances =
         !protectedGoal ||

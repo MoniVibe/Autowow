@@ -277,44 +277,82 @@ TEST(Unstick, NavmeshHoleAndDecision)
     EXPECT_STREQ(ActionName(Action::Portal), "portal");
 }
 
-TEST(Unstick, IdentifiesOnlyTheExactStormwindValianceGoal)
+TEST(Unstick, IdentifiesOnlyTheTwoObservedExactNorthrendBoardingGoals)
 {
     using namespace AutoWowUnstick;
     AutoWowTransports::NorthrendTransportSpec const& alliance = AutoWowTransports::kStormwindValiance;
-    AutoWowTransports::NorthrendTransportSpec const& horde = AutoWowTransports::kOrgrimmarWarsong;
+    AutoWowTransports::NorthrendTransportSpec const& hordePrefix = AutoWowTransports::kGromgolOrgrimmar;
+    AutoWowTransports::NorthrendTransportSpec const& hordeTerminal = AutoWowTransports::kOrgrimmarWarsong;
 
-    EXPECT_TRUE(StormwindValianceGoal(alliance.sourceMap, alliance.sourceX, alliance.sourceY, alliance.sourceZ));
-    EXPECT_FALSE(StormwindValianceGoal(horde.sourceMap, horde.sourceX, horde.sourceY, horde.sourceZ));
-    EXPECT_FALSE(
-        StormwindValianceGoal(alliance.sourceMap, alliance.sourceX + 0.001f, alliance.sourceY, alliance.sourceZ));
-    EXPECT_FALSE(StormwindValianceGoal(alliance.sourceMap, alliance.sourceX, alliance.sourceY, 4.8740597f));
-    EXPECT_FALSE(StormwindValianceGoal(alliance.sourceMap, std::numeric_limits<float>::quiet_NaN(), alliance.sourceY,
-                                       alliance.sourceZ));
+    EXPECT_TRUE(
+        ProtectedNorthrendBoardingGoal(alliance.sourceMap, alliance.sourceX, alliance.sourceY, alliance.sourceZ));
+    EXPECT_TRUE(ProtectedNorthrendBoardingGoal(hordePrefix.sourceMap, hordePrefix.sourceX, hordePrefix.sourceY,
+                                               hordePrefix.sourceZ));
+    EXPECT_FALSE(ProtectedNorthrendBoardingGoal(hordeTerminal.sourceMap, hordeTerminal.sourceX, hordeTerminal.sourceY,
+                                                hordeTerminal.sourceZ));
+    EXPECT_FALSE(ProtectedNorthrendBoardingGoal(hordePrefix.sourceMap, hordePrefix.sourceX + 0.001f,
+                                                hordePrefix.sourceY, hordePrefix.sourceZ));
+    EXPECT_FALSE(ProtectedNorthrendBoardingGoal(hordePrefix.sourceMap, hordePrefix.sourceX, hordePrefix.sourceY,
+                                                hordePrefix.sourceZ + 0.001f));
+    EXPECT_FALSE(ProtectedNorthrendBoardingGoal(alliance.sourceMap, alliance.sourceX, alliance.sourceY, 4.8740597f));
+    EXPECT_FALSE(ProtectedNorthrendBoardingGoal(alliance.sourceMap, std::numeric_limits<float>::quiet_NaN(),
+                                                alliance.sourceY, alliance.sourceZ));
+
+    auto const runtimeProtected =
+        [&](bool northrendEnabled, bool active, AutoWowTransports::NorthrendTransportSpec const& goal)
+    {
+        return northrendEnabled &&
+               ProtectedNorthrendBoardingGoal(goal.sourceMap, goal.sourceX, goal.sourceY, goal.sourceZ) && active;
+    };
+    EXPECT_TRUE(runtimeProtected(true, true, hordePrefix));
+    EXPECT_FALSE(runtimeProtected(false, true, hordePrefix));
+    EXPECT_FALSE(runtimeProtected(true, false, hordePrefix));
 }
 
 TEST(Unstick, ProtectedHearthMustAdvanceTowardItsDestination)
 {
     using namespace AutoWowUnstick;
-    AutoWowTransports::NorthrendTransportSpec const& goal = AutoWowTransports::kStormwindValiance;
+    AutoWowTransports::NorthrendTransportSpec const& alliance = AutoWowTransports::kStormwindValiance;
 
-    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 530, 2758.0f, 5423.0f, goal.sourceMap,
-                                           goal.sourceX, goal.sourceY));
-    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.76f, -1871.8265f, 530, 2699.0f, 5421.0f, goal.sourceMap,
-                                           goal.sourceX, goal.sourceY));
-    EXPECT_TRUE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 0, -8300.0f, 1400.0f, goal.sourceMap,
-                                          goal.sourceX, goal.sourceY));
-    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 0, -10334.814f, -1871.9325f, goal.sourceMap,
-                                           goal.sourceX, goal.sourceY));
-    EXPECT_FALSE(HearthAdvancesDestination(0, -9000.0f, 1000.0f, 0, -12000.0f, -3000.0f, goal.sourceMap, goal.sourceX,
-                                           goal.sourceY));
-    EXPECT_TRUE(
-        HearthAdvancesDestination(530, 0.0f, 0.0f, 0, -9000.0f, 1000.0f, goal.sourceMap, goal.sourceX, goal.sourceY));
-    EXPECT_FALSE(
-        HearthAdvancesDestination(530, 0.0f, 0.0f, 1, -9000.0f, 1000.0f, goal.sourceMap, goal.sourceX, goal.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 530, 2758.0f, 5423.0f, alliance.sourceMap,
+                                           alliance.sourceX, alliance.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.76f, -1871.8265f, 530, 2699.0f, 5421.0f, alliance.sourceMap,
+                                           alliance.sourceX, alliance.sourceY));
+    EXPECT_TRUE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 0, -8300.0f, 1400.0f, alliance.sourceMap,
+                                          alliance.sourceX, alliance.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.814f, -1871.9325f, 0, -10334.814f, -1871.9325f, alliance.sourceMap,
+                                           alliance.sourceX, alliance.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -9000.0f, 1000.0f, 0, -12000.0f, -3000.0f, alliance.sourceMap,
+                                           alliance.sourceX, alliance.sourceY));
+    EXPECT_TRUE(HearthAdvancesDestination(530, 0.0f, 0.0f, 0, -9000.0f, 1000.0f, alliance.sourceMap, alliance.sourceX,
+                                          alliance.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(530, 0.0f, 0.0f, 1, -9000.0f, 1000.0f, alliance.sourceMap, alliance.sourceX,
+                                           alliance.sourceY));
     EXPECT_FALSE(HearthAdvancesDestination(0, -10334.0f, -1871.0f, 0, std::numeric_limits<float>::infinity(), 1000.0f,
-                                           goal.sourceMap, goal.sourceX, goal.sourceY));
-    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.0f, -1871.0f, 0, -9000.0f, 1000.0f, goal.sourceMap,
-                                           std::numeric_limits<float>::quiet_NaN(), goal.sourceY));
+                                           alliance.sourceMap, alliance.sourceX, alliance.sourceY));
+    EXPECT_FALSE(HearthAdvancesDestination(0, -10334.0f, -1871.0f, 0, -9000.0f, 1000.0f, alliance.sourceMap,
+                                           std::numeric_limits<float>::quiet_NaN(), alliance.sourceY));
+}
+
+TEST(Unstick, ObservedHordePrefixHearthsAreDeniedUnlessTheBindIsStrictlyNearer)
+{
+    using namespace AutoWowUnstick;
+    AutoWowTransports::NorthrendTransportSpec const& goal = AutoWowTransports::kGromgolOrgrimmar;
+
+    auto const decide = [&](float currentX, float currentY, std::uint32_t homeMap, float homeX, float homeY)
+    {
+        bool const advances = HearthAdvancesDestination(0, currentX, currentY, homeMap, homeX, homeY, goal.sourceMap,
+                                                        goal.sourceX, goal.sourceY);
+        return DecideForGoal(true, true, false, true, advances);
+    };
+
+    // Jintara and Gorvanth were on map 0 while their hearth binds were on map 530.
+    EXPECT_EQ(decide(-12077.785f, -2307.4443f, 530, goal.sourceX, goal.sourceY), Action::None);
+    EXPECT_EQ(decide(-12044.033f, -2294.8777f, 530, goal.sourceX, goal.sourceY), Action::None);
+
+    EXPECT_EQ(decide(-12077.785f, -2307.4443f, 0, -12400.0f, 215.0f), Action::Hearth);
+    EXPECT_EQ(decide(-12077.785f, -2307.4443f, 0, -12077.785f, -2307.4443f), Action::None);
+    EXPECT_EQ(decide(-12077.785f, -2307.4443f, 0, -10000.0f, -3000.0f), Action::None);
 }
 
 TEST(Unstick, ProtectedDenialIsNoneAndKeepsTheExistingFiniteCooldown)
@@ -343,7 +381,7 @@ TEST(Unstick, ProtectedDenialDoesNotBroadenProbeOrPortalEligibility)
     std::string const source = ReadUnstickStepSource();
     ASSERT_FALSE(source.empty());
     std::size_t const scope = source.find("AutoWowZoneProgression::NorthrendEnabled() &&");
-    std::size_t const identity = source.find("StormwindValianceGoal(destMap, destX, destY, destZ) &&", scope);
+    std::size_t const identity = source.find("ProtectedNorthrendBoardingGoal(destMap, destX, destY, destZ) &&", scope);
     std::size_t const active = source.find("AutoWowZoneProgression::Active(guid);", identity);
     std::size_t const probe = source.find("if (!hearthReady || !hearthFar)");
     std::size_t const decision = source.find("Action action = DecideForGoal(");
