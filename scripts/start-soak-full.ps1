@@ -11,6 +11,8 @@ param(
     [Parameter(Mandatory = $true)][string]$RunId,
     [Parameter(Mandatory = $true)][string]$SnapshotName,
     [switch]$SkipWorld,
+    # Cohort GUIDs known not to arm (62961 Hedd: scripted one-HP fight); left pending without failing the start.
+    [uint32[]]$TolerateUnarmedGuids = @(62961),
     [string]$WorldserverBinary = '/root/autowow-upstream-s83-build/src/server/apps/worldserver',
     [string]$AuthserverBinary = '/root/autowow-upstream-s83-build/src/server/apps/authserver',
     [string]$AuthserverConfig = '/root/p1runtime/authserver-s83.conf'
@@ -58,7 +60,8 @@ function Invoke-CohortStartWithRetry {
     param(
         [Parameter(Mandatory = $true)][string]$CohortStartPath,
         [ValidateRange(1,100)][int]$Attempts = 8,
-        [ValidateRange(0,600)][int]$DelaySeconds = 30
+        [ValidateRange(0,600)][int]$DelaySeconds = 30,
+        [uint32[]]$Tolerate = @()
     )
     $preflightRaw = @(& $CohortStartPath -ControlMode Stock)
     $preflight = (($preflightRaw | Out-String) | ConvertFrom-Json)
@@ -71,6 +74,11 @@ function Invoke-CohortStartWithRetry {
             $pending = @($status.pending_guids | ForEach-Object { [uint32]$_ })
             if ([bool]$status.complete -and $pending.Count -eq 0) {
                 "cohort ok try $try"
+                return $status
+            }
+            $blocking = @($pending | Where-Object { $Tolerate -notcontains $_ })
+            if ($pending.Count -gt 0 -and $blocking.Count -eq 0) {
+                "cohort ok try $try (tolerated unarmed: $($pending -join ','))"
                 return $status
             }
             $lastError = "pending GUIDs: $($pending -join ',')"
@@ -253,7 +261,7 @@ foreach ($i in 1..120) {
 if (-not $ready) { return }
 Start-Sleep -Seconds 30
 
-$null = Invoke-CohortStartWithRetry -CohortStartPath (Join-Path $PSScriptRoot 'cohort\cohort-start.ps1')
+$null = Invoke-CohortStartWithRetry -CohortStartPath (Join-Path $PSScriptRoot 'cohort\cohort-start.ps1') -Tolerate $TolerateUnarmedGuids
 $scoutAuthMode = if (-not [string]::IsNullOrWhiteSpace($AuthserverBinary) -and
     -not [string]::IsNullOrWhiteSpace($AuthserverConfig)) { 'wsl' } else { 'windows' }
 $scoutStatus = Invoke-FullSoakScoutDispatch -AuthMode $scoutAuthMode -ServerRoot $root `
