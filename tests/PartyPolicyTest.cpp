@@ -4,9 +4,13 @@
  * or (at your option) any later version.
  */
 
-#include "PartyPolicy.h"
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
 #include "DungeonGatePolicy.h"
+#include "PartyPolicy.h"
+#include "ZoneProgressionPolicy.h"
 #include "gtest/gtest.h"
 
 namespace
@@ -630,6 +634,193 @@ TEST(PartyPolicyTest, SplitSquadRetirementFailsClosedForControlsAndForeignOwners
     EXPECT_TRUE(ShouldDisbandOrphan(true, true, false));  // permanent squad membership does not suppress cleanup
     EXPECT_FALSE(ShouldDisbandOrphan(true, true, true));  // pending split owns native mutation
     EXPECT_FALSE(ShouldDisbandOrphan(false, true, false));
+}
+
+MaterialDriverFacts SafeMaterialDriverFacts()
+{
+    MaterialDriverFacts facts;
+    facts.materialMode = true;
+    facts.registeredSquad = true;
+    facts.configuredRosterExact = true;
+    facts.nativeRosterExact = true;
+    facts.registeredLeaderExact = true;
+    facts.nativeLeaderExact = true;
+    facts.ordinaryGroup = true;
+    facts.guardMask = kMaterialDriverAllGuards;
+    facts.strategiesExact = false;
+    return facts;
+}
+
+TEST(PartyPolicyTest, MaterialDriverIsExplicitDefaultOffAndVersionedFailClosed)
+{
+    MaterialDriverFacts facts = SafeMaterialDriverFacts();
+    facts.materialMode = false;
+    EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Disabled);
+    facts.materialMode = true;
+    facts.version = kMaterialDriverPolicyVersion + 1;
+    EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Defer);
+    facts.version = kMaterialDriverPolicyVersion;
+    EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Repair);
+    facts.strategiesExact = true;
+    EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Noop);
+}
+
+TEST(PartyPolicyTest, MaterialDriverRequiresExactRegisteredNativeRosterAndLeaders)
+{
+    MaterialDriverFacts facts = SafeMaterialDriverFacts();
+    bool MaterialDriverFacts::* exact[] = {
+        &MaterialDriverFacts::registeredSquad,   &MaterialDriverFacts::configuredRosterExact,
+        &MaterialDriverFacts::nativeRosterExact, &MaterialDriverFacts::registeredLeaderExact,
+        &MaterialDriverFacts::nativeLeaderExact, &MaterialDriverFacts::ordinaryGroup};
+    for (auto member : exact)
+    {
+        facts.*member = false;
+        EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Defer);
+        facts.*member = true;
+    }
+}
+
+TEST(PartyPolicyTest, MaterialDriverRejectsEveryMissingCustodySafetyAndOwnerGuard)
+{
+    MaterialDriverFacts facts = SafeMaterialDriverFacts();
+    for (std::uint32_t bit = 1; bit <= MaterialDriverNoCampaignTravel; bit <<= 1)
+    {
+        facts.guardMask = kMaterialDriverAllGuards & ~bit;
+        EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Defer) << bit;
+    }
+    facts.guardMask = kMaterialDriverAllGuards | (1u << 31);  // unknown future owner fact also fails closed
+    EXPECT_EQ(DecideMaterialDriver(facts), MaterialDriverDecision::Defer);
+}
+
+TEST(PartyPolicyTest, MaterialDriverDeltaIsMinimalAndIdempotent)
+{
+    MaterialDriverDelta delta = PlanMaterialDriverDelta(false, false, true);
+    EXPECT_TRUE(delta.addGrind);
+    EXPECT_TRUE(delta.addNewRpg);
+    EXPECT_TRUE(delta.removeFollow);
+    EXPECT_TRUE(delta.Any());
+    delta = PlanMaterialDriverDelta(true, true, false);
+    EXPECT_FALSE(delta.Any());
+    delta = PlanMaterialDriverDelta(true, false, false);
+    EXPECT_FALSE(delta.addGrind);
+    EXPECT_TRUE(delta.addNewRpg);
+    EXPECT_FALSE(delta.removeFollow);
+    EXPECT_EQ(MaterialDriverRosterHash({3, 1, 2}), MaterialDriverRosterHash({1, 2, 3}));
+    EXPECT_NE(MaterialDriverRosterHash({1, 2}), MaterialDriverRosterHash({1, 2, 3}));
+}
+
+TEST(PartyPolicyTest, MaterialDriverRepairsIdleTargetWithoutInspectingAlreadyExactActivePeer)
+{
+    MaterialDriverDelta const activePeer = PlanMaterialDriverDelta(true, true, false);
+    EXPECT_FALSE(activePeer.Any());  // runtime skips its activity/owner getters before target admission
+
+    MaterialDriverFacts idleTarget = SafeMaterialDriverFacts();
+    EXPECT_EQ(DecideMaterialDriver(idleTarget), MaterialDriverDecision::Repair);
+
+    std::uint32_t const foreignControlled = kMaterialDriverAllGuards & ~MaterialDriverMasterNull;
+    EXPECT_FALSE(MaterialDriverCustodyReady(foreignControlled));  // any foreign-controlled peer blocks the crew
+    EXPECT_TRUE(MaterialDriverCustodyReady(kMaterialDriverAllGuards));
+}
+
+TEST(PartyPolicyTest, MaterialDriverZoneOwnerReadDistinguishesAbsentCurrentAndInvalidState)
+{
+    AutoWowZoneProgression::BotState state;
+    EXPECT_FALSE(AutoWowZoneProgression::ShouldDeferMaterialDriver(false, state));
+    EXPECT_FALSE(AutoWowZoneProgression::ShouldDeferMaterialDriver(true, state));
+    state.phase = AutoWowZoneProgression::Phase::Travel;
+    EXPECT_TRUE(AutoWowZoneProgression::ShouldDeferMaterialDriver(true, state));
+    state.phase = AutoWowZoneProgression::Phase::None;
+    state.version = AutoWowZoneProgression::kStateVersion + 1;
+    EXPECT_TRUE(AutoWowZoneProgression::ShouldDeferMaterialDriver(true, state));
+}
+
+std::string ReadModuleSource(char const* relative)
+{
+    std::ifstream input(std::filesystem::path(__FILE__).parent_path().parent_path() / relative,
+                        std::ios::in | std::ios::binary);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+std::size_t CountText(std::string const& text, std::string const& needle)
+{
+    std::size_t count = 0;
+    for (std::size_t at = 0; (at = text.find(needle, at)) != std::string::npos; at += needle.size())
+        ++count;
+    return count;
+}
+
+TEST(PartyPolicyTest, MaterialDriverRuntimeHasOnlyTheTwoAdmittedMaintenanceSites)
+{
+    std::string const runtime = ReadModuleSource("src/AutoWow/PartyRuntime.cpp");
+    std::string const squad = ReadModuleSource("src/Ai/World/Rpg/Action/NewRpgSquad.cpp");
+    ASSERT_FALSE(runtime.empty());
+    ASSERT_FALSE(squad.empty());
+    EXPECT_NE(squad.find("EnsureSquad(roster, gMaterialCrews)"), std::string::npos);
+    EXPECT_EQ(CountText(runtime, "MaintainMaterialDriver("), 3u);  // definition + intact + new registration
+
+    std::size_t const ensure = runtime.find("void EnsureSquad(");
+    std::size_t const combat = runtime.find("void CombatUpdate(", ensure);
+    ASSERT_NE(ensure, std::string::npos);
+    ASSERT_NE(combat, std::string::npos);
+    std::string const body = runtime.substr(ensure, combat - ensure);
+    std::size_t const intactRepair = body.find("MaintainMaterialDriver(registered, roster, group, materialCrew)");
+    std::size_t const intactReturn = body.find("return;", intactRepair);
+    std::size_t const baseline = body.find("s.nonCombat0 = ai->GetStrategies(BOT_STATE_NON_COMBAT)");
+    std::size_t const formedRepair = body.find("MaintainMaterialDriver(party, roster, group, materialCrew)");
+    EXPECT_NE(intactRepair, std::string::npos);
+    EXPECT_NE(intactReturn, std::string::npos);
+    EXPECT_LT(intactRepair, intactReturn);
+    EXPECT_NE(baseline, std::string::npos);
+    EXPECT_NE(formedRepair, std::string::npos);
+    EXPECT_LT(baseline, formedRepair);
+    EXPECT_NE(runtime.find("StrategyUndo(s.nonCombat0"), std::string::npos);
+}
+
+TEST(PartyPolicyTest, MaterialDriverZoneOwnerGetterIsReadOnlyAndVersionQualified)
+{
+    std::string const source = ReadModuleSource("src/Ai/World/Rpg/Action/NewRpgZoneProgression.cpp");
+    std::size_t const begin = source.find("bool MaterialDriverAdmissionBlocked(");
+    std::size_t const end = source.find("void CancelTrip(", begin);
+    ASSERT_NE(begin, std::string::npos);
+    ASSERT_NE(end, std::string::npos);
+    std::string const body = source.substr(begin, end - begin);
+    EXPECT_NE(body.find("gStates.find(guid)"), std::string::npos);
+    EXPECT_NE(body.find("ShouldDeferMaterialDriver(true, it->second)"), std::string::npos);
+    EXPECT_EQ(body.find("gStates["), std::string::npos);
+    EXPECT_EQ(body.find("LoadState("), std::string::npos);
+    EXPECT_EQ(body.find("StoreState("), std::string::npos);
+}
+
+TEST(PartyPolicyTest, MaterialDriverRepairPathHasNoControlOrGroupMutation)
+{
+    std::string const runtime = ReadModuleSource("src/AutoWow/PartyRuntime.cpp");
+    std::size_t const guardBegin = runtime.find("std::uint32_t MaterialDriverTargetGuards(");
+    std::size_t const guardEnd = runtime.find("std::string MaterialDriverChange(", guardBegin);
+    std::size_t const begin = runtime.find("void MaintainMaterialDriver(");
+    std::size_t const end = runtime.find("bool SuccessorsAlreadyNative(", begin);
+    ASSERT_NE(guardBegin, std::string::npos);
+    ASSERT_NE(guardEnd, std::string::npos);
+    ASSERT_NE(begin, std::string::npos);
+    ASSERT_NE(end, std::string::npos);
+    std::string const guards = runtime.substr(guardBegin, guardEnd - guardBegin);
+    std::string const body = runtime.substr(begin, end - begin);
+    std::size_t const legacyReturn = body.find("if (!materialCrew)");
+    ASSERT_NE(legacyReturn, std::string::npos);
+    EXPECT_LT(legacyReturn, body.find("Guids(party)"));
+    std::size_t const exactSkip = body.find("if (!deltas[i].Any())");
+    std::size_t const targetOwners = body.find("MaterialDriverTargetGuards(bots[i], ais[i])");
+    ASSERT_NE(exactSkip, std::string::npos);
+    ASSERT_NE(targetOwners, std::string::npos);
+    EXPECT_LT(exactSkip, targetOwners);
+    EXPECT_NE(body.find("MaterialDriverCustodyReady(allCustody)"), std::string::npos);
+    EXPECT_NE(body.find("ChangeStrategy(change, BOT_STATE_NON_COMBAT)"), std::string::npos);
+    EXPECT_NE(guards.find("AutoWowSafeRevive::ReadDiagnostic(guid)"), std::string::npos);
+    EXPECT_NE(guards.find("AutoWowDeathLoop::ReadDiagnostic(guid)"), std::string::npos);
+    EXPECT_NE(guards.find("MaterialDriverAdmissionBlocked(guid)"), std::string::npos);
+    EXPECT_NE(guards.find("MaterialStintAdmissionBlocked(guid)"), std::string::npos);
+    for (char const* forbidden : {"Reset(", "Disband(", "AddMember(", "Create(", "SetMaster(",
+                                  "SetAutoWowIndependentParty(", "TeleportTo(", "Login", "Replay", "Cleanup"})
+        EXPECT_EQ(body.find(forbidden), std::string::npos) << forbidden;
 }
 
 }  // namespace

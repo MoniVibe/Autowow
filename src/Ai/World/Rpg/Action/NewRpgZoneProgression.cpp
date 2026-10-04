@@ -101,6 +101,13 @@ static void StoreState(std::uint32_t guid, BotState const& s)
 
 bool Active(std::uint32_t guid) { return LoadState(guid).phase != Phase::None; }
 
+bool MaterialDriverAdmissionBlocked(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(gLock);
+    auto const it = gStates.find(guid);
+    return it != gStates.end() && ShouldDeferMaterialDriver(true, it->second);
+}
+
 void CancelTrip(std::uint32_t guid, std::uint64_t nowMs)
 {
     if (!Enabled())

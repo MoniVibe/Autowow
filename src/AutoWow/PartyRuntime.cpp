@@ -20,6 +20,7 @@
 #include "Config.h"
 #include "Creature.h"
 #include "DBCStores.h"
+#include "DeathLoopBreaker.h"
 #include "DungeonDeathRecoveryPolicy.h"
 #include "DungeonGatePolicy.h"
 #include "DungeonNavigator.h"
@@ -39,6 +40,7 @@
 #include "PlayerbotAI.h"
 #include "Playerbots.h"
 #include "SupplyPolicy.h"
+#include "SurvivalRecovery.h"
 #include "UnstickPolicy.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
@@ -1696,6 +1698,204 @@ bool OrdinaryGroup(Group* group)
     return group && !group->isRaidGroup() && !group->isBGGroup() && !group->isBFGroup() && !group->isLFGGroup();
 }
 
+std::uint32_t MaterialDriverCustody(Player* bot, PlayerbotAI* ai)
+{
+    if (!bot || !ai)
+        return 0;
+    std::uint32_t guards = MaterialDriverPlayerAi;
+    auto add = [&](MaterialDriverGuard guard, bool holds)
+    {
+        if (holds)
+            guards |= static_cast<std::uint32_t>(guard);
+    };
+    std::uint32_t const guid = bot->GetGUID().GetCounter();
+    add(MaterialDriverInWorld, bot->IsInWorld());
+    add(MaterialDriverIndependent, ai->IsAutoWowIndependentParty());
+    add(MaterialDriverNotReal, !ai->IsRealPlayer());
+    add(MaterialDriverNoRealMaster, !ai->HasRealPlayerMaster());
+    add(MaterialDriverMasterNull, ai->GetMaster() == nullptr);
+    add(MaterialDriverNotOracle, !AutoWowOracleRuntime::IsManagedBot(guid));
+    add(MaterialDriverNotProbe, !AutoWowDungeonProbe::IsProbeBot(guid));
+    add(MaterialDriverNotWorker,
+        !AutoWowGather::IsExplicitWorker(guid) && !ai->HasStrategy("worker gather", BOT_STATE_NON_COMBAT));
+    return guards;
+}
+
+std::uint32_t MaterialDriverTargetGuards(Player* bot, PlayerbotAI* ai)
+{
+    std::uint32_t guards = MaterialDriverCustody(bot, ai);
+    if (!MaterialDriverCustodyReady(guards))
+        return guards;
+    auto add = [&](MaterialDriverGuard guard, bool holds)
+    {
+        if (holds)
+            guards |= static_cast<std::uint32_t>(guard);
+    };
+    std::uint32_t const guid = bot->GetGUID().GetCounter();
+    AutoWowSafeRevive::Diagnostic const revive = AutoWowSafeRevive::ReadDiagnostic(guid);
+    AutoWowDeathLoop::Diagnostic const deathLoop = AutoWowDeathLoop::ReadDiagnostic(guid);
+    bool const recovery = revive.planned || revive.retreatPending || revive.retreating || revive.restPending ||
+                          revive.relocateOnRes || revive.relocate || deathLoop.relocate || deathLoop.restPending;
+    bool const idleMotion = !bot->isMoving() && (!bot->movespline || bot->movespline->Finalized()) &&
+                            bot->GetMotionMaster() &&
+                            bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == IDLE_MOTION_TYPE;
+    NewRpgInfo& rpg = ai->rpgInfo;
+    add(MaterialDriverAlive, bot->IsAlive());
+    add(MaterialDriverNotPaused, !ai->IsAutoWowPaused());
+    add(MaterialDriverOpenWorld,
+        bot->GetMap() && !bot->GetMap()->Instanceable() && !bot->GetMap()->IsBattlegroundOrArena());
+    add(MaterialDriverNotBattleground, !bot->InBattleground());
+    add(MaterialDriverNoTransport, !bot->GetTransport() && !bot->GetVehicle());
+    add(MaterialDriverNotFlying, !bot->IsInFlight());
+    add(MaterialDriverNotCombat, !bot->IsInCombat());
+    add(MaterialDriverNotTeleporting, !bot->IsBeingTeleported());
+    add(MaterialDriverNotCasting, !bot->IsNonMeleeSpellCast(false));
+    add(MaterialDriverNoMotion, idleMotion);
+    add(MaterialDriverNoZoneProgression, !AutoWowZoneProgression::MaterialDriverAdmissionBlocked(guid));
+    add(MaterialDriverNoErrand, !(AutoWowErrands::Enabled() && AutoWowErrands::MaterialStintAdmissionBlocked(guid)));
+    add(MaterialDriverNoQuest, !rpg.HasActiveQuestDirective());
+    add(MaterialDriverNoRecovery, !recovery);
+    add(MaterialDriverNoTravelStrategy, !ai->HasStrategy("travel", BOT_STATE_NON_COMBAT));
+    add(MaterialDriverRpgIdle, rpg.GetStatus() == RPG_IDLE);
+    add(MaterialDriverNoMoveFar, rpg.moveFarPos == WorldPosition());
+    add(MaterialDriverTravelIntentValid, rpg.travelIntent.version == TravelIntentPolicy::kIntentVersion);
+    add(MaterialDriverTravelIntentIdle, !rpg.travelIntent.active);
+    add(MaterialDriverNoCampaignTravel, !ai->HasCampaignTravelWork());
+    return guards;
+}
+
+std::string MaterialDriverChange(MaterialDriverDelta const& delta)
+{
+    std::string change;
+    auto append = [&](char const* token)
+    {
+        if (!change.empty())
+            change += ',';
+        change += token;
+    };
+    if (delta.addGrind)
+        append("+grind");
+    if (delta.addNewRpg)
+        append("+new rpg");
+    if (delta.removeFollow)
+        append("-follow");
+    return change;
+}
+
+// Repairs only an exact, fully present registered material crew. Reads are non-consuming; a rejected guard does
+// nothing and a later TeamTick retries. Baseline capture precedes both call sites, so Dissolve restores every token.
+void MaintainMaterialDriver(Party const& party, std::vector<std::uint32_t> const& configured, Group* group,
+                            bool materialCrew)
+{
+    if (!materialCrew)
+        return;
+    std::vector<std::uint32_t> const registered = Guids(party);
+    std::vector<std::uint32_t> const native = NativeRoster(group);
+    std::vector<std::uint32_t> sortedConfigured = configured;
+    std::sort(sortedConfigured.begin(), sortedConfigured.end());
+    std::vector<Player*> bots;
+    std::vector<PlayerbotAI*> ais;
+    std::vector<std::uint32_t> guardMasks;
+    std::vector<MaterialDriverDelta> deltas;
+    std::vector<bool> repair;
+    bool sameGroup = group != nullptr;
+    std::uint32_t allCustody = kMaterialDriverCustodyGuards;
+    for (std::uint32_t const guid : registered)
+    {
+        Player* bot = Find(guid);
+        PlayerbotAI* ai = AiOf(bot);
+        bots.push_back(bot);
+        ais.push_back(ai);
+        sameGroup = sameGroup && bot && bot->GetGroup() == group;
+        std::uint32_t const guards = MaterialDriverCustody(bot, ai);
+        guardMasks.push_back(guards);
+        allCustody &= guards;
+        MaterialDriverDelta const delta = ai ? PlanMaterialDriverDelta(ai->HasStrategy("grind", BOT_STATE_NON_COMBAT),
+                                                                       ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT),
+                                                                       ai->HasStrategy("follow", BOT_STATE_NON_COMBAT))
+                                             : MaterialDriverDelta{};
+        deltas.push_back(delta);
+        repair.push_back(false);
+    }
+    MaterialDriverFacts groupFacts{
+        kMaterialDriverPolicyVersion,
+        materialCrew,
+        party.why == Reason::Squad,
+        SameGuidSet(registered, sortedConfigured) && registered.size() == sortedConfigured.size(),
+        sameGroup && SameGuidSet(native, sortedConfigured) && native.size() == sortedConfigured.size(),
+        !sortedConfigured.empty() && party.leader == sortedConfigured.front(),
+        group && group->GetLeaderGUID().GetCounter() == party.leader,
+        OrdinaryGroup(group),
+        kMaterialDriverAllGuards,
+        true};
+    if (!MaterialDriverCustodyReady(allCustody) || DecideMaterialDriver(groupFacts) != MaterialDriverDecision::Noop)
+        return;
+
+    for (std::size_t i = 0; i < registered.size(); ++i)
+    {
+        if (!deltas[i].Any())
+            continue;  // already exact: do not inspect or reinterpret its active movement/owner state
+        guardMasks[i] = MaterialDriverTargetGuards(bots[i], ais[i]);
+        MaterialDriverFacts targetFacts = groupFacts;
+        targetFacts.guardMask = guardMasks[i];
+        targetFacts.strategiesExact = false;
+        repair[i] = DecideMaterialDriver(targetFacts) == MaterialDriverDecision::Repair;
+    }
+
+    std::string members = "[";
+    bool changed = false;
+    bool repairedExact = true;
+    std::size_t receiptMembers = 0;
+    for (std::size_t i = 0; i < registered.size(); ++i)
+    {
+        if (!repair[i])
+            continue;
+        MaterialDriverDelta const& delta = deltas[i];
+        std::string const change = MaterialDriverChange(delta);
+        bool const beforeGrind = !delta.addGrind;
+        bool const beforeNewRpg = !delta.addNewRpg;
+        bool const beforeFollow = delta.removeFollow;
+        if (!change.empty())
+            ais[i]->ChangeStrategy(change, BOT_STATE_NON_COMBAT);
+        bool const afterGrind = ais[i]->HasStrategy("grind", BOT_STATE_NON_COMBAT);
+        bool const afterNewRpg = ais[i]->HasStrategy("new rpg", BOT_STATE_NON_COMBAT);
+        bool const afterFollow = ais[i]->HasStrategy("follow", BOT_STATE_NON_COMBAT);
+        changed = changed || beforeGrind != afterGrind || beforeNewRpg != afterNewRpg || beforeFollow != afterFollow;
+        repairedExact = repairedExact && afterGrind && afterNewRpg && !afterFollow;
+        if (receiptMembers++)
+            members += ',';
+        members += "{\"guid\":" + std::to_string(registered[i]) + ",\"guards\":" + std::to_string(guardMasks[i]) +
+                   ",\"before\":{" + std::string("\"grind\":") + (beforeGrind ? "1" : "0") +
+                   ",\"new_rpg\":" + (beforeNewRpg ? "1" : "0") + ",\"follow\":" + (beforeFollow ? "1" : "0") +
+                   "},\"after\":{" + std::string("\"grind\":") + (afterGrind ? "1" : "0") +
+                   ",\"new_rpg\":" + (afterNewRpg ? "1" : "0") + ",\"follow\":" + (afterFollow ? "1" : "0") + "}}";
+    }
+    if (!changed)
+        return;
+    members += ']';
+    bool crewExact = true;
+    for (PlayerbotAI* ai : ais)
+        crewExact = crewExact && ai->HasStrategy("grind", BOT_STATE_NON_COMBAT) &&
+                    ai->HasStrategy("new rpg", BOT_STATE_NON_COMBAT) &&
+                    !ai->HasStrategy("follow", BOT_STATE_NON_COMBAT);
+    std::uint64_t const configuredHash = MaterialDriverRosterHash(sortedConfigured);
+    std::uint64_t const registeredHash = MaterialDriverRosterHash(registered);
+    std::uint64_t const nativeHash = MaterialDriverRosterHash(native);
+    std::string const fields =
+        ",\"policy_v\":" + std::to_string(kMaterialDriverPolicyVersion) +
+        ",\"profile\":\"material_crews\",\"pid\":" + std::to_string(party.id) +
+        ",\"crew\":" + std::to_string(configuredHash) + ",\"configured_hash\":" + std::to_string(configuredHash) +
+        ",\"configured_count\":" + std::to_string(sortedConfigured.size()) +
+        ",\"registered_hash\":" + std::to_string(registeredHash) +
+        ",\"registered_count\":" + std::to_string(registered.size()) +
+        ",\"native_hash\":" + std::to_string(nativeHash) + ",\"native_count\":" + std::to_string(native.size()) +
+        ",\"registered_leader\":" + std::to_string(party.leader) +
+        ",\"native_leader\":" + std::to_string(group->GetLeaderGUID().GetCounter()) + ",\"members\":" + members +
+        ",\"result\":\"" + (repairedExact && crewExact ? "repaired" : "partial") + "\"";
+    Emit(party, false, "material_driver", fields);
+    LOG_INFO("playerbots", "[Party] material_driver {}", fields);
+}
+
 bool SuccessorsAlreadyNative(std::vector<std::vector<std::uint32_t>> const& successors)
 {
     for (auto const& roster : successors)
@@ -1814,7 +2014,7 @@ bool RetireSplitSquad(std::vector<std::uint32_t> const& legacy,
     return true;
 }
 
-void EnsureSquad(std::vector<std::uint32_t> const& roster)
+void EnsureSquad(std::vector<std::uint32_t> const& roster, bool materialCrew)
 {
     std::uint64_t const now = NowMs();
     // The online roster: in world, a bot not managed by the oracle, not in a battleground or instance.
@@ -1829,6 +2029,7 @@ void EnsureSquad(std::vector<std::uint32_t> const& roster)
     }
     std::uint32_t id = 0;
     std::vector<std::uint32_t> slots;
+    Party registered;
     {
         std::lock_guard<std::mutex> guard(gLock);
         gSquadGuids.insert(roster.begin(), roster.end());
@@ -1836,6 +2037,7 @@ void EnsureSquad(std::vector<std::uint32_t> const& roster)
             if (party.why == Reason::Squad && std::find(roster.begin(), roster.end(), party.leader) != roster.end())
             {
                 id = pid;
+                registered = party;
                 for (Slot const& s : party.slots)
                     slots.push_back(s.guid);
             }
@@ -1853,7 +2055,10 @@ void EnsureSquad(std::vector<std::uint32_t> const& roster)
             intact = intact && mine && mine == group;
         }
         if (intact && group && group->GetMembersCount() == slots.size())
+        {
+            MaintainMaterialDriver(registered, roster, group, materialCrew);
             return;
+        }
         Dissolve(id, Disband::MemberOffline, now);
     }
     // A bot-only orphan group of roster members only (the core persists groups across a restart, this registry
@@ -1924,6 +2129,7 @@ void EnsureSquad(std::vector<std::uint32_t> const& roster)
         ai->SetMaster(nullptr);                // no follower mode: every member runs its own loop
         roles.push_back(Role::Dps);
     }
+    MaintainMaterialDriver(party, roster, group, materialCrew);
     Emit(party, false, "formed", PartyFields(party.id, Guids(party), roles, party.leader, party.why, 0, 0));
     LOG_INFO("playerbots", "[Party] pid={} formed why=squad leader={} members={}", party.id, bots.front()->GetName(),
              bots.size());

@@ -1086,6 +1086,116 @@ inline std::string RunSummaryFields(std::uint32_t bosses, std::uint32_t total, b
 
 // ---- material-crew migration ---------------------------------------------------------------------------
 
+// Material-crew driver repair is a world-thread-only, fail-closed maintenance operation. The caller folds
+// every configured member's live facts into guardMask; equality with kMaterialDriverAllGuards is intentional,
+// so an unknown newer guard/version cannot accidentally admit mutation.
+inline constexpr std::uint8_t kMaterialDriverPolicyVersion = 1;
+
+enum MaterialDriverGuard : std::uint32_t
+{
+    MaterialDriverPlayerAi = 1u << 0,
+    MaterialDriverInWorld = 1u << 1,
+    MaterialDriverAlive = 1u << 2,
+    MaterialDriverIndependent = 1u << 3,
+    MaterialDriverNotReal = 1u << 4,
+    MaterialDriverNoRealMaster = 1u << 5,
+    MaterialDriverMasterNull = 1u << 6,
+    MaterialDriverNotPaused = 1u << 7,
+    MaterialDriverNotOracle = 1u << 8,
+    MaterialDriverNotProbe = 1u << 9,
+    MaterialDriverNotWorker = 1u << 10,
+    MaterialDriverOpenWorld = 1u << 11,
+    MaterialDriverNotBattleground = 1u << 12,
+    MaterialDriverNoTransport = 1u << 13,
+    MaterialDriverNotFlying = 1u << 14,
+    MaterialDriverNotCombat = 1u << 15,
+    MaterialDriverNotTeleporting = 1u << 16,
+    MaterialDriverNotCasting = 1u << 17,
+    MaterialDriverNoMotion = 1u << 18,
+    MaterialDriverNoZoneProgression = 1u << 19,
+    MaterialDriverNoErrand = 1u << 20,
+    MaterialDriverNoQuest = 1u << 21,
+    MaterialDriverNoRecovery = 1u << 22,
+    MaterialDriverNoTravelStrategy = 1u << 23,
+    MaterialDriverRpgIdle = 1u << 24,
+    MaterialDriverNoMoveFar = 1u << 25,
+    MaterialDriverTravelIntentValid = 1u << 26,
+    MaterialDriverTravelIntentIdle = 1u << 27,
+    MaterialDriverNoCampaignTravel = 1u << 28
+};
+
+inline constexpr std::uint32_t kMaterialDriverAllGuards = (1u << 29) - 1u;
+inline constexpr std::uint32_t kMaterialDriverCustodyGuards =
+    MaterialDriverPlayerAi | MaterialDriverInWorld | MaterialDriverIndependent | MaterialDriverNotReal |
+    MaterialDriverNoRealMaster | MaterialDriverMasterNull | MaterialDriverNotOracle | MaterialDriverNotProbe |
+    MaterialDriverNotWorker;
+inline constexpr std::uint32_t kMaterialDriverTargetGuards = kMaterialDriverAllGuards & ~kMaterialDriverCustodyGuards;
+
+[[nodiscard]] inline constexpr bool MaterialDriverCustodyReady(std::uint32_t guardMask)
+{
+    return (guardMask & kMaterialDriverCustodyGuards) == kMaterialDriverCustodyGuards;
+}
+
+struct MaterialDriverFacts
+{
+    std::uint8_t version = kMaterialDriverPolicyVersion;
+    bool materialMode = false;
+    bool registeredSquad = false;
+    bool configuredRosterExact = false;
+    bool nativeRosterExact = false;
+    bool registeredLeaderExact = false;
+    bool nativeLeaderExact = false;
+    bool ordinaryGroup = false;
+    std::uint32_t guardMask = 0;
+    bool strategiesExact = false;
+};
+
+enum class MaterialDriverDecision : std::uint8_t
+{
+    Disabled = 0,
+    Defer,
+    Noop,
+    Repair
+};
+
+[[nodiscard]] inline constexpr MaterialDriverDecision DecideMaterialDriver(MaterialDriverFacts const& facts)
+{
+    if (!facts.materialMode)
+        return MaterialDriverDecision::Disabled;
+    if (facts.version != kMaterialDriverPolicyVersion || !facts.registeredSquad || !facts.configuredRosterExact ||
+        !facts.nativeRosterExact || !facts.registeredLeaderExact || !facts.nativeLeaderExact || !facts.ordinaryGroup ||
+        facts.guardMask != kMaterialDriverAllGuards)
+        return MaterialDriverDecision::Defer;
+    return facts.strategiesExact ? MaterialDriverDecision::Noop : MaterialDriverDecision::Repair;
+}
+
+struct MaterialDriverDelta
+{
+    bool addGrind = false;
+    bool addNewRpg = false;
+    bool removeFollow = false;
+    [[nodiscard]] constexpr bool Any() const { return addGrind || addNewRpg || removeFollow; }
+};
+
+[[nodiscard]] inline constexpr MaterialDriverDelta PlanMaterialDriverDelta(bool hasGrind, bool hasNewRpg,
+                                                                           bool hasFollow)
+{
+    return {!hasGrind, !hasNewRpg, hasFollow};
+}
+
+[[nodiscard]] inline std::uint64_t MaterialDriverRosterHash(std::vector<std::uint32_t> const& roster)
+{
+    std::vector<std::uint32_t> sorted = roster;
+    std::sort(sorted.begin(), sorted.end());
+    std::uint64_t hash = 1469598103934665603ull;
+    for (std::uint32_t const guid : sorted)
+    {
+        hash ^= guid;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
 // The persisted legacy squad group may span successor material crews after a restart. Retirement is admitted only
 // when the successors are an exact, exclusive partition of the expected legacy roster and at least two are nonempty.
 [[nodiscard]] inline bool SameGuidSet(std::vector<std::uint32_t> left, std::vector<std::uint32_t> right)
@@ -1196,7 +1306,7 @@ bool RetireSplitSquad(std::vector<std::uint32_t> const& legacy,
 // (reason squad, leader = the lowest online guid, all dps, no follower mode: every member keeps its own New-RPG loop).
 // Exempt from formation (its guids never join a formed party) and from supervision / the keep rules: a changed
 // online roster or a broken core group dissolves it here and the online members (at least two) re-form it.
-void EnsureSquad(std::vector<std::uint32_t> const& roster);
+void EnsureSquad(std::vector<std::uint32_t> const& roster, bool materialCrew = false);
 }  // namespace AutoWowParty
 
 #endif  // AUTOWOW_PARTY_POLICY_H

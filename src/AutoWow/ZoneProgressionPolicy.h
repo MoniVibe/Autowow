@@ -845,6 +845,13 @@ struct BotState
     bool noFlight = false;    // AutoWow.Unstick.V2: a flight leg of this trip fell back to idle; walk from now on
 };
 
+// Missing state is idle. An invalid stored version or an active trip owns movement and fails material-driver
+// admission closed; callers must use the non-inserting runtime getter below rather than normalized LoadState.
+[[nodiscard]] inline bool ShouldDeferMaterialDriver(bool tracked, BotState const& state)
+{
+    return tracked && (state.version != kStateVersion || state.phase != Phase::None);
+}
+
 // Starts (or restarts) a death_loop trip from `zone` to `hub`. The route leaves the bot's actual zone
 // (no road table applies: straight to the hub). portal = take the portal leg at once (the Travel phase
 // portals while mode is Portal and reissues <= MaxReissues). Check timers are kept.
@@ -919,6 +926,8 @@ inline bool NorthrendEnabled() { return detail::gEnabled && detail::gOutland && 
 void LoadConfig();
 // A graduation (travel or flight-path learning) is under way for this bot. Town runs wait for it.
 bool Active(std::uint32_t guid);
+// Read-only, non-inserting material-driver admission check. Invalid stored versions fail closed.
+bool MaterialDriverAdmissionBlocked(std::uint32_t guid);
 // AutoWow.Survival.HardEscape: drop any trip (and crossing chain) of this bot, no ledger line of its own
 // (the caller emits zone_move reason hard_escape), and hold new ones for GiveUpCooldownMs. Flag off: no-op.
 void CancelTrip(std::uint32_t guid, std::uint64_t nowMs);
