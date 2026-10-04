@@ -22,6 +22,7 @@
 #include "GameObject.h"
 #include "GameTime.h"
 #include "GearUpgradePolicy.h"
+#include "NoWhitePolicy.h"
 #include "Item.h"
 #include "ItemUsageValue.h"
 #include "Log.h"
@@ -43,6 +44,13 @@ namespace AutoWowTrade
 {
 namespace
 {
+// AutoWow.Gear.NoWhite: an auction gear weapon is ledger reason ah_weapon (the weapon floor's source b).
+char const* GearReason(std::uint32_t item)
+{
+    ItemTemplate const* proto = AutoWowNoWhite::Enabled() ? sObjectMgr->GetItemTemplate(item) : nullptr;
+    return proto && proto->Class == ITEM_CLASS_WEAPON ? "ah_weapon" : "ah_gear";
+}
+
 // gain != 0: an AutoWow.Gear.AuctionUpgrades purchase (ledger reason ah_gear, + gain; action stays buy).
 void Emit(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price, std::int64_t gold,
           std::uint32_t ah, std::uint32_t gain = 0)
@@ -50,7 +58,7 @@ void Emit(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::u
     LOG_INFO("playerbots", "[Trade] bot={} {} item={} count={} price={} gold={} ah={}", bot->GetName(),
              ActionName(a), item, count, price, gold, ah);
     if (AutoWowQuestLedger::Enabled())
-        AutoWowQuestLedger::EmitTrade(bot, gain ? "ah_gear" : ActionName(a),
+        AutoWowQuestLedger::EmitTrade(bot, gain ? GearReason(item) : ActionName(a),
                                       LedgerFields(a, item, count, price, gold, ah, nullptr, gain));
 }
 
@@ -115,8 +123,11 @@ std::vector<Buy> PlanAhGear(PlayerbotAI* botAI, Player* bot, AuctionHouseObject*
         if (proto->ItemLevel <= wornIlvl)
             continue;
         offers.push_back({id, a->item_template, a->buyout, proto->ItemLevel - wornIlvl, slot,
-                          proto->InventoryType == INVTYPE_2HWEAPON});
+                          proto->InventoryType == INVTYPE_2HWEAPON, static_cast<std::uint8_t>(proto->Quality)});
     }
+    // AutoWow.Gear.NoWhite: never a grey / white weapon from the auction house.
+    if (AutoWowNoWhite::Enabled())
+        AutoWowNoWhite::DropWhiteWeapons(offers);
     uint64 const repair = context->GetValue<uint32>("repair cost")->Get();
     uint64 const budget = AutoWowGear::AhBudget(money, level, repair);
     std::vector<AutoWowGear::AhOffer> const plan =
@@ -129,6 +140,11 @@ std::vector<Buy> PlanAhGear(PlayerbotAI* botAI, Player* bot, AuctionHouseObject*
     {
         LOG_INFO("playerbots", "[AhGear] bot={} plan ah={} item={} slot={} price={} ilvl_gain={}", bot->GetName(), o.id,
                  o.item, static_cast<uint32>(o.slot), o.price, o.gain);
+        if (AutoWowNoWhite::Enabled() && (AutoWowNoWhite::FloorSlotsOf(bot) & (1u << o.slot)))
+            LOG_INFO("playerbots", "[NoWhite] bot={} source=ah slot={} item={} quality={} price={} ilvl_gain={} "
+                     "floor={} lvl={}", bot->GetName(), static_cast<uint32>(o.slot), o.item,
+                     static_cast<uint32>(o.quality), o.price, o.gain,
+                     AutoWowNoWhite::FloorIlvl(AutoWowNoWhite::Get(), level), level);
         buys.push_back({o.id, o.item, 1, static_cast<uint32>(o.price), Want::Upgrade, o.gain});
     }
     return buys;

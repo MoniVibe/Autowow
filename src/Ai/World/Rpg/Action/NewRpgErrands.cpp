@@ -26,6 +26,7 @@
 #include "Log.h"
 #include "MapMgr.h"
 #include "NewRpgBaseAction.h"
+#include "NoWhitePolicy.h"
 #include "ObjectMgr.h"
 #include "SupplyPolicy.h"
 #include "SelfCraftPolicy.h"
@@ -661,6 +662,31 @@ std::vector<AutoWowGear::Offer> GearOffers(Player* bot, PlayerbotAI* botAI, Town
                                   proto->InventoryType == INVTYPE_WEAPONMAINHAND || o.twoHand;
                 bool const off = dualWield && (proto->InventoryType == INVTYPE_WEAPON ||
                                                proto->InventoryType == INVTYPE_WEAPONOFFHAND);
+                // AutoWow.Gear.NoWhite: a grey / white vendor weapon only as the last resort for that slot (f).
+                if (AutoWowNoWhite::Enabled() && proto->Quality < AutoWowNoWhite::kQualityGreen)
+                {
+                    bool const mainOk = main && AutoWowNoWhite::VendorWhiteAllowed(bot, EQUIPMENT_SLOT_MAINHAND);
+                    bool const offOk = off && AutoWowNoWhite::VendorWhiteAllowed(bot, EQUIPMENT_SLOT_OFFHAND);
+                    bool const rangedOk = hunterRanged && AutoWowNoWhite::VendorWhiteAllowed(bot, EQUIPMENT_SLOT_RANGED);
+                    if (mainOk || offOk || rangedOk)
+                        LOG_INFO("playerbots", "[NoWhite] bot={} source=vendor_last_resort item={} ilvl={} quality={} "
+                                 "main={} off={} ranged={} lvl={}", bot->GetName(), item, proto->ItemLevel,
+                                 proto->Quality, mainOk, offOk, rangedOk, bot->GetLevel());
+                    if (!mainOk && !offOk && !rangedOk)
+                        continue;
+                    o.slot = EQUIPMENT_SLOT_MAINHAND;
+                    if (mainOk)
+                        offers.push_back(o);
+                    o.slot = EQUIPMENT_SLOT_OFFHAND;
+                    if (offOk)
+                        offers.push_back(o);
+                    o.slot = EQUIPMENT_SLOT_RANGED;
+                    if (rangedOk && (proto->SubClass == ITEM_SUBCLASS_WEAPON_BOW ||
+                                     proto->SubClass == ITEM_SUBCLASS_WEAPON_GUN ||
+                                     proto->SubClass == ITEM_SUBCLASS_WEAPON_CROSSBOW))
+                        offers.push_back(o);
+                    continue;
+                }
                 if (main)
                 {
                     o.slot = EQUIPMENT_SLOT_MAINHAND;
@@ -916,6 +942,19 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
             o.ahGearDue = AutoWowGear::AhRunDue(AutoWowGear::GetAh(), o.level, s.lastAhGearLevel, money,
                                                 ai->GetAiObjectContext()->GetValue<uint32>("repair cost")->Get(),
                                                 AvgIlvl(bot));
+    // AutoWow.Gear.NoWhite: a weapon slot under the floor -> an auction run once per level (b, whatever the average
+    // ilvl / purse: the grant tops it up), and a vendor run once per level only as the last resort (f).
+    if (AutoWowNoWhite::Enabled())
+        if (std::uint32_t const due = AutoWowNoWhite::FloorSlotsOf(bot))
+        {
+            if (AutoWowGear::AuctionEnabled() && AutoWowTrade::Enabled() && o.level > s.lastAhGearLevel)
+                o.ahGearDue = true;
+            if (AutoWowGear::Enabled() && o.level > s.lastGearLevel)
+                for (std::uint8_t const slot : {AutoWowNoWhite::kSlotMainHand, AutoWowNoWhite::kSlotOffHand,
+                                                AutoWowNoWhite::kSlotRanged})
+                    if ((due & (1u << slot)) && AutoWowNoWhite::VendorWhiteAllowed(bot, slot))
+                        o.gear.soft = o.gear.urgent = true;
+        }
     if (AutoWowSupply::Outfit())
     {
         o.missingTools = BotMissingTools(bot);
@@ -1272,6 +1311,15 @@ void LoadConfig()
     fl.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FlowTickMs", 60000);
     fl.maxMails = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FlowMaxMails", 10);
     fl.minQuality = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FlowMinQuality", 1);
+    // AutoWow.Gear.NoWhite (NoWhitePolicy.h; the world pass is AutoWowNoWhite::WorldUpdate).
+    AutoWowNoWhite::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.NoWhite", false);
+    AutoWowNoWhite::Params& nw = AutoWowNoWhite::detail::gParams;
+    nw.floorPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteFloorPct", 100);
+    nw.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteTickMs", 60000);
+    nw.auctionWaitPasses = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteAuctionWaitPasses", 20);
+    nw.retryPasses = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteRetryPasses", 60);
+    nw.maxMails = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteMaxMails", 10);
+    nw.starterIlvl = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteStarterIlvl", 5);
     if (detail::gEnabled)
         BuildCatalog();
 }
@@ -2028,6 +2076,16 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
                 else
                     PlanGear(bot, botAI, *town, team, s, in);
             }
+            // AutoWow.Gear.NoWhite (b): an auction stop for a weapon under the floor asks the treasury to top the purse
+            // up to the gear reserve + one auction item cap (the stop waits for the grant).
+            if (AutoWowNoWhite::Enabled() && AutoWowSupply::OutfitGear() && in.auction &&
+                (s.needs & NeedAhGear) && AutoWowNoWhite::FloorSlotsOf(bot))
+            {
+                uint64 const allowance = AutoWowNoWhite::AhAllowanceCopper(AutoWowGear::GetAh(), bot->GetLevel());
+                floorCopper += allowance;
+                LOG_INFO("playerbots", "[NoWhite] bot={} source=ah_grant allowance={} money={} lvl={}", bot->GetName(),
+                         allowance, bot->GetMoney(), bot->GetLevel());
+            }
             if (AutoWowSupply::Outfit())
                 PlanOutfit(bot, *town, team, in, floorCopper);
             s.plan = PlanStops(*town, in);
@@ -2280,7 +2338,9 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             // AutoWow.Supply.Outfit: a trainer / tool stop waits for the bot's pending grant (the world tick pays
             // or refuses it within AutoWow.Supply.TickMs; the stop timeout bounds the wait).
             // AutoWow.Supply.OutfitGear: the floors' food / weapon stops wait for it too.
-            uint32 const grantOps = OpTrain | OpTool | (AutoWowSupply::OutfitGear() ? uint32(OpBuy | OpGear) : 0u);
+            uint32 const grantOps = OpTrain | OpTool | (AutoWowSupply::OutfitGear() ? uint32(OpBuy | OpGear) : 0u) |
+                                    // AutoWow.Gear.NoWhite: the auction stop waits for the floor weapon's grant too.
+                                    (AutoWowNoWhite::Enabled() && AutoWowSupply::OutfitGear() ? uint32(OpAuction) : 0u);
             if ((st.ops & grantOps) && AutoWowSupply::Outfit() && AutoWowSupply::GrantPending(guid))
             {
                 if (bot->isMoving())
@@ -2643,6 +2703,9 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             AhGearLevelAfterScan(s.lastAhGearLevel, bot->GetLevel(), s.needs, ahGearScanned);
         for (std::size_t k = 0; k < ahGear.size() && k < s.ahGearItems.size(); ++k)
             s.ahGearItems[k] = ahGear[k];
+        // AutoWow.Gear.NoWhite: source (b) ran; the world pass may go on to the hand-me-downs.
+        if (AutoWowNoWhite::Enabled() && ahGearScanned)
+            AutoWowNoWhite::MarkAuctionTried(static_cast<uint32>(bot->GetGUID().GetCounter()));
     }
     // AutoWow.Errands.Mounts (only planned with the flag on): the rank through the trainer's own teach path (its
     // price, reputation discount and checks), then the mount bought unless held and learned by using it.

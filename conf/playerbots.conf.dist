@@ -3835,6 +3835,27 @@ AutoWow.Gear.FlowTickMs = 60000
 AutoWow.Gear.FlowMaxMails = 10
 AutoWow.Gear.FlowMinQuality = 1
 
+# No white / grey weapons (NoWhitePolicy.h; default 0). A weapon slot (main hand; a hunter's ranged; a dual wielder's
+# off hand holding a weapon) is under the floor when empty, grey / white, or below NoWhiteFloorPct of the green item
+# level curve: L+5 to L57, 62 + 4.5 x (L - 58) to L70, 130 + 6.3 x (L - 71) to L80. Covers the cohort, the squad roster
+# and the supply roles (artisans / reps). Sources in order: (a) own bag / bank weapons (world pass, swapped in at once);
+# (b) the auction gear errand (needs AutoWow.Gear.AuctionUpgrades + AutoWow.Trade.Enable; whites dropped; with
+# AutoWow.Supply.OutfitGear the treasury tops the purse up to the gear reserve + one auction item cap), errand bots get
+# NoWhiteAuctionWaitPasses world passes for it; (c) a hand-me-down weapon from a same-faction non-role member's loose
+# bags, mailed with the gear flow subject (at most NoWhiteMaxMails per pass; the mail run trigger needs AutoWow.Gear.Flow);
+# (d) a weapon order to the Smiths house (WeaponOrderPolicy.h queue, consumed by the smith line); (e) a quest choice
+# reward that is a usable weapon clearing the floor wins; (f) a vendor white only as a last resort (worn weapon missing
+# / grey / ilvl <= NoWhiteStarterIlvl, and a, b, c found nothing; needs AutoWow.Gear.Upgrades). The sources start over
+# on a level-up or after NoWhiteRetryPasses passes. Logs "[NoWhite]"; errand ledger rows weapon_floor / handdown_weapon /
+# smith_order, trade rows ah_weapon.
+AutoWow.Gear.NoWhite = 0
+AutoWow.Gear.NoWhiteFloorPct = 100
+AutoWow.Gear.NoWhiteTickMs = 60000
+AutoWow.Gear.NoWhiteAuctionWaitPasses = 20
+AutoWow.Gear.NoWhiteRetryPasses = 60
+AutoWow.Gear.NoWhiteMaxMails = 10
+AutoWow.Gear.NoWhiteStarterIlvl = 5
+
 # Self-sufficiency secondary professions for cohort adventurers (SelfCraftPolicy.h; default 0). Not supply
 # reps / artisans, not Oracle-managed bots. Learning is the stock errand trainer stop (the learn filter admits
 # AutoWow.Professions.Secondaries, default 129,185,356; ranks and recipes cost real gold). With the flag on,
