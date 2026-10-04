@@ -1,28 +1,3 @@
-From 456c24806f2fa6c802a30f632a452f4a092ab58f Mon Sep 17 00:00:00 2001
-From: Monivibe <shonhay@gmail.com>
-Date: Wed, 23 Sep 2026 03:00:13 +0300
-Subject: [PATCH 1/4] AutoWoW core delta: import live state (WIP checkpoint
- 2026-09-23)
-
-On pinned mod-playerbots/azerothcore-wotlk 52f58186. Silverpine
-script tweak, unit-test CMake/mock hooks, BossApproach policy headers
-+ tests. Previously unversioned; history before this is unrecoverable.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
----
- src/AutoWow/BossApproachAggroPolicy.h         | 117 +++++++++
- src/AutoWow/BossApproachPolicy.h              | 245 ++++++++++++++++++
- .../zone_silverpine_forest.cpp                |   2 +-
- src/test/CMakeLists.txt                       |   7 +
- src/test/mocks/WorldMock.h                    |   4 +
- tests/BossApproachAggroPolicyTest.cpp         | 100 +++++++
- tests/BossApproachPolicyTest.cpp              | 146 +++++++++++
- 7 files changed, 620 insertions(+), 1 deletion(-)
- create mode 100644 src/AutoWow/BossApproachAggroPolicy.h
- create mode 100644 src/AutoWow/BossApproachPolicy.h
- create mode 100644 tests/BossApproachAggroPolicyTest.cpp
- create mode 100644 tests/BossApproachPolicyTest.cpp
-
 diff --git a/src/AutoWow/BossApproachAggroPolicy.h b/src/AutoWow/BossApproachAggroPolicy.h
 new file mode 100644
 index 000000000..58ea64036
@@ -397,8 +372,57 @@ index 000000000..61e54350f
 +}
 +
 +#endif  // MOD_PLAYERBOTS_AUTOWOW_BOSS_APPROACH_POLICY_H
+diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
+index f1a236f65..3b0860d69 100644
+--- a/src/server/game/Spells/Spell.cpp
++++ b/src/server/game/Spells/Spell.cpp
+@@ -23,6 +23,7 @@
+ #include "CellImpl.h"
+ #include "Common.h"
+ #include "ConditionMgr.h"
++#include "Config.h"
+ #include "DisableMgr.h"
+ #include "DynamicObject.h"
+ #include "GameObjectAI.h"
+@@ -64,6 +65,18 @@
+ 
+ extern pEffect SpellEffects[TOTAL_SPELL_EFFECTS];
+ 
++// AutoWoW gatherscale (AutoWow.Gather.AnySkill, default 0; the key lives in the playerbots module conf):
++// a player who knows Herbalism, Mining or Skinning (pure skill >= 1) may gather a node / corpse above its
++// skill. The module scales the yield by the deficit. Flag off: every caller keeps its stock rejection.
++static bool AutoWowGatherAnySkill(WorldObject const* caster, uint32 skillId)
++{
++    if (skillId != SKILL_HERBALISM && skillId != SKILL_MINING && skillId != SKILL_SKINNING)
++        return false;
++    Player const* player = caster ? caster->ToPlayer() : nullptr;
++    return player && player->GetPureSkillValue(skillId) >= 1 &&
++           sConfigMgr->GetOption<bool>("AutoWow.Gather.AnySkill", false, false);
++}
++
+ SpellDestination::SpellDestination()
+ {
+     _position.Relocate(0, 0, 0, 0);
+@@ -6517,7 +6530,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* /*param1*/, uint32* /*para
+                     int32 skillValue = unitCaster->ToPlayer()->GetSkillValue(skill);
+                     int32 TargetLevel = m_targets.GetUnitTarget()->GetLevel();
+                     int32 ReqValue = (skillValue < 100 ? (TargetLevel - 10) * 10 : TargetLevel * 5);
+-                    if (ReqValue > skillValue)
++                    if (ReqValue > skillValue && !AutoWowGatherAnySkill(m_caster, skill))
+                         return SPELL_FAILED_LOW_CASTLEVEL;
+ 
+                     break;
+@@ -8755,7 +8768,7 @@ SpellCastResult Spell::CanOpenLock(uint32 effIndex, uint32 lockId, SkillType& sk
+                             skillValue += m_spellInfo->Effects[effIndex].CalcValue();
+                         }
+ 
+-                        if (skillValue < reqSkillValue)
++                        if (skillValue < reqSkillValue && (m_CastItem || !AutoWowGatherAnySkill(m_caster, skillId)))
+                             return SPELL_FAILED_LOW_CASTLEVEL;
+                     }
+ 
 diff --git a/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp b/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
-index 1147fdf04..7a0547af9 100644
+index 282ae4525..aa315a1e0 100644
 --- a/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
 +++ b/src/server/scripts/EasternKingdoms/zone_silverpine_forest.cpp
 @@ -114,7 +114,7 @@ public:
@@ -411,10 +435,10 @@ index 1147fdf04..7a0547af9 100644
          }
  
 diff --git a/src/test/CMakeLists.txt b/src/test/CMakeLists.txt
-index 6a143748c..5fd3166f7 100644
+index 6781d4347..1f7fce5df 100644
 --- a/src/test/CMakeLists.txt
 +++ b/src/test/CMakeLists.txt
-@@ -34,6 +34,7 @@ target_link_libraries(
+@@ -35,6 +35,7 @@ target_link_libraries(
  # Add module test sources if any modules registered tests
  get_property(MODULE_TEST_SOURCES GLOBAL PROPERTY ACORE_MODULE_TEST_SOURCES)
  get_property(MODULE_TEST_INCLUDES GLOBAL PROPERTY ACORE_MODULE_TEST_INCLUDES)
@@ -422,7 +446,7 @@ index 6a143748c..5fd3166f7 100644
  
  if(MODULE_TEST_SOURCES)
      target_sources(unit_tests PRIVATE ${MODULE_TEST_SOURCES})
-@@ -51,6 +52,12 @@ if(TARGET modules)
+@@ -52,6 +53,12 @@ if(TARGET modules)
      target_link_libraries(unit_tests modules)
  endif()
  
@@ -436,20 +460,10 @@ index 6a143748c..5fd3166f7 100644
          NAME
          unit
 diff --git a/src/test/mocks/WorldMock.h b/src/test/mocks/WorldMock.h
-index e96e38b47..01b12afc9 100644
+index 23cc89982..93e994770 100644
 --- a/src/test/mocks/WorldMock.h
 +++ b/src/test/mocks/WorldMock.h
-@@ -76,6 +76,9 @@ public:
-     MOCK_METHOD(LocaleConstant, GetAvailableDbcLocale, (LocaleConstant locale), (const));
-     MOCK_METHOD(void, LoadDBVersion, ());
-     MOCK_METHOD(char const *, GetDBVersion, (), (const));
-+#ifdef MOD_PLAYERBOTS
-+    MOCK_METHOD(char const *, GetPlayerbotsDBRevision, (), (const));
-+#endif
-     MOCK_METHOD(void, UpdateAreaDependentAuras, ());
-     MOCK_METHOD(uint32, GetCleaningFlags, (), (const));
-     MOCK_METHOD(void, SetCleaningFlags, (uint32 flags), ());
-@@ -84,6 +87,7 @@ public:
+@@ -84,6 +84,7 @@ public:
      MOCK_METHOD(time_t, GetNextTimeWithMonthAndHour, (int8 month, int8 hour), ());
      MOCK_METHOD(std::string const&, GetRealmName, (), (const));
      MOCK_METHOD(void, SetRealmName, (std::string name), ());
@@ -715,6 +729,3 @@ index 000000000..0b00c0892
 +    facts = ReadyFacts();
 +    EXPECT_EQ(Evaluate(facts).phase, Phase::Ready);
 +}
--- 
-2.43.0
-

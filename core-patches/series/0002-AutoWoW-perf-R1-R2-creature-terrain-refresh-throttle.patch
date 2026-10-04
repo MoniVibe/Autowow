@@ -1,7 +1,7 @@
 From 2d5433a2596c099d4eefedcf32196da24f4448e8 Mon Sep 17 00:00:00 2001
 From: Monivibe <shonhay@gmail.com>
 Date: Wed, 23 Sep 2026 04:00:33 +0300
-Subject: [PATCH 2/3] AutoWoW perf R1+R2: creature terrain refresh throttle,
+Subject: [PATCH 2/4] AutoWoW perf R1+R2: creature terrain refresh throttle,
  cached creature script id
 
 R1 (flagged, default OFF): Map::CreatureRelocation re-ran the full vmap

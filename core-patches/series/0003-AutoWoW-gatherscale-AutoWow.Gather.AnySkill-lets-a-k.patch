@@ -1,7 +1,7 @@
 From 720a711f90a2dc0672a6ce73de121c4ecf3ec9de Mon Sep 17 00:00:00 2001
 From: Monivibe <shonhay@gmail.com>
 Date: Mon, 28 Sep 2026 12:24:52 +0300
-Subject: [PATCH 3/3] AutoWoW gatherscale: AutoWow.Gather.AnySkill lets a known
+Subject: [PATCH 3/4] AutoWoW gatherscale: AutoWow.Gather.AnySkill lets a known
  gatherer work any node (default 0)
 
 Owner rule 2026-09-28: gathering is always allowed once the profession is known; the yield scales

@@ -1,0 +1,32 @@
+From 6cf9009f639b10f2dcc8983fd6f514de206137ba Mon Sep 17 00:00:00 2001
+From: Monivibe <shonhay@gmail.com>
+Date: Wed, 30 Sep 2026 22:55:10 +0300
+Subject: [PATCH 4/4] fix(Core): Preserve gathering gate for world-object
+ casters
+
+Upstream Spell now stores a WorldObject caster. Accept that type and preserve null/non-player rejection in the existing optional AutoWoW gathering gate.
+---
+ src/server/game/Spells/Spell.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/server/game/Spells/Spell.cpp b/src/server/game/Spells/Spell.cpp
+index 2a0d057a8..3b0860d69 100644
+--- a/src/server/game/Spells/Spell.cpp
++++ b/src/server/game/Spells/Spell.cpp
+@@ -68,11 +68,11 @@ extern pEffect SpellEffects[TOTAL_SPELL_EFFECTS];
+ // AutoWoW gatherscale (AutoWow.Gather.AnySkill, default 0; the key lives in the playerbots module conf):
+ // a player who knows Herbalism, Mining or Skinning (pure skill >= 1) may gather a node / corpse above its
+ // skill. The module scales the yield by the deficit. Flag off: every caller keeps its stock rejection.
+-static bool AutoWowGatherAnySkill(Unit const* caster, uint32 skillId)
++static bool AutoWowGatherAnySkill(WorldObject const* caster, uint32 skillId)
+ {
+     if (skillId != SKILL_HERBALISM && skillId != SKILL_MINING && skillId != SKILL_SKINNING)
+         return false;
+-    Player const* player = caster->ToPlayer();
++    Player const* player = caster ? caster->ToPlayer() : nullptr;
+     return player && player->GetPureSkillValue(skillId) >= 1 &&
+            sConfigMgr->GetOption<bool>("AutoWow.Gather.AnySkill", false, false);
+ }
+-- 
+2.43.0
+
