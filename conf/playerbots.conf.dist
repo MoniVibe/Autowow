@@ -3921,6 +3921,20 @@ AutoWow.Gear.AuctionPriceMult = 20
 AutoWow.Gear.AuctionIlvlPct = 75
 AutoWow.Gear.AuctionMinSpendPct = 50
 
+# Catch-up correction for the auction gear path (GearUpgradePolicy.h; default 0; refines AutoWow.Gear.AuctionUpgrades,
+# no effect without it). Fixes two reasons Outland / Northrend bots stayed under-geared (lane BI gearaudit, live DB
+# soak S118, cohort 62955-63004 at L66-79: worn avg ilvl 53-115 vs real green content ~133 at L70 / ~162 at L75 /
+# ~174 at L78; 149 of 850 meaningful slots empty, 94% of them trinkets, off hand, rings, neck, ranged):
+#   1. the AuctionIlvlPct run-due test compared the average equipped item level against (level + 5), a vanilla
+#      AH-census curve that is ~half of real content above L55, so the catch-up run fired for only 9 of the 45 L58+
+#      cohort bots. With this on the expectation uses the real per-band green curve (as AutoWow.Gear.NoWhite: L+5 to
+#      L57, 62 + 4.5 x (L - 58) to L70, 130 + 6.3 x (L - 71) up) and all 45 become due.
+#   2. a visit walked slots in a fixed order (weapons, armor, then neck / rings / trinkets LAST) capped at
+#      AuctionMaxBuys, so the empty accessory slots were never reached. With this on the armor + accessory tail is
+#      ordered by each slot's best listing (an empty slot's full-ilvl gain ranks high), so those slots get filled.
+# Still the AuctionUpgrades buy / mail / equip pipeline and real gold within budget; no free items.
+AutoWow.Gear.CatchUp = 0
+
 # Gear flow among the gear recipients (GearUpgradePolicy.h; default 0; the cohort, AutoWow.Supply.PriorityGuids and
 # the squad roster, no working roles). Supply gear lines deliver tradeable pieces only (a bound piece an artisan wore
 # no longer jams its line). Every FlowTickMs, on the world thread, each loose tradeable weapon / armor piece of

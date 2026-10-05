@@ -8,6 +8,7 @@
 # test-enabled build tree (-DBUILD_TESTING=ON, WSL/GCC) compiles these.
 if (BUILD_TESTING)
   set_property(GLOBAL APPEND PROPERTY ACORE_MODULE_TEST_SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/tests/GearUpgradePolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/QuestObjectiveResolutionTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/AutoWowQuestLedgerTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ExactQuestAttackRecoveryPolicyTest.cpp"

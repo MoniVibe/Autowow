@@ -1414,6 +1414,9 @@ void LoadConfig()
     ah.priceMult = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionPriceMult", 20);
     ah.ilvlPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionIlvlPct", 75);
     ah.minSpendPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AuctionMinSpendPct", 50);
+    // AutoWow.Gear.CatchUp (GearUpgradePolicy.h): recalibrate the auction catch-up to the real green ilvl curve and
+    // let a visit reach empty accessory slots. Refines AutoWow.Gear.AuctionUpgrades; no effect on its own.
+    AutoWowGear::detail::gCatchUpEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.CatchUp", false);
     // AutoWow.Gear.Flow (GearUpgradePolicy.h; the pass runs on the world thread, AutoWowSupply::GearFlowUpdate).
     AutoWowGear::detail::gFlowEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.Flow", false);
     AutoWowGear::FlowParams& fl = AutoWowGear::detail::gFlowParams;
