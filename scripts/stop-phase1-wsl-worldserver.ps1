@@ -179,15 +179,15 @@ $script:RuntimeDistro = if ($state -and (Test-StateProperty -InputObject $state 
     -not [string]::IsNullOrWhiteSpace([string]$state.distro)) { [string]$state.distro } else { $WslDistro }
 
 Invoke-StopBoundary -Name 'StopWorld' -ProductionAction {
-    & wsl.exe -d $script:RuntimeDistro -u root --exec pkill -TERM -x worldserver 2>$null
+    & wsl.exe -d $script:RuntimeDistro -u root --exec pkill -TERM -f '/worldserver(-s[0-9]+)? -c' 2>$null
     $deadline = (Get-Date).AddSeconds(30)
     do {
         Start-Sleep -Milliseconds 500
-        & wsl.exe -d $script:RuntimeDistro -u root --exec pgrep -x worldserver *> $null
+        & wsl.exe -d $script:RuntimeDistro -u root --exec pgrep -f '/worldserver(-s[0-9]+)? -c' *> $null
         $running = $LASTEXITCODE -eq 0
     } while ($running -and (Get-Date) -lt $deadline)
     if ($running) {
-        & wsl.exe -d $script:RuntimeDistro -u root --exec pkill -KILL -x worldserver 2>$null
+        & wsl.exe -d $script:RuntimeDistro -u root --exec pkill -KILL -f '/worldserver(-s[0-9]+)? -c' 2>$null
         Start-Sleep -Seconds 1
     }
 }
