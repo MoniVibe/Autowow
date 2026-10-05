@@ -10,6 +10,7 @@
 #include "CharacterCache.h"
 #include "Chat.h"
 #include "GuildTaskMgr.h"
+#include "LabControl.h"
 #include "PerfMonitor.h"
 #include "PlayerbotMgr.h"
 #include "RandomPlayerbotFactory.h"
@@ -51,8 +52,16 @@ public:
             {"create", HandleAutoWowCohortCreateCommand, SEC_CONSOLE, Console::Yes},
         };
 
+        // Combat lab (AutoWow.Lab.Enable, default 0): in-game GM only; see src/AutoWow/LabControl.h.
+        static ChatCommandTable autowowLabCommandTable = {
+            {"kit", AutoWowLab::HandleKit, SEC_GAMEMASTER, Console::No},
+            {"spawn", AutoWowLab::HandleSpawn, SEC_GAMEMASTER, Console::No},
+            {"reset", AutoWowLab::HandleReset, SEC_GAMEMASTER, Console::No},
+        };
+
         static ChatCommandTable autowowCommandTable = {
             {"cohort", autowowCohortCommandTable},
+            {"lab", autowowLabCommandTable},
         };
 
         static ChatCommandTable commandTable = {
