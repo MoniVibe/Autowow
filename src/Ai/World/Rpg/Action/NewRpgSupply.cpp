@@ -85,6 +85,9 @@ constexpr std::uint32_t kHearthstone = 6948;
 
 constexpr std::uint32_t kSkillupBags = 3;  // Tiers: thread bought for this many skill-up bags
 
+constexpr std::uint32_t kHygieneKeepStacks = 1;    // ArtisanBagHygiene: own-product stacks kept per item (vendor the rest)
+constexpr std::uint64_t kHygieneLogMs = 60000;     // ArtisanBagHygiene: at most one `[Supply] bag_hygiene` line a minute
+
 struct RoleState
 {
     std::uint32_t version = kStateVersion;
@@ -104,6 +107,7 @@ struct RoleState
     std::uint64_t mineReadyMs = 0;  // MineMs: next mining stint (the last one's end + MineCooldownMs)
     std::uint32_t mineHeld = 0;     // MineMs: stone + ore in bags at the stint's start (MinedUnits)
     std::uint32_t traceKey = 0;     // CraftTrace: the last craft_trace line logged (its hash; change detection only)
+    std::uint64_t hygieneMs = 0;    // ArtisanBagHygiene: next `[Supply] bag_hygiene` line (rate limit)
 };
 
 // MineMs: the target's Market wants (item ids) the mining stint checks against stone / ore (MineDue).
@@ -287,9 +291,11 @@ std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line, ProductL
             return;
         BagStack b;
         b.guid = static_cast<std::uint32_t>(item->GetGUID().GetCounter());
+        b.entry = proto->ItemId;
         b.sellPrice = proto->SellPrice;
         b.house = (line ? LineItem(*line, proto->ItemId) : HouseMaterial(proto->ItemId)) ||
                   (gear && LineItem(GearTable(*gear), proto->ItemId));
+        b.product = (line && LineProduct(*line, proto->ItemId)) || (gear && LineProduct(GearTable(*gear), proto->ItemId));
         b.quest = QuestNeeds(bot, proto->ItemId);
         b.keep = proto->ItemId == kHearthstone || proto->TotemCategory || proto->Class == ITEM_CLASS_CONTAINER ||
                  (proto->Class == ITEM_CLASS_WEAPON && proto->SubClass == ITEM_SUBCLASS_WEAPON_FISHING_POLE) ||
@@ -376,6 +382,41 @@ void WearBag(Player* bot, std::uint32_t entry)
                           static_cast<uint16>((INVENTORY_SLOT_BAG_0 << 8) | slot));
             return;
         }
+}
+
+// ArtisanBagHygiene: put the artisan's biggest carried containers into its equip bag slots -- an empty slot first,
+// else swapping out a worn bag that is empty and smaller (unequipping an empty bag always fits, so no item is ever
+// displaced). Returns how many bags were equipped. One pass per carried bag at most (a swap that does not take ends it).
+std::uint32_t WearBetterBags(Player* bot)
+{
+    std::uint32_t worn = 0;
+    for (uint8 pass = 0; pass < (INVENTORY_SLOT_BAG_END - INVENTORY_SLOT_BAG_START); ++pass)
+    {
+        Item* best = nullptr;  // biggest carried (backpack) container
+        for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
+            if (Item* it = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot); it && it->ToBag())
+                if (!best || it->ToBag()->GetBagSize() > best->ToBag()->GetBagSize())
+                    best = it;
+        if (!best)
+            break;
+        std::uint32_t const size = best->ToBag()->GetBagSize();
+        uint8 target = INVENTORY_SLOT_BAG_END;
+        for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)  // empty equip slot first
+            if (!bot->GetBagByPos(slot)) { target = slot; break; }
+        if (target == INVENTORY_SLOT_BAG_END)  // else a worn bag that is empty and smaller than the carried one
+            for (uint8 slot = INVENTORY_SLOT_BAG_START; slot < INVENTORY_SLOT_BAG_END; ++slot)
+                if (Bag* b = bot->GetBagByPos(slot); b && b->GetFreeSlots() == b->GetBagSize() && b->GetBagSize() < size)
+                { target = slot; break; }
+        if (target == INVENTORY_SLOT_BAG_END)
+            break;
+        Item const* was = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, target);
+        bot->SwapItem(static_cast<uint16>((best->GetBagSlot() << 8) | best->GetSlot()),
+                      static_cast<uint16>((INVENTORY_SLOT_BAG_0 << 8) | target));
+        if (bot->GetItemByPos(INVENTORY_SLOT_BAG_0, target) == was)  // swap refused: stop (never spin)
+            break;
+        ++worn;
+    }
+    return worn;
 }
 
 // Sells these stacks at `npc` through the stock sell handler; returns how many went.
@@ -610,6 +651,21 @@ bool NewRpgBaseAction::SupplyStep()
     };
     bool const crafter = role.role == Role::Artisan && (artisan || lined || geared);
 
+    // ArtisanBagHygiene: the master artisan's own crafted-output stacks beyond one kept per item, excluding the open
+    // order's target product, to vendor at the make-room trip (SurplusProductStacks). Empty unless the flag is on.
+    auto hygieneSurplus = [&]() -> std::vector<std::uint32_t>
+    {
+        if (!AutoWowSupply::ArtisanBagHygiene() || !crafter)
+            return {};
+        std::uint32_t orderProduct = 0;
+        if (geared && gview.product != kNoTier)
+            orderProduct = gtab.tiers[gview.product].product;
+        else if (lined && lview.product != kNoTier)
+            orderProduct = L.tiers[lview.product].product;
+        return SurplusProductStacks(BagStacksOf(bot, lined ? &L : nullptr, geared ? &LineOf(gearId) : nullptr),
+                                    orderProduct, kHygieneKeepStacks);
+    };
+
     std::int64_t const dx = std::int64_t(bot->GetPositionX()) - home.x, dy = std::int64_t(bot->GetPositionY()) - home.y;
     bool const atHome = dx * dx + dy * dy <= std::int64_t(p.homeYards) * p.homeYards;
     // Farther out than any station (an artisan graduating in the field) the bot walks home first: Home owns the
@@ -682,6 +738,18 @@ bool NewRpgBaseAction::SupplyStep()
     {
         s.nextMs = now + p.tickMs;
         Task next = Task::None;
+        // ArtisanBagHygiene (at home only): equip the biggest spare carried bags first (frees slots with no trip), and
+        // list the artisan's own crafted-output surplus to vendor alongside the junk below. Empty / no-op with the flag
+        // off, so the OFF path is unchanged.
+        std::uint32_t hygieneEquipped = 0, hygieneFreed = 0;
+        std::vector<std::uint32_t> hygieneQueued;
+        if (AutoWowSupply::ArtisanBagHygiene() && crafter && atHome)
+        {
+            std::uint32_t const free0 = bot->GetFreeInventorySpace();
+            hygieneEquipped = WearBetterBags(bot);
+            hygieneFreed = bot->GetFreeInventorySpace() > free0 ? bot->GetFreeInventorySpace() - free0 : 0;
+            hygieneQueued = hygieneSurplus();
+        }
         // Make room (ArtisanFreeSlots; a slot while a craft has none): unsellable junk goes now, sellable junk on a
         // vendor trip, then a bag when none is worn (soak-s45-full-r1: a tailor with 16 backpack slots of quest
         // junk and no bag looped on its mailbox and never crafted).
@@ -702,7 +770,7 @@ bool NewRpgBaseAction::SupplyStep()
             std::uint32_t const free = bot->GetFreeInventorySpace();
             Station const& bagVendor = BagVendorOf(role.alliance);
             std::uint32_t const bagPrice = PriceOf(kPouch);
-            if (!plan.sell.empty() && (lined ? lst : st).threadVendor.entry)
+            if ((!plan.sell.empty() || !hygieneQueued.empty()) && (lined ? lst : st).threadVendor.entry)
                 next = Task::Junk;
             else if (WantsBag(BagWorn(bot), free, roomWant) && bagVendor.entry && free)
             {
@@ -716,6 +784,15 @@ bool NewRpgBaseAction::SupplyStep()
                              kPouch, bagPrice, bot->GetMoney());
                 }
             }
+        }
+        // ArtisanBagHygiene: one line per acting pass (rate limited). sold = own-product stacks queued to the vendor
+        // trip (Task::Junk sells them); shipped stays 0 -- the rep routing carries only the open order's target
+        // product, so the surplus intermediates are vendored, not shipped (no new economy; no item created).
+        if ((hygieneEquipped || hygieneFreed || !hygieneQueued.empty()) && now >= s.hygieneMs)
+        {
+            s.hygieneMs = now + kHygieneLogMs;
+            LOG_INFO("playerbots", "[Supply] bag_hygiene bot={} freed={} equipped_bags={} sold={} shipped={}",
+                     bot->GetName(), hygieneFreed, hygieneEquipped, uint32(hygieneQueued.size()), 0u);
         }
         // RepStore: the rep's bank stash (bags over 75% full) or refill (house materials under RepKeep) at the banker
         // near home, before the mailbox (soak-s48-full-r1: the Weavers hub, 16 backpack slots).
@@ -1261,10 +1338,14 @@ bool NewRpgBaseAction::SupplyStep()
             case Task::Junk:
             {
                 // Make-room sale: the sellable junk, re-planned here (bags may have changed on the way).
-                std::vector<std::uint32_t> const sell = PlanRoom(BagStacksOf(bot, lined ? &L : nullptr,
-                                                                             geared ? &LineOf(gearId) : nullptr),
-                                                                 bot->GetFreeInventorySpace(),
-                                                                 RoomTarget(p.artisanFreeSlots, s.craftBlocked)).sell;
+                std::vector<std::uint32_t> sell = PlanRoom(BagStacksOf(bot, lined ? &L : nullptr,
+                                                                       geared ? &LineOf(gearId) : nullptr),
+                                                           bot->GetFreeInventorySpace(),
+                                                           RoomTarget(p.artisanFreeSlots, s.craftBlocked)).sell;
+                // ArtisanBagHygiene: the artisan's own crafted-output surplus goes on the same trip (disjoint from the
+                // junk above: own products are `house`, which PlanRoom keeps). Empty with the flag off.
+                for (std::uint32_t const g : hygieneSurplus())
+                    sell.push_back(g);
                 std::uint64_t const m0 = bot->GetMoney();
                 std::uint32_t const sold = SellGuids(bot, target->ToCreature(), sell);
                 LOG_INFO("playerbots", "[Supply] junk bot={} sold stacks={}/{} copper={} free={}", bot->GetName(), sold,

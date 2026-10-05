@@ -177,6 +177,10 @@ struct Params
     // Lane hordehouses2 (soak S116; off by default):
     bool craftDismount = false;  // AutoWow.Supply.CraftDismount: an artisan's home tradeskill cast drops its mount /
                                  // shapeshift first (S116: mounted casters' casts refused, never crafted)
+    // Lane artisanbags (soak S117; off by default):
+    bool artisanBagHygiene = false;  // AutoWow.Professions.ArtisanBagHygiene: a master artisan at home equips spare
+                                     // carried bags and vendors its own crafted-output surplus beyond one kept stack
+                                     // (S117: own sharpening stones / bars never shipped filled bags, crafting stopped)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -2800,6 +2804,16 @@ template <typename L>
     return false;
 }
 
+// A crafted output (a tier product) of a line, not merely a reagent it consumes (ArtisanBagHygiene).
+template <typename L>
+[[nodiscard]] bool LineProduct(L const& l, std::uint32_t item)
+{
+    for (std::size_t i = 0; i < l.tierCount; ++i)
+        if (l.tiers[i].product == item)
+            return true;
+    return false;
+}
+
 // One loose stack in an artisan's bags, as the make-room step sees it.
 struct BagStack
 {
@@ -2808,6 +2822,9 @@ struct BagStack
     bool house = false;           // a material / product of its house's line
     bool quest = false;           // needed by a quest in its log
     bool keep = false;            // hearthstone, profession tool, container, not user-destroyable
+    // ArtisanBagHygiene (appended so the existing positional {guid, sellPrice, house, quest, keep} inits still hold):
+    std::uint32_t entry = 0;      // item id (groups a product's stacks)
+    bool product = false;         // a crafted output (tier product) of its own line
 };
 
 // BagStack.quest for one quest in the log (incomplete or complete, not yet rewarded): `item` is its source item, an
@@ -2875,6 +2892,36 @@ struct RoomPlan
 [[nodiscard]] inline bool WantsBag(bool bagWorn, std::uint32_t free, std::uint32_t want)
 {
     return !bagWorn && free < want;
+}
+
+// ArtisanBagHygiene: an artisan's own crafted outputs (sharpening stones, bars, bolts) are `house` and so Keep
+// forever, while the rep routing only ships the open order's target (`orderProduct`); the surplus piles up and fills
+// the bags until crafting stops (soak S117). Beyond `keepStacks` occupied slots per product item, the extra stacks
+// become sellable at the make-room vendor trip (one stock kept for the next cast, the rest vendored -- gold in, no
+// item created). The order's target product, and anything a quest wants or that cannot be destroyed, is never taken.
+// Deterministic: within each product item the lowest guids are kept, and the returned guids are ascending.
+[[nodiscard]] inline std::vector<std::uint32_t> SurplusProductStacks(std::vector<BagStack> stacks,
+                                                                     std::uint32_t orderProduct,
+                                                                     std::uint32_t keepStacks)
+{
+    stacks.erase(std::remove_if(stacks.begin(), stacks.end(),
+                                [&](BagStack const& s) {
+                                    return !s.product || !s.entry || s.quest || s.keep || s.entry == orderProduct;
+                                }),
+                 stacks.end());
+    std::sort(stacks.begin(), stacks.end(), [](BagStack const& a, BagStack const& b)
+              { return a.entry != b.entry ? a.entry < b.entry : a.guid < b.guid; });
+    std::vector<std::uint32_t> out;
+    std::uint32_t run = 0;
+    for (std::size_t i = 0; i < stacks.size(); ++i)
+    {
+        if (i && stacks[i].entry != stacks[i - 1].entry)
+            run = 0;
+        if (run++ >= keepStacks)
+            out.push_back(stacks[i].guid);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
 }
 
 // Station near a team's home (read-only after LoadConfig): creature entry (or mailbox go entry) + position.
@@ -3019,6 +3066,7 @@ inline bool ClimbCastable() { return detail::gEnabled && detail::gParams.climbCa
 inline bool SmithCopper() { return SmithBars() && detail::gParams.smithCopper; }
 inline bool CraftTrace() { return detail::gEnabled && detail::gParams.craftTrace; }
 inline bool CraftDismount() { return detail::gEnabled && detail::gParams.craftDismount; }
+inline bool ArtisanBagHygiene() { return detail::gEnabled && detail::gParams.artisanBagHygiene; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was), its tierLow rows after them only with PotionLowBridge too. A copy: callers keep it for the scope that reads
 // its tiers.

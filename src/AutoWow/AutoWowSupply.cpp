@@ -3172,6 +3172,7 @@ void LoadConfig()
     p.smithCopper = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithCopper", false);
     p.craftTrace = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftTrace", false);
     p.craftDismount = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftDismount", false);
+    p.artisanBagHygiene = sConfigMgr->GetOption<bool>("AutoWow.Professions.ArtisanBagHygiene", false);
     gLineSpec = {};
     gPriority.clear();
     {
