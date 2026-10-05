@@ -152,8 +152,13 @@ protected:
     // AutoWow.Gathering.Detours (GatherDetourPolicy.h): walk to a nearby herb/ore node the bot can gather,
     // then yield to the stock loot strategy. True when it consumed the tick. Caller checks the flag.
     // supplyMine (lane smithfocus3, the supply artisan's MineMs stint): no independent-party gate (a house artisan is
-    // not a seeded adventurer), and the tick stays held at the node so the stint does not wander off before the loot.
+    // not a seeded adventurer), and the tick stays held at the node so the stint does not wander off before the loot
+    // (MineLootYield: held from the wander only; the loot action gets the tick, see supplyYield).
     bool GatherDetourStep(bool supplyMine = false);
+    // AutoWow.Supply.MineLootYield (lane smithsupply): set when a mine stint's detour stands at its node; the RPG status
+    // update (relevance 11) then returns false so the stock loot action (6) opens the node. Holding the tick there
+    // starved the loot: S109 / S110, 8 stints, 0 stone / ore gained.
+    bool supplyYield = false;
     // AutoWow.SelfCraft.Enable (SelfCraftPolicy.h): a cohort adventurer bandages itself out of combat and
     // crafts bandages / cooks food from its own loot. True while it holds the tick (a cast or bandage in
     // flight, or one just started). Caller checks the flag.

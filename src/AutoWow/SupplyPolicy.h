@@ -146,6 +146,10 @@ struct Params
     std::uint32_t mineMs = 0;              // AutoWow.Supply.MineMs: a gear artisan with a MineSpot mines its stone / ore
                                            // there this long when its target lacks them (0 = off)
     std::uint32_t mineCooldownMs = 1800000;  // AutoWow.Supply.MineCooldownMs: between two mine stints
+    // Lane smithsupply (off by default):
+    bool mineLootYield = false;   // AutoWow.Supply.MineLootYield: at a node the mine stint yields the tick to the stock
+                                  // loot action (relevance 6), which the RPG status update (11) otherwise starves
+    bool crossHouseFeed = false;  // AutoWow.Supply.CrossHouseFeed: other house reps feed a gear target (CrossFeedUnits)
     // Weapon orders (lane smithfocus2; off by default): the Smiths line consumes AutoWow.Gear.NoWhite's queue
     // (WeaponOrderPolicy.h): a pending order is a gear need for that bot's weapon slot (PickWeaponRecipe), filled when the
     // piece is mailed, cancelled when the slot clears the order's floor elsewhere or after WeaponOrderTimeoutMs.
@@ -2355,6 +2359,14 @@ enum class WeaponOrderVerdict : std::uint8_t
                        });
 }
 
+// CrossHouseFeed (lane smithsupply): units of a gear target's Route / Market reagent another house's rep mails the
+// artisan: what is still short after its own rep's feed, from that rep's loose stock, never an item that house's own
+// open orders use (S110: the Tinkers reps hold ~100 Coarse / Heavy Stone each, the Smiths rep none).
+[[nodiscard]] inline std::uint32_t CrossFeedUnits(std::uint32_t shortLeft, std::uint32_t donorLoose, bool donorUses)
+{
+    return donorUses ? 0 : std::min(shortLeft, donorLoose);
+}
+
 // cloth_gear on the bag house: raw cloth per kTiers tier the open orders' bolts still lack beyond the house holdings
 // (have(item) -> units; a held bolt counts as its cloth). Feeds the squad demand (ClothDemandOf) and the rep's market
 // wants when the bag line has no use for that tier.
@@ -2843,6 +2855,8 @@ inline bool GearStockSell() { return detail::gEnabled && detail::gParams.gearSto
 inline bool PotionTiers() { return detail::gEnabled && detail::gParams.potionTiers; }
 inline bool SmithEndgame() { return detail::gEnabled && detail::gParams.smithEndgame; }
 inline bool WeaponOrders() { return detail::gEnabled && detail::gParams.weaponOrders; }
+inline bool MineLootYield() { return detail::gEnabled && detail::gParams.mineLootYield; }
+inline bool CrossHouseFeed() { return detail::gEnabled && detail::gParams.crossHouseFeed; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was). A copy: callers keep it for the scope that reads its tiers.
 [[nodiscard]] inline ProductLine ActiveLine(Line l)

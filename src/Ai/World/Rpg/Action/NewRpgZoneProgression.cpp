@@ -1710,6 +1710,7 @@ bool NewRpgBaseAction::GatherDetourStep(bool supplyMine)
     {
         // At the node: the stock loot strategy opens it (gather spell, skill-up); the RPG status resumes.
         AI_VALUE(LootObjectStack*, "available loot")->Add(target);
+        supplyYield = supplyMine;  // MineLootYield: the status update lets the loot action open it
         return supplyMine;
     }
     if (fresh || !bot->isMoving())
