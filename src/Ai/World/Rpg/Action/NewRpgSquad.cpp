@@ -379,7 +379,7 @@ void TeamTick(std::size_t slot, std::uint64_t now)
     Params const& p = detail::gParams;
     bool const alliance = (gMaterialCrews ? CrewTeam(slot) : slot) == 0;
     std::vector<std::uint32_t> const& roster = gMaterialCrews ? gCrewRoster[slot] : gRoster[slot];
-    AutoWowParty::EnsureSquad(roster);
+    AutoWowParty::EnsureSquad(roster, gMaterialCrews);
 
     std::vector<Player*> members;  // online, guid ascending
     for (std::uint32_t const g : roster)
