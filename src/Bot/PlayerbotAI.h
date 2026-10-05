@@ -659,6 +659,10 @@ public:
     std::unordered_set<uint32> lowPriorityQuest;
     time_t bgReleaseAttemptTime = 0;
     ForceRebuffState forceRebuff;
+    // AutoWow.Combat.GcdWake: in combat, wake right after the GCD/cast instead of on the react tick.
+    // True when it scheduled the next update (caller then skips its ordinary YieldThread).
+    bool GcdWakeYield();
+    SpellInfo const* gcdWakeSpell = nullptr;  // last GCD-triggering spell cast via CastSpell (GcdWake on)
 
     // Schedules a callback to run once after <delayMs> milliseconds.
     void AddTimedEvent(std::function<void()> callback, uint32 delayMs);

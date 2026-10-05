@@ -2649,6 +2649,18 @@ AutoWow.CombatTelemetry.Enable = 0
 # (needs AutoWow.Ledger.Enable = 1), plus one final line at logout. Fold with
 # AutoWoW scripts/combat-reduce.py. 0 = never emit (totals still accumulate). Default 60000.
 AutoWow.CombatTelemetry.LogIntervalMs = 60000
+# Reactivity appendix (lane combatp0). Default 0 = bot `combat` lines stay byte-identical cv=1/cv=2.
+# 1 (with Enable = 1) = bot lines become cv=3 (cv=1 fields) / cv=4 (cv=2 fields) with appended:
+# busy_ms (cumulative in-combat ms locked by own casts: union of cast start .. max(start + effective GCD
+# incl. haste, cast/channel end)), spells (this line's top-8 [spell id, casts]), rl_att / rl_hp
+# ([samples, p50 ms, p90 ms, misses] from a new attacker / own HP < 35% to the next cast start; miss =
+# no cast within 10 s). combat-reduce.py must learn cv=3/4 before this is turned on (it ignores them).
+AutoWow.CombatTelemetry.Reactivity = 0
+# Human baseline. Default 0 = real players are never tracked. 1 (with Enable = 1 and
+# AutoWow.Ledger.Enable = 1) = real (non-bot) player sessions get the same lifetime totals and `combat`
+# lines (always with the appendix, tagged "human":1), emitted every LogIntervalMs, at each combat end
+# (a training-dummy fight with no kill or death is one line) and at logout.
+AutoWow.CombatTelemetry.Players = 0
 
 # AutoWoW DoT/debuff lifetime gate (C5). Default 0 = off (one cached bool per debuff trigger/action).
 # 1 = do not apply or refresh a DoT (corruption, curses of agony/doom, immolate, unstable affliction,
@@ -2666,6 +2678,15 @@ AutoWow.Combat.DotLifetimeGate = 0
 AutoWow.Combat.DotMinTargetHpPct = 10
 AutoWow.Combat.DotMinDurationPct = 50
 AutoWow.Combat.DotHighHpPerLevel = 150
+
+# AutoWoW in-combat AI wake (lane combatp0). Default 0 = off (one cached bool per AI update).
+# 1 = while an in-combat bot is on its GCD or mid cast/channel, its next AI update is scheduled at
+# (time left + 50 ms) whenever that is sooner than the react delay, without the 0-200 ms per-bot stagger,
+# so the next spell follows the GCD instead of landing 0-700 ms late. Never later than the react delay.
+AutoWow.Combat.GcdWake = 0
+# In-combat react delay = AiPlayerbot.ReactDelay x this (dynamic react delay, outside battlegrounds).
+# Default 5 = upstream behaviour. Integer >= 1.
+AutoWow.Combat.ReactMultiplier = 5
 
 # AutoWoW tactical combat layer (docs/TACTICAL_COMBAT_PLAN.md; TacticalPolicy.h). Default 0 = off: the
 # bot AI tick and the telemetry hooks early-return on one cached bool. Solo bots of the classes in

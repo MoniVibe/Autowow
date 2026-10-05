@@ -7,6 +7,7 @@
 #include "PlayerbotAI.h"
 #include "AutoWowQuestLedger.h"
 #include "TacticalRuntime.h"
+#include "CombatReactivity.h"
 #include "PartyPolicy.h"
 #include "AutoWow/AutoWowIndependentActivityPolicy.h"
 
@@ -395,8 +396,9 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
                     ServerFacade::instance().SetFacingTo(bot, spellTarget);
                 }
 
-                // Wait for spell cast
-                YieldThread(bot, GetReactDelay());
+                // Wait for spell cast (AutoWow.Combat.GcdWake, default 0: one cached bool when off)
+                if (!AutoWowCombatReactivity::GcdWakeEnabled() || !GcdWakeYield())
+                    YieldThread(bot, GetReactDelay());
                 return;
             }
         }
@@ -470,7 +472,35 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
     // Update internal AI
     UpdateAIInternal(elapsed, minimal);
+    // AutoWow.Combat.GcdWake (default 0): one cached bool when off.
+    if (AutoWowCombatReactivity::GcdWakeEnabled() && GcdWakeYield())
+        return;
     YieldThread(bot, GetReactDelay());
+}
+
+bool PlayerbotAI::GcdWakeYield()
+{
+    if (!bot->IsInCombat())
+        return false;
+
+    uint32 blockedMs = gcdWakeSpell ? bot->GetGlobalCooldownMgr().GetGlobalCooldown(gcdWakeSpell) : 0;
+    for (CurrentSpellTypes type : {CURRENT_GENERIC_SPELL, CURRENT_CHANNELED_SPELL})
+    {
+        Spell* spell = bot->GetCurrentSpell(type);
+        if (spell && spell->GetCastTimeRemaining() > 0 &&
+            (spell->getState() == SPELL_STATE_PREPARING || spell->getState() == SPELL_STATE_CASTING))
+            blockedMs = std::max(blockedMs, static_cast<uint32>(spell->GetCastTimeRemaining()));
+    }
+
+    uint32 const reactDelay = GetReactDelay();
+    uint32 const wake = AutoWowCombatReactivity::WakeDelay(reactDelay, blockedMs);
+    if (wake >= reactDelay)
+        return false;  // not blocked, or blocked longer than a react tick: ordinary staggered yield
+
+    // Aligned wake (no per-bot stagger); never shortens a longer delay an action already set.
+    if (nextAICheckDelay < wake)
+        nextAICheckDelay = wake;
+    return true;
 }
 
 bool PlayerbotAI::SubmitCampaignTravelIntent(
@@ -4005,6 +4035,9 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget)
     }
 
     forceRebuff.NoteCast(spellInfo);
+    // AutoWow.Combat.GcdWake: remember a GCD-triggering spell to read the GCD category's time left.
+    if (AutoWowCombatReactivity::GcdWakeEnabled() && spellInfo->StartRecoveryTime)
+        gcdWakeSpell = spellInfo;
 
     return true;
 }
@@ -6820,9 +6853,9 @@ uint32 PlayerbotAI::GetReactDelay()
         }
     }
 
-    // When in combat, return 5 times the base
+    // When in combat, return 5 times the base (AutoWow.Combat.ReactMultiplier, default 5)
     if (bot->IsInCombat() || currentState == BOT_STATE_COMBAT)
-        return base * 5;
+        return base * AutoWowCombatReactivity::ReactMultiplier();
 
     // When not resting, return 10-30 times the base
     if (!bot->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_RESTING))

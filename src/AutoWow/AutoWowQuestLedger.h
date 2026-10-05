@@ -509,6 +509,9 @@ void EmitDied(Player* victim);
 void EmitPvpKill(Player* killer, Player* victim, bool honorable);
 // `combat` (no-op unless the player is a recorded bot); fields from DrainEmitFields.
 void EmitCombat(Player* player, std::string_view fields);
+// `combat` for a real (non-bot) player session (AutoWow.CombatTelemetry.Players; the fields carry "human":1).
+// No-op unless the ledger is enabled.
+void EmitCombatHuman(Player* player, std::string_view fields);
 // `death_loop` (no-op unless the player is a recorded bot); reason is a static literal, fields are the
 // pre-formatted trailing fields.
 void EmitDeathLoop(Player* player, std::uint32_t questId, char const* reason, std::string_view fields);
