@@ -17,6 +17,7 @@
 #include "RogueFinishingActions.h"
 #include "RogueOpeningActions.h"
 #include "RogueTriggers.h"
+#include "ClassFixesP1Strategy.h"
 #include "TacticalClassStrategy.h"
 
 class RogueStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -28,6 +29,9 @@ public:
         creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
             return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Rogue);
         };  // AutoWow.Tactics (AiFactory, treatment arm)
+        creators["fixes p1"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new ClassFixesP1Strategy(botAI, CLASS_ROGUE);
+        };  // AutoWow.Combat.ClassFixesP1 (AiFactory)
         creators["pull"] = &RogueStrategyFactoryInternal::pull;
         creators["aoe"] = &RogueStrategyFactoryInternal::aoe;
         creators["boost"] = &RogueStrategyFactoryInternal::boost;
@@ -153,6 +157,8 @@ public:
         creators["garrote"] = &RogueAiObjectContextInternal::garrote;
         creators["cheap shot"] = &RogueAiObjectContextInternal::cheap_shot;
         creators["blind"] = &RogueAiObjectContextInternal::blind;
+        creators["blind on add"] = [](PlayerbotAI* botAI) -> Action* { return new CastOnAddP1Action(botAI, "blind"); };
+        creators["gouge on add"] = [](PlayerbotAI* botAI) -> Action* { return new CastOnAddP1Action(botAI, "gouge"); };
         creators["unstealth"] = &RogueAiObjectContextInternal::unstealth;
         creators["sap"] = &RogueAiObjectContextInternal::sap;
         creators["check stealth"] = &RogueAiObjectContextInternal::check_stealth;

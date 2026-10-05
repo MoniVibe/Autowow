@@ -17,6 +17,7 @@
 #include "GenericDruidNonCombatStrategy.h"
 #include "GenericDruidStrategy.h"
 #include "Playerbots.h"
+#include "ClassFixesP1Strategy.h"
 #include "TacticalClassStrategy.h"
 #include "RestoDruidStrategy.h"
 
@@ -29,6 +30,9 @@ public:
         creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
             return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Druid);
         };  // AutoWow.Tactics (AiFactory, treatment arm)
+        creators["fixes p1"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new ClassFixesP1Strategy(botAI, CLASS_DRUID);
+        };  // AutoWow.Combat.ClassFixesP1 (AiFactory)
         creators["pull"] = &DruidStrategyFactoryInternal::pull;
         creators["aoe"] = &DruidStrategyFactoryInternal::aoe;
         creators["cure"] = &DruidStrategyFactoryInternal::cure;

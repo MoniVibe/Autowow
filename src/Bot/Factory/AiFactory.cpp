@@ -36,6 +36,16 @@ constexpr uint32 SPELL_ICE_SHARDS = 15047;
 constexpr uint32 SPELL_WHIRLWIND = 1680;
 constexpr uint32 SPELL_CAT_FORM = 768;
 constexpr uint32 SPELL_DRUID_THICK_HIDE = 16931;
+
+// AutoWow.Combat.ClassFixesP1 (default 0): the bot gets "fixes p1" (ClassFixesP1Strategy.h) - warrior Arms / Fury,
+// rogue, Enhancement shaman, cat Feral druid (the same cat test as the combat strategy below).
+bool ClassFixesP1Covers(Player* player, uint8 tab)
+{
+    if (!AutoWowTactics::ClassFixesP1() || !AutoWowClassFixesP1::Covers(player->getClass(), tab))
+        return false;
+    return player->getClass() != CLASS_DRUID ||
+           (player->HasSpell(SPELL_CAT_FORM) && !player->HasAura(SPELL_DRUID_THICK_HIDE));
+}
 }
 
 AiObjectContext* AiFactory::createAiObjectContext(Player* player, PlayerbotAI* botAI)
@@ -355,6 +365,10 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
                 engine->addStrategiesNoInit("ele", "stoneskin", "wrath", "mana spring", "wrath of air", nullptr);
             else if (tab == SHAMAN_TAB_RESTORATION)
                 engine->addStrategiesNoInit("resto", "stoneskin", "flametongue", "mana spring", "wrath of air", nullptr);
+            else if (ClassFixesP1Covers(player, tab) && !player->GetGroup())
+                // AutoWow.Combat.ClassFixesP1, solo: Searing + Healing Stream only (S116: 84% of combat time
+                // mana-starved; Magma 27% base mana / 20 s, Call of the Elements re-dropped 4 totems a pull)
+                engine->addStrategiesNoInit("enh", "searing", "healing stream", nullptr);
             else // if (tab == SHAMAN_TAB_ENHANCEMENT)
                 engine->addStrategiesNoInit("enh", "strength of earth", "magma", "healing stream", "windfury", nullptr);
 
@@ -485,6 +499,9 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
     // AutoWow.Tactics.Enable (default 0): treatment-arm priests get the tactical layer (TacticalRuntime.h).
     if (AutoWowTactics::Enabled() && AutoWowTactics::IsTreatment(player))
         engine->addStrategy("tactical", false);
+
+    if (ClassFixesP1Covers(player, tab))
+        engine->addStrategy("fixes p1", false);
 
     // Battleground switch
     if (player->InBattleground() && player->GetBattleground())
@@ -703,6 +720,10 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     // AutoWow.Tactics.Enable (default 0): pre-pull rest triggers for treatment-arm priests.
     if (AutoWowTactics::Enabled() && AutoWowTactics::IsTreatment(player))
         nonCombatEngine->addStrategy("tactical nc", false);
+
+    // AutoWow.Combat.ClassFixesP1: Water Shield / Lightning Shield gate out of combat too.
+    if (ClassFixesP1Covers(player, tab))
+        nonCombatEngine->addStrategy("fixes p1", false);
 
     // Battleground switch
     if (player->InBattleground() && player->GetBattleground())

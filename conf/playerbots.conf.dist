@@ -2770,6 +2770,31 @@ AutoWow.Tactics.PriestShadowLevelingSpec = 0
 # Classes. 0 = the escape rule above unchanged.
 AutoWow.Tactics.EscapeRelaxed = 0
 AutoWow.Tactics.EscapeRelaxed.HpPct = 35
+# Combat.ClassFixesP1 (default 0; independent of AutoWow.Tactics.*): solo (no group, no instance) multi-mob kits
+# of the four worst classes, strategy "fixes p1" (S110-S116 died-per-fight with adds vs solo: rogue 42/8.5%,
+# warrior 34/9.2%, druid 30/4.7%; shaman 84% of combat time mana-starved). Warrior Arms/Fury: Bloodrage below
+# StarvedRage; 2+ attackers Sweeping Strikes, Thunder Clap, Demoralizing Shout, Cleave; Intimidating Shout at
+# ManyAdds or 2+ below HurtHpPct; Retaliation in battle stance at ManyAdds or 2+ below RetaliationHpPct.
+# Rogue: Evasion at 2+ or below HurtHpPct, Adrenaline Rush and Blade Flurry at 2+, Blind / Gouge the healthiest
+# add at ManyAdds, Kidney Shot a caster target with KidneyCombo+ points. Enhancement shaman: Water Shield
+# (no Lightning Shield once known), solo totems Searing + Healing Stream (no Magma / Strength of Earth /
+# Windfury / Call of the Elements / Fire Nova), Earth Shock above ShockManaPct, Flame Shock above
+# FlameShockManaPct, Healing Wave only instant (Maelstrom x5, below MaelstromHealHpPct) or below EmergencyHpPct;
+# Shamanistic Rage + Feral Spirit at 2+. Cat Feral druid: Bear Form at 2+ or below BearEnterHpPct, held (no Cat
+# Form) until 1 attacker and BearExitHpPct; Demoralizing Roar, Swipe, Mangle, Maul, Frenzied Regeneration below
+# BearEnterHpPct. All: no Cleave / Whirlwind / Blade Flurry / Swipe while an attacker sits in breakable cc.
+AutoWow.Combat.ClassFixesP1 = 0
+AutoWow.Combat.ClassFixesP1.ManyAdds = 3
+AutoWow.Combat.ClassFixesP1.HurtHpPct = 50
+AutoWow.Combat.ClassFixesP1.KidneyCombo = 3
+AutoWow.Combat.ClassFixesP1.StarvedRage = 10
+AutoWow.Combat.ClassFixesP1.MaelstromHealHpPct = 55
+AutoWow.Combat.ClassFixesP1.BearEnterHpPct = 45
+AutoWow.Combat.ClassFixesP1.BearExitHpPct = 60
+AutoWow.Combat.ClassFixesP1.RetaliationHpPct = 60
+AutoWow.Combat.ClassFixesP1.ShockManaPct = 50
+AutoWow.Combat.ClassFixesP1.FlameShockManaPct = 30
+AutoWow.Combat.ClassFixesP1.EmergencyHpPct = 30
 # Cohort.SoloSpec (default 0; cohort = AutoWow.Guilds.CohortGuids, needs AutoWow.Guilds.Enable): on login a
 # cohort bot outside any group / instance whose most-invested tree is not a solo-leveling tree is reset (free)
 # and re-talented by its class's premade template, logged "[SoloSpec]": warrior Arms/Fury (else 1.0 arms),

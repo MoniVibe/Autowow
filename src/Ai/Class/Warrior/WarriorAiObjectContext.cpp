@@ -14,6 +14,7 @@
 #include "WarriorActions.h"
 #include "WarriorPullStrategy.h"
 #include "WarriorTriggers.h"
+#include "ClassFixesP1Strategy.h"
 #include "TacticalClassStrategy.h"
 
 class WarriorStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -25,6 +26,9 @@ public:
         creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
             return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Warrior);
         };  // AutoWow.Tactics (AiFactory, treatment arm)
+        creators["fixes p1"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new ClassFixesP1Strategy(botAI, CLASS_WARRIOR);
+        };  // AutoWow.Combat.ClassFixesP1 (AiFactory)
         creators["pull"] = &WarriorStrategyFactoryInternal::pull;
         creators["aoe"] = &WarriorStrategyFactoryInternal::warrior_aoe;
     }
