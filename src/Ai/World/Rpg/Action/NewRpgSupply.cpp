@@ -508,6 +508,30 @@ std::vector<std::uint32_t> GearStockSale(Player* bot, ProductLine const& gear)
                 pieces.push_back({r, guid, SellPriceOf(g.tiers[r].product)});
     return PlanGearStockSale(std::move(pieces), detail::gParams.repStockPerItem);
 }
+
+// HouseBoE (owner ruling 2026-10-06): a house artisan's just-crafted Bind-on-Pickup instances are an order's delivery,
+// not the artisan's to keep. The core soulbinds a BoP item at creation (Player::StoreNewItem), which makes it un-
+// mailable (Item::CanBeTraded). Clear that soulbound state on the artisan's own loose copies of the crafted entry so
+// the house can mail the piece to the ordering adventurer, who binds it on equip. Only loose (unequipped), only BoP
+// templates: worn gear and ordinary BoE/unbound crafts are untouched. Deterministic (LooseGuids is sorted). Returns
+// the count converted. The caller gates this on the flag + house-artisan + BoP-template predicate (HouseBoEEligible).
+std::uint32_t ConvertHouseBoE(Player* bot, std::uint32_t entry)
+{
+    std::uint32_t converted = 0;
+    for (std::uint32_t const g : LooseGuids(bot, entry, 0xFFFFFFFFu))
+    {
+        Item* item = bot->GetItemByGuid(ObjectGuid::Create<HighGuid::Item>(g));
+        if (!item || !item->IsSoulBound())
+            continue;
+        ItemTemplate const* proto = item->GetTemplate();
+        if (!proto || proto->Bonding != BIND_WHEN_PICKED_UP)
+            continue;
+        item->SetBinding(false);
+        item->SetState(ITEM_CHANGED, bot);
+        ++converted;
+    }
+    return converted;
+}
 }  // namespace
 }  // namespace AutoWowSupply
 
@@ -592,6 +616,24 @@ bool NewRpgBaseAction::SupplyStep()
     Stations const& gst = gearLine ? LineStationsOf(gearId, role.alliance) : st;
     RecipeTable const gtab = geared ? GearTable(LineOf(gearId)) : RecipeTable{};
     ProductLine const* const repGear = role.gear != kNoLine ? &LineOf(static_cast<Line>(role.gear)) : nullptr;
+    // HouseBoE (Part 3): a Blacksmithing gear house carries a specialization (AutoWow.Supply.Spec.<House>.<Team>);
+    // grant it deterministically once the artisan reaches the Artisan skill (225) and holds no specialization yet.
+    // A lab-style grant of the spec the house earned by skill -- the trainer "learn" spell cast once (as
+    // PlayerbotFactory does), not an item. The factory otherwise rolls Armor / Weapon at random, which need not match
+    // the house assignment. Flag-gated: LineSpecOf is kSpecAny while the flag is off (Part 2), so this never fires.
+    if (geared && gearId == Line::MailGear && HouseBoE())
+    {
+        std::uint8_t const spec = LineSpecOf(gearId, role.alliance);
+        if (std::uint32_t const learn = SpecLearnSpell(spec); learn && sSpellMgr->GetSpellInfo(learn) &&
+            bot->GetBaseSkillValue(SKILL_BLACKSMITHING) >= 225 &&
+            !bot->HasSpell(SpecKnownSpell(kSpecWeapon)) && !bot->HasSpell(SpecKnownSpell(kSpecArmor)))
+        {
+            bot->CastSpell(bot, learn, true);
+            if (bot->HasSpell(SpecKnownSpell(spec)))
+                LOG_INFO("playerbots", "[Supply] house_spec bot={} spec={} spell={}", bot->GetName(),
+                         spec == kSpecArmor ? "armor" : "weapon", learn);
+        }
+    }
     bool const gearOpen = geared && gview.product != kNoTier && gview.remaining;
     bool const lineMarket = lined && !lview.buy.empty();
     bool const gearMarket = gearLine && !gview.buy.empty();
@@ -623,6 +665,18 @@ bool NewRpgBaseAction::SupplyStep()
             EmitLine(lineId, bot, Reason::Craft, lview.orderId, s.castItem, have - s.castBefore, 0, guid, guid);
         else if (have > s.castBefore)
             Emit(bot, Reason::Craft, view.orderId, s.castItem, have - s.castBefore, 0, guid, guid);
+        // HouseBoE: a house artisan's order craft of a Bind-on-Pickup piece is delivered Bind-on-Equip (owner ruling
+        // 2026-10-06). The core soulbound it at creation; clear that so the house can mail it to the ordering
+        // adventurer. Off / non-house / non-BoP: no-op, the path above is unchanged.
+        if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(s.castItem);
+            have > s.castBefore && proto &&
+            HouseBoEEligible(HouseBoE(), role.role == Role::Artisan && (artisan || lined || geared),
+                             proto->Bonding == BIND_WHEN_PICKED_UP))
+        {
+            if (std::uint32_t const converted = ConvertHouseBoE(bot, s.castItem))
+                LOG_INFO("playerbots", "[Supply] house_boe bot={} item={} order={}", bot->GetName(), s.castItem,
+                         s.castLine != kNoLine ? gview.orderId : lined ? lview.orderId : view.orderId);
+        }
         s.castSpell = 0;
         s.castLine = kNoLine;
     }
