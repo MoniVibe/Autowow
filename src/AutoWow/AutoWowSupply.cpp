@@ -3171,6 +3171,7 @@ void LoadConfig()
     p.climbCastable = sConfigMgr->GetOption<bool>("AutoWow.Supply.ClimbCastable", false);
     p.smithCopper = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithCopper", false);
     p.craftTrace = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftTrace", false);
+    p.craftDismount = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftDismount", false);
     gLineSpec = {};
     gPriority.clear();
     {
@@ -3676,6 +3677,8 @@ void LoadConfig()
     if (p.climbCastable || p.smithCopper || p.craftTrace)
         LOG_INFO("server.loading", "[Supply] hordehouses: climb_castable={} smith_copper={} (live: {}) craft_trace={}",
                  p.climbCastable, p.smithCopper, SmithCopper(), p.craftTrace);
+    if (p.craftDismount)
+        LOG_INFO("server.loading", "[Supply] hordehouses2: craft_dismount=true");
 }
 
 void WorldUpdate(std::uint32_t diff)

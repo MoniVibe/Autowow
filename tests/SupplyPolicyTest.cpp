@@ -2611,3 +2611,9 @@ TEST(SupplySmithCopper, BootsCastFromRoutedCopperOreAndWinTheSmithRestock)
     EXPECT_EQ(PlanClimbSkillup(53, 150, opts, 10).front().recipe, CopperRow(2862));  // as before
     EXPECT_EQ(PlanClimbSkillup(53, 150, PreferCastable(opts, castable, 53), 10).front().recipe, CopperRow(3469));
 }
+
+TEST(SupplyCraftDismount, OptIn)
+{
+    EXPECT_FALSE(Params{}.craftDismount);
+    EXPECT_FALSE(CraftDismount());  // module off: never
+}
