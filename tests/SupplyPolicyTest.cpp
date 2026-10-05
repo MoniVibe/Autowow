@@ -1407,6 +1407,35 @@ TEST(SupplyWeaponOrders, CancelsOnBetterWornOrTimeoutAndMergesFirst)
     EXPECT_EQ(Params{}.weaponOrderTimeoutMs, 7200000u);
 }
 
+TEST(SupplyClimbSkillup, MasterArtisanClimbsWithoutABlockedNeed)
+{
+    // S109 Tinkers: engineering 1, no member wants a shot / gun of the table (blocked=0): Rough Blasting Powder (tier 0,
+    // grey 40) and Crafted Light Shot (tier 6, grey 60) are known.
+    std::vector<SkillupOption> opts(2);
+    opts[0].spell = 3918;
+    opts[0].tier = 0;
+    opts[0].known = true;
+    opts[0].grey = 40;
+    opts[0].cost = 5;
+    opts[1].spell = 3920;
+    opts[1].tier = 6;
+    opts[1].known = true;
+    opts[1].grey = 60;
+    opts[1].cost = 9;
+    std::vector<GearOrder> o = PlanClimbSkillup(1, 150, opts, 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, 0u);     // the cheapest still below grey
+    EXPECT_EQ(o[0].units, 10u);
+    EXPECT_EQ(o[0].consumer, 0u);   // house stock: no member consumer
+    o = PlanClimbSkillup(45, 150, opts, 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, 6u);     // powder went grey
+    EXPECT_TRUE(PlanClimbSkillup(60, 150, opts, 10).empty());   // nothing known levels it
+    EXPECT_TRUE(PlanClimbSkillup(150, 150, opts, 10).empty());  // at the reach (the next rank waits)
+    EXPECT_TRUE(PlanClimbSkillup(1, 150, opts, 0).empty());     // SkillupCasts 0
+    EXPECT_FALSE(Params{}.climbSkillup);                        // opt-in
+}
+
 TEST(SupplyGear, TablesMatchTheWorldDb)
 {
     std::vector<std::uint32_t> const vendor = {2320, 2321, 4291, 2604, 2605, 6260, 4340};
