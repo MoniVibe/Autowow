@@ -10,6 +10,7 @@
 #include "SquadPolicy.h"
 #include "SupplyPolicy.h"
 #include "GearUpgradePolicy.h"
+#include "NoWhitePolicy.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
@@ -647,6 +648,8 @@ public:
             AutoWowParty::WorldUpdate(diff);  // world thread, after the map updates
         if (AutoWowSupply::Enabled())
             AutoWowSupply::WorldUpdate(diff);  // world thread: overlord, feed, delivery, pay, XP
+        if (AutoWowNoWhite::Enabled())
+            AutoWowNoWhite::WorldUpdate(diff);  // world thread: weapon floor (own bags, hand-me-down weapons first)
         if (AutoWowGear::FlowEnabled())
             AutoWowSupply::GearFlowUpdate(diff);  // world thread: hand-me-down gear mails
         if (AutoWowSquad::Enabled())

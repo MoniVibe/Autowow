@@ -61,12 +61,15 @@
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast). AutoWow.Errands.Mounts: a ride
 //     run's town is the riding trainer's spawn guid (needs 16384; done 4096 rank learned, 8192 mount learned), and
 //     each stop adds a row reason riding | mount with site, tier, spell | item, copper (paid), learned (bool).
+//     AutoWow.Gear.NoWhite (NoWhitePolicy.h LedgerFields): reason weapon_floor (own bag / bank weapon equipped),
+//     handdown_weapon (a member's weapon mailed to the bot), smith_order (a Smiths weapon order posted) with slot,
+//     item, ilvl, quality (0 for an order), floor (the floor item level), from (holder guid-low), oid (order id).
 //   - `trade` (event 17; AutoWow.Trade.Enable, AutoWow.Ledger.Treasury): one line per auction-house or
 //     mail result, or per fee paid (AutoWowTrade, TradePolicy.h). reason = action; quest is 0. Trailing:
 //     action (post|buy|sold|expired|mail|fee|tax), item (entry, 0 = none), count, price (copper: listing
 //     buyout, purchase price, sale's winning bid, fee), gold (signed copper change of the bot's money),
 //     ah (auction id, 0 = unknown); `fee` also kind (flight|repair|train). AutoWow.Gear.AuctionUpgrades: a gear
-//     purchase is a buy row with reason ah_gear and gain (item level over the piece worn in its slot). `tax` (AutoWow.Guilds.TaxPct): the
+//     purchase is a buy row with reason ah_gear and gain (item level over the piece worn in its slot); with AutoWow.Gear.NoWhite a weapon's is reason ah_weapon. `tax` (AutoWow.Guilds.TaxPct): the
 //     vendor-income tax paid into the bot's house guild bank (also a `guild` row, reason tax). AutoWow.Market.MailOrders
 //     (lane U): cod_sell (a random seller mailed an order fill to a rep; price = COD, gold = -postage), cod_buy (the
 //     rep took it; price = COD, gold = its purse change), cod_return (the rep returned it; kind = unordered|budget|

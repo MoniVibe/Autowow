@@ -32,6 +32,7 @@ if (BUILD_TESTING)
     "${CMAKE_CURRENT_LIST_DIR}/tests/TransportCrossingPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/GatherDetourPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/ErrandsPolicyTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/tests/NoWhitePolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/GatherScalePolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/SelfCraftPolicyTest.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/tests/PartyPolicyTest.cpp"

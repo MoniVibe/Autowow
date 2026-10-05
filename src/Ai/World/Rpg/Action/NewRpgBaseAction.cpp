@@ -30,6 +30,7 @@
 #include "G3D/Vector2.h"
 #include "GameObject.h"
 #include "GearUpgradePolicy.h"
+#include "NoWhitePolicy.h"
 #include "GossipDef.h"
 #include "GridNotifiers.h"
 #include "GridNotifiersImpl.h"
@@ -1984,7 +1985,42 @@ uint32 NewRpgBaseAction::BestRewardIndex(Quest const* quest)
     ItemUsage bestUsage = ITEM_USAGE_NONE;
     if (quest->GetRewChoiceItemsCount() <= 1)
         return 0;
-    else
+    // AutoWow.Gear.NoWhite (e): a usable weapon choice clearing the floor and improving on its slot wins.
+    if (AutoWowNoWhite::Enabled())
+    {
+        std::vector<AutoWowNoWhite::RewardChoice> choices;
+        bool const offHandFree = !bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+        for (uint8 i = 0; i < quest->GetRewChoiceItemsCount(); ++i)
+        {
+            AutoWowNoWhite::RewardChoice c;
+            if (ItemTemplate const* proto = sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[i]))
+            {
+                c.usable = proto->RequiredLevel <= bot->GetLevel() && bot->CanUseItem(proto) == EQUIP_ERR_OK;
+                c.quality = static_cast<std::uint8_t>(proto->Quality);
+                c.ilvl = proto->ItemLevel;
+                if (proto->Class == ITEM_CLASS_WEAPON)
+                    for (std::uint8_t const slot : {AutoWowNoWhite::kSlotMainHand, AutoWowNoWhite::kSlotOffHand,
+                                                    AutoWowNoWhite::kSlotRanged})
+                        if (c.slot == 0xFF &&
+                            AutoWowNoWhite::Fits(proto->InventoryType, slot, bot->CanDualWield(), offHandFree))
+                            c.slot = slot;
+            }
+            choices.push_back(c);
+        }
+        std::array<AutoWowNoWhite::Worn, 3> const worn = {AutoWowNoWhite::WornOf(bot, AutoWowNoWhite::kSlotMainHand),
+                                                          AutoWowNoWhite::WornOf(bot, AutoWowNoWhite::kSlotOffHand),
+                                                          AutoWowNoWhite::WornOf(bot, AutoWowNoWhite::kSlotRanged)};
+        std::size_t const pick =
+            AutoWowNoWhite::PickFloorReward(AutoWowNoWhite::Get(), bot->GetLevel(), choices, worn);
+        if (pick != AutoWowNoWhite::kNone)
+        {
+            LOG_INFO("playerbots", "[NoWhite] bot={} source=quest_reward quest={} index={} item={} ilvl={} quality={} "
+                     "slot={} lvl={}", bot->GetName(), quest->GetQuestId(), pick, quest->RewardChoiceItemId[pick],
+                     choices[pick].ilvl, static_cast<uint32>(choices[pick].quality),
+                     static_cast<uint32>(choices[pick].slot), bot->GetLevel());
+            return static_cast<uint32>(pick);
+        }
+    }
     {
         for (uint8 i = 0; i < quest->GetRewChoiceItemsCount(); ++i)
         {

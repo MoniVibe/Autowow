@@ -327,6 +327,7 @@ struct AhOffer
     std::uint32_t gain = 0;   // ItemLevel - worn ItemLevel (empty slot: ItemLevel)
     std::uint8_t slot = 0;
     bool twoHand = false;     // a two-hander bought for the main hand leaves the off hand out
+    std::uint8_t quality = 0; // ItemTemplate Quality (AutoWow.Gear.NoWhite drops grey / white weapons)
 };
 
 // Slot buy order: weapons (main hand, a hunter's ranged, off hand), chest, legs, head, shoulders, hands, feet,
