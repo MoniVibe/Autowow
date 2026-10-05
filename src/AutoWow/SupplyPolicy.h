@@ -181,6 +181,13 @@ struct Params
     bool artisanBagHygiene = false;  // AutoWow.Professions.ArtisanBagHygiene: a master artisan at home equips spare
                                      // carried bags and vendors its own crafted-output surplus beyond one kept stack
                                      // (S117: own sharpening stones / bars never shipped filled bags, crafting stopped)
+    // Lane ahsupply (owner 2026-10-06; all off by default, need ArtisanBagHygiene):
+    bool vendorJunk = false;         // AutoWow.Professions.VendorJunk: a bag-hygiene trip also vendors the junk the
+                                     // bags fill with -- greys, readable books / pamphlets, quest items no logged
+                                     // quest wants, and foreign-profession reagents beyond one kept stack
+    bool surplusToAuction = false;   // AutoWow.Professions.SurplusToAuction: the artisan lists its crafted-output
+                                     // surplus on the faction auction house instead of vendoring it
+    std::uint32_t foreignKeepStacks = 1;  // kept stacks per foreign-profession trade-good entry before VendorJunk sells
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -2825,6 +2832,11 @@ struct BagStack
     // ArtisanBagHygiene (appended so the existing positional {guid, sellPrice, house, quest, keep} inits still hold):
     std::uint32_t entry = 0;      // item id (groups a product's stacks)
     bool product = false;         // a crafted output (tier product) of its own line
+    // VendorJunk (appended; defaulted so older inits still hold):
+    bool grey = false;            // ITEM_QUALITY_POOR
+    bool readable = false;        // has page text (a book / pamphlet)
+    bool questItem = false;       // ITEM_CLASS_QUEST (a quest item; `quest` says a logged quest still wants it)
+    bool tradeGood = false;       // ITEM_CLASS_TRADE_GOODS (a profession reagent); foreign ones (!house) are surplus
 };
 
 // BagStack.quest for one quest in the log (incomplete or complete, not yet rewarded): `item` is its source item, an
@@ -2919,6 +2931,45 @@ struct RoomPlan
             run = 0;
         if (run++ >= keepStacks)
             out.push_back(stacks[i].guid);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// AutoWow.Professions.VendorJunk: the loose stacks a bag-hygiene trip vendors to clear the quest leftovers, books,
+// seeds and foreign reagents the bags fill with (soak S119: `freed=0`, artisans jammed on full bags). A stack is junk
+// only if it is none of: an own line material / product (`house` / `product`), a reserve a logged quest still wants
+// (`quest`), or a kept item (`keep`: hearthstone, tools, containers, no-destroy). Among those, it is sold when it is a
+// grey, a readable book / pamphlet, a quest-class item (no logged quest wants it), or a foreign trade good beyond
+// `foreignKeep` kept stacks of that entry; it must have a vendor value (unsellable junk is left to the make-room
+// destroy step). Deterministic: ascending guid out, and within a foreign trade-good entry the lowest guids are kept.
+[[nodiscard]] inline std::vector<std::uint32_t> HygieneJunkStacks(std::vector<BagStack> stacks,
+                                                                  std::uint32_t foreignKeep)
+{
+    stacks.erase(std::remove_if(stacks.begin(), stacks.end(),
+                                [](BagStack const& s)
+                                { return s.house || s.product || s.quest || s.keep || !s.sellPrice; }),
+                 stacks.end());
+    std::sort(stacks.begin(), stacks.end(), [](BagStack const& a, BagStack const& b)
+              { return a.entry != b.entry ? a.entry < b.entry : a.guid < b.guid; });
+    std::vector<std::uint32_t> out;
+    std::uint32_t run = 0;  // kept stacks seen of the current foreign trade-good entry
+    for (std::size_t i = 0; i < stacks.size(); ++i)
+    {
+        BagStack const& s = stacks[i];
+        if (i && s.entry != stacks[i - 1].entry)
+            run = 0;
+        if (s.grey || s.readable || s.questItem)
+        {
+            out.push_back(s.guid);
+            continue;
+        }
+        if (s.tradeGood)  // foreign reagent (own ones are `house`): keep foreignKeep stacks, sell the rest
+        {
+            if (run++ >= foreignKeep)
+                out.push_back(s.guid);
+        }
+        // anything else (e.g. BoE gear: ListLoot's job, or food) is left alone
     }
     std::sort(out.begin(), out.end());
     return out;
@@ -3067,6 +3118,8 @@ inline bool SmithCopper() { return SmithBars() && detail::gParams.smithCopper; }
 inline bool CraftTrace() { return detail::gEnabled && detail::gParams.craftTrace; }
 inline bool CraftDismount() { return detail::gEnabled && detail::gParams.craftDismount; }
 inline bool ArtisanBagHygiene() { return detail::gEnabled && detail::gParams.artisanBagHygiene; }
+inline bool VendorJunk() { return ArtisanBagHygiene() && detail::gParams.vendorJunk; }
+inline bool SurplusToAuction() { return ArtisanBagHygiene() && detail::gParams.surplusToAuction; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was), its tierLow rows after them only with PotionLowBridge too. A copy: callers keep it for the scope that reads
 // its tiers.

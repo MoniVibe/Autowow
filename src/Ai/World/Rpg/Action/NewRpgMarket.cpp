@@ -213,7 +213,10 @@ bool NewRpgBaseAction::MarketSellerStep()
             return false;  // questing / travelling: the next scan
         }
         float const yards = float(p.sellerYards);
-        if (AutoWowTrade::RandomSellers() && room && HasPostableLoot(bot))
+        // AutoWow.Auction.ListLoot also sends a background bot to the auctioneer to list its unneeded BoE gear;
+        // AutoWow.Auction.SeedThinSlots sends it even with no loot, to top up thin slots (its own daily cap throttles).
+        bool const wantList = (AutoWowTrade::RandomSellers() || AutoWowTrade::ListLoot()) && room && HasPostableLoot(bot);
+        if (wantList || AutoWowTrade::SeedThinSlots())
             for (ObjectGuid const& g : AI_VALUE(GuidVector, "possible new rpg targets"))  // nearest first
                 if (Creature* c = ObjectAccessor::GetCreature(*bot, g);
                     c && c->IsAlive() && c->HasNpcFlag(UNIT_NPC_FLAG_AUCTIONEER) && !c->IsHostileTo(bot) &&
@@ -242,15 +245,20 @@ bool NewRpgBaseAction::MarketSellerStep()
     return MarketTargetTick([this](WorldPosition const& d) { WalkLeg(d); }, bot, botAI, guid, s, now,
                             [&](WorldObject* obj)
                             {
-                                std::uint32_t n = 0;
+                                std::uint32_t n = 0, seeded = 0;
                                 if (s.kind == Target::Auctioneer)
+                                {
                                     n = AutoWowTrade::PostLoot(botAI, bot, obj->ToCreature(), room);
+                                    // SeedThinSlots keeps its own per-house daily cap; it does not draw the hourly
+                                    // seller cap below, so it is not folded into NoteSeller.
+                                    seeded = AutoWowTrade::SeedThinSlotsAt(bot, obj->ToCreature());
+                                }
                                 else
                                 {
                                     AutoWowTrade::VisitMailbox(bot, obj->ToGameObject());
                                     n = AutoWowSupply::FillOrders(bot, room);
                                 }
                                 AutoWowTrade::NoteSeller(s.window, hour, n);
-                                return n != 0 || s.kind == Target::Mailbox;
+                                return n != 0 || seeded != 0 || s.kind == Target::Mailbox;
                             });
 }

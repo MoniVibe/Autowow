@@ -3698,6 +3698,38 @@ AutoWow.Market.SellerCapPerHour = 6
 AutoWow.Market.SellerScanMs = 60000
 AutoWow.Market.SellerYards = 120
 
+# Auction supply (lane ahsupply; owner 2026-10-06; all off by default). The gear catch-up scan found no usable gear on
+# the AH because adventurer bots vendor the gear they loot and the accessory / off-slots seldom drop.
+#  - ListLoot: a cohort or background bot lists its unneeded BoE green / blue equippables (the stock item-usage scorer
+#    does not rate them an upgrade) on its faction auction house instead of vendoring them, so other bots' catch-up
+#    scans find usable gear. Priced as any other post (undercut the lowest competing buyout, else vendor * PriceMultPct,
+#    never under the floor); the per-visit cap is AutoWow.Trade.MaxPosts, background bots also obey SellerCapPerHour.
+#    Cohort bots list on their auction errand run (needs AutoWow.Trade.Enable); background bots walk to a nearby
+#    auctioneer as the market seller step does.
+#  - SeedThinSlots: a capped seeder tops up THIN accessory / off-slots (trinket, ring, neck, back, off-hand, ranged /
+#    relic) per level band with freshly created BoE green items (sRandomItemMgr's per-level equipment index, filtered
+#    to green BoE of the slot and band). This is the one place items are created from nothing (owner-approved, capped).
+#    The seller is the background bot at the auctioneer (an existing non-cohort character). DailyCap bounds the created
+#    listings per faction house per game day; a (slot, band) with fewer than ThinThreshold buyout listings is topped up
+#    to the threshold, at most SeedPerVisit per visit. Needs a background bot reaching a faction auctioneer.
+AutoWow.Auction.ListLoot = 0
+AutoWow.Auction.SeedThinSlots = 0
+AutoWow.Auction.DailyCap = 20
+AutoWow.Auction.ThinThreshold = 3
+AutoWow.Auction.SeedPerVisit = 3
+
+# Artisan bag hygiene (lane artisanbags / ahsupply; needs AutoWow.Professions.ArtisanBagHygiene; off by default).
+#  - ArtisanBagHygiene: a master artisan at home equips spare carried bags and clears its own crafted-output surplus
+#    beyond one kept stack (S117: own sharpening stones / bars filled the bags and crafting stopped).
+#  - VendorJunk: a bag-hygiene trip also vendors the junk the bags fill with -- greys, readable books / pamphlets,
+#    quest-class items no logged quest wants, and foreign-profession reagents beyond one kept stack. Never own line
+#    materials / products, a logged quest's reserves, or kept items (hearthstone, tools, containers). (S119: bag_hygiene
+#    freed=0 -- that metric only ever counted bag-equipping; the junk is what actually clears the bags.)
+#  - SurplusToAuction: the artisan lists its crafted-output surplus on the faction auction house instead of vendoring it.
+AutoWow.Professions.ArtisanBagHygiene = 0
+AutoWow.Professions.VendorJunk = 0
+AutoWow.Professions.SurplusToAuction = 0
+
 # Gatherer squad (lane G; SquadPolicy.h; docs/SUPPLY_CHAIN_PLAN.md "Gatherer squad"). Enable: a per-team roster
 # (Alliance / Horde: ','-separated guids or lo-hi ranges, at most 10 per team, sorted; the guids must also be in
 # AutoWow.Guilds.CohortGuids for routing) puts material demand before levelling. Needs AutoWow.Supply.Enable for

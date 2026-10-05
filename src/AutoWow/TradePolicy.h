@@ -87,7 +87,11 @@ inline constexpr char const* FeeKindName(FeeKind k)
 
 // Core item constants (ItemTemplate.h), mirrored for the value-only policy.
 inline constexpr std::uint32_t kQualityUncommon = 2;
+inline constexpr std::uint32_t kQualityRare = 3;
 inline constexpr std::uint32_t kClassReagent = 5, kClassTradeGoods = 7, kClassGem = 3;
+
+// Core item bonding (ItemTemplate.h): never list a soul-bound-on-pickup or quest item.
+inline constexpr std::uint32_t kBindOnPickup = 1, kBindQuestItem = 4;
 
 struct Params
 {
@@ -107,6 +111,16 @@ struct Params
     std::uint32_t sellerCapPerHour = 6;  // AutoWow.Market.SellerCapPerHour: AH listings + COD mails per bot per hour
     std::uint32_t sellerScanMs = 60000;  // AutoWow.Market.SellerScanMs: an idle random bot looks this often
     std::uint32_t sellerYards = 120;     // AutoWow.Market.SellerYards: auctioneer / mailbox search radius
+    // AutoWow.Auction.ListLoot (off by default): adventurer bots list unneeded BoE green / blue equippables
+    // instead of vendoring them, so other bots' gear catch-up scans find usable gear.
+    bool listLoot = false;               // AutoWow.Auction.ListLoot
+    // AutoWow.Auction.SeedThinSlots (off by default): a capped seeder tops up THIN accessory / off-slots with BoE
+    // green items so the slots that seldom drop (trinket, ring, neck, back, off-hand, ranged / relic) are stockable.
+    bool seedThinSlots = false;          // AutoWow.Auction.SeedThinSlots
+    std::uint32_t seedDailyCap = 20;     // AutoWow.Auction.DailyCap: seeded listings per faction house per game day
+    std::uint32_t seedThinThreshold = 3; // a (slot, level band) with fewer buyout listings than this is thin
+    std::uint32_t seedPerVisit = 3;      // seeded listings created at one auctioneer visit (bounded by the daily cap)
+    std::uint32_t seedDurationMin = 1440;// seeded auctions' listing time (minutes; the core accepts 720 / 1440 / 2880)
 };
 
 // ---- random-bot market sellers (AutoWow.Market.RandomSellers / MailOrders) ----------------------------
@@ -168,6 +182,16 @@ struct Holding
            h.itemClass == kClassGem;
 }
 
+// AutoWow.Auction.ListLoot: a looted equippable the bot does not want goes on the auction house instead of the
+// vendor. BoE only (never bind-on-pickup / quest), not soul-bound, green or blue, an equippable slot. `wanted` =
+// the stock item-usage scorer rates it an equip / replace upgrade (those are kept to wear, never listed).
+[[nodiscard]] inline bool ListLootEquip(std::uint32_t quality, std::uint32_t inventoryType, std::uint32_t bonding,
+                                        bool soulbound, bool wanted)
+{
+    return !wanted && !soulbound && inventoryType != 0 && bonding != kBindOnPickup && bonding != kBindQuestItem &&
+           quality >= kQualityUncommon && quality <= kQualityRare;
+}
+
 // Buyout per unit: undercut the lowest competing buyout, else vendor * PriceMultPct. 0 = do not list
 // (the competition sits under the floor: vendoring pays better).
 [[nodiscard]] inline std::uint64_t UnitPrice(Params const& p, std::uint32_t sellPrice, std::uint32_t lowestOther)
@@ -214,6 +238,68 @@ inline constexpr std::uint64_t kMaxMoney = 0x7FFFFFFF;  // core MAX_MONEY_AMOUNT
                        h.deposit});
     }
     return out;
+}
+
+// ---- AutoWow.Auction.SeedThinSlots thin-slot seeding (value only) -----------------------------------
+// The accessory / off-slot categories gear catch-up scans seldom find on the auction house (they rarely drop):
+// trinkets, rings, neck, back, off-hand (shield / held-in-off-hand) and ranged / relic. Each is topped up per
+// level band with BoE green items so the catch-up plan has something to buy. None = not a seeded slot.
+enum class SeedSlot : std::uint8_t { None = 0, Trinket = 1, Ring = 2, Neck = 3, Back = 4, OffHand = 5, Ranged = 6 };
+inline constexpr std::uint8_t kSeedSlots = 6;  // categories 1..6
+inline constexpr std::uint8_t kSeedBands = 8;  // level bands 1-10, 11-20, ... 71-80
+
+// The seed category of a core InventoryType (ItemTemplate.h INVTYPE_*). INVTYPE values are stable WotLK constants.
+[[nodiscard]] inline SeedSlot SeedSlotOf(std::uint32_t invType)
+{
+    switch (invType)
+    {
+        case 12: return SeedSlot::Trinket;  // INVTYPE_TRINKET
+        case 11: return SeedSlot::Ring;     // INVTYPE_FINGER
+        case 2:  return SeedSlot::Neck;     // INVTYPE_NECK
+        case 16: return SeedSlot::Back;     // INVTYPE_CLOAK
+        case 14: return SeedSlot::OffHand;  // INVTYPE_SHIELD
+        case 23: return SeedSlot::OffHand;  // INVTYPE_HOLDABLE
+        case 15: return SeedSlot::Ranged;   // INVTYPE_RANGED
+        case 25: return SeedSlot::Ranged;   // INVTYPE_THROWN
+        case 26: return SeedSlot::Ranged;   // INVTYPE_RANGEDRIGHT
+        case 28: return SeedSlot::Ranged;   // INVTYPE_RELIC
+        default: return SeedSlot::None;
+    }
+}
+
+// Level band index [0, kSeedBands) of a required level (0 and overflow clamp into the first / last band).
+[[nodiscard]] inline std::uint8_t SeedBandOf(std::uint32_t level)
+{
+    std::uint32_t const b = level ? (level - 1) / 10 : 0;
+    return static_cast<std::uint8_t>(b < kSeedBands ? b : kSeedBands - 1);
+}
+
+// Per-faction-house daily cap accounting (one game day = kSeedDayMs of game time).
+inline constexpr std::uint64_t kSeedDayMs = 86400000;
+struct SeedWindow
+{
+    std::uint64_t day = 0;   // game-time day index of `used`
+    std::uint32_t used = 0;
+};
+[[nodiscard]] inline std::uint32_t SeedRoom(SeedWindow const& w, std::uint64_t day, std::uint32_t cap)
+{
+    std::uint32_t const used = w.day == day ? w.used : 0;
+    return cap > used ? cap - used : 0;
+}
+inline void NoteSeed(SeedWindow& w, std::uint64_t day, std::uint32_t n)
+{
+    if (w.day != day)
+        w = {day, 0};
+    w.used += n;
+}
+
+// Items to seed into a (slot, band) with `listingCount` competing buyout listings now: top it up to `threshold`,
+// never more than `room` left under the daily / per-visit cap.
+[[nodiscard]] inline std::uint32_t SeedCount(std::uint32_t listingCount, std::uint32_t threshold, std::uint32_t room)
+{
+    if (listingCount >= threshold || !room)
+        return 0;
+    return std::min(threshold - listingCount, room);
 }
 
 // ---- buying -----------------------------------------------------------------------------------------
@@ -419,6 +505,8 @@ inline Params gParams;
 }
 inline bool Enabled() { return detail::gEnabled; }
 inline bool TreasuryEnabled() { return detail::gTreasury; }
+inline bool ListLoot() { return detail::gParams.listLoot; }
+inline bool SeedThinSlots() { return detail::gParams.seedThinSlots; }
 
 void LoadConfig();
 }  // namespace AutoWowTrade
@@ -460,6 +548,11 @@ void NoteFee(Player* bot, FeeKind kind, std::uint64_t copper);
 // loot as VisitAuctioneer plans it, no purchases. Returns the listings queued.
 std::uint32_t PostLoot(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std::uint32_t maxPosts);
 inline bool RandomSellers() { return detail::gParams.randomSellers; }
+// AutoWow.Auction.SeedThinSlots (map thread, at a faction auctioneer): queue a world-thread pass that tops up thin
+// accessory / off-slots on that faction house with freshly created BoE green items (owner-approved: the one place
+// items are created from nothing), owned by `bot`, within the per-faction-house daily cap. Returns the listings
+// queued (0 = house not a faction house, nothing thin, or the cap is spent). No-op with the flag off.
+std::uint32_t SeedThinSlotsAt(Player* bot, Creature* auctioneer);
 // Any thread: a `trade` row + [Trade] log line (e.g. the COD rows of AutoWowSupply).
 void EmitRow(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price, std::int64_t gold,
              char const* kind = nullptr);
