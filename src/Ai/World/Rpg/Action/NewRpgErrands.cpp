@@ -191,6 +191,16 @@ void BuildCatalog()
                     std::sort(n.gear.begin(), n.gear.end());
                     n.gear.erase(std::unique(n.gear.begin(), n.gear.end()), n.gear.end());
                 }
+            // AutoWow.Survival.PotionFloor: the kPotions items it sells for plain gold.
+            if (detail::gParams.potionFloor)
+                if (VendorItemData const* list = sObjectMgr->GetNpcVendorItemList(data.id))
+                {
+                    for (VendorItem const* vi : list->m_items)
+                        if (vi && !vi->ExtendedCost && IsPotionItem(vi->item))
+                            n.potions.push_back(vi->item);
+                    std::sort(n.potions.begin(), n.potions.end());
+                    n.potions.erase(std::unique(n.potions.begin(), n.potions.end()), n.potions.end());
+                }
         }
         npcs.push_back(std::move(n));
     }
@@ -232,6 +242,12 @@ void BuildCatalog()
     detail::gTowns = BuildTowns(std::move(npcs), detail::gParams.townRadius);
     LOG_INFO("server.loading", ">> [Errands] {} towns from {} service npcs in {} ms", detail::gTowns.size(), scanned,
              GetMSTimeDiffToNow(start));
+    if (detail::gParams.potionFloor)
+        for (Town const& t : detail::gTowns)
+            for (Npc const& n : t.npcs)
+                if (!n.potions.empty())
+                    LOG_INFO("server.loading", ">> [PotionFloor] town={} map={} zone={} teams={} vendor={} potions={}",
+                             t.id, t.map, t.zone, static_cast<uint32>(t.teams), n.entry, n.potions.size());
 }
 
 uint32 ZoneOfArea(uint32 areaId)
@@ -406,6 +422,60 @@ void KeepBuy(Player* bot, Creature* npc, Stop const& st, BotState& s, Params con
         }
 }
 
+// AutoWow.Survival.PotionFloor: kPotions stock per family in the bags (any tier the table lists).
+std::array<std::uint32_t, kPotionFamilies> PotionHave(Player* bot)
+{
+    std::array<std::uint32_t, kPotionFamilies> have{};
+    for (Potion const& t : kPotions)
+        have[t.family] += bot->GetItemCount(t.item, false);
+    return have;
+}
+
+// AutoWow.Survival.PotionFloor at one vendor: per family the bot drinks, its potions best tier first, one at a time up to
+// Target (vendor stock is limited: npc_vendor maxcount), with the class-trainer budget kept in hand. Purchases are
+// counted by the bag change (as KeepBuy).
+void PotionBuy(Player* bot, Creature* npc, BotState& s, Params const& p)
+{
+    VendorItemData const* list = npc->GetVendorItems();
+    uint64 const reserve = ClassTrainBudgetCopper(bot->GetLevel());
+    std::uint32_t const families = PotionFamiliesFor(bot->getClass());
+    for (std::uint8_t f = 0; list && f < kPotionFamilies; ++f)
+    {
+        if (!(families & (1u << f)))
+            continue;
+        for (uint32 const item : PotionsFor(f, bot->GetLevel(), nullptr))
+        {
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+            uint32 slot = list->GetItemCount();
+            for (uint32 i = 0; proto && i < list->GetItemCount(); ++i)
+                if (VendorItem const* vi = list->GetItem(i); vi && vi->item == item && !vi->ExtendedCost)
+                {
+                    slot = i;
+                    break;
+                }
+            if (slot == list->GetItemCount())
+                continue;
+            uint64 const m0 = bot->GetMoney();
+            uint32 bought = 0;
+            while (PotionHave(bot)[f] < p.potionTarget && bot->GetMoney() >= uint64(proto->BuyPrice) + reserve)
+            {
+                uint32 const before = bot->GetItemCount(item, false);
+                bot->BuyItemFromVendorSlot(npc->GetGUID(), slot, item, 1, NULL_BAG, NULL_SLOT);
+                if (bot->GetItemCount(item, false) <= before)
+                    break;  // vendor stock out, bags full, the reputation price
+                ++bought;
+            }
+            uint64 const paid = m0 > bot->GetMoney() ? m0 - bot->GetMoney() : 0;
+            s.spent += paid;
+            if (bought)
+                s.done |= DonePotions;
+            LOG_INFO("playerbots", "[PotionFloor] bot={} source=vendor npc={} item={} bought={} copper={} have={} "
+                     "target={} money={} lvl={}", bot->GetName(), npc->GetEntry(), item, bought, paid,
+                     PotionHave(bot)[f], p.potionTarget, bot->GetMoney(), bot->GetLevel());
+        }
+    }
+}
+
 bool HearthReady(Player* bot)
 {
     return bot->HasItemCount(kHearthstoneItem, 1, false) && !bot->HasSpellCooldown(kHearthstoneSpell);
@@ -520,6 +590,27 @@ bool TrainerHasWork(Player* bot, uint32 entry, uint64 money, bool& unaffordable)
     return work;
 }
 
+// AutoWow.Survival.PotionFloor: the potions of the families under `below` that a usable vendor of the town sells, best
+// tier first per family (heal first). Empty with the flag off.
+std::vector<uint32> TownPotions(Player* bot, Town const& t, std::uint8_t team, std::uint32_t below)
+{
+    std::vector<uint32> out;
+    std::uint32_t const shortMask =
+        PotionShort(detail::gParams, bot->getClass(), bot->GetLevel(), PotionHave(bot), below);
+    if (!shortMask)
+        return out;
+    std::vector<uint32> available;
+    for (Npc const& n : t.npcs)
+        if ((n.teams & team) && (n.roles & RoleVendor))
+            available.insert(available.end(), n.potions.begin(), n.potions.end());
+    std::sort(available.begin(), available.end());
+    for (std::uint8_t f = 0; f < kPotionFamilies; ++f)
+        if (shortMask & (1u << f))
+            for (uint32 const item : PotionsFor(f, bot->GetLevel(), &available))
+                out.push_back(item);
+    return out;
+}
+
 TownFacts FactsOf(Player* bot, Town const& t, std::uint8_t team)
 {
     TownFacts f;
@@ -551,6 +642,8 @@ TownFacts FactsOf(Player* bot, Town const& t, std::uint8_t team)
     if (AutoWowGear::AuctionEnabled())
         f.auction = std::any_of(t.npcs.begin(), t.npcs.end(),
                                 [team](Npc const& n) { return (n.teams & team) && (n.roles & RoleAuction); });
+    if (detail::gParams.potionFloor)
+        f.potions = !TownPotions(bot, t, team, detail::gParams.potionLow).empty();
     return f;
 }
 
@@ -965,6 +1058,11 @@ Assessment AssessBot(Player* bot, BotState const& s, std::uint64_t nowMs)
         o.supplyMail = AutoWowSupply::HasSupplyMail(bot);
         o.mailRunDue = MailRunDue(o.supplyMail, nowMs, s.nextMailMs);
     }
+    if (p.potionFloor)
+    {
+        o.potionShort = PotionShort(p, o.cls, o.level, PotionHave(bot), p.potionLow);
+        o.potionRunDue = PotionRunDue(o.potionShort, nowMs, s.nextPotionMs);
+    }
     return Assess(p, o);
 }
 
@@ -990,7 +1088,7 @@ bool TownTeachesPlan(Player* bot, Town const& t, std::uint8_t team)
 Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg,
                        std::optional<AutoWowQuestGiverTravel::ErrandsWalkProbeSelection>& selectedWalk,
                        WalkBackoffTable& walkBackoffs, std::uint64_t nowMs, std::uint32_t needs,
-                       bool trainOnly = false, bool auctionOnly = false)
+                       bool trainOnly = false, bool auctionOnly = false, bool potionOnly = false)
 {
     selectedWalk.reset();
     Params const& p = detail::gParams;
@@ -1005,6 +1103,8 @@ Town const* ChooseTown(Player* bot, std::uint8_t team, Leg& leg,
             continue;
         if (auctionOnly && std::none_of(t.npcs.begin(), t.npcs.end(), [team](Npc const& n)
                                         { return (n.teams & team) && (n.roles & RoleAuction); }))
+            continue;
+        if (potionOnly && TownPotions(bot, t, team, p.potionLow).empty())
             continue;
         nearby.emplace_back(Dist2(bx, by, t.x, t.y), &t);
         if (!hearthTown && HearthBoundAt(bot, t))
@@ -1283,6 +1383,15 @@ void LoadConfig()
     p.sellTradeGoods = sConfigMgr->GetOption<bool>("AutoWow.Errands.SellTradeGoods", false);
     p.keepConsumables = sConfigMgr->GetOption<bool>("AutoWow.Survival.KeepConsumables", false);
     p.sellDetourYards = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.KeepConsumables.SellDetourYards", 30);
+    // AutoWow.Survival.PotionFloor: read before the catalog (vendors list their potions with it on).
+    p.potionFloor = sConfigMgr->GetOption<bool>("AutoWow.Survival.PotionFloor", false);
+    p.potionMinLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.PotionFloor.MinLevel", 60);
+    p.potionLow = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.PotionFloor.Low", 2);
+    p.potionTarget = std::max<std::uint32_t>(
+        p.potionLow, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.PotionFloor.Target", 5));
+    p.potionRunMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.PotionFloor.RunMs", 1800000);
+    p.potionAhMaxUnitCopper =
+        sConfigMgr->GetOption<std::uint32_t>("AutoWow.Survival.PotionFloor.AhMaxUnitCopper", 40000);
     // AutoWow.Errands.Mounts: read before the catalog (the ride sites are built with it on).
     p.mounts = sConfigMgr->GetOption<bool>("AutoWow.Errands.Mounts", false);
     p.mountsCheckMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Errands.MountsCheckMs", 600000);
@@ -1723,16 +1832,24 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             s.nextTrainRunMs = now + sPlayerbotAIConfig.autoWowProfessionsTrainRunCooldownMs;
             StoreState(guid, s);
         }
+        if (a.urgent & NeedPotion)
+        {
+            // AutoWow.Survival.PotionFloor only: a potion-due check spends the RunMs window, run or not.
+            s.nextPotionMs = now + p.potionRunMs;
+            StoreState(guid, s);
+        }
         if (!ShouldRun(a.needs, a.urgent))
             return false;
         Leg leg = Leg::None;
         // A run only a missing / capped planned profession asked for goes to a town that teaches it.
         bool const trainOnly = a.urgent == NeedProfTrain;
+        // AutoWow.Survival.PotionFloor: a run only the potions asked for goes to a town whose vendors sell them.
+        bool const potionOnly = a.urgent == NeedPotion;
         // Prefer the due auction scan without starving independently admissible local work when no safe auction
         // town is available. The second bounded selection keeps the existing reachability and backoff controls.
         bool const auctionPreferred = AuctionTownRequired(a.urgent);
         Town const* town = ChooseTown(
-            bot, team, leg, pendingWalk, s.walkBackoffs, now, a.needs, trainOnly, auctionPreferred);
+            bot, team, leg, pendingWalk, s.walkBackoffs, now, a.needs, trainOnly, auctionPreferred, potionOnly);
         bool const tryNonAuctionTown = ShouldTryNonAuctionTown(town != nullptr, a.needs, a.urgent);
         if (tryNonAuctionTown)
         {
@@ -1751,6 +1868,9 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
                                      "town={}",
                      bot->GetName(), bot->GetLevel(), AvgIlvl(bot), bot->GetMoney(), auctionPreferred,
                      tryNonAuctionTown, town ? town->id : 0);
+        if (a.urgent & NeedPotion)
+            LOG_INFO("playerbots", "[PotionFloor] run_due bot={} lvl={} potion_only={} money={} town={}", bot->GetName(),
+                     bot->GetLevel(), potionOnly, bot->GetMoney(), town ? town->id : 0);
         if (!town)
             return false;
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));
@@ -2088,6 +2208,9 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             }
             if (AutoWowSupply::Outfit())
                 PlanOutfit(bot, *town, team, in, floorCopper);
+            // AutoWow.Survival.PotionFloor: any run at a town whose vendors sell them tops the potions up to Target.
+            if (p.potionFloor)
+                in.potions = TownPotions(bot, *town, team, p.potionTarget);
             s.plan = PlanStops(*town, in);
             s.buyItems = in.buyItems;
             s.stop = 0;
@@ -2676,6 +2799,9 @@ void NewRpgBaseAction::ErrandsAtNpc(Creature* npc, AutoWowErrands::Stop const& s
             }
         }
     }
+    // AutoWow.Survival.PotionFloor (only planned with the flag on): this vendor's potions up to Target.
+    if (st.ops & OpPotion)
+        PotionBuy(bot, npc, s, p);
     if (st.ops & OpBind)
     {
         // The innkeeper's own effect (as zone progression does at a hub inn).

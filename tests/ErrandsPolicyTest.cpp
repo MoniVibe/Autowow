@@ -1507,7 +1507,7 @@ TEST(Outfit, MissingToolIsSoftAndAloneStartsARunOncePerWindow)
     BotState s;
     s.nextOutfitMs = 700000;
     EXPECT_EQ(AfterRun(p, s, 1000).nextOutfitMs, 700000U);
-    EXPECT_EQ(kStateVersion, 13u);
+    EXPECT_EQ(kStateVersion, 14u);
     EXPECT_EQ(kToolItems[0], 2901u);
     EXPECT_EQ(kToolItems[1], 7005u);
 }
@@ -2023,7 +2023,7 @@ TEST(Mounts, StateAndWireBits)
     EXPECT_EQ(next.mountGrantMs, 0U);    // run-scoped
     EXPECT_EQ(next.rideTier, 0U);
     EXPECT_EQ(next.mountItem, 0U);
-    EXPECT_EQ(kStateVersion, 13U);
+    EXPECT_EQ(kStateVersion, 14U);
     EXPECT_EQ(std::uint32_t(NeedRiding), 16384U);
     EXPECT_EQ(std::uint32_t(DoneRiding), 4096U);
     EXPECT_EQ(std::uint32_t(DoneMount), 8192U);
@@ -2093,6 +2093,175 @@ TEST(ErrandsDiagnostics, MissingGetterDoesNotInsertOrNormalizeState)
     EXPECT_FALSE(ReadStateForDiagnostics(guid, second));
     EXPECT_EQ(first.version, kStateVersion);
     EXPECT_EQ(second.version, kStateVersion);
+}
+
+// ---- AutoWow.Survival.PotionFloor ------------------------------------------------------------------
+
+Params PotionsOn()
+{
+    Params p;
+    p.potionFloor = true;
+    return p;
+}
+
+TEST(PotionFloor, DefaultsOffAndWireBits)
+{
+    Params const p;
+    EXPECT_FALSE(p.potionFloor);
+    EXPECT_EQ(p.potionMinLevel, 60U);
+    EXPECT_EQ(p.potionLow, 2U);
+    EXPECT_EQ(p.potionTarget, 5U);
+    EXPECT_EQ(p.potionRunMs, 1800000U);
+    EXPECT_EQ(p.potionAhMaxUnitCopper, 40000U);
+    EXPECT_EQ(std::uint32_t(NeedPotion), 32768U);
+    EXPECT_EQ(std::uint32_t(DonePotions), 16384U);
+    EXPECT_EQ(std::uint32_t(OpPotion), 4096U);
+    // flag off: no family is ever short, whatever the stock
+    EXPECT_EQ(PotionShort(p, kClassPriest, 75, {0, 0}, 5), 0U);
+}
+
+TEST(PotionFloor, TableAscendsPerFamilyAndMatchesTheWorldDb)
+{
+    for (std::size_t k = 1; k < kPotions.size(); ++k)
+    {
+        if (kPotions[k].family == kPotions[k - 1].family)
+        {
+            EXPECT_LT(kPotions[k - 1].minLevel, kPotions[k].minLevel);
+        }
+    }
+    EXPECT_TRUE(IsPotionItem(22829));   // Super Healing Potion, RequiredLevel 55
+    EXPECT_TRUE(IsPotionItem(33448));   // Runic Mana Potion, 70
+    EXPECT_FALSE(IsPotionItem(1710));   // Greater Healing Potion (21): too weak for the floor
+    EXPECT_FALSE(IsPotionItem(4540));
+    EXPECT_EQ(PotionFamiliesFor(kClassWarrior), 1u << kPotionHeal);
+    EXPECT_EQ(PotionFamiliesFor(kClassRogue), 1u << kPotionHeal);
+    EXPECT_EQ(PotionFamiliesFor(kClassDeathKnight), 1u << kPotionHeal);
+    EXPECT_EQ(PotionFamiliesFor(kClassPriest), (1u << kPotionHeal) | (1u << kPotionMana));
+    EXPECT_EQ(PotionFamiliesFor(kClassDruid), (1u << kPotionHeal) | (1u << kPotionMana));
+}
+
+TEST(PotionFloor, PotionsForIsBestTierFirstWithinLevelAndStock)
+{
+    EXPECT_EQ(PotionsFor(kPotionHeal, 72, nullptr), (std::vector<std::uint32_t>{33447, 39671, 22829, 13446}));
+    EXPECT_EQ(PotionsFor(kPotionHeal, 65, nullptr), (std::vector<std::uint32_t>{39671, 22829, 13446}));
+    EXPECT_EQ(PotionsFor(kPotionMana, 48, nullptr), (std::vector<std::uint32_t>{}));
+    EXPECT_EQ(PotionsFor(kPotionMana, 60, nullptr), (std::vector<std::uint32_t>{22832, 13444}));
+    // a Dalaran healer stock (sorted): Major / Super / Runic Healing
+    std::vector<std::uint32_t> const dalaran = {13446, 22829, 33447};
+    EXPECT_EQ(PotionsFor(kPotionHeal, 68, &dalaran), (std::vector<std::uint32_t>{22829, 13446}));
+    EXPECT_EQ(PotionsFor(kPotionMana, 80, &dalaran), (std::vector<std::uint32_t>{}));
+}
+
+TEST(PotionFloor, ShortNeedsLevelFamilyAndStock)
+{
+    Params const p = PotionsOn();
+    EXPECT_EQ(PotionShort(p, kClassWarrior, 59, {0, 0}, 2), 0U);  // under MinLevel
+    EXPECT_EQ(PotionShort(p, kClassWarrior, 60, {0, 0}, 2), 1u << kPotionHeal);  // a warrior drinks no mana
+    EXPECT_EQ(PotionShort(p, kClassWarrior, 60, {2, 0}, 2), 0U);
+    EXPECT_EQ(PotionShort(p, kClassMage, 70, {1, 3}, 2), 1u << kPotionHeal);
+    EXPECT_EQ(PotionShort(p, kClassMage, 70, {1, 1}, 2), (1u << kPotionHeal) | (1u << kPotionMana));
+    Params low = p;
+    low.potionMinLevel = 40;
+    EXPECT_EQ(PotionShort(low, kClassMage, 46, {0, 0}, 2), 1u << kPotionHeal);  // no mana tier usable at 46
+    EXPECT_FALSE(PotionRunDue(0, 10, 0));
+    EXPECT_TRUE(PotionRunDue(1, 10, 10));
+    EXPECT_FALSE(PotionRunDue(1, 9, 10));
+}
+
+TEST(PotionFloor, AssessSoftThenUrgentOncePerWindow)
+{
+    Params const p = PotionsOn();
+    Obs o = Healthy(kClassWarrior, 70);
+    EXPECT_EQ(Assess(p, o).needs & NeedPotion, 0U);
+    o.potionShort = 1u << kPotionHeal;
+    Assessment a = Assess(p, o);
+    EXPECT_EQ(a.needs & NeedPotion, std::uint32_t(NeedPotion));
+    EXPECT_EQ(a.urgent & NeedPotion, 0U);
+    EXPECT_FALSE(ShouldRun(a.needs, a.urgent));  // one soft need alone waits
+    o.potionRunDue = true;
+    a = Assess(p, o);
+    EXPECT_EQ(a.urgent, std::uint32_t(NeedPotion));
+    EXPECT_TRUE(ShouldRun(a.needs, a.urgent));
+    TownFacts f;
+    EXPECT_EQ(Serves(f) & NeedPotion, 0U);
+    f.potions = true;
+    EXPECT_EQ(Serves(f) & NeedPotion, std::uint32_t(NeedPotion));
+    BotState s;
+    s.nextPotionMs = 900000;
+    EXPECT_EQ(AfterRun(p, s, 1000).nextPotionMs, 900000U);  // survives runs
+}
+
+TEST(PotionFloor, PlanStopsAddsEveryPotionVendorLastWithoutDisplacing)
+{
+    Town t;
+    t.id = 5;
+    Npc inn = MakeNpc(5, RoleInn | RoleVendor, 0);
+    inn.items = {33444};
+    Npc smith = MakeNpc(7, RoleRepair | RoleVendor, 20);
+    Npc healer = MakeNpc(8, RoleVendor, 30);
+    healer.potions = {13446, 22829, 33447};
+    Npc magic = MakeNpc(9, RoleVendor, 40);
+    magic.potions = {22832, 33448};
+    Npc hordeAlch = MakeNpc(10, RoleVendor, 50, kHorde);
+    hordeAlch.potions = {22829};
+    t.npcs = {inn, smith, healer, magic, hordeAlch};
+    PlanInput in;
+    in.team = kAlliance;
+    in.buyItems[KindWater] = 33444;
+    Plan plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 2U);  // no potions planned: unchanged
+    in.potions = {33447, 22829};
+    plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 3U);
+    EXPECT_EQ(plan.stops[2].spawn, 8U);
+    EXPECT_EQ(plan.stops[2].ops, std::uint32_t(OpPotion));
+    in.potions = {22829, 33448};
+    plan = PlanStops(t, in);
+    ASSERT_EQ(plan.count, 4U);
+    EXPECT_EQ(plan.stops[2].spawn, 8U);
+    EXPECT_EQ(plan.stops[3].spawn, 9U);  // the horde vendor never joins
+    // the smith selling potions too: merged into its first stop
+    t.npcs[1].potions = {22829};
+    in.potions = {22829};
+    plan = PlanStops(t, in);
+    EXPECT_EQ(plan.stops[0].spawn, 7U);
+    EXPECT_EQ(plan.stops[0].ops, std::uint32_t(OpSell | OpRepair | OpPotion));
+}
+
+TEST(PotionFloor, AuctionLotsBestTierCheapestWithinCapAndBudget)
+{
+    Params const p = PotionsOn();  // target 5, unit cap 40000
+    std::vector<PotionLot> const lots = {
+        {40, 22829, 5, 75000},    // Super Healing 15000 / unit
+        {41, 33447, 2, 100000},   // Runic Healing 50000 / unit: over the cap
+        {42, 39671, 3, 90000},    // Resurgent Healing 30000 / unit (req 65)
+        {43, 39671, 3, 60000},    // Resurgent Healing 20000 / unit
+        {44, 22832, 5, 50000},    // Super Mana: a warrior wants none
+        {45, 1710, 5, 500},       // not a floor potion
+        {46, 13446, 0, 500},      // empty lot
+    };
+    std::vector<PotionLot> got = PlanPotionLots(p, kClassWarrior, 72, {0, 0}, lots, 1000000);
+    ASSERT_EQ(got.size(), 2U);
+    EXPECT_EQ(got[0].id, 43U);  // best tier, cheaper unit
+    EXPECT_EQ(got[1].id, 42U);  // still short (3 < 5): next resurgent lot
+    // the budget bounds it: only the cheaper resurgent lot fits
+    got = PlanPotionLots(p, kClassWarrior, 72, {0, 0}, lots, 70000);
+    ASSERT_EQ(got.size(), 1U);
+    EXPECT_EQ(got[0].id, 43U);
+    // at level 60 resurgent is out of reach: Super Healing
+    got = PlanPotionLots(p, kClassWarrior, 60, {0, 0}, lots, 1000000);
+    ASSERT_EQ(got.size(), 1U);
+    EXPECT_EQ(got[0].id, 40U);
+    // stocked already: nothing; a priest short of mana only buys mana
+    EXPECT_TRUE(PlanPotionLots(p, kClassWarrior, 72, {5, 0}, lots, 1000000).empty());
+    got = PlanPotionLots(p, kClassPriest, 72, {5, 0}, lots, 1000000);
+    ASSERT_EQ(got.size(), 1U);
+    EXPECT_EQ(got[0].id, 44U);
+    // a lot that would carry the family past twice Target is skipped
+    std::vector<PotionLot> const big = {{50, 22829, 20, 100000}};
+    EXPECT_TRUE(PlanPotionLots(p, kClassWarrior, 72, {0, 0}, big, 1000000).empty());
+    // flag off: nothing
+    EXPECT_TRUE(PlanPotionLots(Params{}, kClassWarrior, 72, {0, 0}, lots, 1000000).empty());
 }
 
 }  // namespace

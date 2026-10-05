@@ -31,7 +31,7 @@
 // no RNG, stable orders (spawn guid ascending; ties by lower id).
 namespace AutoWowErrands
 {
-inline constexpr std::uint8_t kStateVersion = 13;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
+inline constexpr std::uint8_t kStateVersion = 14;  // 2: sellUntilMs / sellRetryMs (KeepConsumables); 3: rescued;
                                                   // 4: lastGearLevel / gearItems / gearNpcs (Gear.Upgrades);
                                                   // 5: nextOutfitMs (Supply.Outfit); 6: nextMailMs (Supply.MailPickup);
                                                   // 7: nextTrainRunMs (Professions.TrainRuns);
@@ -42,6 +42,7 @@ inline constexpr std::uint8_t kStateVersion = 13;  // 2: sellUntilMs / sellRetry
                                                   // 11: walk admission / bounded town walk backoff
                                                   // 12: exact prepared walk segment provenance
                                                   // 13: typed internal predecessor handoff provenance
+                                                  // 14: nextPotionMs (Survival.PotionFloor)
 
 // ---- needs ---------------------------------------------------------------------------------------
 // Wire-stable bits (ledger `needs`); append only.
@@ -61,7 +62,8 @@ enum Need : std::uint32_t
     NeedTool = 1u << 11,       // AutoWow.Supply.Outfit: a known Mining / Skinning without its gathering tool
     NeedMail = 1u << 12,       // AutoWow.Supply.MailPickup: a supply mail (bag / potions from its house) waits
     NeedAhGear = 1u << 13,     // AutoWow.Gear.AuctionUpgrades: gear far under the ilvl curve, gold for the AH
-    NeedRiding = 1u << 14      // AutoWow.Errands.Mounts: a riding rank / mount run (its own site, not a town)
+    NeedRiding = 1u << 14,     // AutoWow.Errands.Mounts: a riding rank / mount run (its own site, not a town)
+    NeedPotion = 1u << 15      // AutoWow.Survival.PotionFloor: healing (mana users: or mana) potions under Low
 };
 inline constexpr std::uint32_t kConsumableNeeds = NeedFood | NeedWater | NeedAmmo | NeedReagent;
 
@@ -212,6 +214,59 @@ inline constexpr std::uint32_t kToolSkills[kTools] = {186, 393};  // Mining, Ski
     return supplyMail && nowMs >= nextMailMs;
 }
 
+// AutoWow.Survival.PotionFloor potions, per family lowest tier first (item_template RequiredLevel, world DB checked
+// 2026-10-05). Plain-gold vendor stock (limited, npc_vendor maxcount / incrtime): Major Healing 13446 / Major Mana 13444
+// (Stormspire 20989, Mok'Nathal 19837, 20092, Dalaran 29628), Super Healing 22829 / Super Mana 22832 (Stormspire 20989,
+// Dalaran 29628 / 28715 / 29537), Runic Healing 33447 / Runic Mana 33448 (Dalaran 29628 / 28715 / 29537). Resurgent
+// Healing 39671 and Icy Mana 40067 have no vendor: auction house only. Below Major (L45) nothing heals enough at L60+.
+inline constexpr std::uint8_t kPotionHeal = 0, kPotionMana = 1;
+inline constexpr std::size_t kPotionFamilies = 2;
+
+struct Potion
+{
+    std::uint32_t item = 0;
+    std::uint32_t minLevel = 0;  // item_template.RequiredLevel
+    std::uint8_t family = kPotionHeal;
+};
+
+inline constexpr std::array<Potion, 8> kPotions = {{{13446, 45, kPotionHeal},
+                                                    {22829, 55, kPotionHeal},
+                                                    {39671, 65, kPotionHeal},
+                                                    {33447, 70, kPotionHeal},
+                                                    {13444, 49, kPotionMana},
+                                                    {22832, 55, kPotionMana},
+                                                    {40067, 65, kPotionMana},
+                                                    {33448, 70, kPotionMana}}};
+
+[[nodiscard]] inline bool IsPotionItem(std::uint32_t item)
+{
+    for (Potion const& t : kPotions)
+        if (t.item == item)
+            return true;
+    return false;
+}
+
+// Family bits (1 << kPotion*) a class drinks: healing always, mana for the mana classes (KindsFor's list).
+[[nodiscard]] inline std::uint32_t PotionFamiliesFor(std::uint32_t cls)
+{
+    bool const mana = cls == kClassPaladin || cls == kClassHunter || cls == kClassPriest || cls == kClassShaman ||
+                      cls == kClassMage || cls == kClassWarlock || cls == kClassDruid;
+    return (1u << kPotionHeal) | (mana ? 1u << kPotionMana : 0u);
+}
+
+// The potions of `family` the bot may drink at `level`, best tier first, restricted to `available` (sorted item ids)
+// when given.
+[[nodiscard]] inline std::vector<std::uint32_t> PotionsFor(std::uint8_t family, std::uint32_t level,
+                                                           std::vector<std::uint32_t> const* available)
+{
+    std::vector<std::uint32_t> out;
+    for (std::size_t k = kPotions.size(); k-- > 0;)
+        if (kPotions[k].family == family && kPotions[k].minLevel <= level &&
+            (!available || std::binary_search(available->begin(), available->end(), kPotions[k].item)))
+            out.push_back(kPotions[k].item);
+    return out;
+}
+
 struct Params
 {
     std::uint32_t checkIntervalMs = 60000;     // AutoWow.Errands.CheckIntervalMs
@@ -263,7 +318,96 @@ struct Params
                                                    // 3 expert (flying, Outland)
     std::uint32_t mountsGrantBudgetPerHour = 100000;  // AutoWow.Errands.MountsGrantBudgetPerHour: mount grants per
                                                       // team per game hour (copper)
+    // AutoWow.Survival.PotionFloor (default 0; needs AutoWow.Errands.Enable): a bot at MinLevel+ keeps Target potions of
+    // each family it drinks (kPotions), own gold only: vendor stock at any errand town that sells them, auction
+    // listings at any auctioneer visit (AutoWow.Trade). Under Low is a need; alone it starts a run to a potion town
+    // once per RunMs.
+    bool potionFloor = false;
+    std::uint32_t potionMinLevel = 60;               // AutoWow.Survival.PotionFloor.MinLevel
+    std::uint32_t potionLow = 2;                     // AutoWow.Survival.PotionFloor.Low
+    std::uint32_t potionTarget = 5;                  // AutoWow.Survival.PotionFloor.Target
+    std::uint32_t potionRunMs = 1800000;             // AutoWow.Survival.PotionFloor.RunMs
+    std::uint32_t potionAhMaxUnitCopper = 40000;     // AutoWow.Survival.PotionFloor.AhMaxUnitCopper (4g: 2x vendor)
 };
+
+// AutoWow.Survival.PotionFloor: family bits (1 << kPotion*) the bot drinks whose stock `have` is under `below`.
+// Nothing under MinLevel or with the flag off.
+[[nodiscard]] inline std::uint32_t PotionShort(Params const& p, std::uint32_t cls, std::uint32_t level,
+                                               std::array<std::uint32_t, kPotionFamilies> const& have,
+                                               std::uint32_t below)
+{
+    if (!p.potionFloor || level < p.potionMinLevel)
+        return 0;
+    std::uint32_t const families = PotionFamiliesFor(cls);
+    std::uint32_t out = 0;
+    for (std::size_t f = 0; f < kPotionFamilies; ++f)
+        if ((families & (1u << f)) && have[f] < below && !PotionsFor(static_cast<std::uint8_t>(f), level, nullptr).empty())
+            out |= 1u << f;
+    return out;
+}
+
+// ... and alone starts a run once per PotionFloor.RunMs (nextPotionMs = check + it).
+[[nodiscard]] inline bool PotionRunDue(std::uint32_t shortFamilies, std::uint64_t nowMs, std::uint64_t nextPotionMs)
+{
+    return shortFamilies && nowMs >= nextPotionMs;
+}
+
+// An auction lot of a kPotions item (PlanPotionLots input).
+struct PotionLot
+{
+    std::uint32_t id = 0;  // auction id: stable, never reused
+    std::uint32_t item = 0;
+    std::uint32_t count = 0;
+    std::uint64_t buyout = 0;
+};
+
+// AutoWow.Survival.PotionFloor at an auctioneer: lots of the families under Target (PotionShort), best tier first, then
+// the cheaper unit, then the lower auction id; a lot is taken while its family is short, its unit price is at most
+// AhMaxUnitCopper, it fits the budget left and it does not carry the family past twice Target.
+[[nodiscard]] inline std::vector<PotionLot> PlanPotionLots(Params const& p, std::uint32_t cls, std::uint32_t level,
+                                                           std::array<std::uint32_t, kPotionFamilies> have,
+                                                           std::vector<PotionLot> lots, std::uint64_t budget)
+{
+    std::vector<PotionLot> out;
+    std::uint32_t const shortMask = PotionShort(p, cls, level, have, p.potionTarget);
+    if (!shortMask)
+        return out;
+    auto tierOf = [](std::uint32_t item) -> std::size_t
+    {
+        for (std::size_t k = 0; k < kPotions.size(); ++k)
+            if (kPotions[k].item == item)
+                return k;
+        return kPotions.size();
+    };
+    lots.erase(std::remove_if(lots.begin(), lots.end(),
+                              [&](PotionLot const& l)
+                              {
+                                  std::size_t const k = tierOf(l.item);
+                                  return k == kPotions.size() || !l.count || !l.buyout ||
+                                         kPotions[k].minLevel > level || !(shortMask & (1u << kPotions[k].family)) ||
+                                         l.buyout / l.count > p.potionAhMaxUnitCopper;
+                              }),
+               lots.end());
+    std::sort(lots.begin(), lots.end(),
+              [&](PotionLot const& a, PotionLot const& b)
+              {
+                  std::uint32_t const ta = kPotions[tierOf(a.item)].minLevel, tb = kPotions[tierOf(b.item)].minLevel;
+                  if (ta != tb)
+                      return ta > tb;
+                  std::uint64_t const ua = a.buyout / a.count, ub = b.buyout / b.count;
+                  return ua != ub ? ua < ub : a.id < b.id;
+              });
+    for (PotionLot const& l : lots)
+    {
+        std::uint8_t const f = kPotions[tierOf(l.item)].family;
+        if (have[f] >= p.potionTarget || l.buyout > budget || have[f] + l.count > 2 * p.potionTarget)
+            continue;
+        out.push_back(l);
+        have[f] += l.count;
+        budget -= l.buyout;
+    }
+    return out;
+}
 
 // Integer yards / percentages ------------------------------------------------------------------------
 [[nodiscard]] inline std::int64_t Dist2(std::int32_t ax, std::int32_t ay, std::int32_t bx, std::int32_t by)
@@ -363,6 +507,8 @@ struct Obs
     bool mailRunDue = false;                   // AutoWow.Supply.MailPickup only: MailRunDue
     bool trainRunDue = false;                  // AutoWow.Professions.TrainRuns only: TrainRunDue
     bool ahGearDue = false;                    // AutoWow.Gear.AuctionUpgrades only: AutoWowGear::AhRunDue
+    std::uint32_t potionShort = 0;             // AutoWow.Survival.PotionFloor only: PotionShort under Low
+    bool potionRunDue = false;                 // AutoWow.Survival.PotionFloor only: PotionRunDue
 };
 
 struct Assessment
@@ -471,6 +617,11 @@ struct Assessment
     // AutoWow.Gear.AuctionUpgrades: alone starts a run (to an auction town) once per level.
     if (o.ahGearDue)
         a.urgent |= NeedAhGear;
+    // AutoWow.Survival.PotionFloor: potions under Low are soft, and alone start a run once per RunMs.
+    if (o.potionShort)
+        a.needs |= NeedPotion;
+    if (o.potionShort && o.potionRunDue)
+        a.urgent |= NeedPotion;
     a.needs |= a.urgent;
     return a;
 }
@@ -547,6 +698,7 @@ struct Npc
     std::uint32_t sells = 0;              // (1 << Kind) of tier items on its vendor list
     std::vector<std::uint32_t> items;     // tier items it sells, ascending
     std::vector<std::uint32_t> gear;      // AutoWow.Gear.Upgrades: weapons / armor it sells, ascending
+    std::vector<std::uint32_t> potions;   // AutoWow.Survival.PotionFloor: kPotions items it sells for gold, ascending
     std::uint8_t tools = 0;               // Tool bits of the kToolItems it sells for plain gold (read by Outfit only)
     std::uint32_t nodeAlliance = 0;       // flight master: nearest taxi node per team
     std::uint32_t nodeHorde = 0;
@@ -718,6 +870,7 @@ struct TownFacts
     std::uint8_t tools = 0;            // AutoWow.Supply.Outfit: missing Tool bits a usable vendor sells
     bool mailbox = false;              // AutoWow.Supply.MailPickup: the town has a mailbox (catalogued with Trade on)
     bool auction = false;              // AutoWow.Gear.AuctionUpgrades: a usable auctioneer (catalogued with Trade on)
+    bool potions = false;              // AutoWow.Survival.PotionFloor: a usable vendor sells a potion the bot is short of
 };
 
 [[nodiscard]] inline std::uint32_t Serves(TownFacts const& f)
@@ -747,6 +900,8 @@ struct TownFacts
         m |= NeedMail;
     if (f.auction)
         m |= NeedAhGear;
+    if (f.potions)
+        m |= NeedPotion;
     return m;
 }
 
@@ -833,7 +988,8 @@ enum Done : std::uint32_t
     DoneFoodFloor = 1u << 10,   // AutoWow.Supply.OutfitGear: food / drink was bought
     DoneAhGear = 1u << 11,      // AutoWow.Gear.AuctionUpgrades: an auction-bought piece was equipped
     DoneRiding = 1u << 12,      // AutoWow.Errands.Mounts: the riding rank was learned
-    DoneMount = 1u << 13        // AutoWow.Errands.Mounts: a mount was learned
+    DoneMount = 1u << 13,       // AutoWow.Errands.Mounts: a mount was learned
+    DonePotions = 1u << 14      // AutoWow.Survival.PotionFloor: potions were bought at a vendor
 };
 
 // Operations at one npc, run in bit order.
@@ -850,7 +1006,8 @@ enum Op : std::uint32_t
     OpGear = 1u << 8,     // AutoWow.Gear.Upgrades: buy the planned weapon / armor this vendor sells
     OpTool = 1u << 9,     // AutoWow.Supply.Outfit: buy the missing gathering tools this vendor sells
     OpRide = 1u << 10,    // AutoWow.Errands.Mounts: learn the run's riding rank at the riding trainer
-    OpMount = 1u << 11    // AutoWow.Errands.Mounts: buy (unless held) and learn the run's mount
+    OpMount = 1u << 11,   // AutoWow.Errands.Mounts: buy (unless held) and learn the run's mount
+    OpPotion = 1u << 12   // AutoWow.Survival.PotionFloor: buy the potions this vendor sells up to Target
 };
 
 struct Stop
@@ -892,6 +1049,7 @@ struct PlanInput
     std::vector<std::uint32_t> gearNpcs;               // AutoWow.Gear.Upgrades: vendors with a planned buy
     std::uint8_t tools = 0;                            // AutoWow.Supply.Outfit: Tool bits to buy
     bool gearFirst = false;                            // AutoWow.Supply.OutfitGear: a floor weapon is planned
+    std::vector<std::uint32_t> potions;                // AutoWow.Survival.PotionFloor: kPotions items to buy here
 };
 
 // Errand batch in order: sell junk, repair, restock, train, bind, flight path. Operations on the same
@@ -993,6 +1151,14 @@ struct PlanInput
                 add(n, OpMail, 0);
                 break;
             }
+    // AutoWow.Survival.PotionFloor: last (never displacing a stop above), every usable vendor selling a planned potion
+    // (vendor stock is limited), spawn ascending as the town lists them; merged into an earlier stop at the same npc.
+    if (!in.potions.empty())
+        for (Npc const& n : town.npcs)
+            if (usable(n) && (n.roles & RoleVendor) &&
+                std::any_of(in.potions.begin(), in.potions.end(), [&n](std::uint32_t item)
+                            { return std::binary_search(n.potions.begin(), n.potions.end(), item); }))
+                add(n, OpPotion, 0);
     return plan;
 }
 
@@ -1794,6 +1960,8 @@ struct BotState
     std::uint8_t rideTier = 0;
     bool rideLearn = false;
     std::uint32_t mountItem = 0;  // 0 = no mount to buy
+    // AutoWow.Survival.PotionFloor: no potion-triggered run before this (survives runs, not restarts).
+    std::uint64_t nextPotionMs = 0;
 };
 
 [[nodiscard]] inline bool IsRunActive(BotState const& s) { return s.phase != Phase::None; }
@@ -1938,6 +2106,7 @@ struct RelocationRetirementFacts
     next.nextTrainRunMs = s.nextTrainRunMs;
     next.lastAhGearLevel = s.lastAhGearLevel;
     next.nextMountMs = s.nextMountMs;
+    next.nextPotionMs = s.nextPotionMs;
     next.predecessorGeneration = s.predecessorGeneration;
     next.cooldownUntilMs = nowMs + p.cooldownMs;
     next.nextCheckMs = nowMs + p.checkIntervalMs;

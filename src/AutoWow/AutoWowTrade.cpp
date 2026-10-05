@@ -19,6 +19,7 @@
 #include "Bag.h"
 #include "Config.h"
 #include "Creature.h"
+#include "ErrandsPolicy.h"
 #include "GameObject.h"
 #include "GameTime.h"
 #include "GearUpgradePolicy.h"
@@ -521,7 +522,35 @@ bool VisitAuctioneer(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, std:
                 ahGear->push_back(b.entry);
         }
     }
+    // AutoWow.Survival.PotionFloor: potion lots after the gear, before the mats, the reserve kept in hand.
+    std::vector<Buy> potions;
+    if (AutoWowErrands::Enabled() && AutoWowErrands::detail::gParams.potionFloor)
+    {
+        std::vector<AutoWowErrands::PotionLot> lots;
+        for (auto const& [id, a] : ah->GetAuctions())
+            if (a && a->owner != bot->GetGUID() && a->buyout && a->itemCount &&
+                AutoWowErrands::IsPotionItem(a->item_template))
+                lots.push_back({id, a->item_template, a->itemCount, a->buyout});
+        std::array<std::uint32_t, AutoWowErrands::kPotionFamilies> have{};
+        for (AutoWowErrands::Potion const& t : AutoWowErrands::kPotions)
+            have[t.family] += bot->GetItemCount(t.item, false);
+        uint64 const left = money > deposits + reserve ? money - deposits - reserve : 0;
+        for (AutoWowErrands::PotionLot const& l : AutoWowErrands::PlanPotionLots(
+                 AutoWowErrands::detail::gParams, bot->getClass(), bot->GetLevel(), have, lots, left))
+        {
+            potions.push_back({l.id, l.item, l.count, static_cast<uint32>(l.buyout), Want::None});
+            deposits += l.buyout;
+            LOG_INFO("playerbots", "[PotionFloor] bot={} source=ah ah={} item={} count={} buyout={} money={} lvl={}",
+                     bot->GetName(), l.id, l.item, l.count, l.buyout, money, bot->GetLevel());
+        }
+        if (lots.empty() && AutoWowErrands::PotionShort(AutoWowErrands::detail::gParams, bot->getClass(),
+                                                        bot->GetLevel(), have,
+                                                        AutoWowErrands::detail::gParams.potionTarget))
+            LOG_INFO("playerbots", "[PotionFloor] bot={} source=ah lots=0 heal={} mana={} lvl={}", bot->GetName(),
+                     have[AutoWowErrands::kPotionHeal], have[AutoWowErrands::kPotionMana], bot->GetLevel());
+    }
     std::vector<Buy> buys = PlanBuys(p, std::move(listings), BuyBudget(p, money > deposits ? money - deposits : 0, reserve));
+    buys.insert(buys.begin(), potions.begin(), potions.end());
     buys.insert(buys.begin(), gear.begin(), gear.end());
     LOG_INFO("playerbots", "[Trade] bot={} auctioneer={} posts={} buys={} money={} reserve={}", bot->GetName(),
              auctioneer->GetEntry(), posts.size(), buys.size(), money, reserve);
