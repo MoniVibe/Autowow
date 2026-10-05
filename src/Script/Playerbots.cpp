@@ -15,6 +15,7 @@
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
 #include "CombatPerformanceTelemetry.h"
+#include "LabControl.h"
 #include "ContractsPolicy.h"
 #include "DeathLoopBreaker.h"
 #include "GatherDetourPolicy.h"
@@ -597,6 +598,7 @@ public:
         sPlayerbotAIConfig.Initialize();
         AutoWowQuestLedger::LoadConfig();
         AutoWowCombatPerformanceTelemetry::LoadConfig();
+        AutoWowLab::LoadConfig();
         AutoWowDeathLoop::LoadConfig();
         AutoWowZoneProgression::LoadConfig();
         AutoWowUnstickV2::LoadConfig();
@@ -829,6 +831,7 @@ void AddPlayerbotsScripts()
     AddPlayerbotsSelfBotAfkScripts();
     AddPlayerbotsCommandscripts();
     AutoWowCombatPerformanceTelemetry::AddAutoWowCombatPerformanceTelemetryScript();
+    AutoWowLab::AddScripts();
     AutoWowDeathLoop::AddScripts();
     AutoWowSurvivalRecovery::AddScripts();
     AutoWowClassQuests::AddScripts();

@@ -2759,6 +2759,28 @@ AutoWow.Tactics.EscapeRelaxed.HpPct = 35
 # ("62967,62990-62995"), e.g. bots meant to heal dungeon parties.
 AutoWow.Cohort.SoloSpec = 0
 AutoWow.Cohort.SoloSpecExempt = ""
+# Lab (default 0): combat lab for owner-vs-bot comparison (ops docs/LAB_GUIDE.md). Enable arms the in-game GM
+# commands ".autowow lab kit [ilvl]" (Lab<Class> characters on Account only: Level, the Cohort.SoloSpec
+# template of the class, class/trainer spells, an AutoGear loadout of Quality capped at the KitIlvl item level,
+# "classId:ilvl,..", missing class = uncapped), ".autowow lab spawn <entry> <count 1-8> [level]" (summons on
+# fixed ring slots SpawnRadius yards around Marker "map x y z [o]", level pinned, all attacking the invoker;
+# refused outside Radius of the marker) and ".autowow lab reset" (despawn, back to the marker, full health,
+# mana/energy full, rage/runic empty, harmful auras and spell cooldowns cleared). Trace (default 0) writes
+# LogsDir/TraceFile JSON lines for every player or self-bot within Radius during a run (spawn .. clear / death
+# / reset): cast ok/start/cancel/fail rows, white swings, lowhp (crossing LowHpPct), per-second hp / power /
+# engaged lab mobs / damage dealt and taken. The bot replay is the same character as a self-bot
+# (.playerbots bot self). Default marker: GM Island (no spawns within 100 yd but its spirit healer).
+AutoWow.Lab.Enable = 0
+AutoWow.Lab.Trace = 0
+AutoWow.Lab.Account = 0
+AutoWow.Lab.Level = 75
+AutoWow.Lab.Quality = 2
+AutoWow.Lab.KitIlvl = ""
+AutoWow.Lab.Marker = "1 16226.2 16257.0 13.2022 0"
+AutoWow.Lab.Radius = 60
+AutoWow.Lab.SpawnRadius = 18
+AutoWow.Lab.LowHpPct = 35
+AutoWow.Lab.TraceFile = "lab-trace.jsonl"
 # Classes: the classes the layer tracks (Observe) and treats (Enable), "all" or names separated by ',' or ' '
 # (priest, warrior, rogue, mage, shaman, paladin, hunter, druid, warlock, deathknight). Default "priest" =
 # the priest-only behaviour above. The arm hash (ArmPct / ArmSalt) applies within every class. Every
