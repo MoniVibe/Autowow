@@ -704,6 +704,60 @@ TEST(TacticalClassPolicy, S20OverwhelmedWithoutEscapeToolStaysInEmergency)
     }
 }
 
+// AutoWow.Tactics.EscapeRelaxed (lane deaths3; S109-S113 only priests ever fled): >= 2 attackers, hp below
+// RelaxedEscapeHpPct and falling, an escape tool ready - control / defensive still up and load under the ratio.
+TEST(TacticalClassPolicy, EscapeRelaxedFleesLosingFightsWithAToolReady)
+{
+    ClassParams off;
+    ClassParams on;
+    on.escapeRelaxed = true;
+    EngagementSnapshot s = Single(100, kCdControlKnown | kCdControl | kCdDefensiveKnown | kCdDefensive |
+                                           kCdEscapeKnown | kCdEscape);
+    s.attackers = 2;
+    s.melee = 2;
+    s.load = 200;  // under capacity x EscapeRatioPct: the stock rule never escapes
+    s.hpPct = 28;  // below EmergencyHpPct: the stock rule fights on in emergency
+    s.deathEtaMs = 9000;
+    for (Family const f : {Family::Rogue, Family::Hunter, Family::Warlock, Family::Druid, Family::Shaman})
+    {
+        SCOPED_TRACE(static_cast<int>(f));
+        EXPECT_EQ(DesiredClass(f, s, off, TacticOf(f, kSlotMulti), false), TacticOf(f, kSlotEmergency));
+        EXPECT_EQ(DesiredClass(f, s, on, TacticOf(f, kSlotMulti), false), TacticOf(f, kSlotEscape));
+        EXPECT_EQ(ChooseClass(f, s, on, TacticOf(f, kSlotSingle), 0, false), TacticOf(f, kSlotEscape));
+        EXPECT_NE(DesiredClass(f, s, on, TacticOf(f, kSlotMulti), true), TacticOf(f, kSlotEscape));  // one attempt
+    }
+    Family const f = Family::Rogue;
+    EngagementSnapshot t = s;
+    t.deathEtaMs = 0;  // hp not falling
+    EXPECT_EQ(DesiredClass(f, t, on, TacticId::RogueMulti, false), TacticId::RogueEmergency);
+    t = s;
+    t.attackers = 1;  // a lone mob: fight it out
+    EXPECT_NE(DesiredClass(f, t, on, TacticId::RogueMulti, false), TacticId::RogueEscape);
+    t = s;
+    t.hpPct = 35;  // at the line: not below it
+    EXPECT_NE(DesiredClass(f, t, on, TacticId::RogueMulti, false), TacticId::RogueEscape);
+    t = s;
+    t.cds &= ~kCdEscape;  // the escape tool on cooldown / unknown
+    EXPECT_EQ(DesiredClass(f, t, on, TacticId::RogueMulti, false), TacticId::RogueEmergency);
+    on.relaxedEscapeHpPct = 25;
+    EXPECT_NE(DesiredClass(f, s, on, TacticId::RogueMulti, false), TacticId::RogueEscape);
+}
+
+// Relaxed escape tools: only druid (Entangling Roots) and shaman (Earthbind Totem, Frost Shock); the S20 no-run-away
+// classes stay tool-less with the flag on too.
+TEST(TacticalClassTables, EscapeRelaxedToolsOnlyForDruidAndShaman)
+{
+    for (Family const f : kClassFamilies)
+    {
+        ClassTable const& t = kClassTables[static_cast<std::uint32_t>(f)];
+        bool const any = !t.escapeRelaxed[0].empty();
+        EXPECT_EQ(any, f == Family::Druid || f == Family::Shaman) << t.key;
+    }
+    EXPECT_EQ(kClassTables[static_cast<std::uint32_t>(Family::Shaman)].escapeRelaxed[0], "earthbind totem");
+    EXPECT_EQ(kClassTables[static_cast<std::uint32_t>(Family::Shaman)].escapeRelaxed[1], "frost shock");
+    EXPECT_EQ(kClassTables[static_cast<std::uint32_t>(Family::Druid)].escapeRelaxed[0], "entangling roots");
+}
+
 // ---- AutoWow.Survival.PackAvoid (PackAvoidPolicy.h) ---------------------------------------------------
 // soak-s21-full-r1: 66% of deaths multi-mob; a L20 rogue on a ~1 DPS dagger (expected 14).
 TEST(PackAvoid, GearScalesWeaponClassCapacityOnly)

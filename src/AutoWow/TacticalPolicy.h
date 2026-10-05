@@ -295,6 +295,8 @@ struct ClassParams
     std::uint32_t deathEtaMs = 6000;        // AutoWow.Tactics.DeathEtaMs
     std::uint32_t minDwellMs = 3000;        // AutoWow.Tactics.MinDwellMs
     std::uint32_t escapeMaxMs = 8000;       // AutoWow.Tactics.EscapeMaxMs
+    bool escapeRelaxed = false;             // AutoWow.Tactics.EscapeRelaxed (default 0)
+    std::uint32_t relaxedEscapeHpPct = 35;  // AutoWow.Tactics.EscapeRelaxed.HpPct
     LoadParams load;
 };
 
@@ -325,6 +327,12 @@ inline TacticId DesiredClass(Family f, EngagementSnapshot const& s, ClassParams 
     bool const toolsSpent = toolsKnown && !(s.cds & (kCdControl | kCdDefensive));
     if (!escapeUsed && (s.cds & kCdEscape) && s.attackers >= 2 && toolsSpent && s.hpPct < p.emergencyExitHpPct &&
         std::uint64_t(s.load) * 100 > std::uint64_t(cap) * p.escapeRatioPct)
+        return TacticOf(f, kSlotEscape);
+    // AutoWow.Tactics.EscapeRelaxed (S109-S113: only priests ever fled; 73% of fatal multi-mob fights started
+    // single): >= 2 attackers, hp below RelaxedEscapeHpPct and falling (death eta known) and an escape tool
+    // ready - whatever the load and whether control / defensive cooldowns are still up.
+    if (p.escapeRelaxed && !escapeUsed && (s.cds & kCdEscape) && s.attackers >= 2 &&
+        s.hpPct < p.relaxedEscapeHpPct && s.deathEtaMs)
         return TacticOf(f, kSlotEscape);
     if (InEmergency(s, p, current == TacticOf(f, kSlotEmergency)))
         return TacticOf(f, kSlotEmergency);
