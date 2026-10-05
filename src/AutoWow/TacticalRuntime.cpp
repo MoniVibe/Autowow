@@ -149,6 +149,8 @@ std::uint32_t ClassReadiness(PlayerbotAI* botAI, Player* bot, Family f)
     scan(t.control, kCdControlKnown, kCdControl);
     scan(t.defensive, kCdDefensiveKnown, kCdDefensive);
     scan(t.escape, kCdEscapeKnown, kCdEscape);
+    if (detail::gEscapeRelaxed)
+        scan(t.escapeRelaxed, kCdEscapeKnown, kCdEscape);
     if (Pet* pet = bot->GetPet(); pet && pet->IsAlive())
         cds |= kCdPet;
     if (Item* ranged = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED))
@@ -320,6 +322,7 @@ void LoadConfig()
     detail::gObserve = sConfigMgr->GetOption<bool>("AutoWow.Tactics.Observe", false);
     detail::gEnable = sConfigMgr->GetOption<bool>("AutoWow.Tactics.Enable", false);
     detail::gShadowLevelingSpec = sConfigMgr->GetOption<bool>("AutoWow.Tactics.PriestShadowLevelingSpec", false);
+    detail::gEscapeRelaxed = sConfigMgr->GetOption<bool>("AutoWow.Tactics.EscapeRelaxed", false);
 
     Settings s;
     s.reevalMs = std::max<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Tactics.ReevalMs", 500));
@@ -379,6 +382,8 @@ void LoadConfig()
         c.deathEtaMs = p.deathEtaMs;
         c.escapeRatioPct = p.escapeRatioPct;
         c.escapeMaxMs = p.escapeMaxMs;
+        c.escapeRelaxed = detail::gEscapeRelaxed;
+        c.relaxedEscapeHpPct = u("AutoWow.Tactics.EscapeRelaxed.HpPct", c.relaxedEscapeHpPct);
         c.load = p.load;
         c.singleMax = cu("SingleMaxPct", c.singleMax);
         c.base = cu("BasePct", c.base);

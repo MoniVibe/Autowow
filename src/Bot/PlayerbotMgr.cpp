@@ -10,6 +10,7 @@
 #include "AutoWowQuestLedger.h"
 #include "AutoWowTrainPolicy.h"
 #include "ClassQuestPolicy.h"
+#include "SoloSpecPolicy.h"
 #include "PlayerbotsDatabase.h"
 #include "BroadcastHelper.h"
 #include "ChannelMgr.h"
@@ -560,6 +561,10 @@ void PlayerbotHolder::OnBotLogin(Player* const bot)
         }
     }
 
+    // AutoWow.Cohort.SoloSpec (default 0): a cohort bot off its solo-leveling tree is re-talented (after the stale
+    // group check above) before the strategy reset below picks its combat strategies.
+    if (AutoWowSoloSpec::Enabled())
+        AutoWowSoloSpec::OnLogin(bot);
     group = bot->GetGroup();
     if (group)
     {

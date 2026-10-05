@@ -213,20 +213,30 @@ void PaladinNodes(std::vector<TriggerNode*>& t)
 // escape: Entangling Roots on the target, Dash, flee.
 void DruidNodes(std::vector<TriggerNode*>& t)
 {
+    // AutoWow.Tactics.EscapeRelaxed: Dash needs Cat Form (a caster / bear druid shifts first); Survival
+    // Instincts (feral talent, cat or bear) leads the emergency kit.
+    bool const relaxed = AutoWowTactics::EscapeRelaxed();
     t.push_back(new TriggerNode("tac heal", {NextAction("regrowth", ACTION_CRITICAL_HEAL + 2),
                                              NextAction("rejuvenation", ACTION_CRITICAL_HEAL + 1)}));
     t.push_back(new TriggerNode("tac multi", {NextAction("bear form", ACTION_HIGH + 9),
                                               NextAction("demoralizing roar", ACTION_HIGH + 5),
                                               NextAction("swipe (bear)", ACTION_HIGH + 4)}));
     t.push_back(new TriggerNode("tac control add", {NextAction("entangling roots on cc", ACTION_INTERRUPT + 3)}));
-    t.push_back(new TriggerNode("tac emergency", {NextAction("barkskin", ACTION_EMERGENCY + 6),
-                                                  NextAction("frenzied regeneration", ACTION_EMERGENCY + 5),
-                                                  NextAction("regrowth", ACTION_EMERGENCY + 4),
-                                                  NextAction("rejuvenation", ACTION_EMERGENCY + 3),
-                                                  NextAction("healing touch", ACTION_EMERGENCY + 2)}));
-    t.push_back(new TriggerNode("tac escape", {NextAction("entangling roots", ACTION_EMERGENCY + 5),
-                                               NextAction("dash", ACTION_EMERGENCY + 4),
-                                               NextAction("flee", ACTION_EMERGENCY + 2)}));
+    std::vector<NextAction> emergency = {NextAction("barkskin", ACTION_EMERGENCY + 6),
+                                         NextAction("frenzied regeneration", ACTION_EMERGENCY + 5),
+                                         NextAction("regrowth", ACTION_EMERGENCY + 4),
+                                         NextAction("rejuvenation", ACTION_EMERGENCY + 3),
+                                         NextAction("healing touch", ACTION_EMERGENCY + 2)};
+    std::vector<NextAction> escape = {NextAction("entangling roots", ACTION_EMERGENCY + 5),
+                                      NextAction("dash", ACTION_EMERGENCY + 4),
+                                      NextAction("flee", ACTION_EMERGENCY + 2)};
+    if (relaxed)
+    {
+        emergency.insert(emergency.begin(), NextAction("survival instincts", ACTION_EMERGENCY + 7));
+        escape.insert(escape.begin() + 1, NextAction("cat form", ACTION_EMERGENCY + 4.5f));
+    }
+    t.push_back(new TriggerNode("tac emergency", emergency));
+    t.push_back(new TriggerNode("tac escape", escape));
 }
 // Death Knight (100-104, level 55+): Death Strike below HealHpPct; multi: Pestilence, Blood Boil, Death and
 // Decay; emergency: Icebound Fortitude, Death Strike, Anti-Magic Shell, Death Pact; escape: Chains of Ice, flee.

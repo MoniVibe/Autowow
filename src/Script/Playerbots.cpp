@@ -25,6 +25,7 @@
 #include "ErrandsPolicy.h"
 #include "TradePolicy.h"
 #include "PartyPolicy.h"
+#include "SoloSpecPolicy.h"
 #include "TacticalRuntime.h"
 #include "PullLevelCap.h"
 #include "RestGate.h"
@@ -610,6 +611,7 @@ public:
         AutoWowSurvivalRecovery::LoadConfig();
         AutoWowSelfCraft::LoadConfig();
         AutoWowClassQuests::LoadConfig();
+        AutoWowSoloSpec::LoadConfig();
         AutoWowContracts::LoadConfig();   // after sPlayerbotAIConfig (random-bot maps) and world spawns
         AutoWowGuilds::LoadConfig();
         AutoWowSupply::LoadConfig();      // after Guilds (houses, reps, cohort)

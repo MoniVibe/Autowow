@@ -2740,6 +2740,25 @@ AutoWow.Tactics.Priest.Factors.Escape = "smite:0,mind blast:0,holy fire:0,mana b
 # reset (AutoMaintenance level-up respec) or while already shadow. Random bots are untouched. Note: shadow
 # priests have no stock self-heal; the tactical strategy (Enable, treatment arm) supplies Renew/Heal.
 AutoWow.Tactics.PriestShadowLevelingSpec = 0
+# EscapeRelaxed (default 0; non-priest classes in Classes, treatment arm): also escape (one attempt per
+# engagement) at hp < EscapeRelaxed.HpPct and falling (hp-slope death eta known) with >= 2 attackers and an
+# escape tool ready, whatever the load and whether control / defensive cooldowns are still up (S109-S113:
+# only priests ever fled). Adds escape tools: shaman Earthbind Totem / Frost Shock (Ghost Wolf stays), druid
+# Entangling Roots (Dash stays; Cat Form is cast before Dash) and druid emergency Survival Instincts. Warrior,
+# mage, paladin and death knight have no escape tool and still fight on. To arm druid / shaman add them to
+# Classes. 0 = the escape rule above unchanged.
+AutoWow.Tactics.EscapeRelaxed = 0
+AutoWow.Tactics.EscapeRelaxed.HpPct = 35
+# Cohort.SoloSpec (default 0; cohort = AutoWow.Guilds.CohortGuids, needs AutoWow.Guilds.Enable): on login a
+# cohort bot outside any group / instance whose most-invested tree is not a solo-leveling tree is reset (free)
+# and re-talented by its class's premade template, logged "[SoloSpec]": warrior Arms/Fury (else 1.0 arms),
+# paladin Ret (2.2), hunter BM (3.0), rogue Combat (4.1), priest Shadow (5.2; 5.6 with
+# PriestShadowLevelingSpec), death knight Blood/Unholy (6.2 unholy), shaman Enhancement (7.1), mage Fire/Frost
+# (8.2 frost), warlock Affliction/Demonology (9.0 affli), druid Balance/Feral (11.3 cat). Bots without spent
+# talent points are left to the stock level-10 pick. SoloSpecExempt: guid ranges kept as they are
+# ("62967,62990-62995"), e.g. bots meant to heal dungeon parties.
+AutoWow.Cohort.SoloSpec = 0
+AutoWow.Cohort.SoloSpecExempt = ""
 # Classes: the classes the layer tracks (Observe) and treats (Enable), "all" or names separated by ',' or ' '
 # (priest, warrior, rogue, mage, shaman, paladin, hunter, druid, warlock, deathknight). Default "priest" =
 # the priest-only behaviour above. The arm hash (ArmPct / ArmSalt) applies within every class. Every
@@ -2968,6 +2987,8 @@ AutoWow.Survival.CorpsePortal = 0
 # Quests.NeutralNpcs: accept Neutral-faction quest givers/finishers (Mudsprocket, Booty Bay, Ratchet), not only Friendly.
 AutoWow.Quests.NeutralNpcs = 0
 # ClusterDeaths: this many deaths inside AutoWow.DeathLoop.WindowMs escape whatever the killer level (0 = off).
+# Recommended 3 (lane deaths3: S109-S113, 42% of deaths came within 3 min of the bot's previous death; 8 broke
+# the loop only after 8). Still needs the alive bot to stay within MoveYards for StuckMs.
 AutoWow.Survival.HardEscape.ClusterDeaths = 8
 AutoWow.Survival.HardEscape.StuckMs = 120000
 AutoWow.Survival.HardEscape.MoveYards = 100

@@ -29,6 +29,10 @@ class Unit;
 //     "tactical" / "tactical nc" priest strategies, the pre-pull readiness gate and pack-risk pull choice.
 //     Control-arm bots are tracked and labelled in the same run (same-soak A/B).
 //   AutoWow.Tactics.PriestShadowLevelingSpec: non-random priests level with premade spec 5.6.
+//   AutoWow.Tactics.EscapeRelaxed: non-priest escape at hp < EscapeRelaxed.HpPct and falling with >= 2
+//     attackers and an escape tool ready (TacticalPolicy.h DesiredClass); the escapeRelaxed tool rows of
+//     TacticalClassTables.h count as escape tools; druid escape adds Cat Form before Dash, druid emergency
+//     Survival Instincts.
 //   AutoWow.Tactics.Classes (default "priest"): the classes the layer tracks and treats ("all" or a list:
 //     priest, warrior, rogue, mage, shaman, paladin, hunter, druid, warlock, deathknight); a class without a
 //     TacticalClassTables.h row is skipped. The arm hash applies within every class.
@@ -41,6 +45,7 @@ namespace detail
 inline bool gObserve = false;
 inline bool gEnable = false;  // T2 master; tracking also runs under it
 inline bool gShadowLevelingSpec = false;
+inline bool gEscapeRelaxed = false;
 inline bool gObserveExtra = false;  // AutoWow.Tactics.ObserveClasses non-empty (TacticalPolicy.h Tracked)
 
 // Add one already-filtered idle creature to the snapshot when it can lawfully assist at least one real attacker.
@@ -53,6 +58,7 @@ void AccumulateAssistEligibleLinkedAdd(EngagementSnapshot& snapshot, Creature* c
 inline bool Tracking() { return detail::gObserve || detail::gEnable || detail::gObserveExtra; }
 inline bool Enabled() { return detail::gEnable; }
 inline bool ShadowLevelingSpec() { return detail::gShadowLevelingSpec; }
+inline bool EscapeRelaxed() { return detail::gEscapeRelaxed; }
 inline constexpr std::uint32_t kShadowLevelingSpecNo = 6;  // AiPlayerbot.PremadeSpec*.5.6
 
 // Reads AutoWow.Tactics.*. Called once at world init.

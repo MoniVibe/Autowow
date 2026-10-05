@@ -22,6 +22,7 @@
 //   defensive: defensive cooldowns (capacity bonus, `engage` shield_n)
 //   escape:    escape tools (kCdEscape readiness)
 //   healHpPct: default .HealHpPct
+//   escapeRelaxed: extra escape tools read only with AutoWow.Tactics.EscapeRelaxed (kCdEscape readiness)
 namespace AutoWowTactics
 {
 struct ClassTable
@@ -32,6 +33,7 @@ struct ClassTable
     std::string_view defensive[3];
     std::string_view escape[3];
     std::uint32_t healHpPct = 50;
+    std::string_view escapeRelaxed[3];
 };
 
 inline constexpr std::string_view kClassSlotKeys[4] = {"Single", "Multi", "Emergency", "Escape"};
@@ -58,7 +60,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"fear", "howl of terror"},
      {"death coil"},
      {"howl of terror"},
-     70},  // Warlock
+     70,
+     {}},  // Warlock
     {"Mage",
      {"",
       "pyroblast:0,evocation:0",
@@ -69,7 +72,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"frost nova"},
      {"ice block", "ice barrier", "mana shield"},
      {},  // no escape tool: Blink + run-away died 10 of 11 times in S20; a mage fights on in emergency
-     50},  // Mage
+     50,
+     {}},  // Mage
     {"Hunter",
      {"",
       "",
@@ -80,7 +84,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"freezing trap", "scare beast", "intimidation"},
      {"deterrence"},
      {"feign death", "disengage"},
-     50},  // Hunter
+     50,
+     {}},  // Hunter
     {"Rogue",
      {"rupture:0,expose armor:0,feint:0",
       "rupture:0,expose armor:0,feint:0,slice and dice:0.5",
@@ -90,7 +95,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"gouge", "kidney shot", "blind"},
      {"evasion"},
      {"vanish", "sprint"},
-     50},  // Rogue
+     50,
+     {}},  // Rogue
     {"Warrior",
      {"sunder armor:0,heroic strike:0.5,rend on attacker:0",
       "sunder armor:0,heroic strike:0,rend on attacker:0,rend:0.5",
@@ -102,7 +108,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"intimidating shout"},
      {"retaliation", "last stand"},  // no Shield Wall: it needs a shield (read "ready" on 2H warriors)
      {},
-     50},  // Warrior
+     50,
+     {}},  // Warrior
     {"Paladin",
      {"",
       "",
@@ -112,7 +119,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"hammer of justice"},
      {"divine protection", "divine shield", "lay on hands"},
      {},  // no escape tool: bubble + run-away died 4 of 4 times in S20; bubble is an emergency heal window
-     50},  // Paladin
+     50,
+     {}},  // Paladin
     {"Druid",
      {"",
       "wrath:0.3,starfire:0.3,moonfire:0.5",
@@ -124,7 +132,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"bash", "entangling roots"},
      {"barkskin", "frenzied regeneration"},
      {"dash"},
-     50},  // Druid
+     50,
+     {"entangling roots"}},  // Druid (EscapeRelaxed: roots the target, cat form + Dash, flee)
     {"Shaman",
      {"magma totem:0,chain lightning:0.5,fire nova:0",
       "",
@@ -134,7 +143,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"stoneclaw totem", "earthbind totem"},
      {"shamanistic rage"},
      {"ghost wolf"},
-     50},  // Shaman
+     50,
+     {"earthbind totem", "frost shock"}},  // Shaman (EscapeRelaxed: snare, Ghost Wolf, flee)
     {"DeathKnight",
      {"",
       "",
@@ -145,7 +155,8 @@ inline constexpr ClassTable kClassTables[kFamilies] = {
      {"strangulate", "chains of ice"},
      {"icebound fortitude", "anti-magic shell"},
      {},
-     50},  // DeathKnight
+     50,
+     {}},  // DeathKnight
 };
 }  // namespace AutoWowTactics
 
