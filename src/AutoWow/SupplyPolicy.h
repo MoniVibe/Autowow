@@ -174,6 +174,9 @@ struct Params
                                  // row (kSmithCopper), 50 -> 100 from routed copper ore instead of Rough Stone
     bool craftTrace = false;     // AutoWow.Supply.CraftTrace: an artisan's `[Supply] craft_trace` line on each change of
                                  // its home craft gate (hold, target, next cast, cast gates); diagnostic only
+    // Lane hordehouses2 (soak S116; off by default):
+    bool craftDismount = false;  // AutoWow.Supply.CraftDismount: an artisan's home tradeskill cast drops its mount /
+                                 // shapeshift first (S116: mounted casters' casts refused, never crafted)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -3015,6 +3018,7 @@ inline bool PotionLowBridge() { return PotionTiers() && detail::gParams.potionLo
 inline bool ClimbCastable() { return detail::gEnabled && detail::gParams.climbCastable; }
 inline bool SmithCopper() { return SmithBars() && detail::gParams.smithCopper; }
 inline bool CraftTrace() { return detail::gEnabled && detail::gParams.craftTrace; }
+inline bool CraftDismount() { return detail::gEnabled && detail::gParams.craftDismount; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was), its tierLow rows after them only with PotionLowBridge too. A copy: callers keep it for the scope that reads
 // its tiers.

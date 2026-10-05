@@ -621,6 +621,16 @@ bool NewRpgBaseAction::SupplyStep()
     // room first (a free slot or a partial stack), else the next decision makes room (RoomTarget: a slot at least).
     auto craft = [&](std::uint32_t spell, std::uint32_t item) -> bool
     {
+        // CraftDismount (lane hordehouses2; S116 craft_trace: the three Horde caster artisans stood at home mounted,
+        // `mounted=true can_cast=false`, every tradeskill cast refused): off the mount / out of a shapeshift first.
+        if (CraftDismount() && spell && bot->HasSpell(spell) &&
+            (bot->IsMounted() || bot->GetShapeshiftForm() != FORM_NONE))
+        {
+            LOG_INFO("playerbots", "[Supply] bot={} craft dismount spell={} mounted={} form={}", bot->GetName(), spell,
+                     bot->IsMounted(), uint32(bot->GetShapeshiftForm()));
+            bot->RemoveAurasByType(SPELL_AURA_MOUNTED);
+            bot->RemoveAurasByType(SPELL_AURA_MOD_SHAPESHIFT);
+        }
         if (!spell || !bot->HasSpell(spell) || !botAI->CanCastSpell(spell, bot, true))
             return false;
         ItemPosCountVec dest;
@@ -1452,11 +1462,20 @@ bool NewRpgBaseAction::SupplyStep()
         bool const known = spell && bot->HasSpell(spell);
         bool const can = known && botAI->CanCastSpell(spell, bot, true);
         bool const room = item && bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK;
+        // The core's own verdict on the cast (CanCastSpell's check: no power / reagent cost), 0 = SPELL_CAST_OK.
+        std::uint32_t result = 0;
+        if (SpellInfo const* info = known ? sSpellMgr->GetSpellInfo(spell) : nullptr)
+        {
+            Spell* check = new Spell(bot, info, TRIGGERED_IGNORE_POWER_AND_REAGENT_COST);
+            check->m_targets.SetUnitTarget(bot);
+            result = uint32(check->CheckCast(true));
+            delete check;
+        }
         TraceCraft(bot, s.traceKey,
                    Acore::StringFormat("at_home={} branch={} target={} remaining={} next={} spell={} known={} can_cast={} "
-                                       "room={} focus_missing={} moving={} standing={} form={} mounted={} pending={}",
+                                       "result={} room={} focus_missing={} moving={} standing={} form={} mounted={} pending={}",
                                        atHome, artisan ? "bags" : lined ? "line" : "gear", target,
-                                       geared ? gview.remaining : lview.remaining, next, spell, known, can, room,
+                                       geared ? gview.remaining : lview.remaining, next, spell, known, can, result, room,
                                        spell && FocusMissing(bot, spell, geared ? gst : lst), bot->isMoving(),
                                        bot->IsStandState(), uint32(bot->GetShapeshiftForm()), bot->IsMounted(),
                                        s.castSpell));
