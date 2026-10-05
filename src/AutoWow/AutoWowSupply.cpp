@@ -2392,6 +2392,42 @@ void GearTick(Line line, bool alliance, bool overlord)
             else
                 feed(k.item, k.units);
         }
+        // CrossHouseFeed (lane smithsupply): stone the own rep could not cover, from the team's other house reps whose
+        // own open orders do not use it (S110: the Tinkers reps hold the routed Coarse / Heavy Stone, the Smiths rep none).
+        // ponytail: stone only (the stranded stock the data shows); widen to bars once a donor house stocks them.
+        if (CrossHouseFeed())
+            for (Lack const& k : Lacks(G, v.product, make, have))
+            {
+                if (k.source == Source::Vendor || std::find(std::begin(kStone), std::end(kStone), k.item) == std::end(kStone))
+                    continue;
+                std::uint32_t left = k.units;
+                for (auto const& [item, sent] : fed)
+                    if (item == k.item)
+                        left -= std::min(left, sent);
+                for (std::size_t h = 0; left && h < AutoWowGuilds::Houses().size(); ++h)
+                {
+                    Player* donor = h == gLineHouse[li] ? nullptr : RoleRep(h, alliance);
+                    if (!donor || donor == art)
+                        continue;
+                    std::uint32_t const units =
+                        CrossFeedUnits(left, Loose(donor, k.item), GearOrderUses(alliance, h, k.item));
+                    if (!units)
+                        continue;
+                    std::vector<std::uint32_t> stacks = PickStacks(LooseStacks(donor, k.item), units);
+                    stacks.resize(std::min<std::size_t>(stacks.size(), kMaxMailStacks));
+                    std::uint32_t sent = 0;
+                    for (Stack const& st : LooseStacks(donor, k.item))
+                        if (std::find(stacks.begin(), stacks.end(), st.guid) != stacks.end())
+                            sent += st.count;
+                    if (!sent)
+                        continue;
+                    char const* const why = Send(Low(donor), Low(art), stacks, "AutoWoW materials", "feed");
+                    EmitLine(line, donor, why ? Reason::Refused : Reason::Feed, v.orderId, k.item, sent, 0, Low(donor),
+                             Low(art), why ? why : "cross_feed");
+                    if (!why)
+                        left -= std::min(left, sent);
+                }
+            }
         // A tool (kTools: Blacksmith Hammer) a known recipe's cast needs that the artisan lacks (bags or worn): one,
         // bought at the line vendor. GearTable already removes disabled Engineering gun rows, so an EngGuns-off line
         // does not acquire their hammer.
@@ -3094,6 +3130,8 @@ void LoadConfig()
     p.orderBackoffMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OrderBackoffMs", 0);
     p.mineMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineMs", 0);
     p.mineCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineCooldownMs", 1800000);
+    p.mineLootYield = sConfigMgr->GetOption<bool>("AutoWow.Supply.MineLootYield", false);
+    p.crossHouseFeed = sConfigMgr->GetOption<bool>("AutoWow.Supply.CrossHouseFeed", false);
     gLineSpec = {};
     gPriority.clear();
     {

@@ -580,7 +580,15 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
     // AutoWow.Supply: a configured house rep / artisan lives at its capital home and never quests (flag off:
     // never reached).
     if (AutoWowSupply::Enabled() && SupplyStep())
+    {
+        // MineLootYield (lane smithsupply): a mine stint at its node yields this tick to the stock loot action.
+        if (AutoWowSupply::MineLootYield() && supplyYield)
+        {
+            supplyYield = false;
+            return false;
+        }
         return true;
+    }
 
     // AutoWow.Survival.RestSafe (default 0): below the rest-gate hp/mana thresholds a solo independent bot
     // first walks out of any hostile's aggro radius (hostile players too), then the RPG holds in REST while

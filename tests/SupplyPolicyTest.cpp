@@ -1353,6 +1353,22 @@ TEST(SupplySmithEndgame, MineDueOnlyForStoneOrOreLacks)
     EXPECT_FALSE(MineDue({}, true, true, 1200000, 100, 0));
 }
 
+TEST(SupplySmithSupply, CrossFeedGivesUnusedStockUpToTheShortfall)
+{
+    EXPECT_EQ(CrossFeedUnits(62, 97, false), 62u);  // S110: Tinkers rep Coarse Stone 97, the smith short 62
+    EXPECT_EQ(CrossFeedUnits(62, 20, false), 20u);  // all the donor holds
+    EXPECT_EQ(CrossFeedUnits(62, 97, true), 0u);    // the donor house's own orders use it
+    EXPECT_EQ(CrossFeedUnits(0, 97, false), 0u);    // nothing short
+    EXPECT_EQ(CrossFeedUnits(62, 0, false), 0u);
+}
+
+TEST(SupplySmithSupply, NewFlagsDefaultOff)
+{
+    Params const p;
+    EXPECT_FALSE(p.mineLootYield);
+    EXPECT_FALSE(p.crossHouseFeed);
+}
+
 TEST(SupplyWeaponOrders, PicksTheBestKnownUpgradeForTheOrderedSlot)
 {
     // Ranked best first: a Titansteel two-hander (L80), a Cobalt one-hander (L71), a Fel Iron Hatchet (L61), a bridge.
