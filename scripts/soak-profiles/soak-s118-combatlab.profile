@@ -1,4 +1,4 @@
-# soak-s118-combatlab: S117 + combatp0 (GcdWake on, reactivity + player telemetry) + combat lab (owner lab chars on account 3, GM Island).
+# soak-s118-combatlab: S117 + combatp0 + combatp1 ClassFixesP1 (GcdWake on, reactivity + player telemetry) + combat lab (owner lab chars on account 3, GM Island).
 # soak-s116-houses: S115 + hordehouses (ClimbCastable, SmithCopper, CraftTrace).
 # soak-s115-potions: S114 + potions80 (PotionFloor L60+, low 2, target 5).
 # soak-s114-deaths: S113 + deaths3 (SoloSpec, EscapeRelaxed, Tactics ArmPct 100 + druid/shaman, ClusterDeaths 3).
@@ -305,3 +305,4 @@ pb|AutoWow.Lab.Account|3
 pb|AutoWow.Lab.Level|75
 pb|AutoWow.Lab.Quality|2
 pb|AutoWow.Lab.KitIlvl|"1:89,2:93,3:84,4:79,5:83,7:84,8:86,9:80,11:87"
+pb|AutoWow.Combat.ClassFixesP1|1
