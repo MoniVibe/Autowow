@@ -534,4 +534,21 @@ TEST(Squad, MaterialStintDeferralOnlySchedulesTheExistingRetry)
     EXPECT_EQ(state.zoneCooldownUntilMs, before.zoneCooldownUntilMs);
 }
 
+TEST(SquadPolicy, PoolWeightCountsLiveNodes)
+{
+    // S107b anchors: Durotar Skull Rock 3 of 12, Bramblescar 3 of 10, Mulgore Bottom 8 of 25.
+    EXPECT_EQ(PoolLivePermille(3, 12), 250u);
+    EXPECT_EQ(PoolLivePermille(3, 10), 300u);
+    EXPECT_EQ(PoolLivePermille(8, 25), 320u);
+    EXPECT_EQ(PoolLivePermille(0, 25), 1000u);  // max_limit 0: every member spawns
+    EXPECT_EQ(PoolLivePermille(5, 0), 1000u);
+    EXPECT_EQ(PoolLivePermille(30, 25), 1000u);
+    // A 9-spawn-point cluster of a 3 / 12 pool is ~2 live veins: not worth a stint at MinClusterSpawns 5.
+    EXPECT_FALSE(EnoughLiveNodes(9 * 250, 5));
+    EXPECT_TRUE(EnoughLiveNodes(5 * 1000, 5));
+    EXPECT_TRUE(EnoughLiveNodes(20 * 250, 5));
+    EXPECT_TRUE(EnoughLiveNodes(1000, 0));  // MinClusterSpawns is at least 1
+    EXPECT_FALSE(EnoughLiveNodes(999, 0));
+    EXPECT_FALSE(Params{}.poolWeight);  // opt-in
+}
 }  // namespace

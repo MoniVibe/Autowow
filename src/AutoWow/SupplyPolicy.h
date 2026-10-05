@@ -32,13 +32,15 @@ class Player;
 namespace AutoWowSupply
 {
 inline constexpr std::uint32_t kStateVersion =
-    11;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+    12;  // RoleState / TeamState layout; bump on change (2: tiers, market;
          // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
          // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
          // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
          // 8: TeamState gearCloth; 9: TeamState extraRooms; 10: kMaxLineTiers
          // 8 (LineView surplus, LineState wants), LineTier family;
-         // 11: finished-bag market view / in-flight purchase contract)
+         // 11: finished-bag market view / in-flight purchase contract;
+         // 12: LineTier spec, Stations rankTrainer, RoleState rankMs / mineMs,
+         // LineState OrderPost)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -135,6 +137,15 @@ struct Params
     bool potionTiers = false;              // AutoWow.Supply.PotionTiers: the potions line's tierExtra rows (mana potions,
                                            // Greater Healing, the Elixir of Wisdom skill bridge; ActiveLine), a need per
                                            // family (RankStockTiers), heal products first (PickLineProduct)
+    // Smiths to the endgame (lane smithfocus; all off by default):
+    bool smithEndgame = false;             // AutoWow.Supply.SmithEndgame: the smith table's gearEndgame rows (Fel Iron /
+                                           // Cobalt / Saronite / Titansteel, L51-80), the Master / Grand Master ranks, and
+                                           // the rank trainer trip (another map: a logged portal hop, like the home portal)
+    std::uint32_t orderBackoffMs = 0;      // AutoWow.Supply.OrderBackoffMs: gear lines, an unchanged order's rows re-post
+                                           // after this, doubling to 8x (OrderPostDue); 0 = every overlord, as before
+    std::uint32_t mineMs = 0;              // AutoWow.Supply.MineMs: a gear artisan with a MineSpot mines its stone / ore
+                                           // there this long when its target lacks them (0 = off)
+    std::uint32_t mineCooldownMs = 1800000;  // AutoWow.Supply.MineCooldownMs: between two mine stints
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -1122,6 +1133,10 @@ inline constexpr std::size_t kMaxLineTiers = 8;  // potions: 3 rows + 5 PotionTi
 // family the table order is ascending (a later row is a better tier). Bridge = a skill-up recipe no member wants.
 inline constexpr std::uint8_t kFamilyHeal = 0, kFamilyMana = 1, kFamilyBridge = 2;
 
+// A gear row's profession specialization (AutoWow.Supply.Spec.<House>.<Team>): Any rows serve every team; a Weapon /
+// Armor row only a team whose artisan took that specialization (Blacksmithing: Weaponsmith 9787 / Armorsmith 9788).
+inline constexpr std::uint8_t kSpecAny = 0, kSpecWeapon = 1, kSpecArmor = 2;
+
 // One recipe of a single-step line: spell -> one product per cast.
 struct LineTier
 {
@@ -1131,7 +1146,25 @@ struct LineTier
     std::uint32_t reqLevel = 0;  // product item RequiredLevel (the need rule's "usable at their level")
     std::array<Reagent, kMaxReagents> reagents{};
     std::uint8_t family = kFamilyHeal;  // potions (BestTier); gear rows leave it
+    std::uint8_t spec = kSpecAny;       // gear rows: the specialization the recipe needs (SpecAllows)
 };
+
+// "none" / "weapon" / "armor" -> kSpec*. False (out untouched) on anything else.
+inline bool ParseSpec(std::string_view text, std::uint8_t& out)
+{
+    if (text == "none")
+        out = kSpecAny;
+    else if (text == "weapon")
+        out = kSpecWeapon;
+    else if (text == "armor")
+        out = kSpecArmor;
+    else
+        return false;
+    return true;
+}
+
+// A row the team's artisan may make: any-spec rows always, a spec row only under the team's own specialization.
+[[nodiscard]] inline constexpr bool SpecAllows(std::uint8_t row, std::uint8_t team) { return row == kSpecAny || row == team; }
 
 struct ProductLine
 {
@@ -1151,6 +1184,7 @@ struct ProductLine
     std::uint8_t gearGuns = 0;      // the last rows of `gear`: in the table only with EngGuns (GearTable)
     std::uint8_t tierExtra = 0;     // tiers[tierCount .. tierCount + tierExtra): in the table only with PotionTiers
                                     // (ActiveLine; off: tierCount rows, the lane D table as was)
+    std::uint8_t gearEndgame = 0;   // the last rows of `gear`: in the table only with SmithEndgame (GearTable)
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -1264,7 +1298,76 @@ inline constexpr LineTier kSmithWeapons[] = {
     {16969, 12773, 275, 325, 50,
      {{{12359, 10, Source::Market}, {12799, 2, Source::Market}, {12644, 2, Source::Craft},
        {8170, 4, Source::Market}}}}, // Ornate Thorium Handaxe
+    // Endgame (lane smithfocus, SmithEndgame only, kSmithEndgame): spell, product, skill (min trainer ReqSkillRank),
+    // grey, RequiredLevel and reagents read from the 3.3.5 world DB (trainer_spell, item_template) and Spell.dbc /
+    // SkillLineAbility.dbc; every row is BoE (bonding 2: mailable), specialization-free and needs only the Blacksmith
+    // Hammer (TotemCategory 162). Fel Iron rows are taught by the Master trainers (trainer 58, Outland) and the Grand
+    // Master trainers (59, Northrend); Cobalt / Saronite / Titansteel rows by 59 only: the home trainer (60) teaches
+    // none, the rank trainer trip does. Bars, crystallized / eternal elements, Frozen Orbs: the rep's faction AH. The
+    // armor rows close the skill gaps between the weapons (300-355 Fel Iron, 350-390 Cobalt, 405-455 Saronite).
+    // Skipped: specialization recipes (Weaponsmith 9787 / Armorsmith 9788 and the sword / axe / hammer masters): every
+    // one is BoP (bonding 1), nothing the house can mail; thrown weapons; Enchanted Thorium Bar rows.
+    // weapons
+    {16971, 12775, 280, 330, 51,
+     {{{12359, 12, Source::Market}, {12644, 6, Source::Craft}, {8170, 6, Source::Market}}}},  // Huge Thorium Battleaxe
+    {29557, 23497, 310, 340, 61, {{{23445, 9, Source::Market}}}},   // Fel Iron Hatchet
+    {29558, 23498, 315, 345, 62, {{{23445, 10, Source::Market}}}},  // Fel Iron Hammer
+    {29565, 23499, 320, 350, 63, {{{23445, 12, Source::Market}}}},  // Fel Iron Greatsword
+    {55200, 41239, 380, 395, 71, {{{36916, 8, Source::Market}}}},   // Sturdy Cobalt Quickblade
+    {55201, 41240, 380, 395, 71, {{{36916, 8, Source::Market}}}},   // Cobalt Tenderizer
+    {55203, 41242, 385, 400, 72, {{{36916, 10, Source::Market}}}},  // Forged Cobalt Claymore
+    {55204, 41243, 390, 405, 73, {{{36916, 10, Source::Market}}}},  // Notched Cobalt War Axe
+    {55174, 41181, 390, 405, 73,
+     {{{36916, 12, Source::Market}, {36913, 4, Source::Market}, {37702, 2, Source::Market}}}},  // Honed Cobalt Cleaver
+    {55177, 41182, 395, 410, 74,
+     {{{36916, 8, Source::Market}, {36913, 6, Source::Market}, {37702, 2, Source::Market}}}},   // Savage Cobalt Slicer
+    {55179, 41183, 400, 415, 75,
+     {{{36916, 12, Source::Market}, {36913, 4, Source::Market}, {37703, 1, Source::Market}}}},  // Saronite Ambusher
+    {55181, 41184, 405, 420, 76, {{{36913, 12, Source::Market}, {37703, 2, Source::Market}}}},  // Saronite Shiv
+    {55182, 41185, 410, 425, 77, {{{36913, 15, Source::Market}, {37701, 2, Source::Market}}}},  // Furious Saronite Beatstick
+    {56280, 42443, 410, 425, 77, {{{36913, 15, Source::Market}, {37705, 2, Source::Market}}}},  // Cudgel of Saronite Justice
+    {59442, 43871, 410, 425, 77, {{{36913, 15, Source::Market}, {37702, 2, Source::Market}}}},  // Saronite Spellblade
+    {55369, 41257, 440, 470, 80,
+     {{{36913, 8, Source::Market}, {37663, 8, Source::Market}, {43102, 2, Source::Market}}}},   // Titansteel Destroyer
+    {55370, 41383, 440, 470, 80,
+     {{{36913, 6, Source::Market}, {37663, 6, Source::Market}, {43102, 2, Source::Market}}}},   // Titansteel Bonecrusher
+    {55371, 41384, 440, 470, 80,
+     {{{36913, 6, Source::Market}, {37663, 6, Source::Market}, {43102, 2, Source::Market}}}},   // Titansteel Guardian
+    {56234, 42435, 440, 470, 80,
+     {{{36913, 6, Source::Market}, {37663, 6, Source::Market}, {43102, 2, Source::Market}}}},   // Titansteel Shanker
+    {63182, 45085, 440, 470, 80,
+     {{{37663, 6, Source::Market}, {34054, 6, Source::Market}, {43102, 2, Source::Market}}}},   // Titansteel Spellblade
+    // armor (plate / mail wearers; the skill bridge between the weapons)
+    {29551, 23493, 300, 330, 60, {{{23445, 4, Source::Market}}}},   // Fel Iron Chain Coif
+    {29545, 23482, 300, 330, 61, {{{23445, 4, Source::Market}}}},   // Fel Iron Plate Gloves
+    {29547, 23484, 305, 335, 61, {{{23445, 4, Source::Market}}}},   // Fel Iron Plate Belt
+    {29548, 23487, 315, 345, 62, {{{23445, 6, Source::Market}}}},   // Fel Iron Plate Boots
+    {29549, 23488, 315, 345, 62, {{{23445, 8, Source::Market}}}},   // Fel Iron Plate Pants
+    {29550, 23489, 325, 355, 64, {{{23445, 10, Source::Market}}}},  // Fel Iron Breastplate
+    {52568, 39087, 350, 380, 70, {{{36916, 4, Source::Market}}}},   // Cobalt Belt
+    {52569, 39088, 350, 380, 70, {{{36916, 4, Source::Market}}}},   // Cobalt Boots
+    {52572, 39083, 360, 380, 70, {{{36916, 4, Source::Market}}}},   // Cobalt Shoulders
+    {55834, 41974, 360, 380, 70, {{{36916, 4, Source::Market}}}},   // Cobalt Bracers
+    {54550, 40668, 360, 380, 70, {{{36916, 4, Source::Market}}}},   // Cobalt Triangle Shield
+    {52571, 39084, 370, 385, 70, {{{36916, 5, Source::Market}}}},   // Cobalt Helm
+    {52567, 39086, 370, 385, 70, {{{36916, 5, Source::Market}}}},   // Cobalt Legplates
+    {55835, 41975, 370, 390, 70, {{{36916, 5, Source::Market}}}},   // Cobalt Gauntlets
+    {52570, 39085, 375, 390, 70, {{{36916, 6, Source::Market}}}},   // Cobalt Chestpiece
+    {54556, 40675, 405, 420, 76, {{{36913, 12, Source::Market}}}},  // Tempered Saronite Shoulders
+    {54555, 40673, 405, 420, 76, {{{36913, 12, Source::Market}, {37701, 1, Source::Market}}}},  // Tempered Saronite Helm
+    {55017, 41116, 410, 425, 77, {{{36913, 13, Source::Market}}}},  // Tempered Saronite Bracers
+    {55015, 41114, 415, 430, 78, {{{36913, 14, Source::Market}}}},  // Tempered Saronite Gauntlets
+    {55300, 41356, 420, 450, 78, {{{36913, 12, Source::Market}, {35622, 1, Source::Market}}}},  // Righteous Gauntlets
+    {55301, 41357, 420, 450, 78, {{{36913, 12, Source::Market}, {35624, 1, Source::Market}}}},  // Daunting Handguards
+    {55302, 41344, 425, 455, 78, {{{36913, 14, Source::Market}, {36860, 1, Source::Market}}}},  // Helm of Command
+    {55303, 41345, 425, 455, 78, {{{36913, 14, Source::Market}, {35624, 1, Source::Market}}}},  // Daunting Legplates
+    {55304, 41346, 425, 455, 78, {{{36913, 14, Source::Market}, {35622, 1, Source::Market}}}},  // Righteous Greaves
 };
+inline constexpr std::uint8_t kSmithEndgame = 44;
+static_assert(std::size(kSmithWeapons) == 14 + kSmithEndgame);  // the lane bootstrap table + the endgame tail
+// Blacksmithing Master (29845: trainer 58 / 59, skill 275, level 50) and Grand Master (51298: trainer 59, skill 350, level
+// 60 in this world DB) ranks: learned only on the rank trainer trip (SmithEndgame).
+inline constexpr std::uint32_t kSmithRanks[] = {29845, 51298};
 // Engineering (lane AA, Tinkers; trainer 92 = Stormwind 5518 / Orgrimmar 11017, 466 / 491 yards from the homes) and its
 // smelting (Mining 186, trainer 80 = Stormwind 5513 / Orgrimmar 3357; spell focus 3: a forge near home): gun hunters'
 // shot (200 per cast) from routed stone (House.Stone) and ore (House.Ore). Only reagents the house gets and a consumer
@@ -1363,7 +1466,8 @@ inline constexpr ProductLine kCatalog[] = {
      Consumer::EquipGear, {}, 0, kTailorGear, static_cast<std::uint8_t>(std::size(kTailorGear))},
     // Trainer rank wrappers (2020/2021/3539/9786) teach known ranks 2018/3100/3538/9785; the table adds recipes.
     {Line::MailGear, "mail_gear", "MailGear", "Smiths", "2020,2021,3539,9786", 164, NeedRule::GearSlots,
-     Consumer::EquipGear, {}, 0, kSmithWeapons, static_cast<std::uint8_t>(std::size(kSmithWeapons))},
+     Consumer::EquipGear, {}, 0, kSmithWeapons, static_cast<std::uint8_t>(std::size(kSmithWeapons)), 0, 0, 0,
+     kSmithEndgame},
     {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear)), kLeatherStarters},
     // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
@@ -1380,10 +1484,10 @@ static_assert([] {
             return false;
     return true;
 }());
-// GearTable drops either tail by its own flag: a line has starter rows or gun rows, never both.
+// GearTable drops each tail by its own flag: a line has starter rows, gun rows or endgame rows, never two of them.
 static_assert([] {
     for (ProductLine const& l : kCatalog)
-        if (l.gearStarters && l.gearGuns)
+        if ((l.gearStarters != 0) + (l.gearGuns != 0) + (l.gearEndgame != 0) > 1 || l.gearEndgame > l.gearCount)
             return false;
     return true;
 }());
@@ -2121,6 +2225,69 @@ struct GearOrder
     return out;
 }
 
+// OrderBackoffMs (lane smithfocus; soak S107b: the Alliance Smiths order oid 1, 54 Rough Sharpening Stones nobody could
+// fill, re-posted its `order` row every OverlordMs for 70 min). The overlord re-plans every scan as before; only the rows
+// back off: a changed order (sig) posts now and waits `backoff`; an unchanged one re-posts once its wait passed, each
+// wait twice the last, at most 8x `backoff`. 0 = every scan (the behaviour as was).
+struct OrderPost
+{
+    std::uint64_t sig = 0;     // OrderSig of the last posted order (0 = none yet)
+    std::uint64_t nextMs = 0;  // an unchanged order re-posts at / after this
+    std::uint64_t waitMs = 0;
+};
+
+// Order id plus every entry (recipe, units, consumer), folded in order (FNV-1a over the integers; never 0).
+[[nodiscard]] inline std::uint64_t OrderSig(std::uint32_t orderId, std::vector<GearOrder> const& orders)
+{
+    std::uint64_t h = 1469598103934665603ull;
+    auto mix = [&](std::uint64_t v)
+    {
+        h ^= v;
+        h *= 1099511628211ull;
+    };
+    mix(orderId);
+    for (GearOrder const& o : orders)
+    {
+        mix(o.recipe);
+        mix(o.units);
+        mix(o.consumer);
+    }
+    return h ? h : 1;
+}
+
+[[nodiscard]] inline bool OrderPostDue(OrderPost& s, std::uint64_t sig, std::uint64_t nowMs, std::uint32_t backoffMs)
+{
+    if (!backoffMs)
+        return true;
+    if (sig != s.sig)
+    {
+        s = {sig, nowMs + backoffMs, backoffMs};
+        return true;
+    }
+    if (nowMs < s.nextMs)
+        return false;
+    s.waitMs = std::min<std::uint64_t>(s.waitMs * 2, std::uint64_t(backoffMs) * 8);
+    s.nextMs = nowMs + s.waitMs;
+    return true;
+}
+
+// ---- self-mining (lane smithfocus, AutoWow.Supply.MineMs) ----
+
+// A gear artisan goes mining when its open target lacks stone or ore the market has not brought (`lacks`: the target's
+// Market / Route reagents still short), it mines (skill and a pick), MineMs is on, its MineSpot is set and the last
+// stint ended at least MineCooldownMs ago.
+[[nodiscard]] inline bool MineDue(std::vector<std::uint32_t> const& lacks, bool canMine, bool spot, std::uint32_t mineMs,
+                                  std::uint64_t nowMs, std::uint64_t readyMs)
+{
+    if (!mineMs || !canMine || !spot || nowMs < readyMs)
+        return false;
+    return std::any_of(lacks.begin(), lacks.end(), [](std::uint32_t item)
+                       {
+                           return std::find(std::begin(kStone), std::end(kStone), item) != std::end(kStone) ||
+                                  std::find(std::begin(kOre), std::end(kOre), item) != std::end(kOre);
+                       });
+}
+
 // cloth_gear on the bag house: raw cloth per kTiers tier the open orders' bolts still lack beyond the house holdings
 // (have(item) -> units; a held bolt counts as its cloth). Feeds the squad demand (ClothDemandOf) and the rep's market
 // wants when the bag line has no use for that tier.
@@ -2477,6 +2644,8 @@ struct Stations
     Station forge;     // a forge (spell focus 3) near home: gear lines' smelting (lane AA)
     Station anvil;     // an anvil (spell focus 1) near home: EngGuns parts (lane tinkers2; none when off)
     Station trainer2;  // gear lines: the trainer of the learn spells `trainer` does not teach (Engineering: mining)
+    Station rankTrainer;  // SmithEndgame: the Master / Grand Master trainer (another map: the rank trainer trip)
+    Home mine;            // MineMs: AutoWow.Supply.MineSpot.<House>.<Team>, on the home map (unset = no mining)
 };
 
 // Shared per-team state (world thread writes, role bots' map threads read), copied out under the lock.
@@ -2590,6 +2759,7 @@ inline bool GearBootstrap() { return detail::gEnabled && detail::gParams.gearBoo
 inline bool EngGuns() { return detail::gEnabled && detail::gParams.engGuns; }
 inline bool GearStockSell() { return detail::gEnabled && detail::gParams.gearStockSell; }
 inline bool PotionTiers() { return detail::gEnabled && detail::gParams.potionTiers; }
+inline bool SmithEndgame() { return detail::gEnabled && detail::gParams.smithEndgame; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was). A copy: callers keep it for the scope that reads its tiers.
 [[nodiscard]] inline ProductLine ActiveLine(Line l)
@@ -2600,11 +2770,11 @@ inline bool PotionTiers() { return detail::gEnabled && detail::gParams.potionTie
     return out;
 }
 // A gear line's recipe table: its gearStarters last rows only with GearBootstrap, its gearGuns last rows only with
-// EngGuns (off: the lane V / AA table as was).
+// EngGuns, its gearEndgame last rows only with SmithEndgame (off: the lane V / AA table as was).
 [[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)
 {
     return {l.gear, static_cast<std::uint8_t>(l.gearCount - (GearBootstrap() ? 0 : l.gearStarters) -
-                                              (EngGuns() ? 0 : l.gearGuns))};
+                                              (EngGuns() ? 0 : l.gearGuns) - (SmithEndgame() ? 0 : l.gearEndgame))};
 }
 // Gear line recipe `recipe`: items one cast makes (the spell's create-item count; shot 200, a piece 1). Read-only.
 std::uint32_t GearYield(Line l, std::uint8_t recipe);

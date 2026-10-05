@@ -797,7 +797,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 11u);
+    EXPECT_EQ(kStateVersion, 12u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -1142,7 +1142,8 @@ TEST(SupplyGear, CatalogLinesAndProducts)
     EXPECT_STREQ(smith.key, "MailGear");
     EXPECT_STREQ(smith.learn, "2020,2021,3539,9786");
     EXPECT_EQ(smith.skillLine, 164u);
-    EXPECT_EQ(smith.gearCount, 14u);
+    EXPECT_EQ(smith.gearCount, 14u + kSmithEndgame);  // the endgame tail joins only with SmithEndgame (GearTable)
+    EXPECT_EQ(smith.gearEndgame, kSmithEndgame);
     EXPECT_EQ(kMaxReagents, 8u);  // every Spell.dbc reagent slot, including Phantom Blade's seven
 }
 
@@ -1238,6 +1239,118 @@ TEST(SupplySmithWeapons, DeliveryAndEngGunsBoundaries)
     EXPECT_EQ(deliveries[0].item, 700u);
     EXPECT_EQ(deliveries[1].need, 1u);
     EXPECT_EQ(deliveries[1].item, 900u); // recipes and recipients never cross
+}
+
+TEST(SupplySmithEndgame, TailJoinsOnlyWithTheFlag)
+{
+    ProductLine const& smith = LineOf(Line::MailGear);
+    EXPECT_EQ(GearTable(smith).tierCount, 14u);  // off (detail::gEnabled false): the lane bootstrap table as was
+    detail::gEnabled = true;
+    detail::gParams.smithEndgame = false;
+    EXPECT_EQ(GearTable(smith).tierCount, 14u);
+    detail::gParams.smithEndgame = true;
+    RecipeTable const g = GearTable(smith);
+    EXPECT_EQ(g.tierCount, 14u + kSmithEndgame);
+    EXPECT_EQ(GearTable(LineOf(Line::Engineering)).tierCount, 9u);  // other lines carry no endgame rows
+    detail::gParams.smithEndgame = false;
+    detail::gEnabled = false;
+
+    // Skill 1..449 always has a trainer row still yellow / green (no dead band to Grand Master 450).
+    for (std::uint32_t skill = 1; skill < 450; ++skill)
+        EXPECT_TRUE(std::any_of(g.tiers, g.tiers + g.tierCount, [&](LineTier const& t)
+                                { return t.skill <= skill && skill < t.grey; }))
+            << skill;
+    std::uint32_t weapons = 0;
+    for (std::size_t i = 14; i < g.tierCount; ++i)
+    {
+        LineTier const& t = g.tiers[i];
+        EXPECT_GE(t.reqLevel, 51u) << t.spell;  // L51-80 products only
+        EXPECT_LE(t.reqLevel, 80u) << t.spell;
+        EXPECT_LT(t.skill, t.grey) << t.spell;
+        EXPECT_GE(t.skill, 280u) << t.spell;
+        EXPECT_NE(t.family, kFamilyBridge) << t.spell;  // every endgame piece is real member demand
+        EXPECT_EQ(t.spec, kSpecAny) << t.spell;         // spec recipes are BoP: none in the mail table
+        for (Reagent const& r : t.reagents)
+            if (r.item)
+            {
+                EXPECT_NE(r.source, Source::Route) << t.spell;  // the Tinkers keep every ore / stone route
+                if (r.source == Source::Craft)
+                {
+                    EXPECT_NE(TierOf(g, r.item), kNoTier) << t.spell;  // a Craft reagent is a table product
+                }
+            }
+        weapons += i < 14u + 20u ? 1 : 0;
+    }
+    EXPECT_EQ(weapons, 20u);              // weapons first in the tail, then the armor bridge
+    EXPECT_EQ(g.tiers[14].spell, 16971u);  // Huge Thorium Battleaxe
+    EXPECT_EQ(g.tiers[33].spell, 63182u);  // Titansteel Spellblade
+    EXPECT_EQ(g.tiers[34].spell, 29551u);  // Fel Iron Chain Coif
+    EXPECT_EQ(TierOf(g, 41257), 29u);      // Titansteel Destroyer
+    EXPECT_EQ(kSmithRanks[0], 29845u);     // Master Blacksmithing (trainer 58 / 59)
+    EXPECT_EQ(kSmithRanks[1], 51298u);     // Grand Master Blacksmithing (trainer 59)
+}
+
+TEST(SupplySmithEndgame, SpecTagParsesAndGates)
+{
+    std::uint8_t spec = 7;
+    EXPECT_TRUE(ParseSpec("none", spec));
+    EXPECT_EQ(spec, kSpecAny);
+    EXPECT_TRUE(ParseSpec("weapon", spec));
+    EXPECT_EQ(spec, kSpecWeapon);
+    EXPECT_TRUE(ParseSpec("armor", spec));
+    EXPECT_EQ(spec, kSpecArmor);
+    EXPECT_FALSE(ParseSpec("Weapon", spec));  // exact tokens only; out untouched
+    EXPECT_FALSE(ParseSpec("", spec));
+    EXPECT_EQ(spec, kSpecArmor);
+    EXPECT_TRUE(SpecAllows(kSpecAny, kSpecAny));
+    EXPECT_TRUE(SpecAllows(kSpecAny, kSpecWeapon));
+    EXPECT_TRUE(SpecAllows(kSpecWeapon, kSpecWeapon));
+    EXPECT_FALSE(SpecAllows(kSpecWeapon, kSpecAny));
+    EXPECT_FALSE(SpecAllows(kSpecWeapon, kSpecArmor));
+    EXPECT_FALSE(SpecAllows(kSpecArmor, kSpecWeapon));
+}
+
+TEST(SupplySmithEndgame, OrderRowsBackOff)
+{
+    std::vector<GearOrder> const a = {{0, 54, 70576}};
+    std::vector<GearOrder> const b = {{0, 53, 70576}};
+    std::uint64_t const sa = OrderSig(1, a);
+    EXPECT_NE(sa, 0u);
+    EXPECT_EQ(sa, OrderSig(1, a));  // deterministic
+    EXPECT_NE(sa, OrderSig(1, b));  // units count
+    EXPECT_NE(sa, OrderSig(2, a));  // the order id counts
+
+    OrderPost off;
+    for (std::uint64_t t = 0; t < 5; ++t)
+        EXPECT_TRUE(OrderPostDue(off, sa, t * 300000, 0));  // 0: every scan, state untouched
+    EXPECT_EQ(off.sig, 0u);
+
+    // S107b: one unfillable order, a scan every 5 min for 70 min: 15 rows. Backoff 5 min: posts at 0, 5, 15, 35 (waits
+    // 5, 10, 20, then 40 = the 8x cap: the next at 75).
+    OrderPost s;
+    std::uint32_t posts = 0;
+    for (std::uint64_t t = 0; t <= 70; t += 5)
+        posts += OrderPostDue(s, sa, t * 60000, 300000) ? 1 : 0;
+    EXPECT_EQ(posts, 4u);
+    EXPECT_EQ(s.waitMs, 2400000u);
+    EXPECT_TRUE(OrderPostDue(s, OrderSig(1, b), 71 * 60000, 300000));  // a changed order posts at once
+    EXPECT_EQ(s.waitMs, 300000u);
+    EXPECT_FALSE(OrderPostDue(s, OrderSig(1, b), 72 * 60000, 300000));
+}
+
+TEST(SupplySmithEndgame, MineDueOnlyForStoneOrOreLacks)
+{
+    std::vector<std::uint32_t> const stone = {12359, 2835};  // thorium bar (no), rough stone (yes)
+    std::vector<std::uint32_t> const ore = {2771};
+    std::vector<std::uint32_t> const bars = {12359, 23445};
+    EXPECT_TRUE(MineDue(stone, true, true, 1200000, 100, 0));
+    EXPECT_TRUE(MineDue(ore, true, true, 1200000, 100, 100));
+    EXPECT_FALSE(MineDue(bars, true, true, 1200000, 100, 0));     // bars come from the market / smelts
+    EXPECT_FALSE(MineDue(stone, true, true, 0, 100, 0));          // MineMs 0 = off
+    EXPECT_FALSE(MineDue(stone, false, true, 1200000, 100, 0));   // no mining / pick / detours
+    EXPECT_FALSE(MineDue(stone, true, false, 1200000, 100, 0));   // no MineSpot
+    EXPECT_FALSE(MineDue(stone, true, true, 1200000, 100, 101));  // cooling down
+    EXPECT_FALSE(MineDue({}, true, true, 1200000, 100, 0));
 }
 
 TEST(SupplyGear, TablesMatchTheWorldDb)

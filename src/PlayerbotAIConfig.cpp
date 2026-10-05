@@ -785,6 +785,9 @@ bool PlayerbotAIConfig::Initialize()
     autoWowProfessionsTrainOnArrival = sConfigMgr->GetOption<bool>("AutoWow.Professions.TrainOnArrival", false);
     autoWowProfessionsCraftPriorityFix = sConfigMgr->GetOption<bool>("AutoWow.Professions.CraftPriorityFix", false);
     autoWowProfessionsDropOffPlan = sConfigMgr->GetOption<bool>("AutoWow.Professions.DropOffPlan", false);
+    // Lane smithfocus (default 0): a L65+ cohort member made a house's master artisan keeps only its plan (house craft +
+    // a matching gather), freeing the slot its house craft trains into; off: artisans keep every line, as before.
+    autoWowProfessionsArtisanDropOff = sConfigMgr->GetOption<bool>("AutoWow.Professions.ArtisanDropOff", false);
     autoWowProfessionsTrainRuns = sConfigMgr->GetOption<bool>("AutoWow.Professions.TrainRuns", false);
     autoWowProfessionsTrainRunCooldownMs =
         sConfigMgr->GetOption<uint32>("AutoWow.Professions.TrainRunCooldownMs", 1800000);
@@ -798,8 +801,8 @@ bool PlayerbotAIConfig::Initialize()
             if (uint32 const guid = sConfigMgr->GetOption<uint32>(key, 0, false))
                 autoWowSupplyArtisanGuids.push_back(guid);
     if (autoWowProfessionsDropOffPlan)
-        LOG_INFO("server.loading", "AutoWow.Professions.DropOffPlan on: {} supply artisan guids exempt",
-                 autoWowSupplyArtisanGuids.size());
+        LOG_INFO("server.loading", "AutoWow.Professions.DropOffPlan on: {} supply artisan guids {}",
+                 autoWowSupplyArtisanGuids.size(), autoWowProfessionsArtisanDropOff ? "drop off-plan too" : "exempt");
     if (!AutoWowTrainPolicy::ParseAssignments(
             sConfigMgr->GetOption<std::string>("AutoWow.Professions.Assignments", ""), autoWowProfessionAssignments))
         LOG_ERROR("server.loading", "AutoWow.Professions.Assignments is malformed; no bot gets a profession plan");

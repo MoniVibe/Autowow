@@ -68,6 +68,8 @@ std::unordered_map<std::uint32_t, std::size_t> gCrewOf;  // material crew guid -
 // item -> map -> source spawns (spawn id ascending): creatures (cloth, leather) or nodes (herb, ore; level 1..1).
 std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, std::vector<Spawn>>> gIndex;
 std::unordered_map<std::uint32_t, std::uint32_t> gNodeReq;  // node gameobject entry -> lock skill value
+// AutoWow.Squad.PoolWeight: pooled node spawn id -> live permille (PoolLivePermille); absent = always live (1000).
+std::unordered_map<std::uint32_t, std::uint32_t> gLivePermille;
 
 // The world thread writes the team state, members' map threads read copies and write their member state.
 std::mutex gLock;
@@ -201,6 +203,24 @@ void BuildIndex()
             gIndex[item][data.mapid].push_back(s);
         ++nodeSpawns;
     }
+    // AutoWow.Squad.PoolWeight: each pooled node spawn's live share (its pool's max_limit / members, a mother pool's
+    // max_limit / children on top; derived counts, 0.5 s on the 3.3.5 world DB). Off: never queried.
+    if (detail::gParams.poolWeight)
+        if (QueryResult result = WorldDatabase.Query(
+                "SELECT pg.guid, CAST(pt.max_limit AS UNSIGNED), cnt.n, CAST(IFNULL(mt.max_limit, 0) AS UNSIGNED), "
+                "CAST(IFNULL(mc.n, 0) AS UNSIGNED) FROM pool_gameobject pg JOIN pool_template pt ON pt.entry = "
+                "pg.pool_entry JOIN (SELECT pool_entry, COUNT(*) n FROM pool_gameobject GROUP BY pool_entry) cnt ON "
+                "cnt.pool_entry = pg.pool_entry LEFT JOIN pool_pool pp ON pp.pool_id = pg.pool_entry LEFT JOIN "
+                "pool_template mt ON mt.entry = pp.mother_pool LEFT JOIN (SELECT mother_pool, COUNT(*) n FROM pool_pool "
+                "GROUP BY mother_pool) mc ON mc.mother_pool = pp.mother_pool"))
+            do
+            {
+                Field* f = result->Fetch();
+                auto u32 = [&](std::size_t i) { return static_cast<std::uint32_t>(std::min<uint64>(f[i].Get<uint64>(), 0xFFFFFFFFu)); };
+                std::uint32_t const live = PoolLivePermille(u32(1), u32(2));
+                std::uint32_t const mother = PoolLivePermille(u32(3), u32(4));
+                gLivePermille[f[0].Get<uint32>()] = static_cast<std::uint32_t>(std::uint64_t(live) * mother / 1000);
+            } while (result->NextRow());
     for (auto& [item, maps] : gIndex)
         for (auto& [map, spawns] : maps)
             std::sort(spawns.begin(), spawns.end(), [](Spawn const& a, Spawn const& b) { return a.spawnId < b.spawnId; });
@@ -316,6 +336,19 @@ bool Search(TeamState& s, std::vector<Want> const& demand, std::vector<Player*> 
                 std::uint32_t const zone = AutoWowDeathLoop::ZoneAt(map, float(c.x), float(c.y));
                 if (ZoneTooHigh(AutoWowDeathLoop::ZoneMinLevel(zone), avg, ZoneMargin(p)))
                     return true;
+                // AutoWow.Squad.PoolWeight: a node cluster needs MinClusterSpawns live nodes, not spawn points.
+                if (p.poolWeight && NodeKind(w.kind))
+                {
+                    std::uint64_t live = 0;
+                    for (Spawn const& sp : work)
+                        if (AutoWowContracts::Within(sp.x, sp.y, c.x, c.y, p.clusterYards))
+                        {
+                            auto const it = gLivePermille.find(sp.spawnId);
+                            live += it == gLivePermille.end() ? 1000 : it->second;
+                        }
+                    if (!EnoughLiveNodes(live, p.minClusterSpawns))
+                        return true;
+                }
                 // AutoWow.Squad.LevelWindow (1): no cooling death-cluster zone, no over-level zone on the leader's line.
                 return LevelWindowOn(p) && (ZoneCooling(s, zone, now) || CrossesHighZone(map, avg, bx, by, c.x, c.y));
             });
@@ -524,6 +557,7 @@ void LoadConfig()
     p.deathCluster = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.DeathCluster", 3);
     p.dangerZoneMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.DangerZoneMs", 3600000);
     p.benchMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Squad.BenchMs", 1800000);
+    p.poolWeight = sConfigMgr->GetOption<bool>("AutoWow.Squad.PoolWeight", false);
     for (auto& r : gRoster)
         r.clear();
     for (auto& r : gCrewRoster)
@@ -535,6 +569,7 @@ void LoadConfig()
     gCrewOf.clear();
     gIndex.clear();
     gNodeReq.clear();
+    gLivePermille.clear();
     gTickAcc = 0;
     gFirstTick = true;
     {
@@ -698,15 +733,15 @@ void LoadConfig()
     if (gMaterialCrews)
         LOG_INFO("server.loading",
                  "[Squad] enabled: mode=material_crews alliance={} horde={} stint_ms={} level_above={} "
-                 "search_yards={} leash={} min_demand={} level_window={} death_cluster={}",
+                 "search_yards={} leash={} min_demand={} level_window={} death_cluster={} pool_weight={} ({} pooled)",
                  gRoster[0].size(), gRoster[1].size(), p.stintMs, p.levelAbove, p.searchYards, p.leashYards,
-                 p.minDemand, p.levelWindow, p.deathCluster);
+                 p.minDemand, p.levelWindow, p.deathCluster, p.poolWeight, gLivePermille.size());
     else
         LOG_INFO("server.loading",
                  "[Squad] enabled: alliance={} horde={} stint_ms={} level_above={} search_yards={} "
-                 "leash={} min_demand={} level_window={} death_cluster={}",
+                 "leash={} min_demand={} level_window={} death_cluster={} pool_weight={} ({} pooled)",
                  gRoster[0].size(), gRoster[1].size(), p.stintMs, p.levelAbove, p.searchYards, p.leashYards,
-                 p.minDemand, p.levelWindow, p.deathCluster);
+                 p.minDemand, p.levelWindow, p.deathCluster, p.poolWeight, gLivePermille.size());
 }
 
 void WorldUpdate(std::uint32_t diff)

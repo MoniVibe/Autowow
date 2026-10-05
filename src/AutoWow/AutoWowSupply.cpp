@@ -88,6 +88,7 @@ std::array<std::vector<std::uint32_t>, kLineCount> gLineRoute;
 std::array<std::vector<std::uint8_t>, kLineCount> gGearRank;
 std::vector<std::uint32_t> gPriority;
 std::array<std::vector<std::uint32_t>, kLineCount> gGearYield;  // per recipe: items per cast (GearYield)
+std::array<std::array<std::uint8_t, 2>, kLineCount> gLineSpec{};  // AutoWow.Supply.Spec.<House>.<Team> (ScanGearNeeds)
 
 // Shared: the world thread writes, role bots' map threads and donors read / take.
 struct TeamState
@@ -128,6 +129,7 @@ struct LineState
     std::vector<bool> directItem;
     std::array<std::uint32_t, kMaxLineTiers> wants{};  // DemandOnly (overlord): want per tier (a skill-up's consumer)
     std::vector<GearOrder> orders;                     // gear lines (GearTick): the open order, ranked
+    OrderPost post;                                    // OrderBackoffMs (GearTick): the order rows' backoff
 };
 std::mutex gLock;
 std::array<TeamState, 2> gTeams;
@@ -1984,7 +1986,7 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
         std::uint32_t const ilvl = IlvlSum(m), prio = PriorityOf(gPriority, Low(m));
         for (std::uint8_t const r : gGearRank[li])
         {
-            if (G.tiers[r].family == kFamilyBridge)
+            if (G.tiers[r].family == kFamilyBridge || !SpecAllows(G.tiers[r].spec, gLineSpec[li][T(alliance)]))
                 continue;  // paid skill-up output goes to house stock / sale, never a member gear order
             ItemTemplate const* proto = r < known.size() && known[r] ? sObjectMgr->GetItemTemplate(G.tiers[r].product)
                                                                      : nullptr;
@@ -2130,7 +2132,10 @@ void GearTick(Line line, bool alliance, bool overlord)
                  "top_consumer={} orders={} units={} oid={}", L.name, alliance ? "alliance" : "horde", gid, repGuid,
                  gLineArtisan[li][t], v.artisanSkill, needs.size(), needs.empty() ? 0 : needs.front().guid,
                  orders.size(), units, v.orderId);
-        if (Player* who = art ? art : rep)
+        // OrderBackoffMs: an unchanged order's rows back off (0: every scan, as before).
+        std::uint64_t const nowMs = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+        if (Player* who = art ? art : rep;
+            who && OrderPostDue(ts.post, OrderSig(v.orderId, orders), nowMs, p.orderBackoffMs))
             for (GearOrder const& o : orders)
                 EmitLine(line, who, Reason::Order, v.orderId, G.tiers[o.recipe].product, o.units, 0, 0,
                          gLineArtisan[li][t], nullptr, o.consumer);
@@ -2316,6 +2321,7 @@ void GearTick(Line line, bool alliance, bool overlord)
     std::lock_guard<std::mutex> guard(gLock);
     LineState& out = gLines[li][t];
     out.orders = ts.orders;
+    out.post = ts.post;
     out.v.orderId = v.orderId;
     out.v.remaining = v.remaining;
     out.v.product = v.product;
@@ -2970,6 +2976,11 @@ void LoadConfig()
     p.gearStockSell = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearStockSell", false);
     p.gearSkillupRestock = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearSkillupRestock", false);
     p.potionTiers = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionTiers", false);
+    p.smithEndgame = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithEndgame", false);
+    p.orderBackoffMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OrderBackoffMs", 0);
+    p.mineMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineMs", 0);
+    p.mineCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineCooldownMs", 1800000);
+    gLineSpec = {};
     gPriority.clear();
     {
         std::lock_guard<std::mutex> guard(gLock);
@@ -3219,6 +3230,11 @@ void LoadConfig()
             if (AutoWowGuilds::detail::ParseU32(sv, id) && id)
                 gLineLearn[li].push_back(id);
         });
+        // SmithEndgame: the Master / Grand Master ranks (the rank trainer trip teaches them).
+        if (SmithEndgame() && L.id == Line::MailGear)
+            for (std::uint32_t const id : kSmithRanks)
+                if (std::find(gLineLearn[li].begin(), gLineLearn[li].end(), id) == gLineLearn[li].end())
+                    gLineLearn[li].push_back(id);
         for (std::size_t i = 0; i < G.tierCount; ++i)
             if (G.tiers[i].skill > 1 &&
                 std::find(gLineLearn[li].begin(), gLineLearn[li].end(), G.tiers[i].spell) == gLineLearn[li].end())
@@ -3298,6 +3314,27 @@ void LoadConfig()
             LOG_INFO("server.loading", "[Supply] line {} {} stations: mailbox={} trainer={} vendor={} ({} items)",
                      L.name, alliance ? "alliance" : "horde", st.mailbox.entry, st.trainer.entry, st.threadVendor.entry,
                      vendorAll.size());
+            // AutoWow.Supply.Spec.<House>.<Team> (lane smithfocus): the team's specialization rows (default none).
+            std::string const specKey = "AutoWow.Supply.Spec." + gLineHouseName[li] + "." + team;
+            std::string const specText = sConfigMgr->GetOption<std::string>(specKey, "none", false);
+            if (!ParseSpec(specText, gLineSpec[li][T(alliance)]))
+                LOG_ERROR("server.loading", "[Supply] bad {} '{}': none", specKey, specText);
+            // AutoWow.Supply.MineSpot.<House>.<Team> (MineMs): where the artisan mines, on its home map.
+            if (detail::gParams.mineMs)
+            {
+                std::string const mineKey = "AutoWow.Supply.MineSpot." + gLineHouseName[li] + "." + team;
+                std::string const mineText = sConfigMgr->GetOption<std::string>(mineKey, "", false);
+                if (!mineText.empty() && (!ParseHome(mineText, st.mine) || st.mine.map != home.map))
+                {
+                    LOG_ERROR("server.loading", "[Supply] bad {} '{}' (map,x,y,z on the home map): no mining", mineKey,
+                              mineText);
+                    st.mine = Home{};
+                }
+                else if (st.mine.set)
+                    LOG_INFO("server.loading", "[Supply] line {} {} mine spot map={} ({},{}) stint_ms={} cooldown_ms={}",
+                             L.name, alliance ? "alliance" : "horde", st.mine.map, st.mine.x, st.mine.y,
+                             detail::gParams.mineMs, detail::gParams.mineCooldownMs);
+            }
             if (L.id != Line::Engineering && L.id != Line::MailGear)
                 continue;
             // A second trainer serves every configured learn spell absent from the primary (Engineering: Mining;
@@ -3308,6 +3345,31 @@ void LoadConfig()
                 if (!tr || std::none_of(tr->GetSpells().begin(), tr->GetSpells().end(),
                                         [&](Trainer::Spell const& sp) { return sp.SpellId == id; }))
                     missing.push_back(id);
+            // SmithEndgame: the rank trainer (AutoWow.Supply.RankTrainer.<House>.<Team>; defaults are the Grand Master
+            // trainers checked in the world DB: trainer 59 teaches every rank and every table recipe, faction templates
+            // 1892 Valiance Expedition / 1981 Warsong Offensive) serves the spells no home trainer does.
+            if (SmithEndgame() && L.id == Line::MailGear)
+            {
+                std::uint32_t const entry = sConfigMgr->GetOption<std::uint32_t>(
+                    "AutoWow.Supply.RankTrainer." + gLineHouseName[li] + "." + team, alliance ? 26988 : 26981, false);
+                std::uint64_t bestSpawn = 0;
+                for (auto const& [spawn, data] : sObjectMgr->GetAllCreatureData())
+                    if (data.id == entry && (!st.rankTrainer.entry || spawn < bestSpawn))
+                    {
+                        bestSpawn = spawn;
+                        st.rankTrainer = {entry, data.mapid, static_cast<std::int32_t>(data.posX),
+                                          static_cast<std::int32_t>(data.posY), static_cast<std::int32_t>(data.posZ)};
+                    }
+                Trainer::Trainer* rt = st.rankTrainer.entry ? sObjectMgr->GetTrainer(st.rankTrainer.entry) : nullptr;
+                missing.erase(std::remove_if(missing.begin(), missing.end(), [&](std::uint32_t id)
+                {
+                    return rt && std::any_of(rt->GetSpells().begin(), rt->GetSpells().end(),
+                                             [&](Trainer::Spell const& sp) { return sp.SpellId == id; });
+                }), missing.end());
+                LOG_INFO("server.loading", "[Supply] line {} {} rank trainer={} map={} ({},{}) teaches={}", L.name,
+                         alliance ? "alliance" : "horde", st.rankTrainer.entry, st.rankTrainer.map, st.rankTrainer.x,
+                         st.rankTrainer.y, rt ? "yes" : "no trainer");
+            }
             if (!missing.empty())
             {
                 Stations other;
@@ -3406,6 +3468,10 @@ void LoadConfig()
                      kCatalog[li].name, gLineHouseName[li], gLineArtisan[li][0], gLineArtisan[li][1],
                      gLineLearn[li].size(), gLineRoute[li].size(), p.routeHerbs, p.herbCap, p.potionTarget,
                      p.potionPayPct, p.potionMaxOrder, p.potionKeep, p.skillupCasts);
+    if (p.smithEndgame || p.orderBackoffMs || p.mineMs)
+        LOG_INFO("server.loading", "[Supply] smithfocus: endgame={} (+{} smith rows, ranks {} / {}) order_backoff_ms={} "
+                 "mine_ms={} mine_cooldown_ms={}", p.smithEndgame, kSmithEndgame, kSmithRanks[0], kSmithRanks[1],
+                 p.orderBackoffMs, p.mineMs, p.mineCooldownMs);
     if (p.potionTiers && LineOn(Line::Potions))
         LOG_INFO("server.loading", "[Supply] line potions: PotionTiers on: {} tiers (+{}: mana potions, Greater Healing, "
                  "Elixir of Wisdom bridge), a need per family (mana users), heal products first",

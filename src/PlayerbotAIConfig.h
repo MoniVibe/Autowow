@@ -421,6 +421,7 @@ public:
     bool autoWowProfessionsTrainOnArrival;     // AutoWow.Professions.TrainOnArrival (needs Enable)
     bool autoWowProfessionsCraftPriorityFix;   // AutoWow.Professions.CraftPriorityFix
     bool autoWowProfessionsDropOffPlan;        // AutoWow.Professions.DropOffPlan (needs Enable)
+    bool autoWowProfessionsArtisanDropOff;     // AutoWow.Professions.ArtisanDropOff: supply artisans drop off-plan too
     bool autoWowProfessionsTrainRuns;          // AutoWow.Professions.TrainRuns (needs Enable + AutoWow.Errands.Enable)
     uint32 autoWowProfessionsTrainRunCooldownMs;  // AutoWow.Professions.TrainRunCooldownMs (default 1800000)
     // Gathering rule 2026-09-28 (GatherScalePolicy.h). All default off.

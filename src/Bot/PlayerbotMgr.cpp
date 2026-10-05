@@ -478,7 +478,9 @@ static void AutoWowDropOffPlanProfessions(Player* bot)
     for (uint32 const skill : AutoWowTrainPolicy::kPrimaryProfessionSkillLines)
         if (bot->HasSkill(skill))
             known.push_back(skill);
-    bool const artisan = AutoWowTrainPolicy::Contains(sPlayerbotAIConfig.autoWowSupplyArtisanGuids, guid);
+    // AutoWow.Professions.ArtisanDropOff (lane smithfocus): a supply artisan drops its off-plan lines too.
+    bool const artisan = AutoWowTrainPolicy::Contains(sPlayerbotAIConfig.autoWowSupplyArtisanGuids, guid) &&
+                         !sPlayerbotAIConfig.autoWowProfessionsArtisanDropOff;
     for (uint32 const skill : AutoWowTrainPolicy::OffPlanPrimaries(known, *plan, artisan))
     {
         uint32 const value = bot->GetPureSkillValue(skill);

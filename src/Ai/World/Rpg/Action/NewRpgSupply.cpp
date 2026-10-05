@@ -21,6 +21,7 @@
 #include "Creature.h"
 #include "GameObject.h"
 #include "GameTime.h"
+#include "GatherDetourPolicy.h"
 #include "Item.h"
 #include "ItemPackets.h"
 #include "Log.h"
@@ -67,8 +68,14 @@ enum class Task : std::uint8_t
     Forge = 13,        // gear line artisan (lane AA): its order's smelting at the forge near home (spell focus)
     GearTrainer2 = 14, // gear line artisan (lane AA): its line's due spells at the second trainer (Engineering: mining)
     Anvil = 15,        // gear line artisan (lane tinkers2, EngGuns): its order's anvil casts at the anvil near home
-    GearSell = 16      // gear line rep (lane craftflow, GearStockSell): its pieces beyond RepStockPerItem at the vendor
+    GearSell = 16,     // gear line rep (lane craftflow, GearStockSell): its pieces beyond RepStockPerItem at the vendor
+    RankTrainer = 17,  // gear line artisan (lane smithfocus, SmithEndgame): due ranks / recipes at the rank trainer
+    Mine = 18          // gear line artisan (lane smithfocus, MineMs): a mining stint at its MineSpot
 };
+
+constexpr std::uint64_t kRankRetryMs = 1800000;  // SmithEndgame: one rank trainer trip per half hour at most
+constexpr std::int64_t kMineLeashYards = 150;     // MineMs: the stint works nodes this close to the spot
+constexpr std::uint32_t kMiningPickCategory = 165;  // TotemCategory.dbc: Mining Pick (LootObject's pick check)
 
 constexpr std::uint32_t kHearthstone = 6948;
 
@@ -89,7 +96,18 @@ struct RoleState
     bool craftBlocked = false;  // the last craft had no room for its product (make-room wants a slot)
     std::uint64_t bagGrantMs = 0;  // next bag grant request (at most one per OutfitCheckMs: a refusal is a row)
     std::uint8_t castLine = kNoLine;  // the gear line of the cast in flight (its craft row), else kNoLine
+    std::uint64_t rankMs = 0;       // SmithEndgame: next rank trainer trip
+    std::uint64_t mineReadyMs = 0;  // MineMs: next mining stint (the last one's end + MineCooldownMs)
 };
+
+// MineMs: the target's Market wants (item ids) the mining stint checks against stone / ore (MineDue).
+std::vector<std::uint32_t> BuyItems(LineView const& v)
+{
+    std::vector<std::uint32_t> out;
+    for (MarketWant const& w : v.buy)
+        out.push_back(w.item);
+    return out;
+}
 
 // Map threads; only role bots (bounded by the configured roles) are stored.
 std::mutex gRoleLock;
@@ -170,6 +188,7 @@ Station const* StationFor(Stations const& st, Task task)
         case Task::Forge: return st.forge.entry ? &st.forge : nullptr;
         case Task::Anvil: return st.anvil.entry ? &st.anvil : nullptr;
         case Task::GearTrainer2: return st.trainer2.entry ? &st.trainer2 : nullptr;
+        case Task::RankTrainer: return st.rankTrainer.entry ? &st.rankTrainer : nullptr;
         default: return nullptr;
     }
 }
@@ -528,7 +547,8 @@ bool NewRpgBaseAction::SupplyStep()
         bot->TeleportTo(home.map, float(home.x), float(home.y), float(home.z), bot->GetOrientation());
         return true;
     };
-    if (bot->GetMapId() != home.map || bot->GetMap()->Instanceable())
+    // SmithEndgame: the rank trainer trip stands on the trainer's map until it has learned (then this brings it home).
+    if ((bot->GetMapId() != home.map && s.task != Task::RankTrainer) || bot->GetMap()->Instanceable())
         return portal("other_map");
 
     // A `supply` row of the bot's own line (bags, its catalog line or its gear line).
@@ -731,13 +751,24 @@ bool NewRpgBaseAction::SupplyStep()
                     std::uint64_t const lot = proto ? proto->BuyPrice : 0;
                     cheapest = cheapest ? std::min(cheapest, lot) : lot;
                 }
-            std::uint64_t const want =
-                buy + learnCost + learnCost2 + AutoWowGuilds::Postage(gview.remaining ? gview.remaining : 1);
+            // SmithEndgame (lane smithfocus): the due spells only the rank trainer teaches (Master / Grand Master ranks,
+            // the endgame recipes); off: no cost, no trip.
+            bool learnAffordable3 = false;
+            std::uint64_t const learnCost3 = SmithEndgame() && gst.rankTrainer.entry
+                ? LearnCost(bot, sObjectMgr->GetTrainer(gst.rankTrainer.entry), learnAffordable3, LineLearnSpells(gearId))
+                : 0;
+            std::uint64_t const want = buy + learnCost + learnCost2 + learnCost3 +
+                                       AutoWowGuilds::Postage(gview.remaining ? gview.remaining : 1);
             SetLineArtisanWant(gearId, role.alliance, want > bot->GetMoney() ? want - bot->GetMoney() : 0);
             if (next == Task::None && learnAffordable)
                 next = Task::GearTrainer;
             if (next == Task::None && learnAffordable2)
                 next = Task::GearTrainer2;
+            if (next == Task::None && learnAffordable3 && now >= s.rankMs)
+            {
+                next = Task::RankTrainer;
+                s.rankMs = now + kRankRetryMs;
+            }
             if (next == Task::None && buy && bot->GetMoney() >= cheapest && gst.threadVendor.entry)
                 next = Task::GearVendor;
             // Lane AA: the order's next cast is a smelt away from the forge (and castable: known, bag room); lane
@@ -747,6 +778,17 @@ bool NewRpgBaseAction::SupplyStep()
             if (next == Task::None && c != kNoTier && !s.craftBlocked && bot->HasSpell(gtab.tiers[c].spell) && focus &&
                 FocusMissing(bot, gtab.tiers[c].spell, gst))
                 next = focus == &gst.anvil ? Task::Anvil : Task::Forge;
+            // MineMs (lane smithfocus): the open target lacks stone / ore the market has not brought; the artisan mines
+            // it at its MineSpot (the gathering detour picks the nodes).
+            if (next == Task::None && p.mineMs && gearOpen &&
+                MineDue(BuyItems(gview),
+                        bot->HasSkill(SKILL_MINING) && bot->HasItemTotemCategory(kMiningPickCategory) &&
+                            AutoWowGatherDetour::Enabled(),
+                        gst.mine.set, p.mineMs, now, s.mineReadyMs))
+            {
+                next = Task::Mine;
+                s.stuck = 0;
+            }
         }
         std::uint32_t lineSurplus = 0;
         for (std::uint32_t const u : lview.surplus)
@@ -811,13 +853,54 @@ bool NewRpgBaseAction::SupplyStep()
         return true;
     }
 
+    // MineMs (lane smithfocus): the mining stint. The artisan walks to its MineSpot, the gathering detour takes the
+    // nodes in sight (the stock loot strategy opens them: the ore, the stone, the mining skill-up), else it wanders the
+    // spot. It ends after MineMs, when the target no longer lacks stone / ore, or walking stalls; the next decision walks
+    // it home, where the stone feeds its casts and the ore its smelts (the Forge trip).
+    if (s.task == Task::Mine)
+    {
+        Home const& spot = gst.mine;
+        std::int64_t const mx = std::int64_t(bot->GetPositionX()) - spot.x, my = std::int64_t(bot->GetPositionY()) - spot.y;
+        bool const near = mx * mx + my * my <= kMineLeashYards * kMineLeashYards;
+        char const* end = !spot.set                            ? "mine_no_spot"
+                          : now - s.taskSinceMs > p.mineMs     ? "mine_timeout"
+                          : s.stuck > kMaxStuck                ? "mine_stuck"
+                          : !gearOpen || !MineDue(BuyItems(gview), true, true, p.mineMs, now, 0) ? "mine_met"
+                                                                                                 : nullptr;
+        if (end)
+        {
+            LOG_INFO("playerbots", "[Supply] bot={} mine end={} after_ms={} mining={}", bot->GetName(), end,
+                     now - s.taskSinceMs, bot->GetSkillValue(SKILL_MINING));
+            emit(Reason::Travel, 0, 0, 0, end);
+            s.task = Task::None;
+            s.stuck = 0;
+            s.mineReadyMs = now + p.mineCooldownMs;
+            StoreRole(guid, s);
+            return true;
+        }
+        if (!near)
+        {
+            if (WalkLeg(WorldPosition(spot.map, float(spot.x), float(spot.y), float(spot.z))))
+                ++s.stuck;
+        }
+        else if (!GatherDetourStep() && !bot->isMoving())
+        {
+            Position const anchor(float(spot.x), float(spot.y), float(spot.z));
+            MoveRandomNear(float(kMineLeashYards) / 2, MovementPriority::MOVEMENT_NORMAL, nullptr, &anchor);
+        }
+        StoreRole(guid, s);
+        return true;
+    }
+
     if (s.task != Task::None)
     {
         Station const* station = s.task == Task::Bag
             ? (BagVendorOf(role.alliance).entry ? &BagVendorOf(role.alliance) : nullptr)
             : s.task == Task::GearTrainer ? StationFor(gst, Task::Trainer)
             : s.task == Task::GearVendor  ? StationFor(gst, Task::Thread)
-            : s.task == Task::Forge || s.task == Task::Anvil || s.task == Task::GearTrainer2 ? StationFor(gst, s.task)
+            : s.task == Task::Forge || s.task == Task::Anvil || s.task == Task::GearTrainer2 ||
+                      s.task == Task::RankTrainer
+                  ? StationFor(gst, s.task)
                                           : StationFor(s.task == Task::Market ? marketStations : lined ? lst : st,
                                                        s.task);
         if (!station || now - s.taskSinceMs > kTaskTimeoutMs)
@@ -833,6 +916,20 @@ bool NewRpgBaseAction::SupplyStep()
             target = bot->FindNearestGameObject(station->entry, 60.0f);
         else if (Creature* c = bot->FindNearestCreature(station->entry, 60.0f); c && c->IsAlive())
             target = c;
+        // SmithEndgame: the rank trainer stands on another continent; the trip is a logged portal hop to it (the home
+        // portal's owner ruling, 2026-09-25: portals acceptable, logged), and the other_map portal brings it home.
+        // ponytail: a portal, not a walked Dark Portal / boat route; route it through ZoneProgression if that matters.
+        if (s.task == Task::RankTrainer && !target)
+        {
+            LOG_INFO("playerbots", "[Supply] bot={} travel=portal why=rank_trainer from map={} ({},{}) to map={} ({},{}) "
+                     "trainer={} skill={}/{}", bot->GetName(), bot->GetMapId(), int32(bot->GetPositionX()),
+                     int32(bot->GetPositionY()), station->map, station->x, station->y, station->entry,
+                     bot->GetSkillValue(LineOf(gearId).skillLine), bot->GetMaxSkillValue(LineOf(gearId).skillLine));
+            EmitLine(OwnLine(role), bot, Reason::Travel, 0, 0, 0, 0, guid, guid, "rank_trainer");
+            StoreRole(guid, s);
+            bot->TeleportTo(station->map, float(station->x), float(station->y), float(station->z), bot->GetOrientation());
+            return true;
+        }
         if (!target || !bot->IsWithinDistInMap(target, INTERACTION_DISTANCE - 0.5f))
         {
             if (target && bot->GetExactDist2d(target) < kNearYards)
@@ -928,6 +1025,7 @@ bool NewRpgBaseAction::SupplyStep()
             }
             case Task::GearTrainer:
             case Task::GearTrainer2:
+            case Task::RankTrainer:
             {
                 Creature* npc = target->ToCreature();
                 Trainer::Trainer* trainer = sObjectMgr->GetTrainer(npc->GetEntry());
