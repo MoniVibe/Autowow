@@ -5,6 +5,7 @@
  */
 
 #include "CombatPerformanceTelemetry.h"
+#include "CombatReactivity.h"
 #include "DotLifetimeGate.h"
 
 #include <thread>
@@ -410,4 +411,154 @@ TEST(CombatPerformanceTelemetryStore, ConcurrentWritersFromMapThreads)
     for (std::uint32_t g = 900000; g < 900000 + T::kMaxTrackedBots + 64; ++g)
         T::Forget(g);
     EXPECT_FALSE(T::SnapshotFor(900000).tracked);
+}
+
+// ---- lane combatp0: GCD wake scheduler, cv=3/4 reactivity appendix ----
+TEST(CombatReactivity, WakeDelayOnlyEverShortens)
+{
+    namespace R = AutoWowCombatReactivity;
+    EXPECT_EQ(R::WakeDelay(500, 0), 500U);      // not blocked: react delay
+    EXPECT_EQ(R::WakeDelay(500, 100), 150U);    // GCD ends in 100 ms: wake 50 ms after
+    EXPECT_EQ(R::WakeDelay(500, 449), 499U);
+    EXPECT_EQ(R::WakeDelay(500, 450), 500U);    // block + slack reaches the react tick
+    EXPECT_EQ(R::WakeDelay(500, 1400), 500U);   // long block: never later than the react tick
+    EXPECT_EQ(R::WakeDelay(500, 0xFFFFFFFFu), 500U);
+    EXPECT_FALSE(R::GcdWakeEnabled());
+    EXPECT_EQ(R::ReactMultiplier(), 5U);        // default = upstream literal
+}
+
+TEST(CombatReactivity, EffectiveGcdHasteAndClamp)
+{
+    namespace T = AutoWowCombatPerformanceTelemetry;
+    EXPECT_EQ(T::EffectiveGcdMs(0, true, 800), 0U);         // off-GCD
+    EXPECT_EQ(T::EffectiveGcdMs(1500, false, 800), 1500U);  // melee/ability: no haste
+    EXPECT_EQ(T::EffectiveGcdMs(1500, true, 800), 1200U);   // cast speed 0.8
+    EXPECT_EQ(T::EffectiveGcdMs(1500, true, 500), 1000U);   // floor 1 s
+    EXPECT_EQ(T::EffectiveGcdMs(1000, false, 1000), 1000U); // energy GCD
+    EXPECT_EQ(T::EffectiveGcdMs(2000, true, 500), 2000U);   // outside 1-1.5 s: untouched
+}
+
+TEST(CombatReactivity, PercentileNearestRank)
+{
+    namespace T = AutoWowCombatPerformanceTelemetry;
+    EXPECT_EQ(T::PercentileNearestRank(nullptr, 0, 50), 0U);
+    std::uint32_t one[] = {70};
+    EXPECT_EQ(T::PercentileNearestRank(one, 1, 90), 70U);
+    std::uint32_t v[] = {900, 100, 500, 300, 700, 200, 800, 400, 1000, 600};
+    EXPECT_EQ(T::PercentileNearestRank(v, 10, 50), 500U);
+    EXPECT_EQ(T::PercentileNearestRank(v, 10, 90), 900U);
+    EXPECT_EQ(T::PercentileNearestRank(v, 10, 100), 1000U);
+    std::uint32_t w[] = {30, 10, 20};
+    EXPECT_EQ(T::PercentileNearestRank(w, 3, 50), 20U);
+    EXPECT_EQ(T::PercentileNearestRank(w, 3, 90), 30U);
+}
+
+TEST(CombatReactivity, SpellHistogramTopEightDeterministic)
+{
+    AutoWowCombatPerformanceTelemetry::SpellHistogram h;
+    EXPECT_EQ(h.Drain(), "[]");
+    // ids 1..10 cast id times each, id 50 three times: the tie at 3 goes to the lower id.
+    for (std::uint32_t id = 1; id <= 10; ++id)
+        for (std::uint32_t k = 0; k < id; ++k)
+            h.Record(id);
+    for (int k = 0; k < 3; ++k)
+        h.Record(50);
+    EXPECT_EQ(h.Drain(), "[[10,10],[9,9],[8,8],[7,7],[6,6],[5,5],[4,4],[3,3]]");
+    EXPECT_EQ(h.Distinct(), 0U);  // window cleared
+    for (std::uint32_t id = 1; id <= AutoWowCombatPerformanceTelemetry::kSpellSlots + 5; ++id)
+        h.Record(id);
+    EXPECT_EQ(h.Distinct(), AutoWowCombatPerformanceTelemetry::kSpellSlots);  // bounded
+}
+
+TEST(CombatReactivity, ReactionLatencyEventToNextCastStart)
+{
+    AutoWowCombatPerformanceTelemetry::ReactionLatency r;
+    r.Cast(500);         // nothing pending
+    r.Event(1000);
+    r.Event(1100);       // still pending: first event wins
+    r.Cast(900);         // cast started before the event: not a reaction
+    r.Cast(1350);
+    r.Event(5000);
+    r.Cast(5800);
+    r.Event(9000);
+    r.Expire(9000 + AutoWowCombatPerformanceTelemetry::kReactionExpiryMs);  // never answered: miss
+    EXPECT_EQ(r.Drain(), "[2,350,800,1]");
+    EXPECT_EQ(r.Drain(), "[0,0,0,0]");
+}
+
+TEST(CombatReactivity, ObservedEventsAndBusyUnion)
+{
+    LifetimeCounters c;
+    c.Update(100, true, false, false);
+    c.ObserveReactivity(1000, 0, 100);   // baseline: no event
+    c.ObserveReactivity(1100, 1, 100);   // attacker added
+    c.ObserveReactivity(1200, 1, 34);    // HP crossed below 35%
+    c.ObserveReactivity(1300, 1, 20);    // still low: no new event
+    // Instant with 1.5 s GCD at 1500 answers both: 400 ms and 300 ms.
+    c.RecordCastTiming(1500, 133, 0, 0, 1500, true);
+    // Off-GCD instant inside the running GCD adds no busy time.
+    c.RecordCastTiming(2000, 7, 0, 0, 0, true);
+    // 2.5 s cast ending at 5500 (started 3000, after the GCD ended): busy 3000..5500.
+    c.RecordCastTiming(5500, 116, 2500, 0, 1500, true);
+    // 5 s channel at 6000 with a 1.5 s GCD: busy 6000..11000.
+    c.RecordCastTiming(6000, 5143, 0, 5000, 1500, true);
+    // Out of combat (buff): counted in the histogram, not in busy.
+    c.RecordCastTiming(20000, 1459, 0, 0, 1500, false);
+    EXPECT_EQ(c.BusyMs(), 1500U + 2500U + 5000U);
+
+    std::string const line = c.DrainEmitFields(8, true, true);
+    EXPECT_EQ(line.rfind(",\"cv\":3,\"cls\":8,", 0), 0u);
+    std::string const tail = ",\"busy_ms\":9000,\"spells\":[[7,1],[116,1],[133,1],[1459,1],[5143,1]],"
+                             "\"rl_att\":[1,400,400,0],\"rl_hp\":[1,300,300,0],\"human\":1";
+    ASSERT_GE(line.size(), tail.size());
+    EXPECT_EQ(line.substr(line.size() - tail.size()), tail);
+}
+
+TEST(CombatReactivity, AppendixOffKeepsCv1Cv2ByteIdenticalAndTacticsGoCv4)
+{
+    LifetimeCounters plain;
+    LifetimeCounters fed;
+    plain.Update(2000, true, false, false);
+    fed.Update(2000, true, false, false);
+    fed.ObserveReactivity(100, 2, 100);
+    fed.RecordCastTiming(1500, 133, 0, 0, 1500, true);
+    fed.RecordCast(true);
+    plain.RecordCast(true);
+    EXPECT_EQ(fed.DrainEmitFields(5), plain.DrainEmitFields(5));  // appendix off: identical cv=1
+
+    LifetimeCounters t;
+    t.RecordTactic(10, 500, 1);
+    std::string const cv2 = t.DrainEmitFields(5);
+    std::string const cv4 = t.DrainEmitFields(5, true);
+    EXPECT_EQ(cv2.rfind(",\"cv\":2,", 0), 0u);
+    EXPECT_EQ(cv4.rfind(",\"cv\":4,", 0), 0u);
+    std::string const cv2Body = cv2.substr(std::string(",\"cv\":2").size());
+    EXPECT_EQ(cv4, ",\"cv\":4" + cv2Body + ",\"busy_ms\":0,\"spells\":[],\"rl_att\":[0,0,0,0],\"rl_hp\":[0,0,0,0]");
+}
+
+// A training-dummy fight: in combat, damage and casts, no kill and no death. Combat end is reported once.
+TEST(CombatReactivity, DummyFightEndsOnceWithoutKillOrDeath)
+{
+    LifetimeCounters c;
+    EXPECT_FALSE(c.TakeCombatEnded());
+    c.Update(100, true, false, false);
+    c.RecordDamageDone(100, 250, 0x1234);
+    c.RecordCastTiming(200, 133, 0, 0, 1500, true);
+    c.Update(5000, true, false, false);
+    EXPECT_FALSE(c.TakeCombatEnded());
+    c.Update(100, false, false, false);
+    EXPECT_TRUE(c.TakeCombatEnded());
+    EXPECT_FALSE(c.TakeCombatEnded());
+    std::string const line = c.DrainEmitFields(1, true, true);
+    EXPECT_NE(line.find("\"combat_ms\":5100,"), std::string::npos);
+    EXPECT_NE(line.find("\"dmg\":250,"), std::string::npos);
+    EXPECT_NE(line.find("\"kills\":0,"), std::string::npos);
+    EXPECT_NE(line.find("\"busy_ms\":1500,"), std::string::npos);
+    EXPECT_NE(line.find("\"spells\":[[133,1]]"), std::string::npos);
+}
+
+TEST(CombatReactivity, NewTelemetryFlagsDefaultOff)
+{
+    EXPECT_FALSE(AutoWowCombatPerformanceTelemetry::ReactivityEnabled());
+    EXPECT_FALSE(AutoWowCombatPerformanceTelemetry::PlayersEnabled());
 }

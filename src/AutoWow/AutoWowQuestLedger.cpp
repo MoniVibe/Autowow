@@ -262,6 +262,16 @@ void EmitCombat(Player* player, std::string_view fields)
     LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
 }
 
+void EmitCombatHuman(Player* player, std::string_view fields)
+{
+    if (!detail::gEnabled || !player)
+        return;
+    Row row;
+    FillRow(player, Event::Combat, 0, "", "", row);
+    row.extra = fields;
+    LOG_INFO("autowow.ledger", "{}", FormatLine(detail::gRunId, row));
+}
+
 void EmitEngage(Player* player, std::string_view fields)
 {
     if (!IsRecordedBot(player))

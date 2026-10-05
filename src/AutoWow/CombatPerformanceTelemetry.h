@@ -7,6 +7,7 @@
 #ifndef AUTOWOW_COMBAT_PERFORMANCE_TELEMETRY_H
 #define AUTOWOW_COMBAT_PERFORMANCE_TELEMETRY_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -138,6 +139,18 @@ inline std::uint64_t gLogIntervalMs = 60000;
 
 inline bool TelemetryEnabled() { return detail::gTelemetryEnabled; }
 
+// AutoWow.CombatTelemetry.Reactivity (default 0): bot `combat` rows carry the cv=3/4 appendix.
+// AutoWow.CombatTelemetry.Players (default 0): real (non-bot) player sessions get lifetime totals and
+// `combat` rows too (always with the appendix, tagged "human":1; also one row at each combat end, so a
+// training-dummy fight with no kill and no death still yields a row). Both need ...Enable = 1.
+namespace detail
+{
+inline bool gReactivityEnabled = false;
+inline bool gPlayersEnabled = false;
+}
+inline bool ReactivityEnabled() { return detail::gTelemetryEnabled && detail::gReactivityEnabled; }
+inline bool PlayersEnabled() { return detail::gTelemetryEnabled && detail::gPlayersEnabled; }
+
 // Reads the AutoWow.CombatTelemetry.* / AutoWow.Combat.* keys. Called once at world init.
 void LoadConfig();
 
@@ -149,8 +162,83 @@ void LoadConfig();
 // (cumulative in-engagement ms per AutoWowTactics::TacticId, ascending id) and arm (0 control, 1 treatment).
 // A bot emits cv=2 only once the tactical layer (AutoWow.Tactics.Observe/Enable) has credited it; otherwise
 // its lines stay byte-identical cv=1.
+// cv=3 / cv=4 (lane combatp0) = the cv=1 / cv=2 line unchanged, then the reactivity appendix below. Emitted
+// only by bots with AutoWow.CombatTelemetry.Reactivity = 1 and by every human row
+// (AutoWow.CombatTelemetry.Players = 1); otherwise lines stay byte-identical cv=1/cv=2.
+//   busy_ms  cumulative in-combat ms the caster was locked by its own casts: union over non-triggered casts
+//            of [cast start, max(cast start + effective GCD incl. haste, cast end / channel end)]
+//            (busy share = d(busy_ms) / d(combat_ms)).
+//   spells   this line's window (since the previous line): top-8 [spell id, casts], count desc, id asc.
+//   rl_att   this window's reaction latency after a new attacker: [samples, p50 ms, p90 ms, misses].
+//   rl_hp    same, after own HP crossed below 35%. Latency = event -> start of the next non-triggered cast;
+//            a miss = no cast within kReactionExpiryMs.
+//   human    1 on rows from a real (non-bot) player session.
 inline constexpr std::uint32_t kLifetimeSchemaVersion = 1;
 inline constexpr std::uint32_t kLifetimeSchemaVersionTactics = 2;
+inline constexpr std::uint32_t kLifetimeSchemaVersionReactivity = 3;
+inline constexpr std::uint32_t kLifetimeSchemaVersionTacticsReactivity = 4;
+inline constexpr std::size_t kSpellSlots = 32;          // distinct spells per window; more -> not ranked
+inline constexpr std::size_t kSpellTopN = 8;
+inline constexpr std::size_t kReactionSamplesMax = 32;  // per kind per window; more -> dropped
+inline constexpr std::uint64_t kReactionExpiryMs = 10000;
+inline constexpr std::uint32_t kLowHpPct = 35;
+inline constexpr std::uint32_t kGcdMinMs = 1000;        // core MIN_GCD / MAX_GCD
+inline constexpr std::uint32_t kGcdMaxMs = 1500;
+
+// Effective GCD as Spell::TriggerGlobalCooldown computes it, minus SPELLMOD_GLOBAL_COOLDOWN talent/glyph mods
+// (ponytail: not read - ApplySpellMod can mutate the live Spell; rare mods only overstate busy a little).
+// castSpeedPermille = UNIT_MOD_CAST_SPEED x 1000 (1000 = no haste); hasteApplies per the core's category-133 test.
+inline std::uint32_t EffectiveGcdMs(std::int32_t startRecoveryTime, bool hasteApplies, std::uint32_t castSpeedPermille)
+{
+    if (startRecoveryTime <= 0)
+        return 0;
+    std::uint32_t gcd = static_cast<std::uint32_t>(startRecoveryTime);
+    if (gcd < kGcdMinMs || gcd > kGcdMaxMs)
+        return gcd;
+    if (hasteApplies)
+        gcd = static_cast<std::uint32_t>(std::uint64_t(gcd) * castSpeedPermille / 1000);
+    return std::clamp(gcd, kGcdMinMs, kGcdMaxMs);
+}
+
+// Nearest-rank percentile (pct 1-100) of v[0..n); sorts v in place. 0 when n == 0.
+std::uint32_t PercentileNearestRank(std::uint32_t* v, std::size_t n, std::uint32_t pct);
+
+// Window spell histogram: fixed slots, top-N by count desc then spell id asc (deterministic).
+class SpellHistogram
+{
+public:
+    void Record(std::uint32_t spellId);
+    // [[id,n],...] top kSpellTopN, then clears the window.
+    std::string Drain();
+    [[nodiscard]] std::size_t Distinct() const { return used; }
+
+private:
+    struct Slot
+    {
+        std::uint32_t id = 0;
+        std::uint32_t count = 0;
+    };
+    Slot slots[kSpellSlots] = {};
+    std::size_t used = 0;
+};
+
+// Event -> next-cast latency samples for one trigger kind; pending event survives window drains.
+class ReactionLatency
+{
+public:
+    void Event(std::uint64_t nowMs);       // first pending event wins until a cast answers it
+    void Cast(std::uint64_t castStartMs);  // answers a pending event that happened at or before cast start
+    void Expire(std::uint64_t nowMs);
+    std::string Drain();                   // [n,p50,p90,miss], then clears the window
+    [[nodiscard]] std::size_t Samples() const { return count; }
+
+private:
+    bool pending = false;
+    std::uint64_t pendingMs = 0;
+    std::uint32_t samples[kReactionSamplesMax] = {};
+    std::size_t count = 0;
+    std::uint32_t misses = 0;
+};
 inline constexpr std::size_t kTacticSlots = 128;  // AutoWowTactics::kMaxTacticId (families 1-10, ids < 110)
 inline constexpr std::size_t kTtkTracked = 16;              // concurrently engaged creatures per bot
 inline constexpr std::uint64_t kTtkEngageExpiryMs = 120000; // engagement forgotten after 2 min
@@ -227,10 +315,22 @@ public:
     // The first call switches this bot's `combat` lines to cv=2.
     void RecordTactic(std::uint8_t tacticId, std::uint32_t ms, std::uint8_t arm);
 
+    // ---- cv=3/4 reactivity appendix (fed only when the caller emits it) ----
+    // Polled state each unit update: a rise in attacker count / own HP dropping below kLowHpPct are events.
+    void ObserveReactivity(std::uint64_t nowMs, std::uint32_t attackers, std::uint32_t hpPct);
+    // One non-triggered cast observed at its cast() (= cast end): castMs = cast time, channelMs = channel
+    // duration (0 if none), gcdMs = EffectiveGcdMs. Busy time counts only when inCombat.
+    void RecordCastTiming(std::uint64_t nowMs, std::uint32_t spellId, std::uint32_t castMs, std::uint32_t channelMs,
+                          std::uint32_t gcdMs, bool inCombat);
+    // True once after an in-combat -> out-of-combat transition seen by Update() (human rows emit per fight).
+    bool TakeCombatEnded();
+
     // C6. First call arms the interval (returns false); then true once per intervalMs (0 = never).
     bool EmitDue(std::uint64_t nowMs, std::uint64_t intervalMs);
     // Trailing fields for the ledger `combat` event (",\"cv\":1,..."); drains the pending TTK samples.
-    std::string DrainEmitFields(std::uint32_t classId);
+    // reactivity appends the cv=3/4 fields (and drains their window); human appends "human":1.
+    std::string DrainEmitFields(std::uint32_t classId, bool reactivity = false, bool human = false);
+    [[nodiscard]] std::uint64_t BusyMs() const { return busyMs; }
 
     // Damage per second over roughly the last minute of combat; 0 = unknown (too little combat).
     [[nodiscard]] std::uint32_t RecentDps() const;
@@ -258,6 +358,17 @@ private:
     bool tacticsTracked = false;
     std::uint8_t tacticArm = 0;
     std::uint64_t tacticMs[kTacticSlots] = {};
+
+    bool wasInCombat = false;
+    bool combatEnded = false;
+    std::uint64_t busyMs = 0;
+    std::uint64_t busyUntilMs = 0;
+    SpellHistogram spells;
+    bool observed = false;
+    std::uint32_t lastAttackers = 0;
+    bool lastLowHp = false;
+    ReactionLatency attackerLatency;
+    ReactionLatency lowHpLatency;
 };
 
 // Runtime (world/map-thread; the store is mutex-guarded). No-ops unless TelemetryEnabled().

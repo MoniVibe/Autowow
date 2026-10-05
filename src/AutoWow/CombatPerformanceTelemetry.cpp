@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "AutoWowQuestLedger.h"
+#include "CombatReactivity.h"
 #include "Config.h"
 #include "AiObjectContext.h"
 #include "Creature.h"
@@ -128,6 +129,27 @@ bool IsAttributedPlayerbot(Unit* unit, std::uint32_t& botGuid)
 
     botGuid = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
     return true;
+}
+
+// AutoWow.CombatTelemetry.Players: a real (non-bot) player session, or its pet/charm. Lifetime store only (the
+// v1 window store and the bridge stay bot-only). Callers check PlayersEnabled() first.
+bool IsAttributedHuman(Unit* unit, std::uint32_t& guid)
+{
+    Player* player = unit ? unit->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+    if (!player || !player->GetSession())
+        return false;
+
+    PlayerbotAI* botAI = PlayerbotsMgr::instance().GetPlayerbotAI(player);
+    if (botAI && !botAI->IsRealPlayer())
+        return false;
+
+    guid = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
+    return true;
+}
+
+bool IsHumanPlayer(Unit* unit, std::uint32_t& guid)
+{
+    return unit && unit->ToPlayer() && IsAttributedHuman(unit, guid);
 }
 
 struct ThreatSample
@@ -323,6 +345,9 @@ CounterSnapshot RollingCounters::Snapshot(std::uint64_t nowMs) const
 
 void LifetimeCounters::Update(std::uint64_t diffMs, bool inCombat, bool dead, bool starved)
 {
+    if (wasInCombat && !inCombat)
+        combatEnded = true;
+    wasInCombat = inCombat;
     SaturatingAdd(totals.wallMs, diffMs);
     if (dead)
         SaturatingAdd(totals.deadMs, diffMs);
@@ -427,7 +452,129 @@ bool LifetimeCounters::EmitDue(std::uint64_t nowMs, std::uint64_t intervalMs)
     return true;
 }
 
-std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
+std::uint32_t PercentileNearestRank(std::uint32_t* v, std::size_t n, std::uint32_t pct)
+{
+    if (!n)
+        return 0;
+    std::sort(v, v + n);
+    std::size_t rank = (std::size_t(pct) * n + 99) / 100;  // ceil(pct% of n), 1-based
+    rank = std::clamp<std::size_t>(rank, 1, n);
+    return v[rank - 1];
+}
+
+void SpellHistogram::Record(std::uint32_t spellId)
+{
+    for (std::size_t k = 0; k < used; ++k)
+    {
+        if (slots[k].id == spellId)
+        {
+            SaturatingIncrement(slots[k].count);
+            return;
+        }
+    }
+    if (used < kSpellSlots)
+        slots[used++] = Slot{spellId, 1};
+}
+
+std::string SpellHistogram::Drain()
+{
+    std::sort(slots, slots + used, [](Slot const& a, Slot const& b)
+              { return a.count != b.count ? a.count > b.count : a.id < b.id; });
+    std::string out = "[";
+    for (std::size_t k = 0; k < used && k < kSpellTopN; ++k)
+    {
+        if (k)
+            out.push_back(',');
+        out += "[" + std::to_string(slots[k].id) + "," + std::to_string(slots[k].count) + "]";
+    }
+    out.push_back(']');
+    used = 0;
+    return out;
+}
+
+void ReactionLatency::Event(std::uint64_t nowMs)
+{
+    Expire(nowMs);
+    if (pending)
+        return;
+    pending = true;
+    pendingMs = nowMs;
+}
+
+void ReactionLatency::Cast(std::uint64_t castStartMs)
+{
+    if (!pending || castStartMs < pendingMs)
+        return;  // nothing pending, or this cast was already under way before the event
+    pending = false;
+    std::uint64_t const ms = castStartMs - pendingMs;
+    if (ms >= kReactionExpiryMs)
+        SaturatingIncrement(misses);
+    else if (count < kReactionSamplesMax)
+        samples[count++] = static_cast<std::uint32_t>(ms);
+}
+
+void ReactionLatency::Expire(std::uint64_t nowMs)
+{
+    if (pending && nowMs >= pendingMs && nowMs - pendingMs >= kReactionExpiryMs)
+    {
+        pending = false;
+        SaturatingIncrement(misses);
+    }
+}
+
+std::string ReactionLatency::Drain()
+{
+    std::uint32_t const p50 = PercentileNearestRank(samples, count, 50);
+    std::uint32_t const p90 = PercentileNearestRank(samples, count, 90);
+    std::string out = "[" + std::to_string(count) + "," + std::to_string(p50) + "," + std::to_string(p90) + "," +
+                      std::to_string(misses) + "]";
+    count = 0;
+    misses = 0;
+    return out;
+}
+
+void LifetimeCounters::ObserveReactivity(std::uint64_t nowMs, std::uint32_t attackers, std::uint32_t hpPct)
+{
+    bool const lowHp = hpPct < kLowHpPct;
+    if (observed)
+    {
+        if (attackers > lastAttackers)
+            attackerLatency.Event(nowMs);
+        if (lowHp && !lastLowHp)
+            lowHpLatency.Event(nowMs);
+    }
+    observed = true;
+    lastAttackers = attackers;
+    lastLowHp = lowHp;
+    attackerLatency.Expire(nowMs);
+    lowHpLatency.Expire(nowMs);
+}
+
+void LifetimeCounters::RecordCastTiming(std::uint64_t nowMs, std::uint32_t spellId, std::uint32_t castMs,
+                                        std::uint32_t channelMs, std::uint32_t gcdMs, bool inCombat)
+{
+    spells.Record(spellId);
+    std::uint64_t const start = nowMs >= castMs ? nowMs - castMs : 0;
+    attackerLatency.Cast(start);
+    lowHpLatency.Cast(start);
+    if (!inCombat)
+        return;
+    // Busy = union of lock intervals, so an off-GCD cast inside a running GCD adds nothing.
+    std::uint64_t const end = std::max(start + gcdMs, nowMs + channelMs);
+    std::uint64_t const from = std::max(start, busyUntilMs);
+    if (end > from)
+        SaturatingAdd(busyMs, end - from);
+    busyUntilMs = std::max(busyUntilMs, end);
+}
+
+bool LifetimeCounters::TakeCombatEnded()
+{
+    bool const ended = combatEnded;
+    combatEnded = false;
+    return ended;
+}
+
+std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId, bool reactivity, bool human)
 {
     std::string out;
     out.reserve(320 + pendingCount * 16);
@@ -438,7 +585,10 @@ std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
         out += "\":";
         out += std::to_string(value);
     };
-    field("cv", tacticsTracked ? kLifetimeSchemaVersionTactics : kLifetimeSchemaVersion);
+    if (reactivity)
+        field("cv", tacticsTracked ? kLifetimeSchemaVersionTacticsReactivity : kLifetimeSchemaVersionReactivity);
+    else
+        field("cv", tacticsTracked ? kLifetimeSchemaVersionTactics : kLifetimeSchemaVersion);
     field("cls", classId);
     field("wall_ms", totals.wallMs);
     field("combat_ms", totals.combatMs);
@@ -488,6 +638,15 @@ std::string LifetimeCounters::DrainEmitFields(std::uint32_t classId)
         out += "],\"arm\":";
         out += std::to_string(tacticArm);
     }
+    if (reactivity)
+    {
+        field("busy_ms", busyMs);
+        out += ",\"spells\":" + spells.Drain();
+        out += ",\"rl_att\":" + attackerLatency.Drain();
+        out += ",\"rl_hp\":" + lowHpLatency.Drain();
+    }
+    if (human)
+        field("human", 1);
     return out;
 }
 
@@ -624,7 +783,7 @@ std::uint64_t CreatureKey(Unit* unit)
     return unit && unit->IsCreature() ? unit->GetGUID().GetRawValue() : 0;
 }
 
-void UpdateLifetime(Player* bot, std::uint32_t botGuid, std::uint32_t diff)
+void UpdateLifetime(Player* bot, std::uint32_t botGuid, std::uint32_t diff, bool human = false)
 {
     bool const inCombat = bot->IsInCombat();
     bool const dead = !bot->IsAlive();
@@ -632,16 +791,62 @@ void UpdateLifetime(Player* bot, std::uint32_t botGuid, std::uint32_t diff)
     bool const starved = inCombat && IsResourceStarved(static_cast<std::uint8_t>(power), bot->GetPower(power),
                                                        bot->GetMaxPower(power));
     std::uint64_t const nowMs = NowMs();
+    // cv=3/4 appendix: bots with AutoWow.CombatTelemetry.Reactivity, every human row.
+    bool const reactivity = human || ReactivityEnabled();
+    std::uint32_t attackers = 0;
+    std::uint32_t hpPct = 100;
+    if (reactivity)
+    {
+        attackers = static_cast<std::uint32_t>(bot->getAttackers().size());
+        std::uint64_t const maxHp = bot->GetMaxHealth();
+        hpPct = maxHp ? static_cast<std::uint32_t>(std::uint64_t(bot->GetHealth()) * 100 / maxHp) : 100;
+    }
     std::string fields;
     WithLifetime(botGuid, [&](LifetimeCounters& c)
     {
         c.Update(diff, inCombat, dead, starved);
-        if (c.EmitDue(nowMs, detail::gLogIntervalMs))
-            fields = c.DrainEmitFields(bot->getClass());
+        if (reactivity)
+            c.ObserveReactivity(nowMs, attackers, hpPct);
+        // Humans also emit at each combat end: a training-dummy fight (no kill, no death) is one row.
+        bool const fightEnded = human && c.TakeCombatEnded() && detail::gLogIntervalMs;
+        if (c.EmitDue(nowMs, detail::gLogIntervalMs) || fightEnded)
+            fields = c.DrainEmitFields(bot->getClass(), reactivity, human);
     });
     // C6: logged outside the store lock. EmitCombat is a no-op unless AutoWow.Ledger.Enable is on.
-    if (!fields.empty())
+    if (fields.empty())
+        return;
+    if (human)
+        AutoWowQuestLedger::EmitCombatHuman(bot, fields);
+    else
         AutoWowQuestLedger::EmitCombat(bot, fields);
+}
+
+// cv=3/4 cast timing for one non-triggered cast (OnPlayerSpellCast runs at cast end).
+void RecordCastTiming(Player* player, std::uint32_t guid, Spell* spell)
+{
+    SpellInfo const* info = spell->GetSpellInfo();
+    if (!info)
+        return;
+    // Haste test as in Spell::TriggerGlobalCooldown.
+    bool const hasteApplies = info->StartRecoveryCategory == 133 && info->StartRecoveryTime == 1500 &&
+                              info->DmgClass != SPELL_DAMAGE_CLASS_MELEE && info->DmgClass != SPELL_DAMAGE_CLASS_RANGED &&
+                              !info->HasAttribute(SPELL_ATTR0_USES_RANGED_SLOT) && !info->HasAttribute(SPELL_ATTR0_IS_ABILITY);
+    float const castSpeed = player->GetFloatValue(UNIT_MOD_CAST_SPEED);
+    std::uint32_t const castSpeedPermille =
+        std::isfinite(castSpeed) && castSpeed > 0.0f ? static_cast<std::uint32_t>(castSpeed * 1000.0f + 0.5f) : 1000;
+    std::uint32_t const gcdMs = EffectiveGcdMs(info->StartRecoveryTime, hasteApplies, castSpeedPermille);
+    std::uint32_t const castMs = spell->GetCastTime() > 0 ? static_cast<std::uint32_t>(spell->GetCastTime()) : 0;
+    // A channel starts at cast(); its length is what the core will run (m_timer is set later in cast()).
+    std::uint32_t channelMs = 0;
+    if (info->IsChanneled())
+    {
+        std::int32_t const duration = info->GetDuration();
+        channelMs = duration > 0 ? static_cast<std::uint32_t>(duration) : 0;
+    }
+    bool const inCombat = player->IsInCombat();
+    std::uint64_t const nowMs = NowMs();
+    WithLifetime(guid, [&](LifetimeCounters& c)
+                 { c.RecordCastTiming(nowMs, info->Id, castMs, channelMs, gcdMs, inCombat); });
 }
 }  // namespace
 
@@ -764,6 +969,8 @@ public:
             if (TelemetryEnabled())
                 WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordHealing(gain); });
         }
+        else if (PlayersEnabled() && IsAttributedHuman(healer, botGuid))
+            WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordHealing(gain); });
     }
 
     void OnDamage(Unit* attacker, Unit* victim, uint32& damage) override
@@ -780,6 +987,9 @@ public:
                 WithLifetime(botGuid,
                              [&](LifetimeCounters& c) { c.RecordDamageDone(nowMs, damage, CreatureKey(victim)); });
         }
+        else if (damage && PlayersEnabled() && IsAttributedHuman(attacker, botGuid))
+            WithLifetime(botGuid,
+                         [&](LifetimeCounters& c) { c.RecordDamageDone(nowMs, damage, CreatureKey(victim)); });
 
         if (IsPlayerbotPlayer(victim, botGuid))
         {
@@ -789,13 +999,20 @@ public:
             if (TelemetryEnabled() && damage)
                 WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDamageTaken(damage); });
         }
+        else if (damage && PlayersEnabled() && IsHumanPlayer(victim, botGuid))
+            WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordDamageTaken(damage); });
     }
 
     void OnUnitUpdate(Unit* unit, uint32 diff) override
     {
         std::uint32_t botGuid = 0;
         if (!IsPlayerbotPlayer(unit, botGuid))
+        {
+            // AutoWow.CombatTelemetry.Players (default 0): one cached bool when off.
+            if (PlayersEnabled() && IsHumanPlayer(unit, botGuid))
+                UpdateLifetime(unit->ToPlayer(), botGuid, diff, true);
             return;
+        }
 
         // AutoWow.Unstick.V2: stalled-combat watchdog (the bot's own map-thread update).
         if (AutoWowUnstickV2::Enabled())
@@ -845,6 +1062,11 @@ public:
                 WithLifetime(botGuid, [](LifetimeCounters& c) { c.RecordDeath(); });
             return;
         }
+        if (PlayersEnabled() && IsHumanPlayer(unit, botGuid))
+        {
+            WithLifetime(botGuid, [](LifetimeCounters& c) { c.RecordDeath(); });
+            return;
+        }
 
         // AutoWow.Tactics.Observe/Enable (default 0): engagement kill count. One cached bool when off.
         if (AutoWowTactics::Tracking() && unit && unit->IsCreature() && IsAttributedPlayerbot(killer, botGuid))
@@ -852,6 +1074,14 @@ public:
 
         // C4: a creature killed by a bot's (or its pet's) killing blow closes that bot's engagement.
         if (TelemetryEnabled() && unit && unit->IsCreature() && IsAttributedPlayerbot(killer, botGuid))
+        {
+            Player* const owner = killer->GetCharmerOrOwnerPlayerOrPlayerItself();
+            std::int32_t const levelDelta =
+                static_cast<std::int32_t>(unit->GetLevel()) - static_cast<std::int32_t>(owner->GetLevel());
+            std::uint64_t const nowMs = NowMs();
+            WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordKill(nowMs, CreatureKey(unit), levelDelta); });
+        }
+        else if (PlayersEnabled() && unit && unit->IsCreature() && IsAttributedHuman(killer, botGuid))
         {
             Player* const owner = killer->GetCharmerOrOwnerPlayerOrPlayerItself();
             std::int32_t const levelDelta =
@@ -883,7 +1113,11 @@ public:
             return;
         std::uint32_t botGuid = 0;
         if (!IsPlayerbotPlayer(player, botGuid))
+        {
+            if (PlayersEnabled() && IsHumanPlayer(player, botGuid))
+                WithLifetime(botGuid, [](LifetimeCounters& c) { c.RecordFight(); });
             return;
+        }
         RecordCombatEntry(botGuid, NowMs());
         WithLifetime(botGuid, [](LifetimeCounters& c) { c.RecordFight(); });
     }
@@ -897,10 +1131,15 @@ public:
         if (!TelemetryEnabled() || !spell || spell->IsTriggered())
             return;
         std::uint32_t botGuid = 0;
-        if (!IsPlayerbotPlayer(player, botGuid))
+        bool const bot = IsPlayerbotPlayer(player, botGuid);
+        bool const human = !bot && PlayersEnabled() && IsHumanPlayer(player, botGuid);
+        if (!bot && !human)
             return;
         bool const onGcd = spell->GetSpellInfo() && spell->GetSpellInfo()->StartRecoveryTime > 0;
         WithLifetime(botGuid, [&](LifetimeCounters& c) { c.RecordCast(onGcd); });
+        // cv=3/4 appendix: AutoWow.CombatTelemetry.Reactivity bots, every human.
+        if (human || ReactivityEnabled())
+            RecordCastTiming(player, botGuid, spell);
     }
 
     void OnPlayerLogout(Player* player) override
@@ -912,6 +1151,9 @@ public:
         if (!TelemetryEnabled() || !player)
             return;
         std::uint32_t const botGuid = static_cast<std::uint32_t>(player->GetGUID().GetCounter());
+        std::uint32_t humanGuid = 0;
+        bool const human = PlayersEnabled() && IsHumanPlayer(player, humanGuid);
+        bool const reactivity = human || ReactivityEnabled();
         std::string fields;
         {
             std::lock_guard<std::mutex> guard(gLifetimeLock);
@@ -920,10 +1162,14 @@ public:
                 return;
             // Final line so the tail since the last periodic emit is not lost.
             if (detail::gLogIntervalMs)
-                fields = it->second.DrainEmitFields(player->getClass());
+                fields = it->second.DrainEmitFields(player->getClass(), reactivity, human);
             gLifetime.erase(it);
         }
-        if (!fields.empty())
+        if (fields.empty())
+            return;
+        if (human)
+            AutoWowQuestLedger::EmitCombatHuman(player, fields);
+        else
             AutoWowQuestLedger::EmitCombat(player, fields);
     }
 };
@@ -932,6 +1178,12 @@ void LoadConfig()
 {
     detail::gTelemetryEnabled = sConfigMgr->GetOption<bool>("AutoWow.CombatTelemetry.Enable", false);
     detail::gLogIntervalMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.CombatTelemetry.LogIntervalMs", 60000);
+    detail::gReactivityEnabled = sConfigMgr->GetOption<bool>("AutoWow.CombatTelemetry.Reactivity", false);
+    detail::gPlayersEnabled = sConfigMgr->GetOption<bool>("AutoWow.CombatTelemetry.Players", false);
+    AutoWowCombatReactivity::detail::gGcdWake = sConfigMgr->GetOption<bool>("AutoWow.Combat.GcdWake", false);
+    AutoWowCombatReactivity::detail::gReactMultiplier = std::max<std::uint32_t>(
+        1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Combat.ReactMultiplier",
+                                                AutoWowCombatReactivity::kDefaultReactMultiplier));
     AutoWowDotLifetimeGate::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Combat.DotLifetimeGate", false);
     AutoWowDotLifetimeGate::Params& gate = AutoWowDotLifetimeGate::detail::gParams;
     gate.minTargetHpPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Combat.DotMinTargetHpPct", 10);
