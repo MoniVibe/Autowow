@@ -797,7 +797,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 13u);
+    EXPECT_EQ(kStateVersion, 14u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -2528,4 +2528,86 @@ TEST(SupplySmithBars, HoleRecipesLackRoutedOre)
     EXPECT_EQ(LackOf(plate, 2772, Source::Route), 6u);
     EXPECT_EQ(LackOf(plate, 3857, Source::Vendor), 16u);
     EXPECT_EQ(LackOf(plate, 2838, Source::Market), 9u);
+}
+
+TEST(SupplyClimbCastable, TheCheapestCastableOptionWinsOverAnUncastableCheaperOne)
+{
+    // S113-S115 Horde Tinkers at engineering 37: Rough Blasting Powder (tier 0, cheapest) wants Rough Stone nobody holds;
+    // Crafted Light Shot (tier 6) and Handful of Copper Bolts (tier 9) cast from the rep's copper ore.
+    std::vector<SkillupOption> opts(3);
+    opts[0] = {3918, 0, false, true, 40, false, 5, true};
+    opts[1] = {3920, 6, false, true, 60, false, 9, true};
+    opts[2] = {3922, 9, false, true, 60, false, 10, true};
+    std::vector<bool> castable(13, false);
+    castable[6] = castable[9] = true;
+    EXPECT_EQ(PlanClimbSkillup(37, 75, opts, 10).front().recipe, 0u);  // as before: the uncastable powder
+    std::vector<GearOrder> o = PlanClimbSkillup(37, 75, PreferCastable(opts, castable, 37), 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, 6u);  // the cheapest castable one
+    EXPECT_EQ(o[0].units, 10u);
+    // Nothing castable: unchanged (the cheapest, as before).
+    std::vector<bool> const none(13, false);
+    EXPECT_EQ(PlanClimbSkillup(37, 75, PreferCastable(opts, none, 37), 10).front().recipe, 0u);
+    EXPECT_EQ(PlanClimbSkillup(37, 75, PreferCastable(opts, {}, 37), 10).front().recipe, 0u);  // short vector: none
+    // A castable option already grey does not count: at 45 only the powder casts, and it is grey: unchanged.
+    std::vector<bool> powderOnly(13, false);
+    powderOnly[0] = true;
+    EXPECT_EQ(PlanClimbSkillup(45, 75, PreferCastable(opts, powderOnly, 45), 10).front().recipe, 6u);  // powder grey
+    // An unknown castable option never wins.
+    opts[1].known = false;
+    EXPECT_EQ(PlanClimbSkillup(37, 75, PreferCastable(opts, castable, 37), 10).front().recipe, 9u);
+    EXPECT_FALSE(Params{}.climbCastable);  // opt-in
+}
+
+namespace
+{
+RecipeTable SmithCopperTable() { return {kSmithCopper.data(), static_cast<std::uint8_t>(kSmithCopper.size())}; }
+
+std::size_t CopperRow(std::uint32_t product)
+{
+    for (std::size_t i = 0; i < kSmithCopper.size(); ++i)
+        if (kSmithCopper[i].product == product)
+            return i;
+    return kSmithCopper.size();
+}
+}  // namespace
+
+TEST(SupplySmithCopper, BarsTablePlusOneBridgeRowFlagOff)
+{
+    EXPECT_FALSE(Params{}.smithCopper);
+    ASSERT_EQ(kSmithCopper.size(), kSmithBars.size() + 1);
+    for (std::size_t i = 0; i < std::size(kSmithBarsHead); ++i)
+        EXPECT_EQ(kSmithCopper[i].spell, kSmithBars[i].spell);
+    LineTier const& boots = kSmithCopper[std::size(kSmithBarsHead)];
+    EXPECT_EQ(boots.spell, 3319u);
+    EXPECT_EQ(boots.product, 3469u);
+    EXPECT_EQ(boots.family, kFamilyBridge);  // skill-up output only, never a member order
+    for (std::size_t i = 0; i < kSmithEndgame; ++i)
+        EXPECT_EQ(kSmithCopper[std::size(kSmithBarsHead) + 1 + i].spell, kSmithBars[std::size(kSmithBarsHead) + i].spell);
+    // ProductLine wiring: the smith line carries the table, no other line does.
+    EXPECT_EQ(LineOf(Line::MailGear).gearCopper, kSmithCopper.data());
+    EXPECT_EQ(LineOf(Line::MailGear).gearCopperCount, kSmithCopper.size());
+    EXPECT_EQ(LineOf(Line::Engineering).gearCopper, nullptr);
+}
+
+TEST(SupplySmithCopper, BootsCastFromRoutedCopperOreAndWinTheSmithRestock)
+{
+    // 8 copper bars -> 8 Smelt Copper -> 8 copper ore (routed).
+    auto none = [](std::uint32_t) { return 0u; };
+    std::vector<Lack> const lack = Lacks(SmithCopperTable(), CopperRow(3469), 1, none);
+    EXPECT_EQ(LackOf(lack, 2770, Source::Route), 8u);
+    ASSERT_EQ(lack.size(), 1u);
+    // S115 Smiths: 51 + 22 copper ore, no Rough Stone anywhere: boots castable (9), the sharpening stone not.
+    auto house = [](std::uint32_t item) { return item == 2770 ? 73u : 0u; };
+    EXPECT_EQ(Casts(SmithCopperTable(), CopperRow(3469), house), 9u);
+    EXPECT_EQ(Casts(SmithCopperTable(), CopperRow(2862), house), 0u);
+    // Brokkhelm at blacksmithing 53: Rough Sharpening Stone (grey 55, cheapest) vs the boots (grey 100).
+    std::vector<SkillupOption> opts(2);
+    opts[0] = {2660, static_cast<std::uint8_t>(CopperRow(2862)), false, true, 55, true, 3, true};
+    opts[1] = {3319, static_cast<std::uint8_t>(CopperRow(3469)), false, true, 100, true, 80, true};
+    std::vector<bool> castable(kSmithCopper.size(), false);
+    for (std::size_t i = 0; i < kSmithCopper.size(); ++i)
+        castable[i] = Casts(SmithCopperTable(), i, house) > 0;
+    EXPECT_EQ(PlanClimbSkillup(53, 150, opts, 10).front().recipe, CopperRow(2862));  // as before
+    EXPECT_EQ(PlanClimbSkillup(53, 150, PreferCastable(opts, castable, 53), 10).front().recipe, CopperRow(3469));
 }

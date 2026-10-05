@@ -2025,8 +2025,9 @@ std::vector<GearNeed> ScanGearNeeds(std::size_t li, bool alliance, std::vector<b
 // know; the first one only
 // skill blocks gets a skill-up order (PlanGearSkillup): SkillupCasts casts of the cheapest known recipe of the line's
 // own skill (Engineering's smelts level Mining) still below grey and not already stocked (held < SkillupCasts). Logged.
+// ClimbCastable: `castable` (per recipe: the house casts it now) steers each pick (PreferCastable); empty = off.
 std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art, std::vector<bool> const& known,
-                                          std::vector<std::uint32_t> const& held)
+                                          std::vector<std::uint32_t> const& held, std::vector<bool> const& castable)
 {
     Params const& p = detail::gParams;
     ProductLine const& L = LineOf(line);
@@ -2055,6 +2056,8 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
     }
     std::vector<GearNeed> const need = RankGearNeeds(ScanGearNeeds(static_cast<std::size_t>(line), alliance, blocked));
     std::vector<GearOrder> out;
+    if (!castable.empty())
+        options = PreferCastable(std::move(options), castable, skill);
     if (skill < cap)
         out = PlanGearSkillup(G, need, skill, options, p.skillupCasts);
     // GearSkillupRestock: every option stocked (none picked) -> again without the stock gate, sized past the artisan's own
@@ -2067,6 +2070,8 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
             options[i].known = known[i] && owns[i];
             mine[i] = CastUnits(HeldUnits(art, G.tiers[i].product), GearYield(line, static_cast<std::uint8_t>(i)));
         }
+        if (!castable.empty())
+            options = PreferCastable(std::move(options), castable, skill);
         out = PlanGearSkillupRestock(G, need, skill, options, mine, p.skillupCasts);
         if (!out.empty())
             LOG_INFO("playerbots", "[Supply] gear bootstrap restock line={} team={} artisan={} skillup={} units={} mine={}",
@@ -2085,6 +2090,8 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
                 options[i].known = known[i] && owns[i];
                 mine[i] = CastUnits(HeldUnits(art, G.tiers[i].product), GearYield(line, static_cast<std::uint8_t>(i)));
             }
+            if (!castable.empty())
+                options = PreferCastable(std::move(options), castable, skill);
             out = PlanClimbSkillupPastStock(skill, std::min(reach, cap), options, mine, p.skillupCasts);
         }
         else
@@ -2238,7 +2245,14 @@ void GearTick(Line line, bool alliance, bool overlord)
             needs = MergeWeaponNeeds(needs, WeaponOrderNeeds(li, alliance, known, art ? art : rep));
         std::vector<GearOrder> orders = PlanGearOrders(needs, held, p.gearMaxOrder, p.repStockPerItem);
         if (GearBootstrap() && needs.empty() && art)
-            orders = BootstrapGearOrder(line, alliance, art, known, held);
+        {
+            // ClimbCastable: per recipe, the house (rep + artisan) holds what one cast takes now (Casts > 0).
+            std::vector<bool> castable;
+            if (ClimbCastable())
+                for (std::size_t i = 0; i < G.tierCount; ++i)
+                    castable.push_back(Casts(G, i, house) > 0);
+            orders = BootstrapGearOrder(line, alliance, art, known, held, castable);
+        }
         if (!orders.empty() && (ts.orders.empty() || orders.front().recipe != ts.orders.front().recipe))
         {
             std::lock_guard<std::mutex> guard(gLock);
@@ -3154,6 +3168,9 @@ void LoadConfig()
     p.climbPastStock = sConfigMgr->GetOption<bool>("AutoWow.Supply.ClimbPastStock", false);
     p.gearMarketRoute = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearMarketRoute", false);
     p.potionLowBridge = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionLowBridge", false);
+    p.climbCastable = sConfigMgr->GetOption<bool>("AutoWow.Supply.ClimbCastable", false);
+    p.smithCopper = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithCopper", false);
+    p.craftTrace = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftTrace", false);
     gLineSpec = {};
     gPriority.clear();
     {
@@ -3656,6 +3673,9 @@ void LoadConfig()
     if (p.climbPastStock || p.gearMarketRoute)
         LOG_INFO("server.loading", "[Supply] housegaps: climb_past_stock={} gear_market_route={}", p.climbPastStock,
                  p.gearMarketRoute);
+    if (p.climbCastable || p.smithCopper || p.craftTrace)
+        LOG_INFO("server.loading", "[Supply] hordehouses: climb_castable={} smith_copper={} (live: {}) craft_trace={}",
+                 p.climbCastable, p.smithCopper, SmithCopper(), p.craftTrace);
 }
 
 void WorldUpdate(std::uint32_t diff)
