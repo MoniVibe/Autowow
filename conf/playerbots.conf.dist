@@ -4070,6 +4070,22 @@ AutoWow.DungeonNav.Gates.BypassKeys = 0
 AutoWow.Survival.KeepConsumables = 0
 AutoWow.Survival.KeepConsumables.SellDetourYards = 30
 
+# Potion floor for independent bots (ErrandsPolicy.h kPotions / PotionShort; default 0; needs AutoWow.Errands.Enable =
+# 1, inert otherwise). Real gold only. A bot at MinLevel or above keeps Target potions of each family it drinks
+# (healing; mana too for mana classes): Major / Super / Resurgent / Runic Healing 13446 / 22829 / 39671 / 33447 and
+# Major / Super / Icy / Runic Mana 13444 / 22832 / 40067 / 33448, the best tier its level allows first. Sources: (a)
+# plain-gold vendor stock at any errand town whose vendors sell them (limited stock: Stormspire 20989, Mok'Nathal
+# 19837, Dalaran 29628 / 28715 / 29537), bought one at a time with the class-trainer budget kept; (b) auction listings
+# at any auctioneer visit (needs AutoWow.Trade.Enable) at most AhMaxUnitCopper per potion, after auction gear, before
+# mats. Under Low is an errand need; alone it starts a run to the nearest town that sells them once per RunMs. Logs
+# "[PotionFloor] ...". Read once at world init.
+AutoWow.Survival.PotionFloor = 0
+AutoWow.Survival.PotionFloor.MinLevel = 60
+AutoWow.Survival.PotionFloor.Low = 2
+AutoWow.Survival.PotionFloor.Target = 5
+AutoWow.Survival.PotionFloor.RunMs = 1800000
+AutoWow.Survival.PotionFloor.AhMaxUnitCopper = 40000
+
 # Auction-house trade for independent bots (TradePolicy.h; default 0; needs AutoWow.Errands.Enable = 1,
 # inert otherwise). A town run whose town has an auctioneer adds an auction stop, and one with a mailbox
 # a mail stop (after every other stop). At the auctioneer: list up to MaxPosts stacks the bot does not

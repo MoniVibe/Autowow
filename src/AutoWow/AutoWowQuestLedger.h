@@ -61,6 +61,7 @@
 //     leg that took the bot to town), hearth (bool: the hearthstone was cast). AutoWow.Errands.Mounts: a ride
 //     run's town is the riding trainer's spawn guid (needs 16384; done 4096 rank learned, 8192 mount learned), and
 //     each stop adds a row reason riding | mount with site, tier, spell | item, copper (paid), learned (bool).
+//     AutoWow.Survival.PotionFloor: needs 32768 (potions under Low), done 16384 (potions bought at a vendor).
 //     AutoWow.Gear.NoWhite (NoWhitePolicy.h LedgerFields): reason weapon_floor (own bag / bank weapon equipped),
 //     handdown_weapon (a member's weapon mailed to the bot), smith_order (a Smiths weapon order posted) with slot,
 //     item, ilvl, quality (0 for an order), floor (the floor item level), from (holder guid-low), oid (order id).
