@@ -797,7 +797,7 @@ TEST(SupplyArtisanUpkeep, WireAndDefaults)
     Params const p;
     EXPECT_EQ(p.artisanFreeSlots, 4u);
     EXPECT_EQ(p.artisanMinLevel, 10u);
-    EXPECT_EQ(kStateVersion, 12u);
+    EXPECT_EQ(kStateVersion, 13u);
     EXPECT_EQ(kPouch, 4496u);
 }
 
@@ -1450,6 +1450,43 @@ TEST(SupplyClimbSkillup, MasterArtisanClimbsWithoutABlockedNeed)
     EXPECT_TRUE(PlanClimbSkillup(150, 150, opts, 10).empty());  // at the reach (the next rank waits)
     EXPECT_TRUE(PlanClimbSkillup(1, 150, opts, 0).empty());     // SkillupCasts 0
     EXPECT_FALSE(Params{}.climbSkillup);                        // opt-in
+}
+
+TEST(SupplyClimbSkillup, PastStockOutrunsTheArtisansOwnPowder)
+{
+    // S110-S112 Tinkers: engineering 21 / 36, each artisan holds the 10 Rough Blasting Powder it made (tier 0): the
+    // plain climb order (10) is already "finished" (toMake 0), the past-stock order is 10 + 10.
+    std::vector<SkillupOption> opts(2);
+    opts[0] = {3918, 0, false, true, 40, false, 5, true};
+    opts[1] = {3920, 6, false, true, 60, false, 9, true};
+    std::vector<std::uint32_t> mine(9, 0);
+    mine[0] = 10;
+    EXPECT_EQ(PlanClimbSkillup(21, 75, opts, 10).front().units, 10u);  // as before: covered by the held powder
+    std::vector<GearOrder> o = PlanClimbSkillupPastStock(21, 75, opts, mine, 10);
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, 0u);
+    EXPECT_EQ(o[0].units, 20u);  // still 10 casts beyond what it holds
+    EXPECT_EQ(o[0].consumer, 0u);
+    o = PlanClimbSkillupPastStock(40, 75, opts, mine, 10);  // powder grey: shot, none of it held
+    ASSERT_EQ(o.size(), 1u);
+    EXPECT_EQ(o[0].recipe, 6u);
+    EXPECT_EQ(o[0].units, 10u);
+    EXPECT_TRUE(PlanClimbSkillupPastStock(75, 75, opts, mine, 10).empty());  // at the reach
+    EXPECT_TRUE(PlanClimbSkillupPastStock(21, 75, opts, {}, 10).front().units == 10u);  // short mine: no extra
+    EXPECT_FALSE(Params{}.climbPastStock);  // opt-in
+}
+
+TEST(SupplyGearMarketRoute, RouteReagentsBecomeWantsOnlyWithTheFlag)
+{
+    EXPECT_TRUE(GearBuys(Source::Market, false));   // as before
+    EXPECT_FALSE(GearBuys(Source::Route, false));   // off: routed inputs never bought
+    EXPECT_FALSE(GearBuys(Source::Vendor, false));
+    EXPECT_FALSE(GearBuys(Source::Craft, false));
+    EXPECT_TRUE(GearBuys(Source::Market, true));
+    EXPECT_TRUE(GearBuys(Source::Route, true));     // S112 Tanners: scraps / Light Leather off the AH
+    EXPECT_FALSE(GearBuys(Source::Vendor, true));   // the artisan's vendor trip
+    EXPECT_FALSE(GearBuys(Source::Craft, true));    // the house makes it
+    EXPECT_FALSE(Params{}.gearMarketRoute);         // opt-in
 }
 
 TEST(SupplyGear, TablesMatchTheWorldDb)
@@ -2365,6 +2402,76 @@ TEST(SupplyPotionTiers, SkillLadderReachesHealingPotionWithoutPeacebloom)
     EXPECT_EQ(pickAt(110), 2u);  // Healing Potion: learned, wanted, Bruiseweed + Briarthorn in the house
     for (std::uint32_t skill = 57; skill <= 150; ++skill)
         EXPECT_NE(pickAt(skill), kNoTier) << skill;  // no dead band up to the Journeyman cap
+}
+
+// Lane housegaps (soak S112: the Alliance Brewers artisan at alchemy 1 for 5 h, no Peacebloom anywhere it can reach).
+ProductLine PotionsLowOn(bool tiers)
+{
+    detail::gEnabled = true;
+    detail::gParams.potionTiers = tiers;
+    detail::gParams.potionLowBridge = true;
+    ProductLine const l = ActiveLine(Line::Potions);
+    detail::gParams.potionLowBridge = false;
+    detail::gParams.potionTiers = false;
+    detail::gEnabled = false;
+    return l;
+}
+
+TEST(SupplyPotionLowBridge, RowOnlyWithBothFlagsAndMatchesTheDbc)
+{
+    EXPECT_FALSE(Params{}.potionLowBridge);                // opt-in
+    EXPECT_EQ(ActiveLine(Line::Potions).tierCount, 3u);    // off: as was
+    EXPECT_EQ(PotionsOn().tierCount, 8u);                  // PotionTiers alone: as was
+    EXPECT_EQ(PotionsLowOn(false).tierCount, 3u);          // needs PotionTiers (the row sits after its rows)
+    ProductLine const l = PotionsLowOn(true);
+    ASSERT_EQ(l.tierCount, 9u);
+    LineTier const& t = l.tiers[8];
+    // Spell.dbc / SkillLineAbility.dbc 7183: learned with the skill (AcquireMethod 1), grey 95; item 5997 RequiredLevel 1.
+    EXPECT_EQ(t.spell, 7183u);
+    EXPECT_EQ(t.product, 5997u);
+    EXPECT_EQ(t.skill, 1u);
+    EXPECT_EQ(t.grey, 95u);
+    EXPECT_EQ(t.reqLevel, 1u);
+    EXPECT_EQ(t.family, kFamilyBridge);
+    EXPECT_EQ(t.reagents[0].item, 765u);
+    EXPECT_EQ(t.reagents[0].count, 2u);
+    EXPECT_EQ(t.reagents[0].source, Source::Route);
+    EXPECT_EQ(t.reagents[1].item, 3371u);
+    EXPECT_EQ(t.reagents[1].source, Source::Vendor);
+    EXPECT_EQ(t.reagents[2].item, 0u);
+    // Silverleaf is already routed (Minor Healing, Minor Mana): no new routed herb.
+    EXPECT_EQ(RouteItems(l), RouteItems(PotionsOn()));
+    EXPECT_TRUE(LineItem(l, 5997));
+    std::array<bool, kMaxLineTiers> all{};
+    all.fill(true);
+    EXPECT_EQ(TierWant(RankStockTiers(l, {{1, 73, {}, true}}, all, 5), 8), 0u);
+}
+
+TEST(SupplyPotionLowBridge, AlchemyOneLevelsOnSilverleafWithoutPeacebloom)
+{
+    // S112 Alliance house: Silverleaf, Mageroyal, Briarthorn, Bruiseweed, no Peacebloom; members L73.
+    auto have = [](std::uint32_t item)
+    { return item == 785 || item == 765 || item == 2450 || item == 2453 ? 50u : 0u; };
+    auto pickAt = [&](ProductLine const& l, std::uint32_t skill)
+    {
+        std::array<bool, kMaxLineTiers> known{};
+        for (std::size_t i = 0; i < l.tierCount; ++i)
+            known[i] = l.tiers[i].skill <= skill;
+        std::vector<StockNeed> const ranked = RankStockTiers(l, {{1, 73, {}, false}, {2, 73, {}, true}}, known, 5);
+        std::vector<SkillupOption> options;
+        for (std::size_t i = 0; i < l.tierCount; ++i)
+            options.push_back({l.tiers[i].spell, static_cast<std::uint8_t>(i), false, known[i], l.tiers[i].grey,
+                               Casts(l, i, have) > 0, 0, TierWant(ranked, static_cast<std::uint8_t>(i)) > 0});
+        int const pick = PickSkillupFor(skill, options, true, true);
+        return pick < 0 ? kNoTier : options[static_cast<std::size_t>(pick)].tier;
+    };
+    ProductLine const off = PotionsOn(), on = PotionsLowOn(true);
+    EXPECT_EQ(pickAt(off, 1), kNoTier);  // S112: Minor Healing wants Peacebloom, nothing else at 1
+    EXPECT_EQ(pickAt(on, 1), 8u);        // Elixir of Minor Defense
+    EXPECT_EQ(pickAt(on, 24), 8u);
+    EXPECT_NE(pickAt(on, 95), 8u);       // grey
+    for (std::uint32_t skill = 1; skill <= 150; ++skill)
+        EXPECT_NE(pickAt(on, skill), kNoTier) << skill;  // no dead band from 1 to the Journeyman cap
 }
 
 }  // namespace

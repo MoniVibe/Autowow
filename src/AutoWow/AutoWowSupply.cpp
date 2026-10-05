@@ -2076,7 +2076,19 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
     // ClimbSkillup: no blocked member need at all (an outgrown table) and still below the reach: climb anyway.
     if (out.empty() && need.empty() && p.climbSkillup && skill < cap)
     {
-        out = PlanClimbSkillup(skill, std::min(reach, cap), options, p.skillupCasts);
+        if (ClimbPastStock())
+        {
+            // No stock gate, sized past the artisan's own finished units of the pick (PlanClimbSkillupPastStock).
+            std::vector<std::uint32_t> mine(G.tierCount, 0);
+            for (std::size_t i = 0; i < G.tierCount; ++i)
+            {
+                options[i].known = known[i] && owns[i];
+                mine[i] = CastUnits(HeldUnits(art, G.tiers[i].product), GearYield(line, static_cast<std::uint8_t>(i)));
+            }
+            out = PlanClimbSkillupPastStock(skill, std::min(reach, cap), options, mine, p.skillupCasts);
+        }
+        else
+            out = PlanClimbSkillup(skill, std::min(reach, cap), options, p.skillupCasts);
         if (!out.empty())
             LOG_INFO("playerbots", "[Supply] gear bootstrap climb line={} team={} artisan={} skill={}/{} skillup={} casts={}",
                      L.name, alliance ? "alliance" : "horde", Low(art), skill, cap, G.tiers[out.front().recipe].spell,
@@ -2461,11 +2473,12 @@ void GearTick(Line line, bool alliance, bool overlord)
     }
 
     // Market-only reagents for the active gear target. Routed inputs keep their existing house assignment and vendor
-    // inputs stay on the artisan trip; only Source::Market becomes a faction AH / MailOrders want.
+    // inputs stay on the artisan trip; only Source::Market becomes a faction AH / MailOrders want (GearMarketRoute: the
+    // Route ones the house lacks too, GearBuys).
     v.buy.clear();
     if ((p.market || p.mailOrders) && art && v.product != kNoTier && make)
         for (Lack const& k : Lacks(G, v.product, make, house))
-            if (k.source == Source::Market)
+            if (GearBuys(k.source, GearMarketRoute()))
                 v.buy.push_back({k.item, k.units, SellOf(k.item)});
 
     std::lock_guard<std::mutex> guard(gLock);
@@ -3138,6 +3151,9 @@ void LoadConfig()
     p.mineLootYield = sConfigMgr->GetOption<bool>("AutoWow.Supply.MineLootYield", false);
     p.crossHouseFeed = sConfigMgr->GetOption<bool>("AutoWow.Supply.CrossHouseFeed", false);
     p.smithBars = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithBars", false);
+    p.climbPastStock = sConfigMgr->GetOption<bool>("AutoWow.Supply.ClimbPastStock", false);
+    p.gearMarketRoute = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearMarketRoute", false);
+    p.potionLowBridge = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionLowBridge", false);
     gLineSpec = {};
     gPriority.clear();
     {
@@ -3634,6 +3650,12 @@ void LoadConfig()
         LOG_INFO("server.loading", "[Supply] line potions: PotionTiers on: {} tiers (+{}: mana potions, Greater Healing, "
                  "Elixir of Wisdom bridge), a need per family (mana users), heal products first",
                  ActiveLine(Line::Potions).tierCount, LineOf(Line::Potions).tierExtra);
+    if (p.potionTiers && p.potionLowBridge && LineOn(Line::Potions))
+        LOG_INFO("server.loading", "[Supply] line potions: PotionLowBridge on: +{} (Elixir of Minor Defense bridge, alchemy "
+                 "1-95 from Silverleaf)", LineOf(Line::Potions).tierLow);
+    if (p.climbPastStock || p.gearMarketRoute)
+        LOG_INFO("server.loading", "[Supply] housegaps: climb_past_stock={} gear_market_route={}", p.climbPastStock,
+                 p.gearMarketRoute);
 }
 
 void WorldUpdate(std::uint32_t diff)

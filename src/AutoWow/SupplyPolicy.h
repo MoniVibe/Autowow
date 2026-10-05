@@ -32,7 +32,7 @@ class Player;
 namespace AutoWowSupply
 {
 inline constexpr std::uint32_t kStateVersion =
-    12;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+    13;  // RoleState / TeamState layout; bump on change (2: tiers, market;
          // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
          // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
          // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
@@ -40,7 +40,7 @@ inline constexpr std::uint32_t kStateVersion =
          // 8 (LineView surplus, LineState wants), LineTier family;
          // 11: finished-bag market view / in-flight purchase contract;
          // 12: LineTier spec, Stations rankTrainer, RoleState rankMs / mineMs,
-         // LineState OrderPost)
+         // LineState OrderPost; 13: kMaxLineTiers 9, ProductLine tierLow)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -159,6 +159,13 @@ struct Params
                                              // with no blocked member need while skill < reach (PlanClimbSkillup)
     bool weaponOrders = false;               // AutoWow.Supply.WeaponOrders
     std::uint32_t weaponOrderTimeoutMs = 7200000;  // AutoWow.Supply.WeaponOrderTimeoutMs
+    // Lane housegaps (soak S112; all off by default):
+    bool climbPastStock = false;    // AutoWow.Supply.ClimbPastStock: ClimbSkillup orders sized past the artisan's own
+                                    // finished units of the pick, no stock gate (PlanClimbSkillupPastStock)
+    bool gearMarketRoute = false;   // AutoWow.Supply.GearMarketRoute: a gear target's Route reagents the house lacks are
+                                    // faction AH / MailOrders wants too (GearBuys)
+    bool potionLowBridge = false;   // AutoWow.Supply.PotionLowBridge (with PotionTiers): the potions line's tierLow row
+                                    // (Elixir of Minor Defense, Silverleaf only; ActiveLine)
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -1140,7 +1147,8 @@ struct Reagent
 };
 
 inline constexpr std::size_t kMaxReagents = 8;  // Spell.dbc has eight reagent slots; trailing entries stay zero
-inline constexpr std::size_t kMaxLineTiers = 8;  // potions: 3 rows + 5 PotionTiers rows (tierExtra)
+inline constexpr std::size_t kMaxLineTiers = 9;  // potions: 3 rows + 5 PotionTiers rows (tierExtra) + 1 PotionLowBridge
+                                                 // row (tierLow)
 
 // A line tier's family (PotionStock need, PotionTiers): a member wants its best tier of each family it uses; within a
 // family the table order is ascending (a later row is a better tier). Bridge = a skill-up recipe no member wants.
@@ -1200,6 +1208,7 @@ struct ProductLine
     std::uint8_t gearEndgame = 0;   // the last rows of `gear`: in the table only with SmithEndgame (GearTable)
     LineTier const* gearBars = nullptr;  // SmithBars: replaces `gear` (same gearEndgame tail last; GearTable)
     std::uint8_t gearBarsCount = 0;
+    std::uint8_t tierLow = 0;  // tiers[tierCount + tierExtra ..): in the table only with PotionTiers + PotionLowBridge
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -1510,6 +1519,11 @@ inline constexpr std::uint32_t kAnvilFocus = 1;  // SpellFocusObject.dbc: Anvil 
 //     Empty Vial. The only trainer recipe from 105 (Minor Mana grey) to Healing Potion's 110 without Peacebloom (soak
 //     S75: 1 Peacebloom donated; Lesser Healing needs a Minor Healing Potion); no member wants it (DemandOnly: a
 //     consumer-less last-resort skill-up, its output sold as `waste`).
+// PotionLowBridge row (lane housegaps, tierLow; same checks): Elixir of Minor Defense 5997 (req 1): spell 7183, learned
+//   with the skill (SkillLineAbility AcquireMethod 1), grey 95 (orange to 55); 2 Silverleaf + Empty Vial. Soak S112: the
+//   Alliance artisan sat at alchemy 1 for 5 h (`craftable=0`): its only skill-1 row wants Peacebloom, which the L60-76
+//   herb crews never pick and no Alliance AH lot lists, while the rep held 23 Silverleaf. It levels 1 -> 25 (Minor Mana,
+//   Mageroyal + Silverleaf); no member wants it (a consumer-less skill-up, its output sold as `waste`).
 //   Dropped: Superior Healing 3928 (alchemy 215) and Greater Mana 6149 (205) need Artisan alchemy (character level 35,
 //     not taught by trainer 67; the artisans are level 12-13); Swiftness Potion (recipe item, not trainer-taught).
 inline constexpr ProductLine kCatalog[] = {
@@ -1530,8 +1544,10 @@ inline constexpr ProductLine kCatalog[] = {
        {3452, 3827, 160, 220, 22, {{{3820, 1, Source::Route}, {3356, 1, Source::Route}, {3372, 1, Source::Vendor}}},
         kFamilyMana},
        {3171, 3383, 90, 160, 10, {{{785, 1, Source::Route}, {2450, 2, Source::Route}, {3371, 1, Source::Vendor}}},
-        kFamilyBridge}}},
-     3, nullptr, 0, 0, 0, 5},
+        kFamilyBridge},
+       // PotionLowBridge only (tierLow):
+       {7183, 5997, 1, 95, 1, {{{765, 2, Source::Route}, {3371, 1, Source::Vendor}, {}}}, kFamilyBridge}}},
+     3, nullptr, 0, 0, 0, 5, 0, nullptr, 0, 1},
     // Gear lines (lane V): learn = the profession ranks (Apprentice .. Artisan; for the bag house the bag chain's own
     // Artisan.Learn already teaches them) plus every trainer-taught table recipe.
     {Line::ClothGear, "cloth_gear", "ClothGear", "Weavers", "3911,3912,3913,12181", 197, NeedRule::GearSlots,
@@ -1552,7 +1568,7 @@ inline constexpr std::size_t kLineCount = std::size(kCatalog);
 // PotionTiers rows fit the tier array.
 static_assert([] {
     for (ProductLine const& l : kCatalog)
-        if (l.tierCount + l.tierExtra > kMaxLineTiers)
+        if (l.tierCount + l.tierExtra + l.tierLow > kMaxLineTiers)
             return false;
     return true;
 }());
@@ -2539,6 +2555,32 @@ inline constexpr std::uint32_t kProfessionRankLevel[] = {5, 10, 20, 35, 50, 65};
     return {{options[static_cast<std::size_t>(pick)].tier, casts, 0}};
 }
 
+// ClimbPastStock (lane housegaps; soaks S110-S112: both Tinkers sat at engineering 36 / 21 for three soaks with `climb
+// skillup=3918 casts=10` in every scan and no craft row after S110's ten: each artisan holds the 10 Rough Blasting
+// Powder it made, an intermediate nothing ships or consumes, which GearTick counts as the order's finished units: toMake
+// 0, never a cast. GearSkillupRestock had already dropped the stock gate that would have moved the pick on). The climb
+// order sized past the artisan's own finished units of the pick (`mine`), as PlanGearSkillupRestock does: it still
+// casts `casts` more. Grey or the reach ends it.
+[[nodiscard]] inline std::vector<GearOrder> PlanClimbSkillupPastStock(std::uint32_t skill, std::uint32_t reach,
+                                                                      std::vector<SkillupOption> const& options,
+                                                                      std::vector<std::uint32_t> const& mine,
+                                                                      std::uint32_t casts)
+{
+    std::vector<GearOrder> out = PlanClimbSkillup(skill, reach, options, casts);
+    for (GearOrder& o : out)
+        o.units += o.recipe < mine.size() ? mine[o.recipe] : 0;
+    return out;
+}
+
+// GearMarketRoute (lane housegaps; soak S112: the Alliance Tanners artisan sat at leatherworking 7 with its Light Leather
+// skill-up order open and no scraps: no Alliance leather crew, the L70 skinners bring Borean / Knothide, the rep held only
+// Medium Leather, while the Alliance AH listed 176 Ruined Leather Scraps and 207 Light Leather). A gear target's reagent
+// the house lacks is a faction AH / MailOrders want: Market ones always, Route ones with GearMarketRoute.
+[[nodiscard]] inline constexpr bool GearBuys(Source source, bool marketRoute)
+{
+    return source == Source::Market || (marketRoute && source == Source::Route);
+}
+
 // GearSkillupRestock (lane craftflow; soak S75: both Tinkers artisans sat at engineering 46 / 49 for 2.3 h, below
 // Rough Boomstick's 50, `skillup=0` in every bootstrap scan: each known recipe below grey was stocked, 10 Handful of
 // Copper Bolts at each artisan and 20 casts of Crafted Light Shot at each rep, and nothing consumes skill-up stock).
@@ -2919,13 +2961,19 @@ inline bool WeaponOrders() { return detail::gEnabled && detail::gParams.weaponOr
 inline bool MineLootYield() { return detail::gEnabled && detail::gParams.mineLootYield; }
 inline bool CrossHouseFeed() { return detail::gEnabled && detail::gParams.crossHouseFeed; }
 inline bool SmithBars() { return detail::gEnabled && detail::gParams.smithBars; }
+inline bool ClimbPastStock() { return detail::gEnabled && detail::gParams.climbPastStock; }
+inline bool GearMarketRoute() { return detail::gEnabled && detail::gParams.gearMarketRoute; }
+inline bool PotionLowBridge() { return PotionTiers() && detail::gParams.potionLowBridge; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
-// as was). A copy: callers keep it for the scope that reads its tiers.
+// as was), its tierLow rows after them only with PotionLowBridge too. A copy: callers keep it for the scope that reads
+// its tiers.
 [[nodiscard]] inline ProductLine ActiveLine(Line l)
 {
     ProductLine out = LineOf(l);
     if (PotionTiers())
         out.tierCount = static_cast<std::uint8_t>(out.tierCount + out.tierExtra);
+    if (PotionLowBridge())
+        out.tierCount = static_cast<std::uint8_t>(out.tierCount + out.tierLow);
     return out;
 }
 // A gear line's recipe table: its gearStarters last rows only with GearBootstrap, its gearGuns last rows only with
