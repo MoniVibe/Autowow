@@ -311,6 +311,54 @@ inline std::vector<Crossing> NorthrendCrossings()
     return out;
 }
 
+// AutoWow.ZoneProgression.Northrend2: replaces NorthrendCrossings (same terminal passages). Outland starts
+// take the faction city portal (gameobject spawns; landing = spell_target_position of the portal spell
+// 17334 Stormwind -9003,870,30 / 17609 Orgrimmar 1470,-4222,59): Hellfire the Stair of Destiny portals
+// 195139 / 195140, every other Outland start the Shattrath portals 183325 / 183323. No Dark Portal walk,
+// no Grom'gol prefix from Outland. Horde Stranglethorn rides Grom'gol -> Orgrimmar first; Durotar and
+// Orgrimmar walk to the Warsong zeppelin tower.
+inline std::vector<Crossing> Northrend2Crossings()
+{
+    using namespace AutoWowZoneProgression;
+    Crossing const toWarsong{0, 0, 0, 0, Via::Transport, 186238, 1, 1174, -4152, 52, 1185, -4144,
+                             571, 2818, 6177, 122, 2838, 6187};
+    Crossing const toValiance{0, 0, 0, 0, Via::Transport, 190536, 0, -8303, 1402, 5, -8289, 1425,
+                              571, 2236, 5129, 5, 2218, 5120};
+    std::vector<Crossing> out;
+    for (std::uint32_t team : {1U, 2U})
+        for (HubSource const& source : Northrend2EntryZones(team))
+        {
+            std::uint32_t seq = 0;
+            auto add = [&](Crossing c)
+            {
+                c.team = team;
+                c.from = source.zone;
+                c.to = kBoreanZone;
+                c.seq = seq++;
+                out.push_back(c);
+            };
+            if (source.map == kOutlandMap)
+            {
+                bool const hellfire = source.zone == kHellfireZone;
+                if (team == 1)
+                    add(hellfire ? Crossing{0, 0, 0, 0, Via::GameObject, 195139, 530, -337, 963, 54, 0, 0,
+                                            0, -9003, 870, 30, 0, 0}
+                                 : Crossing{0, 0, 0, 0, Via::GameObject, 183325, 530, -1793, 5407, -12, 0, 0,
+                                            0, -9003, 870, 30, 0, 0});
+                else
+                    add(hellfire ? Crossing{0, 0, 0, 0, Via::GameObject, 195140, 530, -161, 965, 54, 0, 0,
+                                            1, 1470, -4222, 59, 0, 0}
+                                 : Crossing{0, 0, 0, 0, Via::GameObject, 183323, 530, -1934, 5453, -12, 0, 0,
+                                            1, 1470, -4222, 59, 0, 0});
+            }
+            if (team == 2 && source.zone == kStranglethornZone)
+                add({0, 0, 0, 0, Via::Transport, 175080, 0, -12441, 215, 31, -12464, 232,
+                     1, 1354, -4643, 54, 1361, -4631});
+            add(team == 1 ? toValiance : toWarsong);
+        }
+    return out;
+}
+
 // Config override AutoWow.Transports.Crossings: ';'-separated rows of 18 integers
 // "team,from,to,seq,via,object,map,x,y,z,stopX,stopY,exitMap,exitX,exitY,exitZ,exitStopX,exitStopY".
 // Replaces the built-in table. False (out untouched) on any malformed row.

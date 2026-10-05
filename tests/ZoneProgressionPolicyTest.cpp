@@ -864,4 +864,174 @@ TEST(ZoneProgression, OutlandChainPortalsLikeAWalk)
     // Already in Hellfire: no portal.
     EXPECT_FALSE(PortalFallback(true, FallbackMode(Mode::Chain, true), true, 8, 8, 9999999, 1));
 }
+
+// ---- AutoWow.ZoneProgression.Northrend2 ----------------------------------------------------------------
+std::vector<Route> Northrend2Table()
+{
+    std::vector<Route> routes = DefaultRoutes();
+    for (Route const& r : HubRoutes(DefaultHubs(), DefaultHubSources()))
+        routes.push_back(r);
+    AddOutland(routes);
+    AddNorthrend(routes, 80);
+    AddNorthrend2(routes, 80);
+    return routes;
+}
+
+// soak-s107b: L70+ bots stranded in STV / Duskwood / Deadwind / Westfall / Elwynn / Blasted Lands. Each stages
+// to its team's chain start on the same continent; Alliance on Kalimdor crosses to Stormwind.
+TEST(ZoneProgression, Northrend2StagesStrandedAzerothBotsToTheirChainStart)
+{
+    Route r;
+    for (std::uint32_t zone : {33U, 10U, 41U, 40U, 12U, 4U})
+    {
+        ASSERT_TRUE(NorthrendStagingRoute(1, 0, zone, 70, 80, 0, r)) << zone;
+        EXPECT_EQ(r.from, zone);
+        EXPECT_EQ(r.to, kStormwindZone);
+        EXPECT_EQ(r.map, 0U);
+        EXPECT_EQ(r.inn, 6740U);
+        EXPECT_FALSE(r.crossing);
+        EXPECT_TRUE(IsNorthrendStaging(r));
+        EXPECT_FALSE(IsNorthrendEntry(r));
+    }
+    for (std::uint32_t zone : {10U, 41U, 12U, 4U})
+    {
+        ASSERT_TRUE(NorthrendStagingRoute(2, 0, zone, 72, 80, 0, r)) << zone;
+        EXPECT_EQ(r.to, kStranglethornZone);
+        EXPECT_EQ(r.inn, 5814U);
+        EXPECT_FALSE(r.crossing);
+    }
+    ASSERT_TRUE(NorthrendStagingRoute(2, 1, 440, 70, 80, 0, r));  // Tanaris
+    EXPECT_EQ(r.to, kOrgrimmarZone);
+    EXPECT_FALSE(r.crossing);
+    ASSERT_TRUE(NorthrendStagingRoute(1, 1, 440, 70, 80, 0, r));
+    EXPECT_EQ(r.to, kStormwindZone);
+    EXPECT_TRUE(r.crossing);
+    EXPECT_EQ(r.minLevel, kNorthrendMinLevel);
+    EXPECT_EQ(r.maxLevel, 80U);
+}
+
+TEST(ZoneProgression, Northrend2StagingPrefersAReadyHearthBoundInAStagingZone)
+{
+    Route r;
+    // Horde in Duskwood bound in Orgrimmar: hearth there (crossing, the hearth leg crosses it).
+    ASSERT_TRUE(NorthrendStagingRoute(2, 0, 10, 70, 80, kOrgrimmarZone, r));
+    EXPECT_EQ(r.to, kOrgrimmarZone);
+    EXPECT_EQ(r.map, 1U);
+    EXPECT_TRUE(r.crossing);
+    // A hearth bound elsewhere (Booty Bay, or the other team's capital) changes nothing.
+    ASSERT_TRUE(NorthrendStagingRoute(2, 0, 10, 70, 80, 33, r));
+    EXPECT_EQ(r.to, kStranglethornZone);
+    ASSERT_TRUE(NorthrendStagingRoute(2, 0, 10, 70, 80, kStormwindZone, r));
+    EXPECT_EQ(r.to, kStranglethornZone);
+    ASSERT_TRUE(NorthrendStagingRoute(1, 1, 440, 70, 80, 1537, r));
+    EXPECT_EQ(r.to, kStormwindZone);
+}
+
+TEST(ZoneProgression, Northrend2NoStagingAtAChainStartBelow68OrOffAzeroth)
+{
+    Route r;
+    r.from = 777;
+    EXPECT_FALSE(NorthrendStagingRoute(1, 0, kStormwindZone, 70, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(2, 1, kOrgrimmarZone, 70, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(2, 0, kStranglethornZone, 70, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(2, 1, kDurotarZone, 70, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(1, 0, 10, 67, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(1, 530, 3483, 70, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(1, kNorthrendMap, kBoreanZone, 72, 80, 0, r));
+    EXPECT_FALSE(NorthrendStagingRoute(1, 0, 10, 70, 69, 0, r));  // server cap below the bot
+    EXPECT_EQ(r.from, 777U);  // untouched
+    // Alliance Stranglethorn is no Alliance chain start: it stages.
+    EXPECT_TRUE(NorthrendStagingRoute(1, 0, kStranglethornZone, 70, 80, 0, r));
+    // Ordinary low hub routes are never staging trips.
+    for (Route const& h : HubRoutes(DefaultHubs(), DefaultHubSources()))
+        EXPECT_FALSE(IsNorthrendStaging(h));
+}
+
+// Every staging destination is a chain start: the admission route leaves it next (PickRoute priority).
+TEST(ZoneProgression, Northrend2StagingDestinationsAdmitNext)
+{
+    std::vector<Route> const routes = Northrend2Table();
+    for (Hub const& h : NorthrendStagingHubs())
+    {
+        Route const* next = PickRoute(routes, h.team, h.zone, 70, 1);
+        ASSERT_NE(next, nullptr) << h.zone;
+        EXPECT_TRUE(IsNorthrendEntry(*next)) << h.zone;
+    }
+    Route const* durotar = PickRoute(routes, 2, kDurotarZone, 68, 3);
+    ASSERT_NE(durotar, nullptr);
+    EXPECT_TRUE(IsNorthrendEntry(*durotar));
+    // Alliance gains no Stranglethorn / Durotar admission.
+    Route const* stv = PickRoute(routes, 1, kStranglethornZone, 70, 3);
+    EXPECT_TRUE(!stv || !IsNorthrendEntry(*stv));
+}
+
+// The Northrend ladder: every level 68-80 has an own-faction hub reachable from Borean on map 571.
+TEST(ZoneProgression, Northrend2LadderCoversLevels68To80PerFaction)
+{
+    std::vector<Route> const routes = Northrend2Table();
+    for (std::uint32_t team : {1U, 2U})
+        for (std::uint32_t level = 68; level <= 80; ++level)
+        {
+            bool any = false;
+            for (Route const& r : routes)
+                if (r.team == team && r.map == kNorthrendMap && !IsNorthrendEntry(r) && level >= r.minLevel &&
+                    level <= r.maxLevel)
+                    any = true;
+            EXPECT_TRUE(any) << team << " L" << level;
+        }
+    // Borean leads on up the ladder; a top stage never leads back down.
+    Route const* up = PickRoute(routes, 1, kBoreanZone, 73, 0);
+    ASSERT_NE(up, nullptr);
+    EXPECT_NE(up->to, kBoreanZone);
+    EXPECT_EQ(up->map, kNorthrendMap);
+    for (Route const& r : HubRoutes(NorthrendHubs(), {}))
+        EXPECT_FALSE(r.from == 210 && r.to == kBoreanZone);
+}
+
+// Northrend hub npcs: creature_template.faction and FactionTemplate.dbc enemy group (2 alliance, 4 horde, 0 neutral);
+// zone = map-grid area of the spawn (p1data maps + AreaTable.dbc).
+TEST(ZoneProgression, NoHostileNorthrendHubs)
+{
+    struct Npc { std::uint32_t entry, factionTemplate, enemyGroup; };
+    std::vector<Npc> const npcs = {
+        {25245, 1973, 4}, {25278, 1978, 2}, {23731, 1892, 4}, {24342, 1929, 2}, {27052, 1892, 4},
+        {26985, 1980, 2}, {27066, 1892, 4}, {27125, 1981, 2}, {28791, 2070, 0}, {28038, 35, 0},
+        {29926, 1926, 4}, {29944, 1978, 2}, {33970, 2025, 4}, {33971, 2123, 2},
+    };
+    for (Hub const& h : NorthrendHubs())
+    {
+        auto const it = std::find_if(npcs.begin(), npcs.end(), [&](Npc const& n) { return n.entry == h.npc; });
+        ASSERT_NE(it, npcs.end()) << h.npc;
+        EXPECT_EQ(it->enemyGroup & (h.team == 1 ? 2U : 4U), 0U) << "hub npc " << h.npc;
+        EXPECT_EQ(h.inn, h.npc);
+        EXPECT_EQ(h.map, kNorthrendMap);
+    }
+    // Staging inns: Allison (12, alliance), Gryshka / Thulbek (29, horde).
+    for (Hub const& h : NorthrendStagingHubs())
+        EXPECT_EQ(h.inn, h.team == 1 ? 6740U : (h.zone == kOrgrimmarZone ? 6929U : 5814U));
+}
+
+// soak-s107: the lowest-band death-loop escape sent L68-70 Northrend bots back to Hellfire. Northrend2 keeps the
+// escape on the bot's own map.
+TEST(ZoneProgression, Northrend2DeathLoopEscapeStaysOnTheBotsMap)
+{
+    std::vector<Route> const routes = Northrend2Table();
+    Route const* legacy = PickLowEscapeRoute(routes, 1, 69, 3537, kNorthrendMap, 2282, 5210);
+    ASSERT_NE(legacy, nullptr);
+    EXPECT_NE(legacy->map, kNorthrendMap);  // the defect this flag fixes
+    std::vector<Route> const same = SameMapRoutes(routes, kNorthrendMap);
+    Route const* hub = PickLowEscapeRoute(same, 1, 69, 3537, kNorthrendMap, 2282, 5210);
+    ASSERT_NE(hub, nullptr);
+    EXPECT_EQ(hub->map, kNorthrendMap);
+    EXPECT_EQ(hub->to, 495U);  // Howling Fjord, the other 68-72 hub
+    for (Route const& r : same)
+        EXPECT_EQ(r.map, kNorthrendMap);
+}
+
+TEST(ZoneProgression, Northrend2HearthModeIsWireAppended)
+{
+    EXPECT_EQ(static_cast<std::uint32_t>(Mode::Hearth), 5U);
+    EXPECT_STREQ(ModeName(Mode::Hearth), "hearth");
+    EXPECT_FALSE(PortalFallback(true, Mode::Hearth, false, 99, 8, 9999999, 1));
+}
 }  // namespace

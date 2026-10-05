@@ -3133,6 +3133,15 @@ AutoWow.ZoneProgression.OutlandPortalAfterMs = 2400000
 # ends at the Borean inn; no flight point is taught. AiPlayerbot.ZoneBracket.3537 remains the separate 68-75
 # quest-band policy. Map 571 is not added to random teleport admission.
 AutoWow.ZoneProgression.Northrend = 0
+# Northrend2 (default 0; needs Northrend): a L68+ bot on an Azeroth continent outside every chain start
+# first stages to its team chain start (Stormwind inn; Horde: Orgrimmar on Kalimdor, Grom'gol in Eastern
+# Kingdoms; the hearth zone instead when the hearthstone is bound there and ready), arriving on entering
+# that zone; staging and admission trips leave at once. Horde also starts from Stranglethorn (Grom'gol ->
+# Orgrimmar -> Warsong Hold) and Durotar. Outland starts take the faction city portal (Hellfire: Stair of
+# Destiny 195139/195140; elsewhere: Shattrath 183325/183323) instead of the reverse Dark Portal walk. Adds the
+# L68-80 Northrend hub ladder (Borean / Howling Fjord 68-72, Dragonblight 71-75, Grizzly Hills 73-75,
+# Zul'Drak 74-77, Sholazar 76-78, Storm Peaks / Icecrown 77-80). Death-loop escape keeps to the bot's map.
+AutoWow.ZoneProgression.Northrend2 = 0
 AutoWow.ZoneProgression.Routes = ""
 
 # Gathering detours for independent questing bots (GatherDetourPolicy.h). A bot that knows Herbalism or
