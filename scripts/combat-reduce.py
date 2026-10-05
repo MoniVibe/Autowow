@@ -14,6 +14,11 @@ Each `combat` line carries CUMULATIVE per-login counters for one bot (quest 0):
 cv=2 (AutoWow.Tactics.Observe/Enable) = every cv=1 field unchanged, plus tac_ms=[[tactic id, ms], ...]
 (cumulative in-engagement ms per tactic) and arm (0 control, 1 treatment). cv=2 lines also feed the
 `class_band_arm` cells and the per-tactic time table. Any other cv is ignored, never guessed.
+cv=3 / cv=4 (AutoWow.CombatTelemetry.Reactivity bots, every human row) = the cv=1 / cv=2 line plus
+busy_ms (cumulative cast-lock ms), spells=[[id, casts], ...] (window top-8), rl_att / rl_hp = window
+[samples, p50, p90, misses] and human=1 on real-player rows. busy share = d(busy_ms) / d(combat_ms) over
+cv>=3 lines only; reaction p50 is a sample-weighted mean of window p50s (not a true pooled median).
+Human rows fold only into `human` / `human_class` cells, never into bot tables.
 `died` lines (killer kind/id/level) are joined for deaths-by-killer.
 `engage` lines (ecv=1, one per solo engagement of a tactic-tracked class, AutoWow.Tactics.Classes) fold
 into cells class/band/arm/tac0 (tac0 = the first tactic the policy chose): engagements (= sum over
@@ -101,6 +106,11 @@ def new_cell():
     c["killers"] = Counter()
     c["bots"] = set()
     c["tac_ms"] = Counter()
+    c["rx_combat_ms"] = 0
+    c["busy_ms"] = 0
+    c["spells"] = Counter()
+    c["rl_att"] = [0, 0, 0]  # samples, sum(p50 x samples), misses
+    c["rl_hp"] = [0, 0, 0]
     return c
 
 
@@ -148,20 +158,27 @@ def fold(events, exclude, engage=None):
                 cells[key]["killers"][k] += 1
             continue
         cv = ev.get("cv")
-        if cv not in (1, 2):
+        if cv not in (1, 2, 3, 4):
             continue  # unknown combat schema: ignore, never guess
+        rx = cv in (3, 4)
         cur = {k: int(ev.get(k, 0)) for k in COUNTERS}
-        tac = {int(t[0]): int(t[1]) for t in ev.get("tac_ms", [])} if cv == 2 else {}
+        cur["_busy"] = int(ev.get("busy_ms", 0)) if rx else 0
+        tac = {int(t[0]): int(t[1]) for t in ev.get("tac_ms", [])} if cv in (2, 4) else {}
         base = prev.get((run, bot))
-        if (base is None or any(cur[k] < base[k] for k in COUNTERS)
+        if (base is None or any(cur[k] < base[k] for k in COUNTERS) or cur["_busy"] < base["_busy"]
                 or any(tac.get(t, 0) < ms for t, ms in base["_tac"].items())):
             base = {k: 0 for k in COUNTERS}
             base["_tac"] = {}
+            base["_busy"] = 0
         delta = {k: cur[k] - base[k] for k in COUNTERS}
         tac_delta = {t: ms - base["_tac"].get(t, 0) for t, ms in tac.items()}
         b = band(ev.get("lvl", 0))
-        keys = [("bot", str(bot)), ("class", cls), ("band", b), ("class_band", "%s/%s" % (cls, b)), ("total", "all")]
-        if cv == 2:
+        if ev.get("human") == 1:
+            keys = [("human", str(bot)), ("human_class", cls)]
+        else:
+            keys = [("bot", str(bot)), ("class", cls), ("band", b), ("class_band", "%s/%s" % (cls, b)),
+                    ("total", "all")]
+        if cv in (2, 4) and ev.get("human") != 1:
             keys.append(("class_band_arm", "%s/%s/arm%s" % (cls, b, ev.get("arm", "?"))))
         for key in keys:
             cell = cells[key]
@@ -172,6 +189,16 @@ def fold(events, exclude, engage=None):
                     cell["tac_ms"][t] += ms
             cell["ttk"].extend(int(s[0]) for s in ev.get("ttk", []))
             cell["bots"].add(bot)
+            if rx:
+                cell["rx_combat_ms"] += delta["combat_ms"]
+                cell["busy_ms"] += cur["_busy"] - base["_busy"]
+                for sid, n in ev.get("spells", []):
+                    cell["spells"][int(sid)] += int(n)
+                for kind in ("rl_att", "rl_hp"):
+                    w = ev.get(kind) or [0, 0, 0, 0]
+                    cell[kind][0] += int(w[0])
+                    cell[kind][1] += int(w[0]) * int(w[1])
+                    cell[kind][2] += int(w[3])
         cur["_cls"] = cls
         cur["_tac"] = tac
         prev[(run, bot)] = cur
@@ -202,6 +229,12 @@ def derive(kind, key, c, profile):
     row["tac_ms"] = {tactic_name(t): ms for t, ms in sorted(c["tac_ms"].items())}
     row["tac_share"] = ({tactic_name(t): round(ms / tac_total, 3) for t, ms in sorted(c["tac_ms"].items())}
                         if tac_total else {})
+    row["busy_share"] = round(c["busy_ms"] / c["rx_combat_ms"], 3) if c["rx_combat_ms"] else None
+    row["rx_combat_ms"] = c["rx_combat_ms"]
+    row["spells"] = [[s, n] for s, n in sorted(c["spells"].items(), key=lambda kv: (-kv[1], kv[0]))[:8]]
+    for kind in ("rl_att", "rl_hp"):
+        n, wsum, miss = c[kind]
+        row[kind] = {"samples": n, "p50_wmean_ms": round(wsum / n) if n else None, "misses": miss}
     return row
 
 
@@ -223,7 +256,7 @@ def summarize(rows, profile):
              "Deltas of cumulative `combat` lines (cv=1); rates from summed deltas. dps_combat = dmg / in-combat s;",
              "dps_sustained = dmg / wall s. TTK = bot's first damage on a creature to its killing blow (bot or pet).",
              "gcd_util_est = gcd_casts x 1.5 s / combat s (upper-bound style estimate, ignores haste).", ""]
-    for kind in ("total", "band", "class", "class_band", "class_band_arm", "bot"):
+    for kind in ("total", "band", "class", "class_band", "class_band_arm", "bot", "human_class", "human"):
         sel = [r for r in rows if r["kind"] == kind]
         if not sel:
             continue
@@ -254,6 +287,21 @@ def summarize(rows, profile):
                     r["key"], r["bots"], r["wall_ms"] / 3.6e6, f(r["deaths_per_hour"], 2), f(r["starved_share"]),
                     sum(r["tac_ms"].values()) / 1000.0, " | ".join(f(r["tac_share"].get(n)) for n in names)))
             lines.append("")
+    rx = [r for r in rows if r["kind"] in ("class", "human_class", "bot", "human") and r["rx_combat_ms"]]
+    if rx:
+        lines += ["## reactivity (cv=3/4 lines only)", "",
+                  "busy = cast-lock ms / in-combat ms. att/hp = reaction to new attacker / own HP < 35%:",
+                  "samples, sample-weighted mean of window p50 ms, misses (no cast within 10 s).", "",
+                  "| cell | bots | rx combat s | busy | att n | att p50 | att miss | hp n | hp p50 | hp miss | top spells |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+        for r in rx:
+            a, h = r["rl_att"], r["rl_hp"]
+            f = lambda v: "-" if v is None else str(v)
+            lines.append("| %s/%s | %d | %.0f | %s | %d | %s | %d | %d | %s | %d | %s |" % (
+                r["kind"], r["key"], r["bots"], r["rx_combat_ms"] / 1000.0, f(r["busy_share"]),
+                a["samples"], f(a["p50_wmean_ms"]), a["misses"], h["samples"], f(h["p50_wmean_ms"]), h["misses"],
+                " ".join("%d:%d" % (s, n) for s, n in r["spells"][:5])))
+        lines.append("")
     eng = [r for r in rows if r["kind"] == "engage"]
     if eng:
         lines += ["## engagements (engage, cell = class/band/arm/tac0)", "",
@@ -283,8 +331,9 @@ def run(paths, out_dir, exclude, profile):
     events = read_events(paths)
     engage = defaultdict(new_engage_cell)
     cells = fold(events, exclude, engage)
-    order = {"total": 0, "band": 1, "class": 2, "class_band": 3, "class_band_arm": 4, "bot": 5}
-    keyf = lambda kv: (order[kv[0][0]], (int(kv[0][1]) if kv[0][0] == "bot" else 0), kv[0][1])
+    order = {"total": 0, "band": 1, "class": 2, "class_band": 3, "class_band_arm": 4, "bot": 5,
+             "human_class": 6, "human": 7}
+    keyf = lambda kv: (order[kv[0][0]], (int(kv[0][1]) if kv[0][0] in ("bot", "human") else 0), kv[0][1])
     rows = [derive(kind, key, c, profile) for (kind, key), c in sorted(cells.items(), key=keyf)]
     rows += [derive_engage(key, c, profile) for key, c in sorted(engage.items())]
     os.makedirs(out_dir, exist_ok=True)
@@ -330,7 +379,14 @@ def selftest():
              ttk=[[5000, -1], [6000, 0], [10000, 1]], dot_skips=4),
         line(60000, 9, 30, cls=1, wall_ms=60000, dmg=99999),     # excluded
         "garbage",
-        '{"v":1,"run":"t","ms":1,"ev":"combat","bot":3,"lvl":5,"cv":3,"dmg":5}',  # unknown schema -> ignored
+        '{"v":1,"run":"t","ms":1,"ev":"combat","bot":3,"lvl":5,"cv":5,"dmg":5}',  # unknown schema -> ignored
+        # cv=3 reactivity bot 7 (mage, two windows) and a cv=3 human row (guid 21, hunter)
+        line(60000, 7, 15, cv=3, wall_ms=60000, combat_ms=20000, dmg=100, busy_ms=12000,
+             spells=[[133, 5], [116, 2]], rl_att=[2, 400, 900, 0], rl_hp=[1, 300, 300, 1]),
+        line(120000, 7, 15, cv=3, wall_ms=120000, combat_ms=40000, dmg=200, busy_ms=30000,
+             spells=[[133, 3]], rl_att=[2, 800, 900, 1], rl_hp=[0, 0, 0, 0]),
+        line(60000, 21, 80, cls=3, cv=3, human=1, wall_ms=60000, combat_ms=30000, dmg=9000, busy_ms=27000,
+             spells=[[49050, 4]], rl_att=[1, 200, 200, 0], rl_hp=[0, 0, 0, 0]),
         # cv=2 (tactics): cv=1 fields + cumulative tac_ms + arm; priest 4 in treatment, 5 in control
         line(60000, 4, 12, cls=5, cv=2, arm=1, wall_ms=60000, combat_ms=20000, dmg=500, kills=2, fights=2,
              tac_ms=[[10, 15000], [12, 5000]]),
@@ -354,8 +410,15 @@ def selftest():
         rows = run([lp], td, {9}, "selftest")
         by = {(r["kind"], r["key"]): r for r in rows}
         tot = by[("total", "all")]
-        assert tot["dmg"] == 1000 + 300 + 3000 + 900 + 400, tot["dmg"]
-        assert tot["wall_ms"] == 120000 + 30000 + 60000 + 120000 + 60000 + 60000
+        assert tot["dmg"] == 1000 + 300 + 3000 + 900 + 400 + 200, tot["dmg"]  # human 21 excluded
+        assert tot["wall_ms"] == 120000 + 30000 + 60000 + 120000 + 60000 + 60000 + 120000
+        b7 = by[("bot", "7")]
+        assert b7["busy_share"] == 0.75 and b7["spells"] == [[133, 8], [116, 2]], (b7["busy_share"], b7["spells"])
+        assert b7["rl_att"] == {"samples": 4, "p50_wmean_ms": 600, "misses": 1}, b7["rl_att"]
+        assert b7["rl_hp"] == {"samples": 1, "p50_wmean_ms": 300, "misses": 1}
+        assert by[("bot", "1")]["busy_share"] is None and ("bot", "21") not in by
+        hu = by[("human_class", "hunter")]
+        assert hu["busy_share"] == 0.9 and hu["dmg"] == 9000 and by[("human", "21")]["bots"] == 1
         assert tot["kills"] == 8 + 4 + 1 and tot["ttk_n"] == 8 and tot["ttk_samples"] == 8
         # cv=2: tactic deltas fold like counters; arm cells split treatment/control; cv=1 cells carry none
         arm1 = by[("class_band_arm", "priest/1-20/arm1")]
@@ -383,7 +446,7 @@ def selftest():
         assert b1["starved_share"] == round(5000 / 60000, 3)
         assert b1["gcd_util_est"] == round(20 * 1500 / 60000, 3)
         # band split: bot 1's lvl-10 and lvl-11 deltas (and the lvl-12 priests) land in 1-20; bot 2 in 21-40
-        assert by[("band", "1-20")]["dmg"] == 1300 + 900 + 400 and by[("band", "21-40")]["dmg"] == 3000
+        assert by[("band", "1-20")]["dmg"] == 1300 + 900 + 400 + 200 and by[("band", "21-40")]["dmg"] == 3000
         assert by[("class", "warrior")]["dot_skips"] == 4 and ("bot", "9") not in by and ("bot", "3") not in by
         # sterile: per-bot dmg sums to total
         assert sum(r["dmg"] for r in rows if r["kind"] == "bot") == tot["dmg"]
@@ -396,6 +459,7 @@ def selftest():
         war = md.split("### warrior")[1].split("\n\n")[1]  # per-class table: only that class's tactics
         assert "w-multi | w-single" in war and "p-wand" not in war, war
         assert "### priest" in md and "warrior/1-20/arm1/w-single" in md
+        assert "## reactivity" in md and "human_class/hunter" in md and "bot/7" in md
     print("selftest OK")
     return 0
 
