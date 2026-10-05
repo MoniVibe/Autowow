@@ -32,7 +32,7 @@ class Player;
 namespace AutoWowSupply
 {
 inline constexpr std::uint32_t kStateVersion =
-    13;  // RoleState / TeamState layout; bump on change (2: tiers, market;
+    14;  // RoleState / TeamState layout; bump on change (2: tiers, market;
          // 3: catalog LineView / RoleInfo.line; 4: RoleState apprentice /
          // craftBlocked; 5: TeamState goal; 6: DirectRoutes targets;
          // 7: gear lines: RoleInfo.gear, RoleState castLine, per-tier wants;
@@ -40,7 +40,8 @@ inline constexpr std::uint32_t kStateVersion =
          // 8 (LineView surplus, LineState wants), LineTier family;
          // 11: finished-bag market view / in-flight purchase contract;
          // 12: LineTier spec, Stations rankTrainer, RoleState rankMs / mineMs,
-         // LineState OrderPost; 13: kMaxLineTiers 9, ProductLine tierLow)
+         // LineState OrderPost; 13: kMaxLineTiers 9, ProductLine tierLow;
+         // 14: ProductLine gearCopper, RoleState traceKey)
 
 // Cloth routed to the bag house (item entries): linen, wool, silk. Only linen feeds the V1 recipe chain;
 // wool and silk are stored for the next bags.
@@ -166,6 +167,13 @@ struct Params
                                     // faction AH / MailOrders wants too (GearBuys)
     bool potionLowBridge = false;   // AutoWow.Supply.PotionLowBridge (with PotionTiers): the potions line's tierLow row
                                     // (Elixir of Minor Defense, Silverleaf only; ActiveLine)
+    // Lane hordehouses (soaks S110-S115; all off by default):
+    bool climbCastable = false;  // AutoWow.Supply.ClimbCastable: a gear skill-up (bootstrap / restock / climb) picks the
+                                 // cheapest recipe the house can cast now before a cheaper one it cannot (PreferCastable)
+    bool smithCopper = false;    // AutoWow.Supply.SmithCopper (with SmithBars): the smith table's Copper Chain Boots bridge
+                                 // row (kSmithCopper), 50 -> 100 from routed copper ore instead of Rough Stone
+    bool craftTrace = false;     // AutoWow.Supply.CraftTrace: an artisan's `[Supply] craft_trace` line on each change of
+                                 // its home craft gate (hold, target, next cast, cast gates); diagnostic only
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -1209,6 +1217,8 @@ struct ProductLine
     LineTier const* gearBars = nullptr;  // SmithBars: replaces `gear` (same gearEndgame tail last; GearTable)
     std::uint8_t gearBarsCount = 0;
     std::uint8_t tierLow = 0;  // tiers[tierCount + tierExtra ..): in the table only with PotionTiers + PotionLowBridge
+    LineTier const* gearCopper = nullptr;  // SmithCopper (with SmithBars): replaces `gearBars` (same tail last; GearTable)
+    std::uint8_t gearCopperCount = 0;
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -1449,6 +1459,25 @@ inline constexpr std::array<LineTier, std::size(kSmithBarsHead) + kSmithEndgame>
         out[n++] = kSmithWeapons[i];
     return out;
 }();
+// SmithCopper (lane hordehouses, AutoWow.Supply.SmithCopper, with SmithBars): kSmithBars with one bridge row after the
+// head. Soaks S110-S115: both smiths sat at blacksmithing 50 / 53 for ~4 h on a Rough Sharpening Stone restock (grey 55)
+// whose Rough Stone neither faction AH lists nor any rep holds (the L60+ miners bring no copper-vein stone; mine stints
+// gained 0-4 per 20 min), while the reps held 51-102 copper ore each. Copper Chain Boots (3319, trainer 60 at skill 20,
+// orange to 60, grey 100; 8 copper bars, anvil + Blacksmith Hammer; item 3469 RequiredLevel 4, unbound) levels 50 ->
+// ~90 from that ore, where Coarse Grinding Stone (75-100, Coarse Stone the Tinkers reps hold ~100 of) takes over. Data
+// from the 3.3.5 Spell.dbc / SkillLineAbility.dbc / trainer_spell / item_template (the load check re-verifies).
+inline constexpr LineTier kSmithCopperRow = {3319, 3469, 20, 100, 4, {{{2840, 8, Source::Craft}}}, kFamilyBridge};
+inline constexpr std::array<LineTier, std::size(kSmithBarsHead) + 1 + kSmithEndgame> kSmithCopper = []
+{
+    std::array<LineTier, std::size(kSmithBarsHead) + 1 + kSmithEndgame> out{};
+    std::size_t n = 0;
+    for (LineTier const& t : kSmithBarsHead)
+        out[n++] = t;
+    out[n++] = kSmithCopperRow;
+    for (std::size_t i = std::size(kSmithWeapons) - kSmithEndgame; i < std::size(kSmithWeapons); ++i)
+        out[n++] = kSmithWeapons[i];
+    return out;
+}();
 // Engineering (lane AA, Tinkers; trainer 92 = Stormwind 5518 / Orgrimmar 11017, 466 / 491 yards from the homes) and its
 // smelting (Mining 186, trainer 80 = Stormwind 5513 / Orgrimmar 3357; spell focus 3: a forge near home): gun hunters'
 // shot (200 per cast) from routed stone (House.Stone) and ore (House.Ore). Only reagents the house gets and a consumer
@@ -1555,7 +1584,8 @@ inline constexpr ProductLine kCatalog[] = {
     // Trainer rank wrappers (2020/2021/3539/9786) teach known ranks 2018/3100/3538/9785; the table adds recipes.
     {Line::MailGear, "mail_gear", "MailGear", "Smiths", "2020,2021,3539,9786", 164, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kSmithWeapons, static_cast<std::uint8_t>(std::size(kSmithWeapons)), 0, 0, 0,
-     kSmithEndgame, kSmithBars.data(), static_cast<std::uint8_t>(kSmithBars.size())},
+     kSmithEndgame, kSmithBars.data(), static_cast<std::uint8_t>(kSmithBars.size()), 0, kSmithCopper.data(),
+     static_cast<std::uint8_t>(kSmithCopper.size())},
     {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear)), kLeatherStarters},
     // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
@@ -2572,6 +2602,24 @@ inline constexpr std::uint32_t kProfessionRankLevel[] = {5, 10, 20, 35, 50, 65};
     return out;
 }
 
+// ClimbCastable (lane hordehouses; soaks S113-S115: the Horde Tinkers climbed engineering 21 -> 37 on Rough Blasting
+// Powder, then sat at 37 with `climb skillup=3918` in every scan: the cheapest option wants Rough Stone, which no Horde rep
+// holds and no Horde AH lot lists, while the known Handful of Copper Bolts / Crafted Light Shot cast from the Tinkers rep's
+// 102 copper ore; the smiths likewise on Rough Sharpening Stone). When some known option still below grey at `skill` is
+// castable from the house's holdings now (`castable[option.tier]`: Casts > 0), the options the house cannot cast drop
+// out (known = false), so PickSkillup's cheapest is a castable one; none castable: unchanged (the cheapest, as before).
+[[nodiscard]] inline std::vector<SkillupOption> PreferCastable(std::vector<SkillupOption> options,
+                                                               std::vector<bool> const& castable, std::uint32_t skill)
+{
+    auto ok = [&](SkillupOption const& o) { return o.tier < castable.size() && castable[o.tier]; };
+    if (std::none_of(options.begin(), options.end(),
+                     [&](SkillupOption const& o) { return o.known && skill < o.grey && ok(o); }))
+        return options;
+    for (SkillupOption& o : options)
+        o.known = o.known && ok(o);
+    return options;
+}
+
 // GearMarketRoute (lane housegaps; soak S112: the Alliance Tanners artisan sat at leatherworking 7 with its Light Leather
 // skill-up order open and no scraps: no Alliance leather crew, the L70 skinners bring Borean / Knothide, the rep held only
 // Medium Leather, while the Alliance AH listed 176 Ruined Leather Scraps and 207 Light Leather). A gear target's reagent
@@ -2964,6 +3012,9 @@ inline bool SmithBars() { return detail::gEnabled && detail::gParams.smithBars; 
 inline bool ClimbPastStock() { return detail::gEnabled && detail::gParams.climbPastStock; }
 inline bool GearMarketRoute() { return detail::gEnabled && detail::gParams.gearMarketRoute; }
 inline bool PotionLowBridge() { return PotionTiers() && detail::gParams.potionLowBridge; }
+inline bool ClimbCastable() { return detail::gEnabled && detail::gParams.climbCastable; }
+inline bool SmithCopper() { return SmithBars() && detail::gParams.smithCopper; }
+inline bool CraftTrace() { return detail::gEnabled && detail::gParams.craftTrace; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was), its tierLow rows after them only with PotionLowBridge too. A copy: callers keep it for the scope that reads
 // its tiers.
@@ -2982,6 +3033,11 @@ inline bool PotionLowBridge() { return PotionTiers() && detail::gParams.potionLo
 [[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)
 {
     bool const bars = l.gearBars && SmithBars();
+    // SmithCopper: the bars table with its Copper Chain Boots bridge row (kSmithCopper).
+    if (bars && l.gearCopper && SmithCopper())
+        return {l.gearCopper,
+                static_cast<std::uint8_t>(l.gearCopperCount - (GearBootstrap() ? 0 : l.gearStarters) -
+                                          (EngGuns() ? 0 : l.gearGuns) - (SmithEndgame() ? 0 : l.gearEndgame))};
     return {bars ? l.gearBars : l.gear,
             static_cast<std::uint8_t>((bars ? l.gearBarsCount : l.gearCount) - (GearBootstrap() ? 0 : l.gearStarters) -
                                               (EngGuns() ? 0 : l.gearGuns) - (SmithEndgame() ? 0 : l.gearEndgame))};

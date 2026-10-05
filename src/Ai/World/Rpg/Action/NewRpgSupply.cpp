@@ -10,7 +10,9 @@
 // keeps bag room (junk sold / destroyed, a bag bought) and adventures as an apprentice below ArtisanMinLevel.
 
 #include <algorithm>
+#include <functional>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <utility>
 
@@ -32,8 +34,10 @@
 #include "PlayerbotAI.h"
 #include "QuestDef.h"
 #include "SelfCraftPolicy.h"
+#include "Spell.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "StringFormat.h"
 #include "SupplyPolicy.h"
 #include "TradePolicy.h"
 #include "Trainer.h"
@@ -99,6 +103,7 @@ struct RoleState
     std::uint64_t rankMs = 0;       // SmithEndgame: next rank trainer trip
     std::uint64_t mineReadyMs = 0;  // MineMs: next mining stint (the last one's end + MineCooldownMs)
     std::uint32_t mineHeld = 0;     // MineMs: stone + ore in bags at the stint's start (MinedUnits)
+    std::uint32_t traceKey = 0;     // CraftTrace: the last craft_trace line logged (its hash; change detection only)
 };
 
 // MineMs: the target's Market wants (item ids) the mining stint checks against stone / ore (MineDue).
@@ -136,6 +141,18 @@ void StoreRole(std::uint32_t guid, RoleState const& s)
 {
     std::lock_guard<std::mutex> guard(gRoleLock);
     gRoleStates[guid] = s;
+}
+
+// CraftTrace (lane hordehouses; soaks S110-S115: three Horde master artisans held their target's reagents for hours, a
+// known recipe, and cast nothing, with no log line saying which gate stopped them): `[Supply] craft_trace` when the
+// artisan's home craft gate changes. Diagnostic only: it reads state, never acts.
+void TraceCraft(Player* bot, std::uint32_t& lastKey, std::string const& line)
+{
+    std::uint32_t const key = static_cast<std::uint32_t>(std::hash<std::string>{}(line));
+    if (key == lastKey)
+        return;
+    lastKey = key;
+    LOG_INFO("playerbots", "[Supply] craft_trace bot={} {}", bot->GetName(), line);
 }
 
 std::uint32_t LooseCount(Player* bot, std::uint32_t entry)
@@ -482,6 +499,29 @@ bool NewRpgBaseAction::SupplyStep()
     }
     // A role bot never falls through to quests / grind / errands / contracts. Combat, death, a flight, a
     // teleport or a cast in progress belong to other engines or finish on their own: hold this tick.
+    if (CraftTrace() && role.role == Role::Artisan)
+    {
+        // CraftTrace: which hold, if any (the artisan's own craft cast in flight is not one).
+        Spell const* cur = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+        RoleState t = LoadRole(guid);
+        char const* const hold = !bot->IsAlive()                 ? "dead"
+                                 : bot->IsInCombat()             ? "combat"
+                                 : bot->IsInFlight()             ? "flight"
+                                 : bot->IsBeingTeleported()      ? "teleport"
+                                 : bot->IsNonMeleeSpellCast(false) &&
+                                         !(cur && t.castSpell && cur->m_spellInfo->Id == t.castSpell)
+                                     ? "casting"
+                                 : !role.home.set                ? "no_home"
+                                                                 : nullptr;
+        if (hold)
+        {
+            Spell const* any = cur ? cur : bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL)
+                                               ? bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL)
+                                               : bot->GetCurrentSpell(CURRENT_AUTOREPEAT_SPELL);
+            TraceCraft(bot, t.traceKey, Acore::StringFormat("hold={} spell={}", hold, any ? any->m_spellInfo->Id : 0));
+            StoreRole(guid, t);
+        }
+    }
     if (!bot->IsAlive() || bot->IsInCombat() || bot->IsInFlight() || bot->IsBeingTeleported() ||
         bot->IsNonMeleeSpellCast(false) || !role.home.set)
         return true;
@@ -1375,6 +1415,51 @@ bool NewRpgBaseAction::SupplyStep()
         s.nextMs = std::min(s.nextMs, now + 2000);  // the next trip (e.g. mailbox -> trainer) soon after
         StoreRole(guid, s);
         return true;
+    }
+
+    // CraftTrace: the home craft gate as the branch below meets it (read only; logged on change).
+    if (CraftTrace() && crafter)
+    {
+        std::uint32_t spell = 0, item = 0;
+        int target = -1, next = -1;
+        if (geared)
+        {
+            target = gview.product == kNoTier ? -1 : gview.product;
+            if (std::uint8_t const c = nextGearCast(); c != kNoTier)
+            {
+                next = c;
+                spell = gtab.tiers[c].spell;
+                item = gtab.tiers[c].product;
+            }
+        }
+        else if (lined)
+        {
+            std::uint8_t const product = lview.product;
+            bool const order = product != kNoTier && lview.remaining > LooseCount(bot, L.tiers[product].product) &&
+                               bot->HasSpell(L.tiers[product].spell);
+            std::uint8_t const goal = order ? product : lview.skillup;
+            target = goal == kNoTier ? -1 : goal;
+            if (std::uint8_t const c = goal == kNoTier ? kNoTier
+                                           : NextCast(L, goal, [&](std::uint32_t it) { return LooseCount(bot, it); });
+                c != kNoTier)
+            {
+                next = c;
+                spell = L.tiers[c].spell;
+                item = L.tiers[c].product;
+            }
+        }
+        ItemPosCountVec dest;
+        bool const known = spell && bot->HasSpell(spell);
+        bool const can = known && botAI->CanCastSpell(spell, bot, true);
+        bool const room = item && bot->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item, 1) == EQUIP_ERR_OK;
+        TraceCraft(bot, s.traceKey,
+                   Acore::StringFormat("at_home={} branch={} target={} remaining={} next={} spell={} known={} can_cast={} "
+                                       "room={} focus_missing={} moving={} standing={} form={} mounted={} pending={}",
+                                       atHome, artisan ? "bags" : lined ? "line" : "gear", target,
+                                       geared ? gview.remaining : lview.remaining, next, spell, known, can, room,
+                                       spell && FocusMissing(bot, spell, geared ? gst : lst), bot->isMoving(),
+                                       bot->IsStandState(), uint32(bot->GetShapeshiftForm()), bot->IsMounted(),
+                                       s.castSpell));
     }
 
     // At home, nothing to fetch: the artisan crafts (craft / gearCraft above).
