@@ -47,6 +47,7 @@
 #include "SelfCraftPolicy.h"
 #include "SquadPolicy.h"
 #include "SupplyPolicy.h"
+#include "WeaponOrderPolicy.h"
 #include "TradePolicy.h"
 #include "Trainer.h"
 #include "WorldPacket.h"
@@ -88,7 +89,10 @@ std::array<std::vector<std::uint32_t>, kLineCount> gLineRoute;
 std::array<std::vector<std::uint8_t>, kLineCount> gGearRank;
 std::vector<std::uint32_t> gPriority;
 std::array<std::vector<std::uint32_t>, kLineCount> gGearYield;  // per recipe: items per cast (GearYield)
-std::array<std::array<std::uint8_t, 2>, kLineCount> gLineSpec{};  // AutoWow.Supply.Spec.<House>.<Team> (ScanGearNeeds)
+std::array<std::array<std::uint8_t, 2>, kLineCount> gLineSpec{};
+// WeaponOrders (world thread only): order id -> first seen (ms), and per team the open order of a (guid, slot) need.
+std::unordered_map<std::uint32_t, std::uint64_t> gWeaponOrderSeen;
+std::array<std::map<std::pair<std::uint32_t, std::uint8_t>, std::uint32_t>, 2> gWeaponOrderOf;  // AutoWow.Supply.Spec.<House>.<Team> (ScanGearNeeds)
 
 // Shared: the world thread writes, role bots' map threads and donors read / take.
 struct TeamState
@@ -2076,6 +2080,98 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
     return out;
 }
 
+// WeaponOrders (lane smithfocus2; world thread, overlord): the team's pending AutoWow.Gear.NoWhite weapon orders as smith
+// gear needs. An order whose bot's worn weapon reached its floor elsewhere, or older than WeaponOrderTimeoutMs, is
+// cancelled; an online bot's order maps to the best recipe the artisan knows that the stock scorer rates an upgrade for
+// that slot (PickWeaponRecipe), else it waits. `[Supply] weapon_order` logs and `supply` rows (line mail_gear, op
+// weapon_order / weapon_fill / weapon_cancel_*) record each step.
+std::vector<GearNeed> WeaponOrderNeeds(std::size_t li, bool alliance, std::vector<bool> const& known, Player* who)
+{
+    Params const& p = detail::gParams;
+    RecipeTable const G = GearTable(kCatalog[li]);
+    std::size_t const t = T(alliance);
+    std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+    std::vector<GearNeed> out;
+    gWeaponOrderOf[t].clear();
+    for (AutoWowWeaponOrder::Order const& o : AutoWowWeaponOrder::Pending(alliance))
+    {
+        auto const seen = gWeaponOrderSeen.try_emplace(o.id, now).first->second;
+        Player* m = Online(o.guid);
+        Item const* worn = m && o.slot < EQUIPMENT_SLOT_END ? m->GetItemByPos(INVENTORY_SLOT_BAG_0, o.slot) : nullptr;
+        std::uint32_t const wornIlvl = worn ? worn->GetTemplate()->ItemLevel : 0;
+        WeaponOrderVerdict const verdict = JudgeWeaponOrder(wornIlvl, o.minIlvl, seen, now, p.weaponOrderTimeoutMs);
+        if (verdict != WeaponOrderVerdict::Keep)
+        {
+            char const* const why = verdict == WeaponOrderVerdict::Better ? "weapon_cancel_better" : "weapon_cancel_timeout";
+            AutoWowWeaponOrder::Cancel(o.id);
+            gWeaponOrderSeen.erase(o.id);
+            LOG_INFO("playerbots", "[Supply] weapon_order cancel={} oid={} bot={} slot={} worn_ilvl={} min_ilvl={} age_ms={}",
+                     why, o.id, o.guid, uint32(o.slot), wornIlvl, o.minIlvl, now - seen);
+            if (who)
+                EmitLine(Line::MailGear, who, Reason::Refused, o.id, 0, 1, 0, 0, o.guid, why, o.guid);
+            continue;
+        }
+        PlayerbotAI* ai = m && m->IsInWorld() ? PlayerbotsMgr::instance().GetPlayerbotAI(m) : nullptr;
+        if (!ai)
+            continue;  // offline: the order waits (its timeout still runs)
+        std::vector<WeaponCandidate> ranked;
+        for (std::uint8_t const r : gGearRank[li])
+        {
+            ItemTemplate const* proto = r < G.tierCount ? sObjectMgr->GetItemTemplate(G.tiers[r].product) : nullptr;
+            if (!proto || proto->Class != ITEM_CLASS_WEAPON)
+                continue;
+            WeaponCandidate c;
+            c.recipe = r;
+            c.slot = ai->FindEquipSlot(proto, NULL_SLOT, true);
+            c.reqLevel = proto->RequiredLevel;
+            c.ilvl = proto->ItemLevel;
+            c.known = r < known.size() && known[r];
+            c.bridge = G.tiers[r].family == kFamilyBridge;
+            c.specOk = SpecAllows(G.tiers[r].spec, gLineSpec[li][t]);
+            c.usable = m->CanUseItem(proto) == EQUIP_ERR_OK;
+            // The stock scorer only when the cheap gates pass (each call creates a scratch item).
+            c.upgrade = c.known && !c.bridge && c.slot == o.slot && c.reqLevel <= m->GetLevel() && c.usable &&
+                        GearUpgrade(ai, m, proto);
+            ranked.push_back(c);
+        }
+        std::uint8_t const recipe = PickWeaponRecipe(ranked, o.slot, m->GetLevel(), o.minIlvl);
+        bool const first = gWeaponOrderSeen[o.id] == now;
+        if (recipe == kNoTier)
+        {
+            if (first)
+                LOG_INFO("playerbots", "[Supply] weapon_order wait oid={} bot={} slot={} min_ilvl={}: no known upgrade recipe",
+                         o.id, o.guid, uint32(o.slot), o.minIlvl);
+            continue;
+        }
+        gWeaponOrderOf[t][{o.guid, o.slot}] = o.id;
+        out.push_back({o.guid, recipe, o.slot, 0, IlvlSum(m)});
+        if (first)
+        {
+            LOG_INFO("playerbots", "[Supply] weapon_order take oid={} bot={} slot={} recipe={} item={} min_ilvl={}", o.id,
+                     o.guid, uint32(o.slot), G.tiers[recipe].spell, G.tiers[recipe].product, o.minIlvl);
+            if (who)
+                EmitLine(Line::MailGear, who, Reason::Order, o.id, G.tiers[recipe].product, 1, 0, 0, o.guid,
+                         "weapon_order", o.guid);
+        }
+    }
+    return out;
+}
+
+// WeaponOrders: a piece mailed to a need with an open weapon order fills it.
+void FillWeaponOrder(std::size_t t, Player* from, GearNeed const& n, std::uint32_t product)
+{
+    auto const it = gWeaponOrderOf[t].find({n.guid, n.slot});
+    if (it == gWeaponOrderOf[t].end())
+        return;
+    std::uint32_t const oid = it->second;
+    gWeaponOrderOf[t].erase(it);
+    gWeaponOrderSeen.erase(oid);
+    bool const filled = AutoWowWeaponOrder::Fill(oid);
+    LOG_INFO("playerbots", "[Supply] weapon_order fill oid={} bot={} slot={} item={} from={} queued={}", oid, n.guid,
+             uint32(n.slot), product, Low(from), filled);
+    EmitLine(Line::MailGear, from, Reason::Deliver, oid, product, 1, 0, Low(from), n.guid, "weapon_fill", n.guid);
+}
+
 // A gear line over one team (world thread). Overlord: the need scan and the order (top GearMaxOrder needs, plus
 // RepStockPerItem per wanted recipe for the rep, less the finished pieces the house holds). Every tick: the artisan's
 // finished pieces go straight to their named consumers (still an upgrade), the rest to the rep's stock (each piece paid
@@ -2116,6 +2212,8 @@ void GearTick(Line line, bool alliance, bool overlord)
             held[i] = castUnits(static_cast<std::uint8_t>(i), house(G.tiers[i].product));
         }
         needs = RankGearNeeds(ScanGearNeeds(li, alliance, known));
+        if (WeaponOrders() && line == Line::MailGear)
+            needs = MergeWeaponNeeds(needs, WeaponOrderNeeds(li, alliance, known, art ? art : rep));
         std::vector<GearOrder> orders = PlanGearOrders(needs, held, p.gearMaxOrder, p.repStockPerItem);
         if (GearBootstrap() && needs.empty() && art)
             orders = BootstrapGearOrder(line, alliance, art, known, held);
@@ -2188,6 +2286,8 @@ void GearTick(Line line, bool alliance, bool overlord)
                 continue;
             }
             EmitLine(line, from, Reason::Deliver, v.orderId, product, 1, 0, Low(from), n.guid, nullptr, n.guid);
+            if (WeaponOrders() && line == Line::MailGear)
+                FillWeaponOrder(t, from, n, product);
             if (fromArtisan)
                 paid(n.recipe, 1);
             else
@@ -2977,6 +3077,10 @@ void LoadConfig()
     p.gearSkillupRestock = sConfigMgr->GetOption<bool>("AutoWow.Supply.GearSkillupRestock", false);
     p.potionTiers = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionTiers", false);
     p.smithEndgame = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithEndgame", false);
+    p.weaponOrders = sConfigMgr->GetOption<bool>("AutoWow.Supply.WeaponOrders", false);
+    p.weaponOrderTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.WeaponOrderTimeoutMs", 7200000);
+    gWeaponOrderSeen.clear();
+    gWeaponOrderOf = {};
     p.orderBackoffMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OrderBackoffMs", 0);
     p.mineMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineMs", 0);
     p.mineCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineCooldownMs", 1800000);

@@ -1353,6 +1353,60 @@ TEST(SupplySmithEndgame, MineDueOnlyForStoneOrOreLacks)
     EXPECT_FALSE(MineDue({}, true, true, 1200000, 100, 0));
 }
 
+TEST(SupplyWeaponOrders, PicksTheBestKnownUpgradeForTheOrderedSlot)
+{
+    // Ranked best first: a Titansteel two-hander (L80), a Cobalt one-hander (L71), a Fel Iron Hatchet (L61), a bridge.
+    auto cand = [](std::uint8_t r, std::uint8_t slot, std::uint32_t req, std::uint32_t ilvl)
+    {
+        WeaponCandidate c;
+        c.recipe = r;
+        c.slot = slot;
+        c.reqLevel = req;
+        c.ilvl = ilvl;
+        c.known = c.usable = c.upgrade = true;
+        return c;
+    };
+    std::vector<WeaponCandidate> ranked = {cand(29, 15, 80, 200), cand(18, 15, 71, 146), cand(15, 15, 61, 93),
+                                           cand(3, 15, 14, 20)};
+    ranked[3].bridge = true;
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 80, 0), 29u);
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 72, 0), 18u);    // RequiredLevel over the bot's level: next
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 65, 0), 15u);
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 65, 94), kNoTier);  // under the order's floor
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 30, 0), kNoTier);   // the bridge never serves an order
+    EXPECT_EQ(PickWeaponRecipe(ranked, 16, 80, 0), kNoTier);   // other slot
+    ranked[0].known = false;
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 80, 0), 18u);
+    ranked[1].upgrade = false;  // the stock scorer says no
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 80, 0), 15u);
+    ranked[2].usable = false;   // class / weapon skill
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 80, 0), kNoTier);
+    ranked[2].usable = true;
+    ranked[2].specOk = false;
+    EXPECT_EQ(PickWeaponRecipe(ranked, 15, 80, 0), kNoTier);
+    EXPECT_EQ(PickWeaponRecipe({}, 15, 80, 0), kNoTier);
+}
+
+TEST(SupplyWeaponOrders, CancelsOnBetterWornOrTimeoutAndMergesFirst)
+{
+    EXPECT_EQ(JudgeWeaponOrder(60, 93, 1000, 2000, 7200000), WeaponOrderVerdict::Keep);
+    EXPECT_EQ(JudgeWeaponOrder(93, 93, 1000, 2000, 7200000), WeaponOrderVerdict::Better);
+    EXPECT_EQ(JudgeWeaponOrder(60, 93, 1000, 1000 + 7200000, 7200000), WeaponOrderVerdict::Timeout);
+    EXPECT_EQ(JudgeWeaponOrder(60, 93, 1000, 1000 + 7199999, 7200000), WeaponOrderVerdict::Keep);
+    EXPECT_EQ(JudgeWeaponOrder(60, 93, 5000, 1000, 7200000), WeaponOrderVerdict::Keep);  // clock before first seen
+    EXPECT_EQ(JudgeWeaponOrder(60, 0, 0, 99999999, 0), WeaponOrderVerdict::Keep);       // no floor, no timeout
+
+    std::vector<GearNeed> const scan = {{100, 5, 15, 3, 900}, {200, 7, 5, 4, 800}};
+    std::vector<GearNeed> const orders = {{100, 9, 15, 0, 900}};
+    std::vector<GearNeed> const merged = MergeWeaponNeeds(scan, orders);
+    ASSERT_EQ(merged.size(), 2u);
+    EXPECT_EQ(merged[0].recipe, 9u);   // the order's recipe replaces the scan's need of (100, slot 15), first
+    EXPECT_EQ(merged[1].guid, 200u);
+    EXPECT_EQ(MergeWeaponNeeds(scan, {}).size(), 2u);
+    EXPECT_FALSE(Params{}.weaponOrders);  // opt-in
+    EXPECT_EQ(Params{}.weaponOrderTimeoutMs, 7200000u);
+}
+
 TEST(SupplyGear, TablesMatchTheWorldDb)
 {
     std::vector<std::uint32_t> const vendor = {2320, 2321, 4291, 2604, 2605, 6260, 4340};

@@ -146,6 +146,11 @@ struct Params
     std::uint32_t mineMs = 0;              // AutoWow.Supply.MineMs: a gear artisan with a MineSpot mines its stone / ore
                                            // there this long when its target lacks them (0 = off)
     std::uint32_t mineCooldownMs = 1800000;  // AutoWow.Supply.MineCooldownMs: between two mine stints
+    // Weapon orders (lane smithfocus2; off by default): the Smiths line consumes AutoWow.Gear.NoWhite's queue
+    // (WeaponOrderPolicy.h): a pending order is a gear need for that bot's weapon slot (PickWeaponRecipe), filled when the
+    // piece is mailed, cancelled when the slot clears the order's floor elsewhere or after WeaponOrderTimeoutMs.
+    bool weaponOrders = false;               // AutoWow.Supply.WeaponOrders
+    std::uint32_t weaponOrderTimeoutMs = 7200000;  // AutoWow.Supply.WeaponOrderTimeoutMs
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -2271,6 +2276,66 @@ struct OrderPost
     return true;
 }
 
+// ---- weapon orders (lane smithfocus2, AutoWow.Supply.WeaponOrders) ----
+
+// One smith table recipe as a weapon order sees it (gear rank order, best first): the slot its product equips into for
+// the ordering bot (FindEquipSlot; 0xFF = none), its RequiredLevel and item level, and the runtime checks.
+struct WeaponCandidate
+{
+    std::uint8_t recipe = kNoTier;
+    std::uint8_t slot = 0xFF;
+    std::uint32_t reqLevel = 0;
+    std::uint32_t ilvl = 0;
+    bool known = false;    // the artisan has the recipe
+    bool bridge = false;   // kFamilyBridge: skill-up output, never member demand
+    bool specOk = true;    // SpecAllows for the team
+    bool usable = false;   // CanUseItem for the bot (class / weapon skill)
+    bool upgrade = false;  // the stock upgrade scorer rates it an upgrade over the worn piece
+};
+
+// The order's recipe: the first candidate (best first) the artisan knows, not a bridge, its spec, equipping into the
+// order's slot, usable at the bot's current level, an upgrade, and at least the order's floor item level. kNoTier = none.
+[[nodiscard]] inline std::uint8_t PickWeaponRecipe(std::vector<WeaponCandidate> const& ranked, std::uint8_t slot,
+                                                   std::uint32_t level, std::uint32_t minIlvl)
+{
+    for (WeaponCandidate const& c : ranked)
+        if (c.known && !c.bridge && c.specOk && c.slot == slot && c.reqLevel <= level && c.usable && c.upgrade &&
+            c.ilvl >= minIlvl)
+            return c.recipe;
+    return kNoTier;
+}
+
+enum class WeaponOrderVerdict : std::uint8_t
+{
+    Keep = 0,
+    Better = 1,  // the worn weapon reached the order's floor (another source): cancel
+    Timeout = 2  // open WeaponOrderTimeoutMs since the line first saw it: cancel
+};
+
+[[nodiscard]] inline WeaponOrderVerdict JudgeWeaponOrder(std::uint32_t wornIlvl, std::uint32_t minIlvl,
+                                                         std::uint64_t firstSeenMs, std::uint64_t nowMs,
+                                                         std::uint32_t timeoutMs)
+{
+    if (minIlvl && wornIlvl >= minIlvl)
+        return WeaponOrderVerdict::Better;
+    if (timeoutMs && nowMs >= firstSeenMs && nowMs - firstSeenMs >= timeoutMs)
+        return WeaponOrderVerdict::Timeout;
+    return WeaponOrderVerdict::Keep;
+}
+
+// The ranked gear needs with the weapon order needs first (in order id order), each replacing the scan's own need of the
+// same (guid, slot).
+[[nodiscard]] inline std::vector<GearNeed> MergeWeaponNeeds(std::vector<GearNeed> const& ranked,
+                                                            std::vector<GearNeed> const& orders)
+{
+    std::vector<GearNeed> out = orders;
+    for (GearNeed const& n : ranked)
+        if (std::none_of(orders.begin(), orders.end(),
+                         [&](GearNeed const& o) { return o.guid == n.guid && o.slot == n.slot; }))
+            out.push_back(n);
+    return out;
+}
+
 // ---- self-mining (lane smithfocus, AutoWow.Supply.MineMs) ----
 
 // A gear artisan goes mining when its open target lacks stone or ore the market has not brought (`lacks`: the target's
@@ -2760,6 +2825,7 @@ inline bool EngGuns() { return detail::gEnabled && detail::gParams.engGuns; }
 inline bool GearStockSell() { return detail::gEnabled && detail::gParams.gearStockSell; }
 inline bool PotionTiers() { return detail::gEnabled && detail::gParams.potionTiers; }
 inline bool SmithEndgame() { return detail::gEnabled && detail::gParams.smithEndgame; }
+inline bool WeaponOrders() { return detail::gEnabled && detail::gParams.weaponOrders; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was). A copy: callers keep it for the scope that reads its tiers.
 [[nodiscard]] inline ProductLine ActiveLine(Line l)
