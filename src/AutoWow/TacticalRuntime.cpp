@@ -323,6 +323,22 @@ void LoadConfig()
     detail::gEnable = sConfigMgr->GetOption<bool>("AutoWow.Tactics.Enable", false);
     detail::gShadowLevelingSpec = sConfigMgr->GetOption<bool>("AutoWow.Tactics.PriestShadowLevelingSpec", false);
     detail::gEscapeRelaxed = sConfigMgr->GetOption<bool>("AutoWow.Tactics.EscapeRelaxed", false);
+    detail::gClassFixesP1 = sConfigMgr->GetOption<bool>("AutoWow.Combat.ClassFixesP1", false);
+    {
+        AutoWowClassFixesP1::Params& f = detail::gClassFixesP1Params;
+        auto fu = [](char const* key, std::uint32_t def) { return sConfigMgr->GetOption<std::uint32_t>(key, def); };
+        f.manyAdds = std::max<std::uint32_t>(2, fu("AutoWow.Combat.ClassFixesP1.ManyAdds", f.manyAdds));
+        f.hurtHpPct = fu("AutoWow.Combat.ClassFixesP1.HurtHpPct", f.hurtHpPct);
+        f.kidneyCombo = fu("AutoWow.Combat.ClassFixesP1.KidneyCombo", f.kidneyCombo);
+        f.starvedRage = fu("AutoWow.Combat.ClassFixesP1.StarvedRage", f.starvedRage);
+        f.maelstromHealHpPct = fu("AutoWow.Combat.ClassFixesP1.MaelstromHealHpPct", f.maelstromHealHpPct);
+        f.bearEnterHpPct = fu("AutoWow.Combat.ClassFixesP1.BearEnterHpPct", f.bearEnterHpPct);
+        f.bearExitHpPct = std::max(f.bearEnterHpPct, fu("AutoWow.Combat.ClassFixesP1.BearExitHpPct", f.bearExitHpPct));
+        f.retaliationHpPct = fu("AutoWow.Combat.ClassFixesP1.RetaliationHpPct", f.retaliationHpPct);
+        f.shockManaPct = fu("AutoWow.Combat.ClassFixesP1.ShockManaPct", f.shockManaPct);
+        f.flameShockManaPct = fu("AutoWow.Combat.ClassFixesP1.FlameShockManaPct", f.flameShockManaPct);
+        f.emergencyHpPct = fu("AutoWow.Combat.ClassFixesP1.EmergencyHpPct", f.emergencyHpPct);
+    }
 
     Settings s;
     s.reevalMs = std::max<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Tactics.ReevalMs", 500));

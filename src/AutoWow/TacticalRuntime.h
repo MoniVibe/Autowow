@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "ClassFixesP1Policy.h"
 #include "PackAvoidPolicy.h"
 #include "PackRisk.h"
 #include "TacticalPolicy.h"
@@ -47,6 +48,8 @@ inline bool gEnable = false;  // T2 master; tracking also runs under it
 inline bool gShadowLevelingSpec = false;
 inline bool gEscapeRelaxed = false;
 inline bool gObserveExtra = false;  // AutoWow.Tactics.ObserveClasses non-empty (TacticalPolicy.h Tracked)
+inline bool gClassFixesP1 = false;  // AutoWow.Combat.ClassFixesP1
+inline AutoWowClassFixesP1::Params gClassFixesP1Params;
 
 // Add one already-filtered idle creature to the snapshot when it can lawfully assist at least one real attacker.
 // Production and the native-object regression share this adapter so assistance, LOS, distance and load stay one path.
@@ -60,6 +63,10 @@ inline bool Enabled() { return detail::gEnable; }
 inline bool ShadowLevelingSpec() { return detail::gShadowLevelingSpec; }
 inline bool EscapeRelaxed() { return detail::gEscapeRelaxed; }
 inline constexpr std::uint32_t kShadowLevelingSpecNo = 6;  // AiPlayerbot.PremadeSpec*.5.6
+// AutoWow.Combat.ClassFixesP1 (default 0, independent of Observe / Enable): AiFactory adds "fixes p1"
+// (ClassFixesP1Strategy.h) to solo warriors, rogues, Enhancement shamans and Feral cat druids.
+inline bool ClassFixesP1() { return detail::gClassFixesP1; }
+inline AutoWowClassFixesP1::Params const& ClassFixesP1Params() { return detail::gClassFixesP1Params; }
 
 // Reads AutoWow.Tactics.*. Called once at world init.
 void LoadConfig();

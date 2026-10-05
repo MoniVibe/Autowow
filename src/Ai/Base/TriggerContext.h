@@ -24,6 +24,7 @@
 #include "RpgTriggers.h"
 #include "RtiTriggers.h"
 #include "StuckTriggers.h"
+#include "ClassFixesP1Strategy.h"
 #include "TacticalClassStrategy.h"
 #include "TravelTriggers.h"
 #include "WaitForAttackTriggers.h"
@@ -71,6 +72,19 @@ public:
         creators["tac life tap"] = &TriggerContext::tac_life_tap;
         creators["tac pet low"] = &TriggerContext::tac_pet_low;
         creators["tac kite"] = &TriggerContext::tac_kite;
+        // AutoWow.Combat.ClassFixesP1 (ClassFixesP1Strategy.h)
+        creators["fix p1 adds"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 adds", ClassFixCond::Adds); };
+        creators["fix p1 many adds"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 many adds", ClassFixCond::ManyAdds); };
+        creators["fix p1 adds or hurt"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 adds or hurt", ClassFixCond::AddsOrHurt); };
+        creators["fix p1 caster kidney"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 caster kidney", ClassFixCond::CasterKidney); };
+        creators["fix p1 rage starved"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 rage starved", ClassFixCond::RageStarved); };
+        creators["fix p1 maelstrom heal"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 maelstrom heal", ClassFixCond::MaelstromHeal); };
+        creators["fix p1 bear hold"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 bear hold", ClassFixCond::BearHold); };
+        creators["fix p1 bear hurt"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 bear hurt", ClassFixCond::BearHurt); };
+        creators["fix p1 warrior control"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 warrior control", ClassFixCond::WarriorControl); };
+        creators["fix p1 retaliation"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 retaliation", ClassFixCond::Retaliation); };
+        creators["fix p1 aoe ok"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 aoe ok", ClassFixCond::AoeOk); };
+        creators["fix p1 water shield"] = [](PlayerbotAI* ai) -> Trigger* { return fix(ai, "fix p1 water shield", ClassFixCond::WaterShield); };
         creators["almost full health"] = &TriggerContext::AlmostFullHealth;
 
         creators["low mana"] = &TriggerContext::LowMana;
@@ -352,6 +366,7 @@ private:
     static Trigger* tac_life_tap(PlayerbotAI* botAI) { return tac(botAI, "tac life tap", ClassTacticCondition::LifeTap); }
     static Trigger* tac_pet_low(PlayerbotAI* botAI) { return tac(botAI, "tac pet low", ClassTacticCondition::PetLow); }
     static Trigger* tac_kite(PlayerbotAI* botAI) { return tac(botAI, "tac kite", ClassTacticCondition::Kite); }
+    static Trigger* fix(PlayerbotAI* botAI, char const* name, ClassFixCond c) { return new ClassFixP1Trigger(botAI, name, c); }
     static Trigger* AlmostFullHealth(PlayerbotAI* botAI) { return new AlmostFullHealthTrigger(botAI); }
     static Trigger* CriticalHealth(PlayerbotAI* botAI) { return new CriticalHealthTrigger(botAI); }
     static Trigger* TargetCriticalHealth(PlayerbotAI* botAI) { return new TargetCriticalHealthTrigger(botAI); }

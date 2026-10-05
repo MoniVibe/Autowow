@@ -15,6 +15,7 @@
 #include "ShamanNonCombatStrategy.h"
 #include "ShamanTriggers.h"
 #include "TotemsShamanStrategy.h"
+#include "ClassFixesP1Strategy.h"
 #include "TacticalClassStrategy.h"
 
 class ShamanStrategyFactoryInternal : public NamedObjectContext<Strategy>
@@ -26,6 +27,9 @@ public:
         creators["tactical"] = [](PlayerbotAI* botAI) -> Strategy* {
             return new TacticalClassStrategy(botAI, AutoWowTactics::Family::Shaman);
         };  // AutoWow.Tactics (AiFactory, treatment arm)
+        creators["fixes p1"] = [](PlayerbotAI* botAI) -> Strategy* {
+            return new ClassFixesP1Strategy(botAI, CLASS_SHAMAN);
+        };  // AutoWow.Combat.ClassFixesP1 (AiFactory)
         creators["aoe"] = &ShamanStrategyFactoryInternal::aoe;
         creators["cure"] = &ShamanStrategyFactoryInternal::cure;
         creators["healer dps"] = &ShamanStrategyFactoryInternal::healer_dps;
