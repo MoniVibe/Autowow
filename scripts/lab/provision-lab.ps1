@@ -162,6 +162,9 @@ try {
         try { $ready = $tcp.ConnectAsync('127.0.0.1', 18787).Wait(1000) -and $tcp.Connected } catch { $ready = $false } finally { $tcp.Dispose() }
     }
     if (-not $ready) { throw 'One-shot worldserver did not become ready.' }
+    # The console drops the first line sent right after the bridge port opens; settle, then send a throwaway line.
+    Start-Sleep -Seconds 10
+    $proc.StandardInput.WriteLine('.server info'); $proc.StandardInput.Flush(); Start-Sleep -Seconds 2
     foreach ($l in $lines) { $proc.StandardInput.WriteLine($l); $proc.StandardInput.Flush(); Start-Sleep -Milliseconds 300 }
     Start-Sleep -Seconds 20
     $proc.StandardInput.WriteLine('.server shutdown 1'); $proc.StandardInput.Flush()
