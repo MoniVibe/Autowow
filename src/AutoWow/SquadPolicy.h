@@ -237,7 +237,27 @@ struct Params
     std::uint32_t deathCluster = 3;        // AutoWow.Squad.DeathCluster: recent deaths (death-loop window)
     std::uint32_t dangerZoneMs = 3600000;  // AutoWow.Squad.DangerZoneMs: a death-cluster anchor zone rests this long
     std::uint32_t benchMs = 1800000;       // AutoWow.Squad.BenchMs: a bench lasts this long (no re-evaluation)
+    bool poolWeight = false;               // AutoWow.Squad.PoolWeight: node clusters count live nodes (PoolLivePermille)
 };
+
+// AutoWow.Squad.PoolWeight (lane smithfocus; soak S107b: four Rough Stone stints over 70 min gathered 0, 0, 8 and 2 of
+// 100). The source index counts every node spawn point, but pooled nodes (pool_template / pool_gameobject) keep only
+// max_limit of a pool's members spawned at once: the picked anchors' 7-9 copper vein "spawns" sat in pools of 3 of 12
+// (Durotar Skull Rock), 3 of 10 (Bramblescar) and 8 of 25 (Mulgore), about two live veins each, shared with the random
+// bots. A spawn point is live max_limit / members of the time (a pool inside a mother pool also by the mother's
+// max_limit / children), in permille; an unpooled spawn is always live.
+[[nodiscard]] inline std::uint32_t PoolLivePermille(std::uint32_t maxLimit, std::uint32_t members)
+{
+    if (!maxLimit || !members || maxLimit >= members)
+        return 1000;
+    return static_cast<std::uint32_t>(std::uint64_t(maxLimit) * 1000 / members);
+}
+
+// A node cluster is worth a stint when its spawns' live permille sum reaches MinClusterSpawns live nodes.
+[[nodiscard]] inline bool EnoughLiveNodes(std::uint64_t livePermille, std::uint32_t minClusterSpawns)
+{
+    return livePermille >= std::uint64_t(std::max<std::uint32_t>(1, minClusterSpawns)) * 1000;
+}
 
 // ---- demand ----------------------------------------------------------------------------------------------
 
