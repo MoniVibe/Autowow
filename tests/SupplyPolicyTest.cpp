@@ -2617,3 +2617,56 @@ TEST(SupplyCraftDismount, OptIn)
     EXPECT_FALSE(Params{}.craftDismount);
     EXPECT_FALSE(CraftDismount());  // module off: never
 }
+
+TEST(SupplyArtisanBagHygiene, FlagDefaultsOff)
+{
+    EXPECT_FALSE(Params{}.artisanBagHygiene);
+    EXPECT_FALSE(ArtisanBagHygiene());  // module off: never
+}
+
+TEST(SupplyArtisanBagHygiene, KeepsOneStackPerProductVendorsTheRest)
+{
+    // Three stacks of Rough Sharpening Stone (2862, a product), two Rough Boots (3319, the open order target), one
+    // bar (2840, product), plus a reagent stack (2770 copper ore) and a quest book. keepStacks = 1.
+    auto prod = [](std::uint32_t guid, std::uint32_t entry) {
+        BagStack s;
+        s.guid = guid;
+        s.entry = entry;
+        s.product = true;
+        return s;
+    };
+    std::vector<BagStack> bags;
+    bags.push_back(prod(40, 2862));
+    bags.push_back(prod(10, 2862));
+    bags.push_back(prod(25, 2862));
+    bags.push_back(prod(15, 3319));  // order target: never sold
+    bags.push_back(prod(16, 3319));
+    bags.push_back(prod(70, 2840));  // one bar: within the keep, nothing to sell
+    BagStack reagent;                // a reagent (not a product): never touched here
+    reagent.guid = 5;
+    reagent.entry = 2770;
+    reagent.house = true;
+    bags.push_back(reagent);
+    BagStack questBook = prod(3, 2862);  // a product entry a quest wants: kept
+    questBook.quest = true;
+    bags.push_back(questBook);
+
+    std::vector<std::uint32_t> const sell = SurplusProductStacks(bags, 3319, 1);
+    // Of the 2862 stacks {10,25,40} the lowest guid (10) is kept; 25 and 40 vendored. The quest stack (3) excluded.
+    // 2840 has only one stack (kept). 3319 is the order target (excluded). Reagent excluded. Ascending guids.
+    ASSERT_EQ(sell.size(), 2u);
+    EXPECT_EQ(sell[0], 25u);
+    EXPECT_EQ(sell[1], 40u);
+}
+
+TEST(SupplyArtisanBagHygiene, NothingWhenNoProductSurplus)
+{
+    std::vector<BagStack> bags;
+    BagStack keepItem;
+    keepItem.guid = 1;
+    keepItem.entry = 6948;  // hearthstone-like keep
+    keepItem.keep = true;
+    keepItem.product = true;  // even if flagged product, keep wins
+    bags.push_back(keepItem);
+    EXPECT_TRUE(SurplusProductStacks(bags, 0, 1).empty());
+}
