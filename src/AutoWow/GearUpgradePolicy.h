@@ -33,6 +33,14 @@ namespace AutoWowGear
 {
 inline constexpr std::uint8_t kPolicyVersion = 1;
 
+// AutoWow.Gear.CatchUp (default 0): forward flag so the auction catch-up helpers below (ExpectedIlvlEff, AhPlan) can
+// read it. Set by AutoWowErrands::LoadConfig; the rationale sits with ExpectedIlvlCatchUp and AhPlan below.
+namespace detail
+{
+inline bool gCatchUpEnabled = false;
+}  // namespace detail
+inline bool CatchUpEnabled() { return detail::gCatchUpEnabled; }
+
 struct Params
 {
     std::uint32_t upgradePct = 150;    // AutoWow.Gear.UpgradePct: a vendor weapon must reach this % of the current DPS
@@ -292,10 +300,30 @@ inline constexpr std::size_t kAhMaxBuys = 4;
 // A green of RequiredLevel L carries ilvl ~L+5 (world DB AH census 2026-09-28: req 35 -> 40, 45 -> 50, 49 -> 54).
 [[nodiscard]] inline std::uint32_t ExpectedIlvl(std::uint32_t level) { return level + 5; }
 
+// AutoWow.Gear.CatchUp: the real per-band GREEN item-level curve (mirrors AutoWowNoWhite::GreenIlvl; kept local to
+// avoid a header cycle, NoWhitePolicy.h already includes this file). level + 5 only holds to ~L55; above it the
+// stock ExpectedIlvl undershoots real content ~2x (live world DB 2026-10-05: green ilvl 133 at L70, 162 at L75,
+// 174 at L78), so the catch-up run never fired for the Outland / Northrend band (see the AuctionUpgrades notes).
+[[nodiscard]] inline std::uint32_t ExpectedIlvlCatchUp(std::uint32_t level)
+{
+    if (level <= 57)
+        return level + 5;
+    if (level <= 70)
+        return 62 + 9 * (level - 58) / 2;  // Outland greens: 62 + 4.5 x (L - 58), truncated
+    return 130 + 63 * (level - 71) / 10;   // Northrend greens: 130 + 6.3 x (L - 71), truncated
+}
+
+// The ilvl expectation the catch-up run-due test uses: the real green curve with AutoWow.Gear.CatchUp, else the
+// stock level + 5 (OFF: byte-identical).
+[[nodiscard]] inline std::uint32_t ExpectedIlvlEff(std::uint32_t level)
+{
+    return CatchUpEnabled() ? ExpectedIlvlCatchUp(level) : ExpectedIlvl(level);
+}
+
 // Average equipped ilvl (integer; empty slots count 0) under IlvlPct of the curve.
 [[nodiscard]] inline bool IlvlFarBelow(AhParams const& ap, std::uint32_t avgIlvl, std::uint32_t level)
 {
-    return std::uint64_t(avgIlvl) * 100 < std::uint64_t(ExpectedIlvl(level)) * ap.ilvlPct;
+    return std::uint64_t(avgIlvl) * 100 < std::uint64_t(ExpectedIlvlEff(level)) * ap.ilvlPct;
 }
 
 [[nodiscard]] inline std::uint64_t AhItemCap(AhParams const& ap, std::uint32_t level)
@@ -348,16 +376,50 @@ inline constexpr std::array<std::uint8_t, 17> kAhOrderOther = {15, 16, 4, 6, 0, 
     return a.id < b.id;
 }
 
+// The best offer a slot has within `cap` (AhBetter), or kNone. AutoWow.Gear.CatchUp uses it to rank slots.
+[[nodiscard]] inline std::size_t BestOfferForSlot(std::vector<AhOffer> const& offers, std::uint8_t slot,
+                                                  std::uint64_t cap)
+{
+    std::size_t best = kNone;
+    for (std::size_t i = 0; i < offers.size(); ++i)
+    {
+        AhOffer const& o = offers[i];
+        if (o.slot != slot || !o.gain || !o.price || o.price > cap)
+            continue;
+        if (best == kNone || AhBetter(o, offers[best]))
+            best = i;
+    }
+    return best;
+}
+
 // The visit's purchases in buy order: per slot of the order the AhBetter-best offer with a gain, <= AhItemCap and
-// <= what is left of `budget`; at most MaxBuys (<= kAhMaxBuys).
+// <= what is left of `budget`; at most MaxBuys (<= kAhMaxBuys). AutoWow.Gear.CatchUp keeps the weapon slots first
+// (the two-hander / off-hand rule depends on main hand before off hand) but reorders the armor + accessory tail by
+// each slot's best offer, so an empty trinket / ring / neck / back (its full-ilvl gain ranks high) is reached before
+// the cap runs out instead of being walked last. OFF: the fixed order, byte-identical.
 [[nodiscard]] inline std::vector<AhOffer> AhPlan(AhParams const& ap, std::vector<AhOffer> const& offers,
                                                  std::uint32_t level, bool hunter, std::uint64_t budget)
 {
     std::uint64_t const cap = AhItemCap(ap, level);
     std::size_t const maxBuys = std::min<std::size_t>(ap.maxBuys, kAhMaxBuys);
+    std::array<std::uint8_t, 17> const& order = hunter ? kAhOrderHunter : kAhOrderOther;
+    std::vector<std::uint8_t> seq(order.begin(), order.end());
+    if (CatchUpEnabled())
+    {
+        std::size_t const weapons = hunter ? 3 : 2;  // {15,17,16} / {15,16}: keep ahead of the sorted tail
+        std::stable_sort(seq.begin() + weapons, seq.end(),
+                         [&](std::uint8_t a, std::uint8_t b)
+                         {
+                             std::size_t const ia = BestOfferForSlot(offers, a, cap);
+                             std::size_t const ib = BestOfferForSlot(offers, b, cap);
+                             if (ia == kNone || ib == kNone)
+                                 return ia != kNone && ib == kNone;  // slots with an offer first
+                             return AhBetter(offers[ia], offers[ib]);
+                         });
+    }
     std::vector<AhOffer> out;
     bool twoHander = false;
-    for (std::uint8_t const slot : hunter ? kAhOrderHunter : kAhOrderOther)
+    for (std::uint8_t const slot : seq)
     {
         if (out.size() >= maxBuys)
             break;
