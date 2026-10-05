@@ -2670,3 +2670,42 @@ TEST(SupplyArtisanBagHygiene, NothingWhenNoProductSurplus)
     bags.push_back(keepItem);
     EXPECT_TRUE(SurplusProductStacks(bags, 0, 1).empty());
 }
+
+namespace
+{
+using namespace AutoWowSupply;
+
+// HouseBoE Part 1: the pure eligibility predicate for converting a just-crafted BoP instance to BoE. All three facts
+// must hold -- the flag, a house artisan, and a Bind-on-Pickup template -- or the craft is left as the core made it.
+TEST(SupplyHouseBoE, EligibleOnlyWhenFlagHouseArtisanAndBindOnPickup)
+{
+    EXPECT_TRUE(HouseBoEEligible(true, true, true));
+    EXPECT_FALSE(HouseBoEEligible(false, true, true));   // flag off: never
+    EXPECT_FALSE(HouseBoEEligible(true, false, true));   // not a house artisan: other players keep BoP
+    EXPECT_FALSE(HouseBoEEligible(true, true, false));   // ordinary BoE / unbound craft: nothing to clear
+    EXPECT_FALSE(HouseBoEEligible(false, false, false));
+}
+
+// HouseBoE Part 3: the Blacksmithing specialization a house line takes maps to the one trainer "learn" spell cast to
+// earn it, and to the known spell that proves it. kSpecAny (no assignment) maps to nothing.
+TEST(SupplyHouseBoE, SpecLearnAndKnownSpellsMapPerSpecialization)
+{
+    EXPECT_EQ(SpecLearnSpell(kSpecArmor), 9790u);
+    EXPECT_EQ(SpecLearnSpell(kSpecWeapon), 9789u);
+    EXPECT_EQ(SpecLearnSpell(kSpecAny), 0u);
+    EXPECT_EQ(SpecKnownSpell(kSpecArmor), 9788u);
+    EXPECT_EQ(SpecKnownSpell(kSpecWeapon), 9787u);
+    EXPECT_EQ(SpecKnownSpell(kSpecAny), 0u);
+}
+
+// HouseBoE Part 2: spec rows reach only the team that took that specialization; any-spec rows reach every team. This
+// is the gate that, under the flag, lets a house craft its own specialization BoP recipes without serving others.
+TEST(SupplyHouseBoE, SpecAllowsRestrictsSpecRowsToTheMatchingTeam)
+{
+    EXPECT_TRUE(SpecAllows(kSpecAny, kSpecWeapon));   // any-spec row: everyone
+    EXPECT_TRUE(SpecAllows(kSpecAny, kSpecAny));
+    EXPECT_TRUE(SpecAllows(kSpecArmor, kSpecArmor));  // matched spec
+    EXPECT_FALSE(SpecAllows(kSpecArmor, kSpecWeapon));
+    EXPECT_FALSE(SpecAllows(kSpecWeapon, kSpecAny));  // an unspecialized team makes no spec row
+}
+}  // namespace

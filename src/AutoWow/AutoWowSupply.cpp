@@ -3173,6 +3173,7 @@ void LoadConfig()
     p.craftTrace = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftTrace", false);
     p.craftDismount = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftDismount", false);
     p.artisanBagHygiene = sConfigMgr->GetOption<bool>("AutoWow.Professions.ArtisanBagHygiene", false);
+    p.houseBoE = sConfigMgr->GetOption<bool>("AutoWow.Professions.HouseBoE", false);
     gLineSpec = {};
     gPriority.clear();
     {
@@ -3508,10 +3509,16 @@ void LoadConfig()
                      L.name, alliance ? "alliance" : "horde", st.mailbox.entry, st.trainer.entry, st.threadVendor.entry,
                      vendorAll.size());
             // AutoWow.Supply.Spec.<House>.<Team> (lane smithfocus): the team's specialization rows (default none).
+            // HouseBoE (Part 2): a specialization row is a Bind-on-Pickup craft, so order planning only admits the
+            // team's spec rows (SpecAllows) under the flag -- off, the spec stays kSpecAny and the OFF path is
+            // byte-identical (every shipped row is kSpecAny today, so this changes nothing observable until verified
+            // BoP spec rows are authored into the gear tables).
             std::string const specKey = "AutoWow.Supply.Spec." + gLineHouseName[li] + "." + team;
             std::string const specText = sConfigMgr->GetOption<std::string>(specKey, "none", false);
-            if (!ParseSpec(specText, gLineSpec[li][T(alliance)]))
+            std::uint8_t parsedSpec = kSpecAny;
+            if (!ParseSpec(specText, parsedSpec))
                 LOG_ERROR("server.loading", "[Supply] bad {} '{}': none", specKey, specText);
+            gLineSpec[li][T(alliance)] = HouseBoE() ? parsedSpec : kSpecAny;
             // AutoWow.Supply.MineSpot.<House>.<Team> (MineMs): where the artisan mines, on its home map.
             if (detail::gParams.mineMs)
             {
@@ -4144,6 +4151,7 @@ std::uint32_t GearYield(Line l, std::uint8_t recipe)
     return recipe < y.size() ? y[recipe] : 1;
 }
 std::vector<std::uint32_t> const& LineLearnSpells(Line l) { return gLineLearn[static_cast<std::size_t>(l)]; }
+std::uint8_t LineSpecOf(Line l, bool alliance) { return gLineSpec[static_cast<std::size_t>(l)][T(alliance)]; }
 
 void SetLineArtisanWant(Line l, bool alliance, std::uint64_t copper)
 {

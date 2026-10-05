@@ -181,6 +181,13 @@ struct Params
     bool artisanBagHygiene = false;  // AutoWow.Professions.ArtisanBagHygiene: a master artisan at home equips spare
                                      // carried bags and vendors its own crafted-output surplus beyond one kept stack
                                      // (S117: own sharpening stones / bars never shipped filled bags, crafting stopped)
+    // Lane houseboe (owner ruling 2026-10-06):
+    bool houseBoE = false;           // AutoWow.Professions.HouseBoE: a master artisan's order craft of a Bind-on-Pickup
+                                     // item is delivered Bind-on-Equip -- the crafted instance's soulbound state is
+                                     // cleared so the house can mail it to the ordering adventurer (who binds it on
+                                     // equip). Also lets order planning honour a house's AutoWow.Supply.Spec row
+                                     // (SpecAllows) and gives the house gear artisan its house specialization. Only
+                                     // house artisans, only order crafts; other players' crafts stay Bind-on-Pickup.
 };
 
 // Raw materials routed with AutoWow.Supply.RouteRaw (3.3.5 item ids): each to its kind's house rep
@@ -1201,6 +1208,28 @@ inline bool ParseSpec(std::string_view text, std::uint8_t& out)
 
 // A row the team's artisan may make: any-spec rows always, a spec row only under the team's own specialization.
 [[nodiscard]] inline constexpr bool SpecAllows(std::uint8_t row, std::uint8_t team) { return row == kSpecAny || row == team; }
+
+// HouseBoE (owner ruling 2026-10-06). The predicate deciding whether a just-crafted instance is delivered BoE: the
+// flag is on, the crafter is a house artisan (master artisan role), and the item's template binds on pickup. Pure so
+// it is unit-tested without the core (the caller passes the template's BIND_WHEN_PICKED_UP as `bindOnPickup`). An
+// item that is not BoP (ordinary BoE / unbound craft) is left exactly as the core made it.
+[[nodiscard]] inline constexpr bool HouseBoEEligible(bool flagOn, bool houseArtisan, bool bindOnPickup)
+{
+    return flagOn && houseArtisan && bindOnPickup;
+}
+
+// HouseBoE, specialization grant (Part 3). The Blacksmithing specialization a house gear line takes maps to the
+// trainer "learn" spell cast once to earn it (the known spell it grants is SpecKnownSpell). Pure; 0 = none (kSpecAny
+// or a non-Blacksmithing spec, which this slice does not auto-assign). Spell ids are the 3.3.5 Blacksmithing spec
+// spells (Armorsmith 9788 via 9790, Weaponsmith 9787 via 9789; see PlayerbotFactory::ProfessionSpecializationSpell).
+[[nodiscard]] inline constexpr std::uint32_t SpecLearnSpell(std::uint8_t spec)
+{
+    return spec == kSpecArmor ? 9790u : spec == kSpecWeapon ? 9789u : 0u;
+}
+[[nodiscard]] inline constexpr std::uint32_t SpecKnownSpell(std::uint8_t spec)
+{
+    return spec == kSpecArmor ? 9788u : spec == kSpecWeapon ? 9787u : 0u;
+}
 
 struct ProductLine
 {
@@ -3040,6 +3069,9 @@ LineView LineViewOf(Line l, bool alliance);
 Stations const& LineStationsOf(Line l, bool alliance);  // mailbox / auctioneer as the team's; trainer and
                                                         // threadVendor = the line's trainer and reagent vendor
 std::vector<std::uint32_t> const& LineLearnSpells(Line l);
+// HouseBoE: the specialization (kSpec*) the line's team artisan is assigned (AutoWow.Supply.Spec.<House>.<Team>, forced
+// to kSpecAny while the flag is off so the OFF path is unchanged). kSpecAny when none.
+std::uint8_t LineSpecOf(Line l, bool alliance);
 // Map thread (line artisan step): copper it lacks for vendor reagents / training / postage.
 void SetLineArtisanWant(Line l, bool alliance, std::uint64_t copper);
 void ClearLineSurplus(Line l, bool alliance);
@@ -3067,6 +3099,7 @@ inline bool SmithCopper() { return SmithBars() && detail::gParams.smithCopper; }
 inline bool CraftTrace() { return detail::gEnabled && detail::gParams.craftTrace; }
 inline bool CraftDismount() { return detail::gEnabled && detail::gParams.craftDismount; }
 inline bool ArtisanBagHygiene() { return detail::gEnabled && detail::gParams.artisanBagHygiene; }
+inline bool HouseBoE() { return detail::gEnabled && detail::gParams.houseBoE; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was), its tierLow rows after them only with PotionLowBridge too. A copy: callers keep it for the scope that reads
 // its tiers.
