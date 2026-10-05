@@ -603,4 +603,44 @@ TEST(Transports, DarkPortalArrivalExcludedTimeAndTerminalWalk)
     EXPECT_TRUE(TerminalWalkAllowed(true, ArrivalPhase::Complete));
     EXPECT_TRUE(TerminalWalkAllowed(false, ArrivalPhase::Failed));  // unrelated chains remain unchanged
 }
+
+// AutoWow.ZoneProgression.Northrend2: Outland starts take the faction city portal (world DB gameobject spawns,
+// spell_target_position landings) then the native terminal passage; no Dark Portal, no Grom'gol prefix.
+TEST(Transports, Northrend2OutlandStartsTakeTheCityPortal)
+{
+    using AutoWowZoneProgression::kBoreanZone;
+    std::vector<Crossing> const table = Northrend2Crossings();
+    std::vector<Crossing> a = ChainFor(table, 1, 3523, kBoreanZone);  // Netherstorm
+    ASSERT_EQ(a.size(), 2U);
+    EXPECT_EQ(a[0].via, Via::GameObject);
+    EXPECT_EQ(a[0].object, 183325U);  // Shattrath Portal to Stormwind
+    EXPECT_EQ(a[0].exitMap, 0U);
+    EXPECT_EQ(a[0].exitX, -9003);
+    EXPECT_EQ(a[1].object, 190536U);
+    std::vector<Crossing> h = ChainFor(table, 2, 3703, kBoreanZone);  // Shattrath
+    ASSERT_EQ(h.size(), 2U);
+    EXPECT_EQ(h[0].object, 183323U);  // Shattrath Portal to Orgrimmar
+    EXPECT_EQ(h[0].exitMap, 1U);
+    EXPECT_EQ(h[1].object, 186238U);
+    // Hellfire: the Stair of Destiny portals beside the Dark Portal exit.
+    EXPECT_EQ(ChainFor(table, 1, AutoWowZoneProgression::kHellfireZone, kBoreanZone)[0].object, 195139U);
+    EXPECT_EQ(ChainFor(table, 2, AutoWowZoneProgression::kHellfireZone, kBoreanZone)[0].object, 195140U);
+    // Horde Grom'gol: zeppelin to Orgrimmar, then Warsong. Durotar / capitals: one passage.
+    std::vector<Crossing> stv = ChainFor(table, 2, AutoWowZoneProgression::kStranglethornZone, kBoreanZone);
+    ASSERT_EQ(stv.size(), 2U);
+    EXPECT_EQ(stv[0].object, 175080U);
+    EXPECT_EQ(stv[1].object, 186238U);
+    EXPECT_EQ(ChainFor(table, 2, AutoWowZoneProgression::kDurotarZone, kBoreanZone).size(), 1U);
+    EXPECT_EQ(ChainFor(table, 1, AutoWowZoneProgression::kStormwindZone, kBoreanZone).size(), 1U);
+    for (Crossing const& c : table)
+        EXPECT_NE(c.object, 4352U);
+    // Every chain start owns a chain ending at its team's native passage.
+    for (std::uint32_t team : {1U, 2U})
+        for (AutoWowZoneProgression::HubSource const& s : AutoWowZoneProgression::Northrend2EntryZones(team))
+        {
+            std::vector<Crossing> const chain = ChainFor(table, team, s.zone, kBoreanZone);
+            ASSERT_FALSE(chain.empty()) << team << " " << s.zone;
+            EXPECT_EQ(chain.back().object, NorthrendPassageFor(team)->entry);
+        }
+}
 }  // namespace

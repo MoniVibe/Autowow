@@ -341,6 +341,128 @@ inline void AddNorthrend(std::vector<Route>& routes, std::uint32_t maxPlayerLeve
     return r.map == kNorthrendMap && r.crossing && r.to == kBoreanZone;
 }
 
+// AutoWow.ZoneProgression.Northrend2 (default 0; needs Northrend): soak-s107b - 23 of 30 L70+ cohort bots sat
+// in Eastern Kingdoms at ~950 XP/bot-h. Admission left only from a capital or Outland, so a L68+ bot that
+// wandered or hearthed anywhere else had no route (unstick planned an empty chain: mode none in ~1.3 s).
+// Northrend2 adds (a) a staging trip from any Azeroth zone to the team's chain start, (b) Horde chain starts
+// Stranglethorn (Grom'gol zeppelin) and Durotar (Orgrimmar zeppelin tower), (c) the Outland start through
+// the faction city portal instead of the Dark Portal walk (TransportCrossingPolicy Northrend2Crossings),
+// (d) the L68-80 Northrend hub ladder, (e) death-loop escape kept on the bot's own map.
+inline constexpr std::uint32_t kStranglethornZone = 33;
+inline constexpr std::uint32_t kDurotarZone = 14;
+
+// Chain starts: NorthrendEntryZones plus the Horde Grom'gol / Durotar starts. Ascending (map, zone).
+[[nodiscard]] inline std::vector<HubSource> Northrend2EntryZones(std::uint32_t team)
+{
+    std::vector<HubSource> out = NorthrendEntryZones(team);
+    if (team == 2)
+    {
+        out.push_back({2, 0, kStranglethornZone});
+        out.push_back({2, 1, kDurotarZone});
+    }
+    std::sort(out.begin(), out.end(), [](HubSource const& a, HubSource const& b)
+              { return a.map != b.map ? a.map < b.map : a.zone < b.zone; });
+    return out;
+}
+
+// Northrend hubs (map 571; world DB innkeeper spawns, zone = map-grid area of the spawn, faction checked in
+// tests/ZoneProgressionPolicyTest.cpp). Stages continue OutlandHubs; Borean = the admission hub.
+inline std::vector<Hub> NorthrendHubs()
+{
+    Hub const borA = NorthrendArrivalHub(1);
+    Hub const borH = NorthrendArrivalHub(2);
+    return {
+        {1, 11, kBoreanZone, 68, 72, kNorthrendMap, borA.x, borA.y, borA.z, borA.inn, borA.npc},  // Valiance Keep
+        {2, 11, kBoreanZone, 68, 72, kNorthrendMap, borH.x, borH.y, borH.z, borH.inn, borH.npc},  // Warsong Hold
+        {1, 11, 495, 68, 72, 571, 599, -4928, 19, 23731, 23731},       // Howling Fjord: Valgarde
+        {2, 11, 495, 68, 72, 571, 1873, -6218, 13, 24342, 24342},      // Howling Fjord: Vengeance Landing
+        {1, 12, 65, 71, 75, 571, 3478, 2007, 65, 27052, 27052},        // Dragonblight: Stars' Rest
+        {2, 12, 65, 71, 75, 571, 3830, 1485, 92, 26985, 26985},        // Dragonblight: Agmar's Hammer
+        {1, 13, 394, 73, 75, 571, 3407, -2789, 202, 27066, 27066},     // Grizzly Hills: Amberpine Lodge
+        {2, 13, 394, 73, 75, 571, 3256, -2202, 117, 27125, 27125},     // Grizzly Hills: Conquest Hold
+        {1, 14, 66, 74, 77, 571, 5463, -2639, 307, 28791, 28791},      // Zul'Drak: The Argent Stand
+        {2, 14, 66, 74, 77, 571, 5463, -2639, 307, 28791, 28791},      // Zul'Drak: The Argent Stand
+        {1, 15, 3711, 76, 78, 571, 5566, 5764, -75, 28038, 28038},     // Sholazar: Nesingwary Base Camp
+        {2, 15, 3711, 76, 78, 571, 5566, 5764, -75, 28038, 28038},     // Sholazar: Nesingwary Base Camp
+        {1, 16, 67, 77, 80, 571, 6671, -200, 951, 29926, 29926},       // Storm Peaks: Frosthold
+        {2, 16, 67, 77, 80, 571, 7850, -799, 1185, 29944, 29944},      // Storm Peaks: Grom'arsh Crash-Site
+        {1, 16, 210, 77, 80, 571, 8605, 666, 550, 33970, 33970},       // Icecrown: Argent Tournament (Silver Covenant)
+        {2, 16, 210, 77, 80, 571, 8425, 671, 550, 33971, 33971},       // Icecrown: Argent Tournament (Sunreavers)
+    };
+}
+
+// Appended after AddNorthrend: the Horde Stranglethorn / Durotar admission routes, then the Northrend ladder.
+inline void AddNorthrend2(std::vector<Route>& routes, std::uint32_t maxPlayerLevel)
+{
+    if (maxPlayerLevel < kNorthrendMinLevel)
+        return;
+    Hub const h = NorthrendArrivalHub(2);
+    for (std::uint32_t zone : {kStranglethornZone, kDurotarZone})
+        routes.push_back(Route{2, zone, h.zone, kNorthrendMinLevel, maxPlayerLevel, h.map, h.x, h.y, h.z, h.inn, true});
+    for (Route const& r : HubRoutes(NorthrendHubs(), {}))
+        routes.push_back(r);
+}
+
+// Staging points (world DB innkeeper spawns): Stormwind (Trade District inn), Orgrimmar (Gryshka), Grom'gol.
+inline std::vector<Hub> NorthrendStagingHubs()
+{
+    return {
+        {1, 0, kStormwindZone, kNorthrendMinLevel, 0, 0, -8868, 674, 98, 6740, 6740},
+        {2, 0, kOrgrimmarZone, kNorthrendMinLevel, 0, 1, 1634, -4439, 16, 6929, 6929},
+        {2, 0, kStranglethornZone, kNorthrendMinLevel, 0, 0, -12434, 212, 2, 5814, 5814},
+    };
+}
+
+// The staging trip of a L68+ bot on an Azeroth continent outside every Northrend2 chain start: to the hearth
+// zone when `hearthZone` (0 = hearthstone not ready) is a staging zone of the team, else the staging point
+// on the bot's own continent (Alliance on Kalimdor: Stormwind, a crossing). false = no staging (out filled).
+[[nodiscard]] inline bool NorthrendStagingRoute(std::uint32_t team, std::uint32_t map, std::uint32_t zone,
+                                                std::uint32_t level, std::uint32_t maxPlayerLevel,
+                                                std::uint32_t hearthZone, Route& out)
+{
+    if ((map != 0 && map != 1) || level < kNorthrendMinLevel || level > maxPlayerLevel)
+        return false;
+    for (HubSource const& s : Northrend2EntryZones(team))
+        if (s.zone == zone)
+            return false;
+    std::vector<Hub> const hubs = NorthrendStagingHubs();
+    Hub const* pick = nullptr;
+    for (Hub const& h : hubs)
+        if (h.team == team && hearthZone && h.zone == hearthZone)
+            pick = pick ? pick : &h;
+    for (Hub const& h : hubs)
+        if (h.team == team && h.map == map)
+            pick = pick ? pick : &h;
+    for (Hub const& h : hubs)
+        if (h.team == team)
+            pick = pick ? pick : &h;
+    if (!pick)
+        return false;
+    out = Route{team, zone, pick->zone, kNorthrendMinLevel, maxPlayerLevel, pick->map, pick->x, pick->y, pick->z,
+                pick->inn, pick->map != map};
+    return true;
+}
+
+// A staging trip arrives on entering its zone (a hearth lands at the bind spot, not at the hub inn).
+[[nodiscard]] inline bool IsNorthrendStaging(Route const& r)
+{
+    if (r.minLevel < kNorthrendMinLevel)
+        return false;
+    std::vector<Hub> const hubs = NorthrendStagingHubs();
+    return std::any_of(hubs.begin(), hubs.end(), [&](Hub const& h)
+                       { return h.team == r.team && h.zone == r.to && h.map == r.map && h.inn == r.inn; });
+}
+
+// Northrend2 death-loop escape: candidate routes whose hub lies on the bot's own map only.
+[[nodiscard]] inline std::vector<Route> SameMapRoutes(std::vector<Route> const& routes, std::uint32_t map)
+{
+    std::vector<Route> out;
+    for (Route const& r : routes)
+        if (r.map == map)
+            out.push_back(r);
+    return out;
+}
+
 // Config override AutoWow.ZoneProgression.Routes: ';'-separated routes, each
 // "team,from,to,minLevel,maxLevel,map,x,y,z,inn,crossing" (integers; crossing 0|1). Replaces the
 // built-in table. False (out untouched) on any malformed entry.
@@ -690,7 +812,8 @@ enum class Mode : std::uint8_t
     Walk = 1,
     Flight = 2,
     Chain = 3,  // AutoWow.Transports: walk -> travel object / transport -> walk (TransportCrossingPolicy.h)
-    Portal = 4  // AutoWow.Transports (mode auto/portal): walk leg spent -> portal to the hub (owner ruling)
+    Portal = 4, // AutoWow.Transports (mode auto/portal): walk leg spent -> portal to the hub (owner ruling)
+    Hearth = 5  // AutoWow.ZoneProgression.Northrend2: hearthstone to the staging zone
 };
 
 inline constexpr char const* ModeName(Mode m)
@@ -702,6 +825,7 @@ inline constexpr char const* ModeName(Mode m)
         case Mode::Flight: return "flight";
         case Mode::Chain: return "chain";
         case Mode::Portal: return "portal";
+        case Mode::Hearth: return "hearth";
     }
     return "none";
 }
@@ -909,12 +1033,14 @@ namespace detail
 inline bool gEnabled = false;
 inline bool gOutland = false;  // AutoWow.ZoneProgression.Outland
 inline bool gNorthrend = false;  // AutoWow.ZoneProgression.Northrend
+inline bool gNorthrend2 = false;  // AutoWow.ZoneProgression.Northrend2
 inline Params gParams;
 inline std::vector<Route> gRoutes;
 }
 inline bool Enabled() { return detail::gEnabled; }
 inline bool OutlandEnabled() { return detail::gEnabled && detail::gOutland; }
 inline bool NorthrendEnabled() { return detail::gEnabled && detail::gOutland && detail::gNorthrend; }
+inline bool Northrend2Enabled() { return NorthrendEnabled() && detail::gNorthrend2; }
 
 void LoadConfig();
 // A graduation (travel or flight-path learning) is under way for this bot. Town runs wait for it.

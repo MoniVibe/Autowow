@@ -80,6 +80,11 @@ void LoadConfig()
         sConfigMgr->GetOption<bool>("AutoWow.ZoneProgression.Northrend", false);
     if (detail::gNorthrend)
         AddNorthrend(detail::gRoutes, static_cast<std::uint32_t>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
+    // AutoWow.ZoneProgression.Northrend2 (default 0; needs Northrend): staging, Horde starts, Northrend ladder.
+    detail::gNorthrend2 = detail::gNorthrend &&
+        sConfigMgr->GetOption<bool>("AutoWow.ZoneProgression.Northrend2", false);
+    if (detail::gNorthrend2)
+        AddNorthrend2(detail::gRoutes, static_cast<std::uint32_t>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)));
     std::string const routes = sConfigMgr->GetOption<std::string>("AutoWow.ZoneProgression.Routes", "");
     if (!routes.empty() && !ParseRoutes(routes, detail::gRoutes))
         LOG_ERROR("server.loading", "[ZoneProgression] AutoWow.ZoneProgression.Routes malformed; built-in table kept");
@@ -153,7 +158,7 @@ void AutoWowTransports::LoadConfig()
         for (Crossing const& c : OutlandCrossings())
             detail::gCrossings.push_back(c);
     if (AutoWowZoneProgression::detail::gNorthrend)
-        for (Crossing const& c : NorthrendCrossings())
+        for (Crossing const& c : AutoWowZoneProgression::detail::gNorthrend2 ? Northrend2Crossings() : NorthrendCrossings())
             detail::gCrossings.push_back(c);
     // Routes only a crossing can serve join the zone-progression table (runs after its LoadConfig).
     if (detail::gEnabled)
@@ -989,6 +994,16 @@ static bool NorthrendControlBlocked(Player* bot, PlayerbotAI* botAI)
            bot->GetGroup() != nullptr;
 }
 
+// AutoWow.ZoneProgression.Northrend2: the hearthstone's bind zone when it is in the bags and off cooldown
+// (the errands HearthReady test), else 0.
+static std::uint32_t NorthrendHearthZone(Player* bot)
+{
+    if (!bot->HasItemCount(6948, 1, false) || bot->HasSpellCooldown(8690))
+        return 0;
+    AreaTableEntry const* area = sAreaTableStore.LookupEntry(bot->m_homebindAreaId);
+    return area ? (area->zone ? area->zone : area->ID) : 0;
+}
+
 static void NoteEscapeBlock(Player* bot, AutoWowDeathLoop::RelocationBlock reason)
 {
     if (AutoWowDeathLoop::NoteRelocationBlock(bot->GetGUID().GetCounter(), reason))
@@ -1035,21 +1050,26 @@ static bool StartEscape(Player* bot, AutoWowZoneProgression::BotState& s, AutoWo
     { return AutoWowDeathLoop::Overshoot(AutoWowDeathLoop::ZoneMinLevel(z), level, margin); };
     auto const crossesDanger = [&](Route const& r)
     { return SegmentCrossesDanger(bx, by, r.x, r.y, kDangerStepYards, zone, zoneAt, danger); };
+    // AutoWow.ZoneProgression.Northrend2: escape hubs on the bot's own map only (a Northrend bot never
+    // escapes to the lowest Outland band). The copy lives for this call; BeginEscape copies the route.
+    std::vector<Route> const sameMap = Northrend2Enabled() ? SameMapRoutes(detail::gRoutes, bot->GetMapId())
+                                                           : std::vector<Route>{};
+    std::vector<Route> const& routes = Northrend2Enabled() ? sameMap : detail::gRoutes;
     Route const* hub = nullptr;
     if (AutoWowDeathLoop::HardEscapeEnabled())
     {
         // AutoWow.Survival.HardEscape (1): the nearest hub whose straight line crosses no zone bracketed
         // more than WalkZoneMargin above the bot (the bot's own zone excepted).
-        hub = PickSafeEscapeRoute(detail::gRoutes, team, level, zone, bot->GetMapId(), bx, by, crossesDanger);
+        hub = PickSafeEscapeRoute(routes, team, level, zone, bot->GetMapId(), bx, by, crossesDanger);
     }
     // AutoWow.DeathLoop.V2: back toward the lowest level band that fits, not the nearest same-level hub.
     else
         hub = AutoWowDeathLoop::V2Enabled()
-                  ? PickLowEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by)
-                  : PickEscapeRoute(detail::gRoutes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by);
+                  ? PickLowEscapeRoute(routes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by)
+                  : PickEscapeRoute(routes, team, bot->GetLevel(), bot->GetZoneId(), bot->GetMapId(), bx, by);
     Route const* const crossZoneHub = hub;
     std::uint32_t const guid = bot->GetGUID().GetCounter();
-    hub = PickEscapeOrSafeSameZoneHub(crossZoneHub, detail::gRoutes, team, level, zone, bot->GetMapId(), bx, by,
+    hub = PickEscapeOrSafeSameZoneHub(crossZoneHub, routes, team, level, zone, bot->GetMapId(), bx, by,
                                       [&](Route const& r)
                                       {
                                           return crossesDanger(r) ||
@@ -1198,10 +1218,22 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         uint32 const zone = bot->GetZoneId();
         std::uint32_t const team = bot->GetTeamId() == TEAM_ALLIANCE ? 1 : 2;
         Route const* route = PickRoute(detail::gRoutes, team, zone, bot->GetLevel(), guid);
+        // AutoWow.ZoneProgression.Northrend2: a L68+ bot on an Azeroth continent outside every chain start
+        // stages to its team's chain start first (by hearth when bound there and ready).
+        Route staging;
+        if (Northrend2Enabled() && !(route && IsNorthrendEntry(*route)) &&
+            NorthrendStagingRoute(team, bot->GetMapId(), zone, bot->GetLevel(),
+                                  static_cast<std::uint32_t>(sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL)),
+                                  NorthrendHearthZone(bot), staging))
+            route = &staging;
         s.stall = NextStall(s.stall, CheckRpgStatusAvailable(RPG_DO_QUEST));
         auto const bracket = sPlayerbotAIConfig.zoneBrackets.find(zone);
         std::uint32_t const zoneMax = bracket == sPlayerbotAIConfig.zoneBrackets.end() ? 0 : bracket->second.second;
         Trigger trigger = Evaluate(p, bot->GetLevel(), zoneMax, s.stall, route != nullptr);
+        // Northrend2: staging and admission leave at once (a capital has no bracket and few quests: the
+        // stall rule alone held a L68+ bot there for StallChecks checks).
+        if (Northrend2Enabled() && trigger == Trigger::None && route && (route == &staging || IsNorthrendEntry(*route)))
+            trigger = Trigger::Level;
         // AutoWow.Unstick.V2: no trigger fired, but the bot has earned no XP for NoXpMs and no grind spot lies
         // within GrindMaxYards (soak-s49..s51 town trap) -> graduate: the zone's own route when one fits, else
         // the nearest hub whose band fits the level, leaving from the bot's zone (no road table, as an escape).
@@ -1353,7 +1385,10 @@ bool NewRpgBaseAction::ZoneProgressionStep()
         PhysicalHubFacts const hubFacts{bot->GetTransport() != nullptr, bot->IsInFlight(),
                                             bot->IsBeingTeleported(), bot->GetMapId(), bot->GetPositionX(),
                                             bot->GetPositionY(), bot->GetPositionZ()};
+        // Northrend2 staging arrives on entering the staging zone (hearth lands at the bind, not the inn).
+        bool const staging = Northrend2Enabled() && IsNorthrendStaging(s.route);
         bool const atHub = northrendEntry ? AtPhysicalNorthrendHub(s.route, hubFacts)
+                         : staging        ? bot->GetZoneId() == s.route.to && !bot->IsBeingTeleported()
                                           : AtRouteHub(s.route, hubFacts.map, hubFacts.x, hubFacts.y);
         if ((!arrivalRequired || chain.arrivalPhase == AutoWowTransports::ArrivalPhase::Complete) &&
             (!northrendEntry || AutoWowTransports::PassageComplete(chain)) && atHub)
@@ -1390,6 +1425,34 @@ bool NewRpgBaseAction::ZoneProgressionStep()
                      s.route.to, bot->GetMoney(), s.reissues);
             s.noFlight = true;
             s.mode = Mode::Unreachable;
+        }
+        // AutoWow.ZoneProgression.Northrend2: a staging trip takes the hearthstone when bound in the staging
+        // zone and ready (the errands hearthstone action); an interrupted cast falls back to the ordinary leg.
+        if (staging && bot->GetZoneId() != s.route.to)
+        {
+            if (s.mode == Mode::Hearth && (bot->IsNonMeleeSpellCast(false) || bot->IsBeingTeleported()))
+                return true;  // casting, or the far teleport is under way
+            if (s.mode == Mode::Hearth)
+                s.mode = Mode::Unreachable;
+            else if (s.mode != Mode::Flight && s.reissues <= p.maxReissues &&
+                     NorthrendHearthZone(bot) == s.route.to)
+            {
+                ++s.reissues;
+                if (bot->isMoving())
+                {
+                    bot->StopMoving();
+                    bot->GetMotionMaster()->Clear();
+                }
+                if (info.GetStatus() != RPG_IDLE)
+                    info.ChangeToIdle();
+                if (botAI->DoSpecificAction("hearthstone", Event("autowow northrend2"), true))
+                {
+                    s.mode = Mode::Hearth;
+                    LOG_INFO("playerbots", "[ZoneProgression] bot={} staging hearth to={}", bot->GetName(), s.route.to);
+                    StoreState(guid, s);
+                    return true;
+                }
+            }
         }
         // AutoWow.Transports (mode auto/portal; owner ruling 2026-09-24): a spent walk leg portals to the hub.
         if (transports && !arrivalRequired && !northrendEntry)
