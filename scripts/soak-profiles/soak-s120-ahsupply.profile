@@ -310,7 +310,7 @@ pb|AutoWow.Gear.CatchUp|1
 pb|AutoWow.Professions.ArtisanBagHygiene|1
 pb|AutoWow.Auction.ListLoot|1
 pb|AutoWow.Auction.SeedThinSlots|1
-pb|AutoWow.Auction.SeedThinSlots.DailyCap|20
+pb|AutoWow.Auction.DailyCap|20
 pb|AutoWow.Professions.VendorJunk|1
 pb|AutoWow.Professions.SurplusToAuction|1
 pb|AutoWow.Professions.HouseBoE|1
