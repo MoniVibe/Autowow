@@ -71,17 +71,6 @@ bool Upgrade(PlayerbotAI* ai, Player* m, ItemTemplate const* proto)
     return u == ITEM_USAGE_EQUIP || u == ITEM_USAGE_REPLACE;
 }
 
-// The weapon slot of the bot `proto` may go to among `slots` (mask), else 0xFF.
-std::uint8_t SlotFor(Player* bot, ItemTemplate const* proto, std::uint32_t slots)
-{
-    if (!proto || proto->Class != ITEM_CLASS_WEAPON)
-        return 0xFF;
-    for (std::uint8_t const slot : kSlots)
-        if ((slots & (1u << slot)) && Fits(proto->InventoryType, slot, DualWield(bot), OffHandFree(bot)))
-            return slot;
-    return 0xFF;
-}
-
 void Ledger(Player* bot, char const* reason, std::uint8_t slot, ItemTemplate const* proto, std::uint32_t from,
             std::uint32_t oid)
 {
