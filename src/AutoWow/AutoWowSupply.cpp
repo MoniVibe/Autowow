@@ -1816,9 +1816,10 @@ bool GearOrderUses(bool alliance, std::size_t house, std::uint32_t item)
         std::size_t const li = static_cast<std::size_t>(L.id);
         if (!L.gearCount || !LineOn(L.id) || gLineHouse[li] != house)
             continue;
+        RecipeTable const G = GearTable(L);  // SmithBars: the table the orders index
         for (GearOrder const& o : gLines[li][T(alliance)].orders)
-            for (std::size_t k = 0; o.recipe < L.gearCount && k < kMaxReagents; ++k)
-                if (L.gear[o.recipe].reagents[k].item == item)
+            for (std::size_t k = 0; o.recipe < G.tierCount && k < kMaxReagents; ++k)
+                if (G.tiers[o.recipe].reagents[k].item == item)
                     return true;
     }
     return false;
@@ -2395,10 +2396,14 @@ void GearTick(Line line, bool alliance, bool overlord)
         // CrossHouseFeed (lane smithsupply): stone the own rep could not cover, from the team's other house reps whose
         // own open orders do not use it (S110: the Tinkers reps hold the routed Coarse / Heavy Stone, the Smiths rep none).
         // ponytail: stone only (the stranded stock the data shows); widen to bars once a donor house stocks them.
+        // SmithBars (lane smithbars): the smith's routed ore too (the Tinkers reps hold the House.Ore stock).
+        bool const oreToo = SmithBars() && line == Line::MailGear;
         if (CrossHouseFeed())
             for (Lack const& k : Lacks(G, v.product, make, have))
             {
-                if (k.source == Source::Vendor || std::find(std::begin(kStone), std::end(kStone), k.item) == std::end(kStone))
+                bool const stone = std::find(std::begin(kStone), std::end(kStone), k.item) != std::end(kStone);
+                bool const ore = oreToo && std::find(std::begin(kOre), std::end(kOre), k.item) != std::end(kOre);
+                if (k.source == Source::Vendor || (!stone && !ore))
                     continue;
                 std::uint32_t left = k.units;
                 for (auto const& [item, sent] : fed)
@@ -3132,6 +3137,7 @@ void LoadConfig()
     p.mineCooldownMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.MineCooldownMs", 1800000);
     p.mineLootYield = sConfigMgr->GetOption<bool>("AutoWow.Supply.MineLootYield", false);
     p.crossHouseFeed = sConfigMgr->GetOption<bool>("AutoWow.Supply.CrossHouseFeed", false);
+    p.smithBars = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithBars", false);
     gLineSpec = {};
     gPriority.clear();
     {

@@ -2368,3 +2368,57 @@ TEST(SupplyPotionTiers, SkillLadderReachesHealingPotionWithoutPeacebloom)
 }
 
 }  // namespace
+
+namespace
+{
+RecipeTable SmithBarsTable() { return {kSmithBars.data(), static_cast<std::uint8_t>(kSmithBars.size())}; }
+
+std::size_t BarsRow(std::uint32_t product)
+{
+    for (std::size_t i = 0; i < kSmithBars.size(); ++i)
+        if (kSmithBars[i].product == product)
+            return i;
+    return kSmithBars.size();
+}
+
+std::uint32_t LackOf(std::vector<Lack> const& lacks, std::uint32_t item, Source source)
+{
+    for (Lack const& k : lacks)
+        if (k.item == item)
+            return k.source == source ? k.units : 0xFFFFFFFFu;
+    return 0;
+}
+}  // namespace
+
+TEST(SupplySmithBars, FlagDefaultsOffAndKeepsTheEndgameTail)
+{
+    EXPECT_FALSE(Params{}.smithBars);
+    ASSERT_EQ(kSmithBars.size(), std::size(kSmithBarsHead) + kSmithEndgame);
+    for (std::size_t i = 0; i < kSmithEndgame; ++i)
+        EXPECT_EQ(kSmithBars[std::size(kSmithBarsHead) + i].spell,
+                  kSmithWeapons[std::size(kSmithWeapons) - kSmithEndgame + i].spell);
+    // No copper / tin / bronze / iron / steel bar is left to the AH.
+    for (LineTier const& t : kSmithBarsHead)
+        for (Reagent const& r : t.reagents)
+            if (r.item == 2840 || r.item == 3576 || r.item == 2841 || r.item == 3575 || r.item == 3859)
+                EXPECT_EQ(r.source, Source::Craft) << t.spell;
+}
+
+TEST(SupplySmithBars, HoleRecipesLackRoutedOre)
+{
+    auto none = [](std::uint32_t) { return 0u; };
+    // 100-125: Rough Bronze Leggings, 6 bronze -> 6 Smelt Bronze (one bar asked per smelt) -> copper + tin ore.
+    std::vector<Lack> const leg = Lacks(SmithBarsTable(), BarsRow(2865), 1, none);
+    EXPECT_EQ(LackOf(leg, 2770, Source::Route), 6u);
+    EXPECT_EQ(LackOf(leg, 2771, Source::Route), 6u);
+    // 165-215: Green Iron Bracers, 6 iron bars -> 6 iron ore; the dye stays a market want.
+    std::vector<Lack> const brc = Lacks(SmithBarsTable(), BarsRow(3835), 1, none);
+    EXPECT_EQ(LackOf(brc, 2772, Source::Route), 6u);
+    EXPECT_EQ(LackOf(brc, 2605, Source::Market), 1u);
+    // 200-250: Steel Breastplate, 16 steel -> 16 iron ore + 16 coal (vendor); held iron bars count first.
+    auto bars = [](std::uint32_t item) { return item == 3575 ? 10u : 0u; };
+    std::vector<Lack> const plate = Lacks(SmithBarsTable(), BarsRow(7963), 1, bars);
+    EXPECT_EQ(LackOf(plate, 2772, Source::Route), 6u);
+    EXPECT_EQ(LackOf(plate, 3857, Source::Vendor), 16u);
+    EXPECT_EQ(LackOf(plate, 2838, Source::Market), 9u);
+}

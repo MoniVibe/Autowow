@@ -150,6 +150,8 @@ struct Params
     bool mineLootYield = false;   // AutoWow.Supply.MineLootYield: at a node the mine stint yields the tick to the stock
                                   // loot action (relevance 6), which the RPG status update (11) otherwise starves
     bool crossHouseFeed = false;  // AutoWow.Supply.CrossHouseFeed: other house reps feed a gear target (CrossFeedUnits)
+    bool smithBars = false;       // AutoWow.Supply.SmithBars (lane smithbars): the smith smelts its bars (kSmithBars);
+                                  // with CrossHouseFeed the other reps also feed the smith ore
     // Weapon orders (lane smithfocus2; off by default): the Smiths line consumes AutoWow.Gear.NoWhite's queue
     // (WeaponOrderPolicy.h): a pending order is a gear need for that bot's weapon slot (PickWeaponRecipe), filled when the
     // piece is mailed, cancelled when the slot clears the order's floor elsewhere or after WeaponOrderTimeoutMs.
@@ -1196,6 +1198,8 @@ struct ProductLine
     std::uint8_t tierExtra = 0;     // tiers[tierCount .. tierCount + tierExtra): in the table only with PotionTiers
                                     // (ActiveLine; off: tierCount rows, the lane D table as was)
     std::uint8_t gearEndgame = 0;   // the last rows of `gear`: in the table only with SmithEndgame (GearTable)
+    LineTier const* gearBars = nullptr;  // SmithBars: replaces `gear` (same gearEndgame tail last; GearTable)
+    std::uint8_t gearBarsCount = 0;
 };
 
 // A recipe table the catalog helpers below walk (ProductLine tiers, or a gear line's GearTable).
@@ -1379,6 +1383,63 @@ static_assert(std::size(kSmithWeapons) == 14 + kSmithEndgame);  // the lane boot
 // Blacksmithing Master (29845: trainer 58 / 59, skill 275, level 50) and Grand Master (51298: trainer 59, skill 350, level
 // 60 in this world DB) ranks: learned only on the rank trainer trip (SmithEndgame).
 inline constexpr std::uint32_t kSmithRanks[] = {29845, 51298};
+// SmithBars (lane smithbars, AutoWow.Supply.SmithBars): the smith table with the bars the artisan smelts itself at the
+// forge from routed ore (House.Ore rep + CrossHouseFeed), instead of AH-only bars nobody lists (S110: 0 copper / iron /
+// steel bar lots; the reps hold 319 copper, 201 tin, 200 iron ore at RawCap). Head = the bootstrap rows with copper /
+// iron / steel bars as Craft, the smelts, and the hole fillers (100-125 Rough Bronze Leggings, 125-140 Heavy Sharpening
+// Stone, 165-215 Green Iron Bracers); the endgame tail is kSmithWeapons' own. Reagents / outputs / RequiredLevel / grey
+// from the 3.3.5 Spell.dbc / SkillLineAbility.dbc / item_template (the load check re-verifies). The smelts are Mining
+// (trainer 80) spells: skill 1 keeps them out of the Blacksmithing learn list (one secondary trainer); the artisan casts
+// the ones it knows (S110: Zulkanji knows every smelt to Mithril, Brokkhelm copper / tin / bronze / silver).
+// ponytail: Smelt Bronze makes 2 bars but AddLacks asks one smelt per bar (ore fed x2); fine while ore sits at RawCap.
+inline constexpr LineTier kSmithBarsHead[] = {
+    {2660, 2862, 1, 55, 1, {{{2835, 1, Source::Market}}}, kFamilyBridge}, // Rough Sharpening Stone (skill learn)
+    {3320, 3470, 25, 85, 0, {{{2835, 2, Source::Market}}}, kFamilyBridge}, // Rough Grinding Stone
+    {3326, 3478, 75, 100, 0, {{{2836, 2, Source::Market}}}, kFamilyBridge}, // Coarse Grinding Stone
+    {2664, 2854, 90, 140, 14,
+     {{{2840, 10, Source::Craft}, {3470, 3, Source::Craft}}}, kFamilyBridge}, // Runed Copper Bracers
+    {3337, 3486, 125, 150, 0, {{{2838, 3, Source::Market}}}, kFamilyBridge}, // Heavy Grinding Stone
+    {8768, 7071, 150, 155, 0, {{{3575, 1, Source::Craft}}}, kFamilyBridge}, // Iron Buckle
+    {3506, 3842, 155, 205, 26,
+     {{{3575, 8, Source::Craft}, {3486, 1, Source::Craft}, {2605, 1, Source::Market}}}, kFamilyBridge},
+    // Green Iron Leggings
+    {15972, 12259, 180, 230, 31,
+     {{{3859, 10, Source::Craft}, {3466, 2, Source::Vendor}, {1206, 1, Source::Market},
+       {7067, 1, Source::Market}, {4234, 1, Source::Market}}}}, // Glinting Steel Dagger
+    {9920, 7966, 200, 210, 0, {{{7912, 4, Source::Market}}}, kFamilyBridge}, // Solid Grinding Stone
+    {9916, 7963, 200, 250, 35,
+     {{{3859, 16, Source::Craft}, {3486, 3, Source::Craft}}}, kFamilyBridge}, // Steel Breastplate
+    {10007, 7961, 245, 295, 44,
+     {{{3860, 28, Source::Market}, {7081, 6, Source::Market}, {6037, 8, Source::Market},
+       {3823, 2, Source::Market}, {7909, 6, Source::Market}, {7966, 4, Source::Craft},
+       {4304, 2, Source::Market}}}}, // Phantom Blade
+    {16639, 12644, 250, 260, 0, {{{12365, 4, Source::Market}}}, kFamilyBridge}, // Dense Grinding Stone
+    {16643, 12406, 250, 290, 45, {{{12359, 8, Source::Market}}}, kFamilyBridge}, // Thorium Belt
+    {16969, 12773, 275, 325, 50,
+     {{{12359, 10, Source::Market}, {12799, 2, Source::Market}, {12644, 2, Source::Craft},
+       {8170, 4, Source::Market}}}}, // Ornate Thorium Handaxe
+    // hole fillers
+    {2668, 2865, 105, 175, 16, {{{2841, 6, Source::Craft}}}, kFamilyBridge},   // Rough Bronze Leggings
+    {2674, 2871, 125, 140, 15, {{{2838, 1, Source::Market}}}, kFamilyBridge},  // Heavy Sharpening Stone
+    {3501, 3835, 165, 215, 28, {{{3575, 6, Source::Craft}, {2605, 1, Source::Market}}}, kFamilyBridge},
+    // Green Iron Bracers
+    // smelts (Mining; skill 1: see above): spell, bar, -, grey (mining), RequiredLevel 0
+    {2657, 2840, 1, 70, 0, {{{2770, 1, Source::Route}}}},                             // Smelt Copper
+    {3304, 3576, 1, 75, 0, {{{2771, 1, Source::Route}}}},                             // Smelt Tin
+    {2659, 2841, 1, 115, 0, {{{2840, 1, Source::Craft}, {3576, 1, Source::Craft}}}},  // Smelt Bronze (2 bars)
+    {3307, 3575, 1, 160, 0, {{{2772, 1, Source::Route}}}},                            // Smelt Iron
+    {3569, 3859, 1, 165, 0, {{{3575, 1, Source::Craft}, {3857, 1, Source::Vendor}}}}, // Smelt Steel (coal: vendor)
+};
+inline constexpr std::array<LineTier, std::size(kSmithBarsHead) + kSmithEndgame> kSmithBars = []
+{
+    std::array<LineTier, std::size(kSmithBarsHead) + kSmithEndgame> out{};
+    std::size_t n = 0;
+    for (LineTier const& t : kSmithBarsHead)
+        out[n++] = t;
+    for (std::size_t i = std::size(kSmithWeapons) - kSmithEndgame; i < std::size(kSmithWeapons); ++i)
+        out[n++] = kSmithWeapons[i];
+    return out;
+}();
 // Engineering (lane AA, Tinkers; trainer 92 = Stormwind 5518 / Orgrimmar 11017, 466 / 491 yards from the homes) and its
 // smelting (Mining 186, trainer 80 = Stormwind 5513 / Orgrimmar 3357; spell focus 3: a forge near home): gun hunters'
 // shot (200 per cast) from routed stone (House.Stone) and ore (House.Ore). Only reagents the house gets and a consumer
@@ -1478,7 +1539,7 @@ inline constexpr ProductLine kCatalog[] = {
     // Trainer rank wrappers (2020/2021/3539/9786) teach known ranks 2018/3100/3538/9785; the table adds recipes.
     {Line::MailGear, "mail_gear", "MailGear", "Smiths", "2020,2021,3539,9786", 164, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kSmithWeapons, static_cast<std::uint8_t>(std::size(kSmithWeapons)), 0, 0, 0,
-     kSmithEndgame},
+     kSmithEndgame, kSmithBars.data(), static_cast<std::uint8_t>(kSmithBars.size())},
     {Line::LeatherGear, "leather_gear", "LeatherGear", "Tanners", "2155,2154,3812,10663", 165, NeedRule::GearSlots,
      Consumer::EquipGear, {}, 0, kLeatherGear, static_cast<std::uint8_t>(std::size(kLeatherGear)), kLeatherStarters},
     // Engineering ranks (trainer 92): Apprentice 4039 (level 5), Journeyman 4040 (50, level 10), Expert 4041 (125, level
@@ -2857,6 +2918,7 @@ inline bool SmithEndgame() { return detail::gEnabled && detail::gParams.smithEnd
 inline bool WeaponOrders() { return detail::gEnabled && detail::gParams.weaponOrders; }
 inline bool MineLootYield() { return detail::gEnabled && detail::gParams.mineLootYield; }
 inline bool CrossHouseFeed() { return detail::gEnabled && detail::gParams.crossHouseFeed; }
+inline bool SmithBars() { return detail::gEnabled && detail::gParams.smithBars; }
 // A catalog line as the runtime walks it: its tierExtra rows join only with PotionTiers (off: LineOf, the lane D table
 // as was). A copy: callers keep it for the scope that reads its tiers.
 [[nodiscard]] inline ProductLine ActiveLine(Line l)
@@ -2868,9 +2930,12 @@ inline bool CrossHouseFeed() { return detail::gEnabled && detail::gParams.crossH
 }
 // A gear line's recipe table: its gearStarters last rows only with GearBootstrap, its gearGuns last rows only with
 // EngGuns, its gearEndgame last rows only with SmithEndgame (off: the lane V / AA table as was).
+// SmithBars: a line's gearBars table instead (the smith's).
 [[nodiscard]] inline RecipeTable GearTable(ProductLine const& l)
 {
-    return {l.gear, static_cast<std::uint8_t>(l.gearCount - (GearBootstrap() ? 0 : l.gearStarters) -
+    bool const bars = l.gearBars && SmithBars();
+    return {bars ? l.gearBars : l.gear,
+            static_cast<std::uint8_t>((bars ? l.gearBarsCount : l.gearCount) - (GearBootstrap() ? 0 : l.gearStarters) -
                                               (EngGuns() ? 0 : l.gearGuns) - (SmithEndgame() ? 0 : l.gearEndgame))};
 }
 // Gear line recipe `recipe`: items one cast makes (the spell's create-item count; shot 200, a piece 1). Read-only.
