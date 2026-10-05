@@ -2072,6 +2072,15 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
                      L.name, alliance ? "alliance" : "horde", Low(art), G.tiers[out.front().recipe].spell,
                      out.front().units, mine[out.front().recipe]);
     }
+    // ClimbSkillup: no blocked member need at all (an outgrown table) and still below the reach: climb anyway.
+    if (out.empty() && need.empty() && p.climbSkillup && skill < cap)
+    {
+        out = PlanClimbSkillup(skill, std::min(reach, cap), options, p.skillupCasts);
+        if (!out.empty())
+            LOG_INFO("playerbots", "[Supply] gear bootstrap climb line={} team={} artisan={} skill={}/{} skillup={} casts={}",
+                     L.name, alliance ? "alliance" : "horde", Low(art), skill, cap, G.tiers[out.front().recipe].spell,
+                     out.front().units);
+    }
     LOG_INFO("playerbots", "[Supply] gear bootstrap line={} team={} artisan={} skill={}/{} reach={} blocked={} "
              "top_recipe={} consumer={} skillup={} casts={}", L.name, alliance ? "alliance" : "horde", Low(art), skill,
              cap, reach, need.size(), need.empty() ? 0 : G.tiers[need.front().recipe].spell,
@@ -3078,6 +3087,7 @@ void LoadConfig()
     p.potionTiers = sConfigMgr->GetOption<bool>("AutoWow.Supply.PotionTiers", false);
     p.smithEndgame = sConfigMgr->GetOption<bool>("AutoWow.Supply.SmithEndgame", false);
     p.weaponOrders = sConfigMgr->GetOption<bool>("AutoWow.Supply.WeaponOrders", false);
+    p.climbSkillup = sConfigMgr->GetOption<bool>("AutoWow.Supply.ClimbSkillup", false);
     p.weaponOrderTimeoutMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.WeaponOrderTimeoutMs", 7200000);
     gWeaponOrderSeen.clear();
     gWeaponOrderOf = {};

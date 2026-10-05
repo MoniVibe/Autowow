@@ -149,6 +149,8 @@ struct Params
     // Weapon orders (lane smithfocus2; off by default): the Smiths line consumes AutoWow.Gear.NoWhite's queue
     // (WeaponOrderPolicy.h): a pending order is a gear need for that bot's weapon slot (PickWeaponRecipe), filled when the
     // piece is mailed, cancelled when the slot clears the order's floor elsewhere or after WeaponOrderTimeoutMs.
+    bool climbSkillup = false;               // AutoWow.Supply.ClimbSkillup (lane smithfocus3): GearBootstrap skill-ups
+                                             // with no blocked member need while skill < reach (PlanClimbSkillup)
     bool weaponOrders = false;               // AutoWow.Supply.WeaponOrders
     std::uint32_t weaponOrderTimeoutMs = 7200000;  // AutoWow.Supply.WeaponOrderTimeoutMs
 };
@@ -2447,6 +2449,21 @@ inline constexpr std::uint32_t kProfessionRankLevel[] = {5, 10, 20, 35, 50, 65};
     if (pick < 0)
         return {};
     return {{options[static_cast<std::size_t>(pick)].tier, casts, top->guid}};
+}
+
+// ClimbSkillup (lane smithfocus3; soak S109 at 1.3 h: the L73-75 master Tinkers sat at engineering 1 / 16 with
+// `blocked=0 skillup=0` in every bootstrap scan: no L65+ member wants a shot or gun the table makes, so PlanGearSkillup
+// never had a blocked need to level toward and the artisans never cast). A master artisan climbs toward its rank reach
+// anyway: `casts` of the PickSkillup recipe while skill < reach, consumer 0 (the output is house stock / sale). Nothing at
+// the reach or when no known recipe levels it.
+[[nodiscard]] inline std::vector<GearOrder> PlanClimbSkillup(std::uint32_t skill, std::uint32_t reach,
+                                                             std::vector<SkillupOption> const& options,
+                                                             std::uint32_t casts)
+{
+    int const pick = skill >= reach || !casts ? -1 : PickSkillup(skill, options, false);
+    if (pick < 0)
+        return {};
+    return {{options[static_cast<std::size_t>(pick)].tier, casts, 0}};
 }
 
 // GearSkillupRestock (lane craftflow; soak S75: both Tinkers artisans sat at engineering 46 / 49 for 2.3 h, below

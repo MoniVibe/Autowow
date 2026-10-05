@@ -98,9 +98,21 @@ struct RoleState
     std::uint8_t castLine = kNoLine;  // the gear line of the cast in flight (its craft row), else kNoLine
     std::uint64_t rankMs = 0;       // SmithEndgame: next rank trainer trip
     std::uint64_t mineReadyMs = 0;  // MineMs: next mining stint (the last one's end + MineCooldownMs)
+    std::uint32_t mineHeld = 0;     // MineMs: stone + ore in bags at the stint's start (MinedUnits)
 };
 
 // MineMs: the target's Market wants (item ids) the mining stint checks against stone / ore (MineDue).
+// MineMs: stone + ore units in bags (a stint's yield is the rise; smelts / casts at the spot do not happen).
+std::uint32_t MinedUnits(Player* bot)
+{
+    std::uint32_t n = 0;
+    for (std::uint32_t const item : kStone)
+        n += bot->GetItemCount(item, false);
+    for (std::uint32_t const item : kOre)
+        n += bot->GetItemCount(item, false);
+    return n;
+}
+
 std::vector<std::uint32_t> BuyItems(LineView const& v)
 {
     std::vector<std::uint32_t> out;
@@ -788,6 +800,7 @@ bool NewRpgBaseAction::SupplyStep()
             {
                 next = Task::Mine;
                 s.stuck = 0;
+                s.mineHeld = MinedUnits(bot);
             }
         }
         std::uint32_t lineSurplus = 0;
@@ -869,9 +882,10 @@ bool NewRpgBaseAction::SupplyStep()
                                                                                                  : nullptr;
         if (end)
         {
-            LOG_INFO("playerbots", "[Supply] bot={} mine end={} after_ms={} mining={}", bot->GetName(), end,
-                     now - s.taskSinceMs, bot->GetSkillValue(SKILL_MINING));
-            emit(Reason::Travel, 0, 0, 0, end);
+            std::uint32_t const held = MinedUnits(bot), gained = held > s.mineHeld ? held - s.mineHeld : 0;
+            LOG_INFO("playerbots", "[Supply] bot={} mine end={} after_ms={} mining={} gained={} held={}", bot->GetName(),
+                     end, now - s.taskSinceMs, bot->GetSkillValue(SKILL_MINING), gained, held);
+            emit(Reason::Travel, 0, gained, 0, end);
             s.task = Task::None;
             s.stuck = 0;
             s.mineReadyMs = now + p.mineCooldownMs;
@@ -883,7 +897,7 @@ bool NewRpgBaseAction::SupplyStep()
             if (WalkLeg(WorldPosition(spot.map, float(spot.x), float(spot.y), float(spot.z))))
                 ++s.stuck;
         }
-        else if (!GatherDetourStep() && !bot->isMoving())
+        else if (!GatherDetourStep(true) && !bot->isMoving())
         {
             Position const anchor(float(spot.x), float(spot.y), float(spot.z));
             MoveRandomNear(float(kMineLeashYards) / 2, MovementPriority::MOVEMENT_NORMAL, nullptr, &anchor);

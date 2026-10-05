@@ -1622,13 +1622,13 @@ void LoadConfig()
 }
 }  // namespace AutoWowGatherDetour
 
-bool NewRpgBaseAction::GatherDetourStep()
+bool NewRpgBaseAction::GatherDetourStep(bool supplyMine)
 {
     using namespace AutoWowGatherDetour;
     using AutoWowGatherDetour::BotState;
     using AutoWowGatherDetour::Params;
     uint32 const guid = bot->GetGUID().GetCounter();
-    if (!bot->IsAlive() || bot->IsInFlight() || !botAI->IsAutoWowIndependentParty() ||
+    if (!bot->IsAlive() || bot->IsInFlight() || (!supplyMine && !botAI->IsAutoWowIndependentParty()) ||
         AutoWowOracleRuntime::IsManagedBot(guid) || !bot->GetMap() || bot->GetMap()->Instanceable())
         return false;
 
@@ -1710,7 +1710,7 @@ bool NewRpgBaseAction::GatherDetourStep()
     {
         // At the node: the stock loot strategy opens it (gather spell, skill-up); the RPG status resumes.
         AI_VALUE(LootObjectStack*, "available loot")->Add(target);
-        return false;
+        return supplyMine;
     }
     if (fresh || !bot->isMoving())
         MoveTo(go->GetMapId(), go->GetPositionX(), go->GetPositionY(), go->GetPositionZ(), false, false, false, true);
