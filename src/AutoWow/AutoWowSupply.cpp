@@ -3174,6 +3174,8 @@ void LoadConfig()
     p.craftDismount = sConfigMgr->GetOption<bool>("AutoWow.Supply.CraftDismount", false);
     p.artisanBagHygiene = sConfigMgr->GetOption<bool>("AutoWow.Professions.ArtisanBagHygiene", false);
     p.houseBoE = sConfigMgr->GetOption<bool>("AutoWow.Professions.HouseBoE", false);
+    p.vendorJunk = sConfigMgr->GetOption<bool>("AutoWow.Professions.VendorJunk", false);
+    p.surplusToAuction = sConfigMgr->GetOption<bool>("AutoWow.Professions.SurplusToAuction", false);
     gLineSpec = {};
     gPriority.clear();
     {

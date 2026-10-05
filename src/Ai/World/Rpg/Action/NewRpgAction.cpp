@@ -719,7 +719,9 @@ bool NewRpgStatusUpdateAction::Execute(Event /*event*/)
         return true;
 
     // AutoWow.Market: a random bot sells its loot on the faction AH / fills rep mail orders (flags off: never reached).
-    if ((AutoWowTrade::RandomSellers() || AutoWowSupply::MailOrders()) && MarketSellerStep())
+    // AutoWow.Auction.ListLoot / SeedThinSlots also reach the auctioneer leg of this step.
+    if ((AutoWowTrade::RandomSellers() || AutoWowSupply::MailOrders() || AutoWowTrade::ListLoot() ||
+         AutoWowTrade::SeedThinSlots()) && MarketSellerStep())
         return true;
 
     // AutoWow.Errands: independent bots keep themselves supplied by town runs (no cheats, real gold).

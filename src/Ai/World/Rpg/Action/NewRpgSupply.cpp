@@ -300,6 +300,11 @@ std::vector<BagStack> BagStacksOf(Player* bot, ProductLine const* line, ProductL
         b.keep = proto->ItemId == kHearthstone || proto->TotemCategory || proto->Class == ITEM_CLASS_CONTAINER ||
                  (proto->Class == ITEM_CLASS_WEAPON && proto->SubClass == ITEM_SUBCLASS_WEAPON_FISHING_POLE) ||
                  proto->HasFlag(ITEM_FLAG_NO_USER_DESTROY);
+        // VendorJunk: classify the junk the bags fill with (own line items are `house` / `product`, set above).
+        b.grey = proto->Quality == ITEM_QUALITY_POOR;
+        b.readable = proto->PageText != 0;
+        b.questItem = proto->Class == ITEM_CLASS_QUEST;
+        b.tradeGood = proto->Class == ITEM_CLASS_TRADE_GOODS;
         out.push_back(b);
     };
     for (uint8 slot = INVENTORY_SLOT_ITEM_START; slot < INVENTORY_SLOT_ITEM_END; ++slot)
@@ -719,6 +724,15 @@ bool NewRpgBaseAction::SupplyStep()
         return SurplusProductStacks(BagStacksOf(bot, lined ? &L : nullptr, geared ? &LineOf(gearId) : nullptr),
                                     orderProduct, kHygieneKeepStacks);
     };
+    // VendorJunk: the junk the bags fill with (greys, books, quest leftovers, foreign reagents past one stack), to
+    // vendor at the make-room trip (HygieneJunkStacks). Empty unless AutoWow.Professions.VendorJunk is on.
+    auto hygieneJunk = [&]() -> std::vector<std::uint32_t>
+    {
+        if (!AutoWowSupply::VendorJunk() || !crafter)
+            return {};
+        return HygieneJunkStacks(BagStacksOf(bot, lined ? &L : nullptr, geared ? &LineOf(gearId) : nullptr),
+                                 p.foreignKeepStacks);
+    };
 
     std::int64_t const dx = std::int64_t(bot->GetPositionX()) - home.x, dy = std::int64_t(bot->GetPositionY()) - home.y;
     bool const atHome = dx * dx + dy * dy <= std::int64_t(p.homeYards) * p.homeYards;
@@ -796,13 +810,14 @@ bool NewRpgBaseAction::SupplyStep()
         // list the artisan's own crafted-output surplus to vendor alongside the junk below. Empty / no-op with the flag
         // off, so the OFF path is unchanged.
         std::uint32_t hygieneEquipped = 0, hygieneFreed = 0;
-        std::vector<std::uint32_t> hygieneQueued;
+        std::vector<std::uint32_t> hygieneQueued, hygieneJunkQueued;
         if (AutoWowSupply::ArtisanBagHygiene() && crafter && atHome)
         {
             std::uint32_t const free0 = bot->GetFreeInventorySpace();
             hygieneEquipped = WearBetterBags(bot);
             hygieneFreed = bot->GetFreeInventorySpace() > free0 ? bot->GetFreeInventorySpace() - free0 : 0;
             hygieneQueued = hygieneSurplus();
+            hygieneJunkQueued = hygieneJunk();
         }
         // Make room (ArtisanFreeSlots; a slot while a craft has none): unsellable junk goes now, sellable junk on a
         // vendor trip, then a bag when none is worn (soak-s45-full-r1: a tailor with 16 backpack slots of quest
@@ -824,7 +839,8 @@ bool NewRpgBaseAction::SupplyStep()
             std::uint32_t const free = bot->GetFreeInventorySpace();
             Station const& bagVendor = BagVendorOf(role.alliance);
             std::uint32_t const bagPrice = PriceOf(kPouch);
-            if ((!plan.sell.empty() || !hygieneQueued.empty()) && (lined ? lst : st).threadVendor.entry)
+            if ((!plan.sell.empty() || !hygieneQueued.empty() || !hygieneJunkQueued.empty()) &&
+                (lined ? lst : st).threadVendor.entry)
                 next = Task::Junk;
             else if (WantsBag(BagWorn(bot), free, roomWant) && bagVendor.entry && free)
             {
@@ -839,14 +855,28 @@ bool NewRpgBaseAction::SupplyStep()
                 }
             }
         }
-        // ArtisanBagHygiene: one line per acting pass (rate limited). sold = own-product stacks queued to the vendor
-        // trip (Task::Junk sells them); shipped stays 0 -- the rep routing carries only the open order's target
-        // product, so the surplus intermediates are vendored, not shipped (no new economy; no item created).
-        if ((hygieneEquipped || hygieneFreed || !hygieneQueued.empty()) && now >= s.hygieneMs)
+        // VendorJunk / SurplusToAuction (proactive; flag-gated, so the OFF path above is unchanged): clear the hygiene
+        // junk / surplus even when bag room is still above the make-room target (S119: artisans kept ~free slots yet
+        // the bags stayed full of junk / surplus and crafting stalled). SurplusToAuction lists the surplus at the
+        // auctioneer (Task::Auction); otherwise the surplus and the junk go to the thread vendor (Task::Junk).
+        if (next == Task::None && AutoWowSupply::ArtisanBagHygiene() && crafter && atHome)
+        {
+            if (AutoWowSupply::SurplusToAuction() && !hygieneQueued.empty() && (lined ? lst : st).auctioneer.entry)
+                next = Task::Auction;
+            else if ((!hygieneQueued.empty() || !hygieneJunkQueued.empty()) && (lined ? lst : st).threadVendor.entry)
+                next = Task::Junk;
+        }
+        // ArtisanBagHygiene: one line per acting pass (rate limited). freed = slots freed by equipping spare bags (the
+        // S119 `freed=0` was only ever this metric -- the junk / surplus below is what actually clears the bags). sold
+        // = own-product surplus stacks for the trip; junk = junk stacks (VendorJunk) queued to the vendor; shipped 0.
+        if ((hygieneEquipped || hygieneFreed || !hygieneQueued.empty() || !hygieneJunkQueued.empty()) &&
+            now >= s.hygieneMs)
         {
             s.hygieneMs = now + kHygieneLogMs;
-            LOG_INFO("playerbots", "[Supply] bag_hygiene bot={} freed={} equipped_bags={} sold={} shipped={}",
-                     bot->GetName(), hygieneFreed, hygieneEquipped, uint32(hygieneQueued.size()), 0u);
+            LOG_INFO("playerbots",
+                     "[Supply] bag_hygiene bot={} freed={} equipped_bags={} sold={} junk={} shipped={} list={}",
+                     bot->GetName(), hygieneFreed, hygieneEquipped, uint32(hygieneQueued.size()),
+                     uint32(hygieneJunkQueued.size()), 0u, AutoWowSupply::SurplusToAuction() ? 1u : 0u);
         }
         // RepStore: the rep's bank stash (bags over 75% full) or refill (house materials under RepKeep) at the banker
         // near home, before the mailbox (soak-s48-full-r1: the Weavers hub, 16 backpack slots).
@@ -1292,6 +1322,21 @@ bool NewRpgBaseAction::SupplyStep()
             }
             case Task::Auction:
             {
+                // SurplusToAuction: an artisan lists its crafted-output surplus here instead of vendoring it. Handled
+                // in full and always breaks (a priced-out stack waits for the next pass; p.tickMs rate-limits it).
+                // ponytail: retry ceiling = tickMs; a permanently priced-out surplus never vendors with the flag on.
+                if (AutoWowSupply::SurplusToAuction() && crafter)
+                {
+                    std::vector<std::uint32_t> const goods = hygieneSurplus();
+                    std::vector<AutoWowTrade::Post> planned;
+                    if (!goods.empty())
+                        AutoWowTrade::PostStacks(bot, target->ToCreature(), goods, &planned);
+                    for (AutoWowTrade::Post const& post : planned)
+                        emit(Reason::Junk, post.entry, post.count, post.buyout, "auction");
+                    LOG_INFO("playerbots", "[Supply] bag_hygiene bot={} surplus_listed={}/{}", bot->GetName(),
+                             uint32(planned.size()), uint32(goods.size()));
+                    break;
+                }
                 if (lined)
                 {
                     std::vector<std::uint32_t> const goods = LineSurplusGuids(bot, L, lview);
@@ -1397,9 +1442,21 @@ bool NewRpgBaseAction::SupplyStep()
                                                            bot->GetFreeInventorySpace(),
                                                            RoomTarget(p.artisanFreeSlots, s.craftBlocked)).sell;
                 // ArtisanBagHygiene: the artisan's own crafted-output surplus goes on the same trip (disjoint from the
-                // junk above: own products are `house`, which PlanRoom keeps). Empty with the flag off.
-                for (std::uint32_t const g : hygieneSurplus())
-                    sell.push_back(g);
+                // junk above: own products are `house`, which PlanRoom keeps). SurplusToAuction routes the surplus to
+                // the auctioneer (Task::Auction) instead, so it is left off the vendor list here. Empty with the flag off.
+                if (!AutoWowSupply::SurplusToAuction())
+                    for (std::uint32_t const g : hygieneSurplus())
+                        sell.push_back(g);
+                // VendorJunk: the junk the bags fill with (greys, books, quest leftovers, foreign reagents) is always
+                // vendored, never listed. Empty with the flag off (OFF path unchanged). The junk guids can overlap
+                // PlanRoom's sellable junk, so dedup -- only when the flag added any, to keep the OFF list identical.
+                if (AutoWowSupply::VendorJunk())
+                {
+                    for (std::uint32_t const g : hygieneJunk())
+                        sell.push_back(g);
+                    std::sort(sell.begin(), sell.end());
+                    sell.erase(std::unique(sell.begin(), sell.end()), sell.end());
+                }
                 std::uint64_t const m0 = bot->GetMoney();
                 std::uint32_t const sold = SellGuids(bot, target->ToCreature(), sell);
                 LOG_INFO("playerbots", "[Supply] junk bot={} sold stacks={}/{} copper={} free={}", bot->GetName(), sold,

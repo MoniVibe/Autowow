@@ -219,4 +219,69 @@ TEST(TradeMail, EmptiedDeliveredMailIsDeleted)
     EXPECT_FALSE(EmptyMail(true, false, 0, true));    // items left (bags full)
     EXPECT_TRUE(Params{}.deleteEmptyMail);
 }
+
+// ---- AutoWow.Auction.ListLoot -----------------------------------------------------------------------
+TEST(AuctionListLoot, ListsUnwantedBoeGreenBlueEquip)
+{
+    // INVTYPE_CHEST = 5, bonding NO_BIND (0): a green chest the bot does not want is listed.
+    EXPECT_TRUE(ListLootEquip(kQualityUncommon, 5, 0, false, false));
+    EXPECT_TRUE(ListLootEquip(kQualityRare, 5, 2 /*BoE*/, false, false));  // blue BoE
+    EXPECT_FALSE(ListLootEquip(kQualityUncommon, 5, 0, false, true));      // an upgrade it wants: kept to wear
+    EXPECT_FALSE(ListLootEquip(1, 5, 0, false, false));                    // white: vendored, not listed here
+    EXPECT_FALSE(ListLootEquip(4 /*epic*/, 5, 0, false, false));           // only green / blue
+    EXPECT_FALSE(ListLootEquip(kQualityUncommon, 0 /*non-equip*/, 0, false, false));
+    EXPECT_FALSE(ListLootEquip(kQualityUncommon, 5, kBindOnPickup, false, false));
+    EXPECT_FALSE(ListLootEquip(kQualityUncommon, 5, kBindQuestItem, false, false));
+    EXPECT_FALSE(ListLootEquip(kQualityUncommon, 5, 0, true /*soulbound*/, false));
+}
+
+// ---- AutoWow.Auction.SeedThinSlots ------------------------------------------------------------------
+TEST(AuctionSeed, SlotCategoryOfInventoryType)
+{
+    EXPECT_EQ(SeedSlotOf(12), SeedSlot::Trinket);
+    EXPECT_EQ(SeedSlotOf(11), SeedSlot::Ring);
+    EXPECT_EQ(SeedSlotOf(2), SeedSlot::Neck);
+    EXPECT_EQ(SeedSlotOf(16), SeedSlot::Back);
+    EXPECT_EQ(SeedSlotOf(14), SeedSlot::OffHand);  // shield
+    EXPECT_EQ(SeedSlotOf(23), SeedSlot::OffHand);  // held in off hand
+    EXPECT_EQ(SeedSlotOf(15), SeedSlot::Ranged);
+    EXPECT_EQ(SeedSlotOf(25), SeedSlot::Ranged);   // thrown
+    EXPECT_EQ(SeedSlotOf(28), SeedSlot::Ranged);   // relic
+    EXPECT_EQ(SeedSlotOf(5), SeedSlot::None);      // chest: not a seeded slot
+    EXPECT_EQ(SeedSlotOf(1), SeedSlot::None);      // head
+}
+
+TEST(AuctionSeed, LevelBands)
+{
+    EXPECT_EQ(SeedBandOf(0), 0);
+    EXPECT_EQ(SeedBandOf(1), 0);
+    EXPECT_EQ(SeedBandOf(10), 0);
+    EXPECT_EQ(SeedBandOf(11), 1);
+    EXPECT_EQ(SeedBandOf(71), 7);
+    EXPECT_EQ(SeedBandOf(80), 7);
+    EXPECT_EQ(SeedBandOf(200), kSeedBands - 1);  // clamp
+}
+
+TEST(AuctionSeed, SeedCountTopsUpToThreshold)
+{
+    EXPECT_EQ(SeedCount(0, 3, 10), 3u);  // empty slot: fill to the threshold
+    EXPECT_EQ(SeedCount(2, 3, 10), 1u);  // one short
+    EXPECT_EQ(SeedCount(3, 3, 10), 0u);  // not thin
+    EXPECT_EQ(SeedCount(5, 3, 10), 0u);
+    EXPECT_EQ(SeedCount(0, 3, 2), 2u);   // capped by room
+    EXPECT_EQ(SeedCount(0, 3, 0), 0u);
+}
+
+TEST(AuctionSeed, DailyCapWindow)
+{
+    SeedWindow w;
+    EXPECT_EQ(SeedRoom(w, 100, 20), 20u);
+    NoteSeed(w, 100, 15);
+    EXPECT_EQ(SeedRoom(w, 100, 20), 5u);
+    NoteSeed(w, 100, 5);
+    EXPECT_EQ(SeedRoom(w, 100, 20), 0u);
+    EXPECT_EQ(SeedRoom(w, 101, 20), 20u);  // a new day resets
+    NoteSeed(w, 101, 1);
+    EXPECT_EQ(SeedRoom(w, 101, 20), 19u);
+}
 }  // namespace

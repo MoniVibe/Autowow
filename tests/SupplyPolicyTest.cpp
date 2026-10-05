@@ -2709,3 +2709,48 @@ TEST(SupplyHouseBoE, SpecAllowsRestrictsSpecRowsToTheMatchingTeam)
     EXPECT_FALSE(SpecAllows(kSpecWeapon, kSpecAny));  // an unspecialized team makes no spec row
 }
 }  // namespace
+// ---- AutoWow.Professions.VendorJunk ----------------------------------------------------------------
+TEST(SupplyVendorJunk, FlagDefaultsOff)
+{
+    EXPECT_FALSE(Params{}.vendorJunk);
+    EXPECT_FALSE(VendorJunk());   // module off: never
+    EXPECT_FALSE(Params{}.surplusToAuction);
+    EXPECT_FALSE(SurplusToAuction());
+}
+
+TEST(SupplyVendorJunk, SellsGreyBookQuestItemAndForeignReagentSurplusOnly)
+{
+    auto make = [](std::uint32_t guid, std::uint32_t entry, std::uint32_t sellPrice) {
+        BagStack s;
+        s.guid = guid;
+        s.entry = entry;
+        s.sellPrice = sellPrice;
+        return s;
+    };
+    std::vector<BagStack> bags;
+    BagStack grey = make(10, 100, 5);     grey.grey = true;            bags.push_back(grey);
+    BagStack book = make(11, 101, 3);     book.readable = true;        bags.push_back(book);
+    BagStack staleQuest = make(12, 102, 2); staleQuest.questItem = true; bags.push_back(staleQuest);  // no logged quest
+    // A foreign trade good (not `house`): three stacks of entry 200 -> keep the lowest guid, sell the other two.
+    bags.push_back([&]{ BagStack s = make(23, 200, 4); s.tradeGood = true; return s; }());
+    bags.push_back([&]{ BagStack s = make(20, 200, 4); s.tradeGood = true; return s; }());
+    bags.push_back([&]{ BagStack s = make(21, 200, 4); s.tradeGood = true; return s; }());
+    // Never sold:
+    BagStack own = make(30, 300, 9);      own.house = true;            bags.push_back(own);   // own reagent
+    BagStack prod = make(31, 301, 9);     prod.product = true;         bags.push_back(prod);  // own product
+    BagStack questReserve = make(32, 102, 2); questReserve.questItem = true; questReserve.quest = true;
+    bags.push_back(questReserve);  // a logged quest still wants it
+    BagStack tool = make(33, 302, 9);     tool.keep = true;            bags.push_back(tool);  // hearthstone / tool
+    BagStack greyNoValue = make(34, 303, 0); greyNoValue.grey = true;  bags.push_back(greyNoValue);  // unsellable -> destroy step
+    BagStack gear = make(35, 304, 50);                                 bags.push_back(gear);  // BoE gear: ListLoot's job
+
+    std::vector<std::uint32_t> const sell = HygieneJunkStacks(bags, 1);
+    // grey(10), book(11), staleQuest(12), and the two surplus foreign stacks (20,21; 23 kept as the lowest? no --
+    // lowest guid 20 is kept, 21 and 23 sold). Ascending.
+    ASSERT_EQ(sell.size(), 5u);
+    EXPECT_EQ(sell[0], 10u);
+    EXPECT_EQ(sell[1], 11u);
+    EXPECT_EQ(sell[2], 12u);
+    EXPECT_EQ(sell[3], 21u);
+    EXPECT_EQ(sell[4], 23u);
+}

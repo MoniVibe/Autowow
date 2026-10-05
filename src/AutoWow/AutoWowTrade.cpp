@@ -10,8 +10,11 @@
 // (PlayerbotWorldThreadProcessor) and every ledger line reports the money change they actually made.
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <set>
 
 #include "AiObjectContext.h"
 #include "AuctionHouseMgr.h"
@@ -36,6 +39,7 @@
 #include "PlayerbotOperation.h"
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
+#include "RandomItemMgr.h"
 #include "SupplyPolicy.h"
 #include "TradePolicy.h"
 #include "WorldPacket.h"
@@ -45,6 +49,10 @@ namespace AutoWowTrade
 {
 namespace
 {
+// AutoWow.Auction.SeedThinSlots: per-faction-house daily seed budget (world thread writes under the lock; the map
+// thread reads it to decide whether to queue a pass). Keyed by AuctionHouseEntry::houseId.
+std::mutex gSeedLock;
+std::map<std::uint32_t, SeedWindow> gSeedWindows;
 // AutoWow.Gear.NoWhite: an auction gear weapon is ledger reason ah_weapon (the weapon floor's source b).
 char const* GearReason(std::uint32_t item)
 {
@@ -173,9 +181,17 @@ std::vector<Holding> Holdings(PlayerbotAI* botAI, Player* bot, AuctionHouseEntry
                        probe.usageAh = true;
                        if (!Postable(probe))
                            return;  // skip the usage lookup for what could never be listed
-                       h.usageAh = context->GetValue<ItemUsage>("item usage",
-                                                                UsageKey(h.entry, item->GetItemRandomPropertyId()))
-                                       ->Get() == ITEM_USAGE_AH;
+                       ItemUsage const usage =
+                           context->GetValue<ItemUsage>("item usage",
+                                                        UsageKey(h.entry, item->GetItemRandomPropertyId()))
+                               ->Get();
+                       h.usageAh = usage == ITEM_USAGE_AH;
+                       // AutoWow.Auction.ListLoot: a BoE green / blue equippable the bot does not want (not an
+                       // equip / replace upgrade) is listed instead of vendored, so gear catch-up scans find it.
+                       if (!h.usageAh && detail::gParams.listLoot &&
+                           ListLootEquip(proto->Quality, proto->InventoryType, proto->Bonding, item->IsSoulBound(),
+                                         usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE))
+                           h.usageAh = true;
                        auto const low = lowest.find(h.entry);
                        h.lowestOther = low == lowest.end() ? 0 : low->second;
                        h.deposit = AuctionHouseMgr::GetAuctionDeposit(house, p.durationMin * MINUTE, item, h.count);
@@ -398,6 +414,174 @@ private:
     ObjectGuid bot_;
     ObjectGuid mailbox_;
 };
+
+// World thread: AutoWow.Auction.SeedThinSlots. Count each thin accessory / off-slot's buyout listings in the bot's
+// level band on the faction house, and for the thin ones create BoE green items (sRandomItemMgr's per-level
+// equipment index, filtered to green BoE of the slot and band) and list them for sale, owned by the bot, within
+// the per-house daily cap. The one place in the module where items are created from nothing (owner-approved).
+class SeedOperation : public PlayerbotOperation
+{
+public:
+    SeedOperation(ObjectGuid bot, ObjectGuid auctioneer, std::uint32_t band)
+        : bot_(bot), auctioneer_(auctioneer), band_(band)
+    {
+    }
+
+    bool Execute() override
+    {
+        Player* bot = ObjectAccessor::FindConnectedPlayer(bot_);
+        Creature* auctioneer = bot ? ObjectAccessor::GetCreature(*bot, auctioneer_) : nullptr;
+        if (!bot || !bot->IsInWorld() || !auctioneer)
+            return false;
+        AuctionHouseEntry const* house =
+            AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
+        AuctionHouseObject* ah = sAuctionMgr->GetAuctionsMap(auctioneer->GetFaction());
+        if (!house || !ah || house->houseId == uint32(AuctionHouseId::Neutral))
+            return false;
+        Params const& p = detail::gParams;
+        std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+        std::uint64_t const day = now / kSeedDayMs;
+
+        // Buyout listings of each seeded slot in this band, and the item ids already listed there (never seed a
+        // duplicate the scanners already see).
+        std::array<std::uint32_t, kSeedSlots + 1> count{};
+        std::set<std::uint32_t> listed;
+        for (auto const& [id, a] : ah->GetAuctions())
+        {
+            if (!a || !a->buyout || !a->itemCount)
+                continue;
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(a->item_template);
+            if (!proto)
+                continue;
+            SeedSlot const slot = SeedSlotOf(proto->InventoryType);
+            if (slot == SeedSlot::None || SeedBandOf(proto->RequiredLevel) != band_)
+                continue;
+            ++count[static_cast<std::size_t>(slot)];
+            listed.insert(a->item_template);
+        }
+
+        std::vector<Post> posts;  // for the ledger rows after the listings go in
+        {
+            std::lock_guard<std::mutex> guard(gSeedLock);
+            SeedWindow& w = gSeedWindows[house->houseId];
+            std::uint32_t room = std::min(SeedRoom(w, day, p.seedDailyCap), p.seedPerVisit);
+            std::uint32_t made = 0;
+            for (std::uint8_t s = 1; s <= kSeedSlots && room; ++s)
+            {
+                std::uint32_t const need = SeedCount(count[s], p.seedThinThreshold, room);
+                for (std::uint32_t k = 0; k < need; ++k)
+                {
+                    std::uint32_t const item = PickCandidate(static_cast<SeedSlot>(s), listed);
+                    if (!item)
+                        break;
+                    if (!ListCreated(bot, ah, house, item, posts))
+                        break;
+                    listed.insert(item);  // one per item id per pass
+                    --room;
+                    ++made;
+                }
+            }
+            if (made)
+                NoteSeed(w, day, made);
+        }
+        for (Post const& post : posts)
+        {
+            LOG_INFO("playerbots", "[Seed] bot={} house={} band={} item={} buyout={}", bot->GetName(), house->houseId,
+                     band_, post.entry, post.buyout);
+            if (AutoWowQuestLedger::Enabled())
+                AutoWowQuestLedger::EmitTrade(bot, "seed",
+                                              LedgerFields(Action::Post, post.entry, 1, post.buyout, 0, 0, "seed"));
+        }
+        return true;
+    }
+
+    ObjectGuid GetBotGuid() const override { return bot_; }
+    std::string GetName() const override { return "AutoWowTradeSeed"; }
+
+private:
+    // The lowest-id green BoE item of `slot` in this band that is not already listed / seeded this pass. 0 = none.
+    std::uint32_t PickCandidate(SeedSlot slot, std::set<std::uint32_t> const& taken) const
+    {
+        std::uint32_t best = 0;
+        std::uint32_t const lo = band_ * 10u + 1u, hi = band_ * 10u + 10u;
+        auto consider = [&](InventoryType invType)
+        {
+            for (std::uint32_t level = lo; level <= hi; ++level)
+                for (std::uint32_t const item : sRandomItemMgr.GetEquipmentNew(level, invType))
+                {
+                    if ((best && item >= best) || taken.count(item))
+                        continue;
+                    ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+                    if (!proto || proto->Quality != kQualityUncommon || !proto->SellPrice ||
+                        proto->Bonding == kBindOnPickup || proto->Bonding == kBindQuestItem ||
+                        SeedSlotOf(proto->InventoryType) != slot || SeedBandOf(proto->RequiredLevel) != band_)
+                        continue;
+                    best = item;
+                }
+        };
+        for (InventoryType const invType : InvTypesOf(slot))
+            if (invType != INVTYPE_NON_EQUIP)
+                consider(invType);
+        return best;
+    }
+
+    // The core InventoryTypes a seed category covers (padded with INVTYPE_NON_EQUIP = ignore).
+    static std::array<InventoryType, 3> InvTypesOf(SeedSlot slot)
+    {
+        switch (slot)
+        {
+            case SeedSlot::Trinket: return {INVTYPE_TRINKET, INVTYPE_NON_EQUIP, INVTYPE_NON_EQUIP};
+            case SeedSlot::Ring:    return {INVTYPE_FINGER, INVTYPE_NON_EQUIP, INVTYPE_NON_EQUIP};
+            case SeedSlot::Neck:    return {INVTYPE_NECK, INVTYPE_NON_EQUIP, INVTYPE_NON_EQUIP};
+            case SeedSlot::Back:    return {INVTYPE_CLOAK, INVTYPE_NON_EQUIP, INVTYPE_NON_EQUIP};
+            case SeedSlot::OffHand: return {INVTYPE_SHIELD, INVTYPE_HOLDABLE, INVTYPE_NON_EQUIP};
+            case SeedSlot::Ranged:  return {INVTYPE_RANGED, INVTYPE_THROWN, INVTYPE_RANGEDRIGHT};
+            default:                return {INVTYPE_NON_EQUIP, INVTYPE_NON_EQUIP, INVTYPE_NON_EQUIP};
+        }
+    }
+
+    // Create one `item` and add it to the house as a buyout listing owned by the bot (AhBot pattern: no deposit
+    // charged, the item is created from nothing). Appends the listing to `posts`. False = could not create / price.
+    bool ListCreated(Player* bot, AuctionHouseObject* ah, AuctionHouseEntry const* house, std::uint32_t item,
+                     std::vector<Post>& posts)
+    {
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
+        if (!proto)
+            return false;
+        std::uint64_t const buyout = UnitPrice(detail::gParams, proto->SellPrice, 0);
+        if (!buyout || buyout > kMaxMoney)
+            return false;
+        Item* created = Item::CreateItem(item, 1, bot);
+        if (!created)
+            return false;
+        AuctionEntry* entry = new AuctionEntry;
+        entry->Id = sObjectMgr->GenerateAuctionID();
+        entry->houseId = AuctionHouseId(house->houseId);
+        entry->item_guid = created->GetGUID();
+        entry->item_template = item;
+        entry->itemCount = 1;
+        entry->owner = bot->GetGUID();
+        entry->startbid = static_cast<std::uint32_t>(std::max<std::uint64_t>(1, buyout * detail::gParams.bidPct / 100));
+        entry->bidder = ObjectGuid::Empty;
+        entry->bid = 0;
+        entry->buyout = static_cast<std::uint32_t>(buyout);
+        entry->expire_time = GameTime::GetGameTime().count() + detail::gParams.seedDurationMin * MINUTE;
+        entry->deposit = 0;
+        entry->auctionHouseEntry = house;
+        ah->AddAuction(entry);
+        sAuctionMgr->AddAItem(created);
+        CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+        created->SaveToDB(trans);
+        entry->SaveToDB(trans);
+        CharacterDatabase.CommitTransaction(trans);
+        posts.push_back({item, created->GetGUID().GetCounter(), 1, entry->startbid, entry->buyout, 0});
+        return true;
+    }
+
+    ObjectGuid bot_;
+    ObjectGuid auctioneer_;
+    std::uint32_t band_;
+};
 }  // namespace
 
 void LoadConfig()
@@ -415,9 +599,19 @@ void LoadConfig()
     p.sellerCapPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Market.SellerCapPerHour", 6);
     p.sellerScanMs = std::max<std::uint32_t>(1000, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Market.SellerScanMs", 60000));
     p.sellerYards = std::max<std::uint32_t>(10, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Market.SellerYards", 120));
+    p.listLoot = sConfigMgr->GetOption<bool>("AutoWow.Auction.ListLoot", false);
+    p.seedThinSlots = sConfigMgr->GetOption<bool>("AutoWow.Auction.SeedThinSlots", false);
+    p.seedDailyCap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.DailyCap", 20);
+    p.seedThinThreshold = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.ThinThreshold", 3));
+    p.seedPerVisit = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.SeedPerVisit", 3));
     if (p.randomSellers)
         LOG_INFO("server.loading", "[Trade] market random sellers on: cap={}/h scan_ms={} yards={}", p.sellerCapPerHour,
                  p.sellerScanMs, p.sellerYards);
+    if (p.listLoot)
+        LOG_INFO("server.loading", "[Trade] auction list-loot on: unneeded BoE green / blue gear is listed, not vendored");
+    if (p.seedThinSlots)
+        LOG_INFO("server.loading", "[Trade] auction thin-slot seeding on: cap={}/day/house threshold={} per_visit={}",
+                 p.seedDailyCap, p.seedThinThreshold, p.seedPerVisit);
 }
 
 bool HasCollectableMail(Player* bot)
@@ -631,6 +825,27 @@ std::uint32_t PostLoot(PlayerbotAI* botAI, Player* bot, Creature* auctioneer, st
         PlayerbotWorldThreadProcessor::instance().QueueOperation(std::make_unique<AuctionOperation>(
             bot->GetGUID(), auctioneer->GetGUID(), std::move(posts), std::vector<Buy>{}));
     return n;
+}
+
+std::uint32_t SeedThinSlotsAt(Player* bot, Creature* auctioneer)
+{
+    if (!detail::gParams.seedThinSlots || !bot || !auctioneer)
+        return 0;
+    AuctionHouseEntry const* house = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(auctioneer->GetFaction());
+    if (!house || house->houseId == uint32(AuctionHouseId::Neutral))
+        return 0;  // faction houses only (the neutral goblin houses are the future cross-faction channel)
+    std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
+    std::uint64_t const day = now / kSeedDayMs;
+    std::uint32_t room = 0;
+    {
+        std::lock_guard<std::mutex> guard(gSeedLock);
+        room = SeedRoom(gSeedWindows[house->houseId], day, detail::gParams.seedDailyCap);
+    }
+    if (!room)
+        return 0;  // the house's daily cap is spent
+    PlayerbotWorldThreadProcessor::instance().QueueOperation(
+        std::make_unique<SeedOperation>(bot->GetGUID(), auctioneer->GetGUID(), SeedBandOf(bot->GetLevel())));
+    return std::min(room, detail::gParams.seedPerVisit);
 }
 
 void EmitRow(Player* bot, Action a, std::uint32_t item, std::uint32_t count, std::uint64_t price, std::int64_t gold,
