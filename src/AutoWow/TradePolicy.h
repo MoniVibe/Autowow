@@ -276,6 +276,21 @@ inline constexpr std::uint8_t kSeedBands = 8;  // level bands 1-10, 11-20, ... 7
     return static_cast<std::uint8_t>(b < kSeedBands ? b : kSeedBands - 1);
 }
 
+// Whole admission test for a thin-slot seed candidate (the engine supplies the item's fields; pure so it is
+// unit-tested without the item store). A candidate is an uncommon (green) item that is NOT soulbound or quest-bound
+// (bind-on-equip or bind-on-use is fine), of the asked slot category, whose required level is in the asked band and
+// at or above the floor. Deliberately indifferent to RandomProperty / RandomSuffix: most L61-80 green jewellery are
+// "of the <suffix>" world drops, and excluding them is what strands the top bands -- they are admitted here and the
+// suffix is rolled at creation (AutoWowTrade.cpp ListCreated), exactly as loot generation does. SellPrice (needed to
+// price the listing) stays a caller concern.
+[[nodiscard]] inline bool SeedCandidateOk(std::uint32_t quality, std::uint32_t bonding, std::uint32_t invType,
+                                          std::uint32_t requiredLevel, SeedSlot slot, std::uint8_t band,
+                                          std::uint32_t floorLvl)
+{
+    return quality == kQualityUncommon && bonding != kBindOnPickup && bonding != kBindQuestItem &&
+           SeedSlotOf(invType) == slot && SeedBandOf(requiredLevel) == band && requiredLevel >= floorLvl;
+}
+
 // Per-faction-house daily cap accounting (one game day = kSeedDayMs of game time).
 inline constexpr std::uint64_t kSeedDayMs = 86400000;
 struct SeedWindow

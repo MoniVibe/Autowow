@@ -311,4 +311,33 @@ TEST(AuctionSeed, DailyCapWindow)
     NoteSeed(w, 101, 1);
     EXPECT_EQ(SeedRoom(w, 101, 20), 19u);
 }
+
+TEST(AuctionSeed, CandidateAdmission)
+{
+    // INVTYPE_FINGER (11), a green ring whose required level is 77 -> band 7, floor 58.
+    constexpr std::uint32_t kFinger = 11, kGreen = kQualityUncommon, kBoE = 2;
+    EXPECT_TRUE(SeedCandidateOk(kGreen, kBoE, kFinger, 77, SeedSlot::Ring, 7, 58));
+
+    // Quality: only uncommon (green). White / blue / purple are not seeded.
+    EXPECT_FALSE(SeedCandidateOk(1, kBoE, kFinger, 77, SeedSlot::Ring, 7, 58));
+    EXPECT_FALSE(SeedCandidateOk(kQualityRare, kBoE, kFinger, 77, SeedSlot::Ring, 7, 58));
+
+    // Bonding: bind-on-pickup and quest-bound are rejected; bind-on-equip (2) and bind-on-use (3) and none (0) pass.
+    EXPECT_FALSE(SeedCandidateOk(kGreen, kBindOnPickup, kFinger, 77, SeedSlot::Ring, 7, 58));
+    EXPECT_FALSE(SeedCandidateOk(kGreen, kBindQuestItem, kFinger, 77, SeedSlot::Ring, 7, 58));
+    EXPECT_TRUE(SeedCandidateOk(kGreen, 0, kFinger, 77, SeedSlot::Ring, 7, 58));
+    EXPECT_TRUE(SeedCandidateOk(kGreen, 3, kFinger, 77, SeedSlot::Ring, 7, 58));
+
+    // Slot and band must match the request.
+    EXPECT_FALSE(SeedCandidateOk(kGreen, kBoE, 2 /*neck*/, 77, SeedSlot::Ring, 7, 58));
+    EXPECT_FALSE(SeedCandidateOk(kGreen, kBoE, kFinger, 66 /*band 6*/, SeedSlot::Ring, 7, 58));
+
+    // Floor: required level must be at or above SeedMinLevel.
+    EXPECT_FALSE(SeedCandidateOk(kGreen, kBoE, kFinger, 55, SeedSlot::Ring, 5, 58));
+    EXPECT_TRUE(SeedCandidateOk(kGreen, kBoE, kFinger, 58, SeedSlot::Ring, 5, 58));
+
+    // Regression: a random-suffix / random-property world-drop green is NOT excluded here -- admission is blind to
+    // the random fields (the suffix is rolled at creation). This is what lets the L61-80 bands seed at all.
+    EXPECT_TRUE(SeedCandidateOk(kGreen, kBoE, kFinger, 74, SeedSlot::Ring, 7, 58));
+}
 }  // namespace
