@@ -16,6 +16,7 @@
 #include <mutex>
 #include <set>
 
+#include "AhBrokerPolicy.h"
 #include "AiObjectContext.h"
 #include "AuctionHouseMgr.h"
 #include "AutoWowQuestLedger.h"
@@ -293,6 +294,52 @@ void TakeCod(Player* bot, WorldSession* session, ObjectGuid mailbox, time_t now)
     }
 }
 
+// AutoWow.Gear.AhBroker (any bot at its mailbox): a COD mail tagged with the broker subject is the broker's gear
+// delivery. Pay and take it (the stock take charges the COD and mails it to the broker; the equip pass wears it) when
+// the requester can afford it and the sender is a house rep (the broker); otherwise return it to the sender. A COD
+// from anyone else, or any non-broker mail, is left for the normal collection pass.
+void TakeBrokerCod(Player* bot, WorldSession* session, ObjectGuid mailbox, time_t now)
+{
+    std::vector<uint32> ids;
+    for (Mail const* m : bot->GetMails())
+        if (m && m->state != MAIL_STATE_DELETED && m->deliver_time <= now && m->COD && m->HasItems() &&
+            m->subject == AutoWowBroker::kBrokerSubject)
+            ids.push_back(m->messageID);
+    std::sort(ids.begin(), ids.end());
+    for (uint32 id : ids)
+    {
+        Mail* m = bot->GetMail(id);
+        if (!m || !m->COD || !m->HasItems())
+            continue;
+        uint32 const sender = static_cast<uint32>(m->sender);
+        uint32 const entry = m->items.front().item_template;
+        uint32 const cod = m->COD;
+        // "Only from the broker": a broker-subject COD must come from a house rep; anyone else -> not_broker -> return.
+        uint32 const broker = AutoWowSupply::RoleOf(sender).role == AutoWowSupply::Role::Rep ? sender : 0;
+        AutoWowBroker::CodVerdict const v = AutoWowBroker::DecideRequesterCod(sender, broker, cod, bot->GetMoney());
+        if (v == AutoWowBroker::CodVerdict::Accept)
+        {
+            uint64 const m0 = bot->GetMoney();
+            std::vector<MailItemInfo> const items = m->items;  // the handler erases taken items
+            for (MailItemInfo const& mi : items)
+            {
+                WorldPacket packet(CMSG_MAIL_TAKE_ITEM, 8 + 4 + 4);
+                packet << mailbox << id << mi.item_guid;
+                session->HandleMailTakeItem(packet);
+            }
+            bool const paid = bot->GetMoney() < m0;  // the core only charges the COD when the item is actually taken
+            LOG_INFO("playerbots", "[AhBroker] cod_paid bot={} item={} cod={} result={}", bot->GetName(), entry, cod,
+                     paid ? "paid" : "no_room");
+            continue;
+        }
+        WorldPacket packet(CMSG_MAIL_RETURN_TO_SENDER, 8 + 4 + 8);
+        packet << mailbox << id << ObjectGuid::Create<HighGuid::Player>(sender);
+        session->HandleMailReturnToSender(packet);
+        LOG_INFO("playerbots", "[AhBroker] cod_returned bot={} item={} cod={} reason={}", bot->GetName(), entry, cod,
+                 AutoWowBroker::CodVerdictName(v));
+    }
+}
+
 // World thread: the listings and purchases planned at the auctioneer.
 class AuctionOperation : public PlayerbotOperation
 {
@@ -376,6 +423,8 @@ public:
         if (AutoWowSupply::MailOrders() &&
             AutoWowSupply::RoleOf(static_cast<std::uint32_t>(bot->GetGUID().GetCounter())).role == AutoWowSupply::Role::Rep)
             TakeCod(bot, session, mailbox_, now);
+        if (AutoWowBroker::Enabled())
+            TakeBrokerCod(bot, session, mailbox_, now);  // requester pays the broker's COD gear mail
         std::vector<uint32> ids;
         for (Mail const* m : bot->GetMails())
             if (Collectable(m, now))

@@ -1608,6 +1608,10 @@ bool NewRpgBaseAction::SupplyStep()
                 QueueMarketCancels(bot, npc->GetGUID().GetRawValue(), std::move(cancels));
                 QueueMarketBuys(bot, npc->GetGUID().GetRawValue(), std::move(buys));
                 QueueFinishedBagBuys(bot, npc->GetGUID().GetRawValue(), std::move(finished));
+                // AutoWow.Gear.AhBroker: the bag-house rep also fills off-map bots' AH-gear requests from this faction
+                // house (internally gated by the flag + bag-house role). Buys with treasury gold, mails COD.
+                if (role.bagHouse)
+                    QueueBrokerBuys(bot, npc->GetGUID().GetRawValue());
                 break;
             }
             default:

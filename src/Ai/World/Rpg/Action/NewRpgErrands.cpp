@@ -1922,7 +1922,8 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             std::uint32_t const repair = botAI->GetAiObjectContext()->GetValue<uint32>("repair cost")->Get();
             std::uint64_t const budget = AutoWowGear::AhBudget(bot->GetMoney(), bot->GetLevel(), repair);
             AutoWowBroker::File({guid, static_cast<std::uint8_t>(bot->GetTeamId()), bot->GetLevel(),
-                                 bot->getClass() == CLASS_HUNTER, budget, static_cast<std::uint32_t>(now)});
+                                 bot->getClass() == CLASS_HUNTER, budget,
+                                 static_cast<std::uint32_t>(GameTime::GetGameTime().count())});
             s.lastAhGearLevel = bot->GetLevel();
             StoreState(guid, s);
             LOG_INFO("playerbots", "[AhBroker] request bot={} lvl={} team={} budget={} reason={} map={}", bot->GetName(),

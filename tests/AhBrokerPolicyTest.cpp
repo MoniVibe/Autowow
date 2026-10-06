@@ -11,7 +11,7 @@ namespace
 {
 using namespace AutoWowBroker;
 
-Request R(std::uint32_t guid, std::uint8_t team, std::uint32_t level, std::uint64_t budget, std::uint32_t filedMs,
+Request R(std::uint32_t guid, std::uint8_t team, std::uint32_t level, std::uint64_t budget, std::uint32_t filedSec,
           bool hunter = false)
 {
     Request r;
@@ -20,7 +20,7 @@ Request R(std::uint32_t guid, std::uint8_t team, std::uint32_t level, std::uint6
     r.level = level;
     r.hunter = hunter;
     r.budget = budget;
-    r.filedMs = filedMs;
+    r.filedSec = filedSec;
     return r;
 }
 
@@ -64,7 +64,7 @@ TEST(AhBrokerQueue, EraseRemovesServed)
     EXPECT_EQ(q.front().guid, 2u);
 }
 
-// Service order: oldest (lower filedMs) first, ties on lower guid; only the asked team; stable + deterministic.
+// Service order: oldest (lower filedSec) first, ties on lower guid; only the asked team; stable + deterministic.
 TEST(AhBrokerQueue, OrderForTeamIsDeterministic)
 {
     std::vector<Request> q;

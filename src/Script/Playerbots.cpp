@@ -10,6 +10,7 @@
 #include "SquadPolicy.h"
 #include "SupplyPolicy.h"
 #include "GearUpgradePolicy.h"
+#include "AhBrokerPolicy.h"
 #include "NoWhitePolicy.h"
 #include "AutoWowOracleRuntime.h"
 #include "AutoWowQuestLedger.h"
@@ -656,6 +657,8 @@ public:
             AutoWowNoWhite::WorldUpdate(diff);  // world thread: weapon floor (own bags, hand-me-down weapons first)
         if (AutoWowGear::FlowEnabled())
             AutoWowSupply::GearFlowUpdate(diff);  // world thread: hand-me-down gear mails
+        if (AutoWowBroker::Enabled())
+            AutoWowSupply::AhBrokerUpdate(diff);  // world thread: deliver broker-bought AH gear COD
         if (AutoWowSquad::Enabled())
             AutoWowSquad::WorldUpdate(diff);  // world thread: squad party, demand, stints
         if (AutoWowDungeonProbe::Enabled())

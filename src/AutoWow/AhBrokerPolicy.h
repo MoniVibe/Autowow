@@ -54,8 +54,9 @@ struct Params
     std::uint32_t tickMs = 30000;     // AutoWow.Gear.AhBrokerTickMs: world-thread broker-pass period
 };
 
-// A requester's one open order. `team` is the core TeamId (0 alliance, 1 horde): string-free faction canon. `filedMs`
-// is the monotonic world-tick accumulator at file time; the id that is never reused is `guid` (the character low guid).
+// A requester's one open order. `team` is the core TeamId (0 alliance, 1 horde): string-free faction canon. `filedSec`
+// is GameTime seconds at file time (service order + the staleness drop); the id that is never reused is `guid` (the
+// character low guid).
 struct Request
 {
     std::uint32_t guid = 0;
@@ -63,7 +64,7 @@ struct Request
     std::uint32_t level = 0;
     bool hunter = false;
     std::uint64_t budget = 0;
-    std::uint32_t filedMs = 0;
+    std::uint32_t filedSec = 0;
 };
 
 inline constexpr std::size_t kNone = static_cast<std::size_t>(-1);
@@ -98,7 +99,7 @@ inline bool Erase(std::vector<Request>& queue, std::uint32_t guid)
     return true;
 }
 
-// The team's open requests in service order: oldest first (lower filedMs), then lower guid. Deterministic, stable.
+// The team's open requests in service order: oldest first (lower filedSec), then lower guid. Deterministic, stable.
 [[nodiscard]] inline std::vector<Request> OrderForTeam(std::vector<Request> const& queue, std::uint8_t team)
 {
     std::vector<Request> out;
@@ -106,7 +107,7 @@ inline bool Erase(std::vector<Request>& queue, std::uint32_t guid)
         if (r.team == team)
             out.push_back(r);
     std::stable_sort(out.begin(), out.end(), [](Request const& a, Request const& b)
-                     { return a.filedMs != b.filedMs ? a.filedMs < b.filedMs : a.guid < b.guid; });
+                     { return a.filedSec != b.filedSec ? a.filedSec < b.filedSec : a.guid < b.guid; });
     return out;
 }
 
@@ -182,6 +183,10 @@ inline constexpr std::size_t kMaxOpen = 512;
 inline bool Enabled() { return detail::gEnabled; }
 [[nodiscard]] inline Params const& Get() { return detail::gParams; }
 
+// The COD-mail subject the broker sends and the requester's mail stop recognizes (string-free matching stays in the
+// COD verdict; the subject only tags the mail as broker traffic so a requester never pays a stranger's COD).
+inline constexpr char kBrokerSubject[] = "AutoWoW AH broker";
+
 // Map thread (the requester, at a dropped AH-gear run): file / replace its one open request. No-op unless Enabled().
 inline void File(Request const& req)
 {
@@ -191,6 +196,20 @@ inline void File(Request const& req)
     Upsert(detail::gQueue, req);
     while (detail::gQueue.size() > detail::kMaxOpen)
         detail::gQueue.erase(detail::gQueue.begin());
+}
+
+// The broker (its rep's map-thread auctioneer visit): the team's open requests in service order.
+[[nodiscard]] inline std::vector<Request> TeamRequests(std::uint8_t team)
+{
+    std::lock_guard<std::mutex> guard(detail::gQueueLock);
+    return OrderForTeam(detail::gQueue, team);
+}
+
+// The broker: drop a request once it is served, stale, or the requester has moved on.
+inline void Forget(std::uint32_t guid)
+{
+    std::lock_guard<std::mutex> guard(detail::gQueueLock);
+    Erase(detail::gQueue, guid);
 }
 }  // namespace AutoWowBroker
 
