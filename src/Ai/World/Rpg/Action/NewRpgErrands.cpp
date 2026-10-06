@@ -16,6 +16,7 @@
 #include "AutoWowQuestLedger.h"
 #include "Bag.h"
 #include "Config.h"
+#include "AhBrokerPolicy.h"
 #include "Creature.h"
 #include "DungeonPathWalkAction.h"
 #include "ErrandsPolicy.h"
@@ -1461,6 +1462,14 @@ void LoadConfig()
     nw.retryPasses = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteRetryPasses", 60);
     nw.maxMails = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteMaxMails", 10);
     nw.starterIlvl = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.NoWhiteStarterIlvl", 5);
+    // AutoWow.Gear.AhBroker (AhBrokerPolicy.h): a dropped AH-gear run files a mail order a house rep fills with real
+    // gold + COD. The broker pass is AutoWowSupply::AhBrokerUpdate; needs AutoWow.Trade + AutoWow.Gear.AuctionUpgrades
+    // + AutoWow.Supply.Enable (the reps). No effect on its own.
+    AutoWowBroker::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.AhBroker", false);
+    AutoWowBroker::Params& ab = AutoWowBroker::detail::gParams;
+    ab.maxBuysPerMin = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerMaxBuysPerMin", 6);
+    ab.feeCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerFeeCopper", 0);
+    ab.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerTickMs", 30000);
     if (detail::gEnabled)
         BuildCatalog();
 }
@@ -1903,6 +1912,23 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
         if (a.urgent & NeedPotion)
             LOG_INFO("playerbots", "[PotionFloor] run_due bot={} lvl={} potion_only={} money={} town={}", bot->GetName(),
                      bot->GetLevel(), potionOnly, bot->GetMoney(), town ? town->id : 0);
+        // AutoWow.Gear.AhBroker: a due AH-gear run with no reachable auction town files a mail order instead of
+        // dropping. The already-computed AhGear budget travels with the request; the broker buys within it. Consumes
+        // the once-per-level token (like a completed scan) so it does not re-file every check window.
+        auto const fileBroker = [&](char const* reason)
+        {
+            if (!AutoWowBroker::Enabled() || !(a.urgent & NeedAhGear))
+                return;
+            std::uint32_t const repair = botAI->GetAiObjectContext()->GetValue<uint32>("repair cost")->Get();
+            std::uint64_t const budget = AutoWowGear::AhBudget(bot->GetMoney(), bot->GetLevel(), repair);
+            AutoWowBroker::File({guid, static_cast<std::uint8_t>(bot->GetTeamId()), bot->GetLevel(),
+                                 bot->getClass() == CLASS_HUNTER, budget,
+                                 static_cast<std::uint32_t>(GameTime::GetGameTime().count())});
+            s.lastAhGearLevel = bot->GetLevel();
+            StoreState(guid, s);
+            LOG_INFO("playerbots", "[AhBroker] request bot={} lvl={} team={} budget={} reason={} map={}", bot->GetName(),
+                     bot->GetLevel(), static_cast<std::uint32_t>(bot->GetTeamId()), budget, reason, bot->GetMapId());
+        };
         if (!town)
         {
             // Funnel: a due AH-gear run that found no reachable town never reaches an auctioneer. Rate-limited by the
@@ -1913,6 +1939,7 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
                                          "zone={}",
                          bot->GetName(), bot->GetLevel(), auctionPreferred ? "no_reachable_auction_town" : "no_town",
                          auctionPreferred, tryNonAuctionTown, bot->GetMapId(), bot->GetZoneId());
+            fileBroker(auctionPreferred ? "no_reachable_auction_town" : "no_town");
             return false;
         }
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));
@@ -1921,6 +1948,7 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             if (a.urgent & NeedAhGear)
                 LOG_INFO("playerbots", "[AhGear] run_drop bot={} lvl={} reason=town_lacks_auctioneer town={} map={}",
                          bot->GetName(), bot->GetLevel(), town->id, bot->GetMapId());
+            fileBroker("town_lacks_auctioneer");
             return false;
         }
         retireFinishedPredecessor();

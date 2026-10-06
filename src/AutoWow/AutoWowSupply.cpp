@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "AhBrokerPolicy.h"
 #include "AuctionHouseMgr.h"
 #include "AutoWowGuildsPolicy.h"
 #include "AutoWowQuestLedger.h"
@@ -4324,6 +4325,200 @@ void GearFlowUpdate(std::uint32_t diff)
             }
         }
     }
+}
+
+// ---- AutoWow.Gear.AhBroker runtime (AhBrokerPolicy.h) -------------------------------------------------------------
+// The per-faction broker is the bag-house rep (already stationed at its capital auctioneer + mailbox). Its map-thread
+// Task::Market visit drains the team's AH-gear request queue and buys each requester's selection with treasury gold
+// (the shared MarketBuyOperation: Pay then buyout, won items mailed to the rep). The world-thread delivery half mails
+// each won item to its requester COD; the requester's own mail stop pays it (AutoWowTrade::TakeBrokerCod).
+namespace
+{
+std::mutex gBrokerLock;  // producer: a rep's map-thread buy; consumer: the world-thread delivery (maps idle, exclusive)
+struct BrokerDelivery
+{
+    std::uint32_t requester = 0;
+    std::uint32_t item = 0;       // entry (log / match)
+    std::uint32_t itemGuid = 0;   // the won auction item; its guid survives into the rep's win mail and bags
+    std::uint32_t cod = 0;        // AutoWowBroker::CodPrice(buyout)
+    std::uint8_t team = 0;        // core TeamId
+    std::uint32_t bornSec = 0;    // GameTime seconds at buy (the undelivered-timeout clock)
+};
+std::vector<BrokerDelivery> gBrokerDeliveries;   // gBrokerLock
+struct BrokerRate { std::uint32_t windowSec = 0; std::uint32_t count = 0; };
+std::array<BrokerRate, 2> gBrokerRate{};         // per team; touched only by that team's single rep (map thread)
+std::uint32_t gBrokerAcc = 0;                    // world thread only
+constexpr std::uint32_t kBrokerMaxPerVisit = 8;  // buys per auctioneer visit, over and above the per-minute window
+constexpr std::int64_t kBrokerTimeoutSec = 1800; // 30 min: a never-delivered / stale request is dropped
+
+// The requester's AH-gear offers from this faction house: a buyout listing it can use that raises the ilvl of the slot
+// it fills. Lightweight (usability + FindEquipSlot + worn ilvl, as the gear-flow pass), no heavy stock scorer.
+// ponytail: the rep reads another online player's equip cross-thread here, exactly as the finished-bag market reads
+// recipient->CanUseItem at this same seam; acceptable per that precedent, the live soak watches it.
+std::vector<AutoWowGear::AhOffer> BrokerOffers(Player* requester, AuctionHouseObject* ah)
+{
+    std::vector<AutoWowGear::AhOffer> offers;
+    PlayerbotAI* const ai = PlayerbotsMgr::instance().GetPlayerbotAI(requester);
+    if (!ai || !ah)
+        return offers;
+    std::uint32_t const level = requester->GetLevel();
+    Item const* mh = requester->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+    bool const wields2h = mh && mh->GetTemplate()->InventoryType == INVTYPE_2HWEAPON && !requester->CanTitanGrip();
+    for (auto const& [id, a] : ah->GetAuctions())
+    {
+        if (!a || a->owner == requester->GetGUID() || !a->buyout || !a->itemCount)
+            continue;
+        ItemTemplate const* proto = sObjectMgr->GetItemTemplate(a->item_template);
+        if (!proto || proto->InventoryType == INVTYPE_NON_EQUIP || proto->RequiredLevel > level ||
+            requester->CanUseItem(proto) != EQUIP_ERR_OK)
+            continue;
+        uint8 const slot = ai->FindEquipSlot(proto, NULL_SLOT, true);
+        if (slot >= EQUIPMENT_SLOT_END || (slot == EQUIPMENT_SLOT_OFFHAND && wields2h))
+            continue;
+        Item const* worn = requester->GetItemByPos(INVENTORY_SLOT_BAG_0, slot);
+        std::uint32_t const wornIlvl = worn ? worn->GetTemplate()->ItemLevel : 0;
+        if (proto->ItemLevel <= wornIlvl)
+            continue;
+        offers.push_back({id, a->item_template, a->buyout, proto->ItemLevel - wornIlvl, slot,
+                          proto->InventoryType == INVTYPE_2HWEAPON, static_cast<std::uint8_t>(proto->Quality)});
+    }
+    return offers;
+}
+}  // namespace
+
+void QueueBrokerBuys(Player* rep, std::uint64_t auctioneerRawGuid)
+{
+    if (!AutoWowBroker::Enabled() || !rep || !rep->IsInWorld() || !rep->GetSession())
+        return;
+    Creature* npc = rep->GetNPCIfCanInteractWith(ObjectGuid(auctioneerRawGuid), UNIT_NPC_FLAG_AUCTIONEER);
+    AuctionHouseEntry const* house =
+        npc ? AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(npc->GetFaction()) : nullptr;
+    AuctionHouseObject* ah = npc ? sAuctionMgr->GetAuctionsMap(npc->GetFaction()) : nullptr;
+    std::uint8_t const team = static_cast<std::uint8_t>(rep->GetTeamId());
+    std::uint32_t const expected = uint32(team == TEAM_ALLIANCE ? AuctionHouseId::Alliance : AuctionHouseId::Horde);
+    if (!house || !ah || house->houseId != expected)
+        return;
+    AutoWowBroker::Params const& bp = AutoWowBroker::Get();
+    time_t const nowSec = GameTime::GetGameTime().count();
+    BrokerRate& rate = gBrokerRate[T(team == TEAM_ALLIANCE)];
+    if (static_cast<std::uint32_t>(nowSec) - rate.windowSec >= 60)
+    {
+        rate.windowSec = static_cast<std::uint32_t>(nowSec);
+        rate.count = 0;
+    }
+    std::vector<MarketListing> buys;
+    std::vector<BrokerDelivery> pend;
+    std::uint32_t perVisit = 0;
+    for (AutoWowBroker::Request const& req : AutoWowBroker::TeamRequests(team))
+    {
+        if (!AutoWowBroker::CanBuy(bp, rate.count) || perVisit >= kBrokerMaxPerVisit)
+            break;
+        Player* requester = Online(req.guid);
+        if (!requester)
+        {
+            if (nowSec - static_cast<time_t>(req.filedSec) > kBrokerTimeoutSec)
+            {
+                LOG_INFO("playerbots", "[AhBroker] drop req={} reason=offline_stale", req.guid);
+                AutoWowBroker::Forget(req.guid);
+            }
+            continue;  // offline but fresh: leave it for a later visit
+        }
+        if (requester->GetLevel() >= req.level + 2 || nowSec - static_cast<time_t>(req.filedSec) > kBrokerTimeoutSec)
+        {
+            LOG_INFO("playerbots", "[AhBroker] drop req={} reason={} lvl={}->{}", req.guid,
+                     requester->GetLevel() >= req.level + 2 ? "outleveled" : "stale", req.level, requester->GetLevel());
+            AutoWowBroker::Forget(req.guid);
+            continue;
+        }
+        std::vector<AutoWowGear::AhOffer> const plan = AutoWowBroker::PlanForRequest(req, BrokerOffers(requester, ah));
+        std::uint32_t bought = 0;
+        for (AutoWowGear::AhOffer const& o : plan)
+        {
+            if (!AutoWowBroker::CanBuy(bp, rate.count) || perVisit >= kBrokerMaxPerVisit)
+                break;
+            std::uint32_t const itemGuid = [&]() -> std::uint32_t
+            {
+                AuctionEntry const* a = ah->GetAuction(o.id);
+                return a ? static_cast<std::uint32_t>(a->item_guid.GetCounter()) : 0;
+            }();
+            if (!itemGuid)
+                continue;  // listing gone since BrokerOffers
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(o.item);
+            buys.push_back({o.id, o.item, 1, static_cast<std::uint32_t>(o.price)});
+            pend.push_back({req.guid, o.item, itemGuid, static_cast<std::uint32_t>(AutoWowBroker::CodPrice(bp, o.price)),
+                            team, static_cast<std::uint32_t>(nowSec)});
+            LOG_INFO("playerbots", "[AhBroker] buy broker={} for={} item={} ilvl={} price={}", Low(rep), req.guid,
+                     o.item, proto ? proto->ItemLevel : 0, o.price);
+            ++rate.count;
+            ++perVisit;
+            ++bought;
+        }
+        if (bought)
+            AutoWowBroker::Forget(req.guid);  // served this visit; a still-needy bot re-files next level
+    }
+    if (buys.empty())
+        return;
+    {
+        std::lock_guard<std::mutex> guard(gBrokerLock);
+        gBrokerDeliveries.insert(gBrokerDeliveries.end(), pend.begin(), pend.end());
+    }
+    PlayerbotWorldThreadProcessor::instance().QueueOperation(
+        std::make_unique<MarketBuyOperation>(rep->GetGUID(), ObjectGuid(auctioneerRawGuid), std::move(buys)));
+}
+
+void AhBrokerUpdate(std::uint32_t diff)
+{
+    gBrokerAcc += diff;
+    if (gBrokerAcc < AutoWowBroker::Get().tickMs)
+        return;
+    gBrokerAcc = 0;
+    std::vector<BrokerDelivery> snap;
+    {
+        std::lock_guard<std::mutex> guard(gBrokerLock);
+        snap = gBrokerDeliveries;
+    }
+    if (snap.empty())
+        return;
+    time_t const nowSec = GameTime::GetGameTime().count();
+    std::unordered_set<std::uint32_t> done;  // itemGuids delivered or dropped this pass
+    for (bool const alliance : {true, false})
+    {
+        Player* rep = RoleRep(gBagHouse, alliance);
+        std::uint8_t const team = alliance ? TEAM_ALLIANCE : TEAM_HORDE;
+        for (BrokerDelivery const& d : snap)
+        {
+            if (d.team != team || done.count(d.itemGuid))
+                continue;
+            bool const timedOut = nowSec - static_cast<time_t>(d.bornSec) > kBrokerTimeoutSec;
+            bool loose = false;
+            if (rep)
+                ForEachLoose(rep, [&](Item* it)
+                             { loose = loose || static_cast<std::uint32_t>(it->GetGUID().GetCounter()) == d.itemGuid; });
+            Player* requester = Online(d.requester);
+            if (rep && loose && requester)
+            {
+                char const* why = nullptr;
+                bool const sent = AutoWowGuilds::SendItemsCod(Low(rep), d.requester, {d.itemGuid}, d.cod,
+                                                              AutoWowBroker::kBrokerSubject, &why);
+                LOG_INFO("playerbots", "[AhBroker] cod_sent broker={} to={} item={} price={} result={}", Low(rep),
+                         d.requester, d.item, d.cod, sent ? "sent" : why ? why : "refused");
+                if (sent)
+                    done.insert(d.itemGuid);
+                continue;  // not sent (e.g. mailbox full): keep it for the next pass
+            }
+            if (timedOut)
+            {
+                LOG_INFO("playerbots", "[AhBroker] drop req={} reason=undelivered item={}", d.requester, d.item);
+                done.insert(d.itemGuid);
+            }
+        }
+    }
+    if (done.empty())
+        return;
+    std::lock_guard<std::mutex> guard(gBrokerLock);
+    gBrokerDeliveries.erase(std::remove_if(gBrokerDeliveries.begin(), gBrokerDeliveries.end(),
+                                           [&](BrokerDelivery const& d) { return done.count(d.itemGuid) != 0; }),
+                            gBrokerDeliveries.end());
 }
 
 // The seller's tradeable loose stacks of `item` (whole stacks; the mail helper refuses bound items).
