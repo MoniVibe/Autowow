@@ -927,11 +927,12 @@ RandomItemList const& RandomItemMgr::GetEquipment(uint32 level, uint8 clazz, uin
     return itr->second;
 }
 
-RandomItemList const& RandomItemMgr::GetEquipmentNew(uint32 level, InventoryType invType) const
+RandomItemList const& RandomItemMgr::GetEquipmentNew(uint32 level, InventoryType invType, bool clampToBotLevel) const
 {
     static RandomItemList const empty;
 
-    level = NormalizeLevel(level);
+    if (clampToBotLevel)
+        level = NormalizeLevel(level);
 
     auto const levelItr = equipCacheNew.find(level);
     if (levelItr == equipCacheNew.end())

@@ -124,8 +124,17 @@ void BuildCatalog()
         ObjectMgr::ChooseCreatureFlags(ct, npcflag, unitFlags, dynamicFlags, &data);  // spawn overrides
         if (!(npcflag & roleFlags))
             continue;
-        if (std::find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(), data.mapid) ==
-            sPlayerbotAIConfig.randomBotMaps.end())
+        bool const onBotMap =
+            std::find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(), data.mapid) !=
+            sPlayerbotAIConfig.randomBotMaps.end();
+        // AutoWow.Gear.CatchUp: faction auction houses on continents outside RandomBotMaps (Outland / Northrend
+        // capitals -- Shattrath, Dalaran) are still catalogued, as auction-only towns, so the once-per-level AH
+        // catch-up for a L61-80 bot already on that continent finds a reachable same-map auctioneer instead of a
+        // dead town=0 run (the live S123 funnel: every >L60 bot sits on a map with no built auction town). OFF or
+        // for a non-auctioneer off-map NPC: unchanged -- skipped exactly as before.
+        bool const auctionCapital = !onBotMap && AutoWowGear::CatchUpEnabled() && AutoWowTrade::Enabled() &&
+                                    (npcflag & UNIT_NPC_FLAG_AUCTIONEER);
+        if (!onBotMap && !auctionCapital)
             continue;
         Npc n;
         n.spawn = guid;
@@ -201,6 +210,18 @@ void BuildCatalog()
                     std::sort(n.potions.begin(), n.potions.end());
                     n.potions.erase(std::unique(n.potions.begin(), n.potions.end()), n.potions.end());
                 }
+        }
+        if (auctionCapital)
+        {
+            // An off-map capital is catalogued for its auction house alone; its other services stay out of the town
+            // model so no non-auction errand reroutes to another continent (keeps the CatchUp change auction-scoped).
+            if (!(n.roles & RoleAuction))
+                continue;
+            n.roles = RoleAuction;
+            n.sells = n.tools = 0;
+            n.items.clear();
+            n.gear.clear();
+            n.potions.clear();
         }
         npcs.push_back(std::move(n));
     }
@@ -1883,10 +1904,25 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
             LOG_INFO("playerbots", "[PotionFloor] run_due bot={} lvl={} potion_only={} money={} town={}", bot->GetName(),
                      bot->GetLevel(), potionOnly, bot->GetMoney(), town ? town->id : 0);
         if (!town)
+        {
+            // Funnel: a due AH-gear run that found no reachable town never reaches an auctioneer. Rate-limited by the
+            // run-due check window (one per bot per window). map/zone expose where bots strand (the live soak: every
+            // L61-80 bot sits on a continent with no built auction town -- Northrend is outside RandomBotMaps).
+            if (a.urgent & NeedAhGear)
+                LOG_INFO("playerbots", "[AhGear] run_drop bot={} lvl={} reason={} preferred={} fallback={} map={} "
+                                         "zone={}",
+                         bot->GetName(), bot->GetLevel(), auctionPreferred ? "no_reachable_auction_town" : "no_town",
+                         auctionPreferred, tryNonAuctionTown, bot->GetMapId(), bot->GetZoneId());
             return false;
+        }
         std::uint32_t const serves = Serves(FactsOf(bot, *town, team));
         if (!ShouldRun(a.needs & serves, a.urgent & serves))
+        {
+            if (a.urgent & NeedAhGear)
+                LOG_INFO("playerbots", "[AhGear] run_drop bot={} lvl={} reason=town_lacks_auctioneer town={} map={}",
+                         bot->GetName(), bot->GetLevel(), town->id, bot->GetMapId());
             return false;
+        }
         retireFinishedPredecessor();
         s.phase = Phase::Travel;
         s.town = town->id;

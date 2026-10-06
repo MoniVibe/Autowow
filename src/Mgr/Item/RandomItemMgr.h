@@ -191,7 +191,12 @@ public:
     [[nodiscard]] uint32 GetMinLevelFromCache(uint32 itemId) const;
 
     [[nodiscard]] RandomItemList const& GetEquipment(uint32 level, uint8 clazz, uint8 slot, uint32 quality) const;
-    [[nodiscard]] RandomItemList const& GetEquipmentNew(uint32 level, InventoryType invType) const;
+    // `clampToBotLevel` (default): the query level is clamped to AiPlayerbot.RandomBotMaxLevel (bot generation never
+    // wants gear above the random-bot cap). Pass false to key by the item's true required level regardless of the cap
+    // -- the AutoWow thin-slot seeder needs the real L61-80 bands even when RandomBotMaxLevel is 60 (else every
+    // above-cap query collapses onto one clamped key holding only cap-level items; see AutoWowTrade seeder).
+    [[nodiscard]] RandomItemList const& GetEquipmentNew(uint32 level, InventoryType invType,
+                                                        bool clampToBotLevel = true) const;
     [[nodiscard]] uint32 GetRandomItem(uint32 level, RandomItemType type, RandomItemPredicate* predicate = nullptr) const;
     [[nodiscard]] uint32 GetAmmo(uint32 level, uint32 subClass) const;
     [[nodiscard]] uint32 GetRandomPotion(uint32 level, uint32 effect) const;
