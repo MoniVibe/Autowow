@@ -1430,6 +1430,7 @@ void LoadConfig()
     eb.ilvlMarginPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagIlvlPct", 115);
     eb.weaponMarginPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagWeaponPct", 130);
     eb.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagTickMs", 90000);
+    eb.failBackoffMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagFailBackoffMs", 1800000);
     // AutoWow.Gear.NoWhite (NoWhitePolicy.h; the world pass is AutoWowNoWhite::WorldUpdate).
     AutoWowNoWhite::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.NoWhite", false);
     AutoWowNoWhite::Params& nw = AutoWowNoWhite::detail::gParams;

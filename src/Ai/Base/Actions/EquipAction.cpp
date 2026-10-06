@@ -139,6 +139,13 @@ AutoWowGear::EquipWhy ForcibleBagUpgrade(PlayerbotAI* botAI, Player* bot, ItemTe
     uint8 wornSlot;
     if (!ClassifyForcibleSlot(botAI, proto, kind, wornSlot))
         return EquipWhy::None;
+
+    // Ranged slot: the class must actually be proficient with this ranged weapon subclass (bow / gun / crossbow /
+    // wand / thrown). BotCanUseItem can admit a ranged piece the stock equip then fails to place (S122: Saewash /
+    // Lythalis retried an empty ranged slot 30+ times); CanEquipWeapon is the same proficiency gate the scorer uses.
+    if (kind == EquipSlotKind::Ranged &&
+        (proto->Class != ITEM_CLASS_WEAPON || !sRandomItemMgr.CanEquipWeapon(proto, bot->getClass())))
+        return EquipWhy::None;
     slot = wornSlot;
 
     Item* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, wornSlot);
@@ -156,6 +163,59 @@ AutoWowGear::EquipWhy ForcibleBagUpgrade(PlayerbotAI* botAI, Player* bot, ItemTe
         wornIlvl = f.wornIlvl;
     }
     return DecideEquipBag(GetEquipBag(), f);
+}
+
+// AutoWow.Gear.EquipBagUpgrades fail backoff (S122: an equip that never sticks was re-forced every pass, 30+ times).
+// A force attempt is recorded; if the same (bot, item entry) is up for forcing again on the next pass it means the
+// last attempt did not take (a successful equip leaves the bags, so it would not be evaluated), and the piece is
+// parked for failBackoffMs. Returns false to skip this piece. ponytail: global mutex over a small map, pruned lazily.
+bool BagForceBackedOff(Player* bot, uint32 entry)
+{
+    struct Fail { uint32 attempts; uint32 untilMs; };
+    static std::mutex mutex;
+    static std::unordered_map<uint64, Fail> fails;  // (guid<<32)|entry -> state
+    uint32 const now = getMSTime();
+    uint32 const backoff = AutoWowGear::GetEquipBag().failBackoffMs;
+    uint64 const key = (static_cast<uint64>(bot->GetGUID().GetCounter()) << 32) | entry;
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = fails.find(key);
+    if (it != fails.end())
+    {
+        if (it->second.untilMs && static_cast<int32>(it->second.untilMs - now) > 0)
+            return true;  // still parked (signed diff: wrap-safe for a < 24-day backoff)
+        if (it->second.untilMs)  // backoff elapsed: one more attempt
+        {
+            it->second = {1, 0};
+            return false;
+        }
+        // seen last pass and still here -> the previous attempt did not stick: park it.
+        it->second = {it->second.attempts + 1, static_cast<uint32>(now + backoff)};
+        return true;
+    }
+    fails.emplace(key, Fail{1, 0});  // first attempt
+    return false;
+}
+
+// AutoWow.Gear.EquipBagUpgrades veto (S122): refuse a stock EQUIP / REPLACE that would swap a worn piece back out for
+// a lower / off-type bag candidate the force pass protects. Runs on every scan when the flag is on (the swap-back
+// fires on the frequent stock triggers, not just the 90s force pass). Only the armor / cloak / neck / ranged slots the
+// force pass owns are guarded; weapons / rings / trinkets keep the stock behaviour.
+bool VetoStockReplace(PlayerbotAI* botAI, Player* bot, ItemTemplate const* candProto)
+{
+    using namespace AutoWowGear;
+    EquipSlotKind kind;
+    uint8 wornSlot;
+    if (!ClassifyForcibleSlot(botAI, candProto, kind, wornSlot))
+        return false;
+    Item* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, wornSlot);
+    if (!worn)
+        return false;  // empty slot: let the stock equip fill it
+    ItemTemplate const* wornProto = worn->GetTemplate();
+    bool const wornUsable = bot->BotCanUseItem(wornProto) == EQUIP_ERR_OK;
+    bool const wornBestType = kind == EquipSlotKind::Armor &&
+                              sRandomItemMgr.CanEquipArmor(wornProto, bot->getClass(), bot->GetLevel());
+    return KeepsWornOverCandidate(GetEquipBag(), wornProto->ItemLevel, wornUsable, wornBestType, candProto->ItemLevel,
+                                  kind);
 }
 }
 
@@ -498,6 +558,9 @@ ItemIds EquipAction::SelectInventoryItemsToEquip(std::string const& source)
     // AutoWow.Gear.EquipBagUpgrades: run the far-below-ilvl force pass at most once per EquipBagTickMs, out of combat.
     bool const runBagOverride =
         AutoWowGear::EquipBagEnabled() && !bot->IsInCombat() && BagOverrideDue(bot);
+    // The swap-back veto runs on every scan while the flag is on (the stock swap-back fires on the frequent triggers,
+    // not just the throttled force pass).
+    bool const vetoSwapBack = AutoWowGear::EquipBagEnabled();
     ItemIds items;
     for (auto i = visitor.items.begin(); i != visitor.items.end(); ++i)
     {
@@ -525,6 +588,10 @@ ItemIds EquipAction::SelectInventoryItemsToEquip(std::string const& source)
         ItemUsage usage = AI_VALUE2(ItemUsage, "item upgrade", itemUsageParam);
         if (usage == ITEM_USAGE_EQUIP || usage == ITEM_USAGE_REPLACE || usage == ITEM_USAGE_BAD_EQUIP)
         {
+            // AutoWow.Gear.EquipBagUpgrades: refuse a stock swap that would downgrade a worn piece the force pass
+            // protects (otherwise the two scans ping-pong the same slot every tick).
+            if (vetoSwapBack && VetoStockReplace(botAI, bot, itemTemplate))
+                continue;
             LOG_INFO("playerbots",
                 "[RaidLoot] event=evaluate trigger=inventory_upgrade_scan source={} bot={} bot_guid={} "
                 "bot_guid_counter={} item={} entry={} item_guid={} item_guid_counter={} usage={} selected=true",
@@ -540,7 +607,8 @@ ItemIds EquipAction::SelectInventoryItemsToEquip(std::string const& source)
             uint32 wornId = 0;
             uint32 wornIlvl = 0;
             AutoWowGear::EquipWhy const why = ForcibleBagUpgrade(botAI, bot, itemTemplate, slot, wornId, wornIlvl);
-            if (why == AutoWowGear::EquipWhy::Empty || why == AutoWowGear::EquipWhy::Ilvl)
+            if ((why == AutoWowGear::EquipWhy::Empty || why == AutoWowGear::EquipWhy::Ilvl) &&
+                !BagForceBackedOff(bot, itemId))
             {
                 items.insert(itemId);
                 LOG_INFO("playerbots", "[GearEquip] bot={} slot={} old={}({}) new={}({}) why={}", bot->GetName(),

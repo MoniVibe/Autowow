@@ -513,6 +513,7 @@ struct EquipBagParams
     std::uint32_t ilvlMarginPct = 115;    // AutoWow.Gear.EquipBagIlvlPct: off-type armor / cloak / neck bag ilvl >= worn x this%
     std::uint32_t weaponMarginPct = 130;  // AutoWow.Gear.EquipBagWeaponPct: weapons / ranged need a bigger jump
     std::uint32_t tickMs = 90000;         // AutoWow.Gear.EquipBagTickMs: per-bot pass period (also the log rate limit)
+    std::uint32_t failBackoffMs = 1800000;  // AutoWow.Gear.EquipBagFailBackoffMs: stop retrying a piece that did not stick
 };
 
 enum class EquipSlotKind : std::uint8_t
@@ -589,6 +590,26 @@ struct EquipBagFacts
         default:
             return "none";
     }
+}
+
+// Veto the stock equip-upgrade swap-back (lane equipfix2; live soak S122, flag on): the stock scorer rates a low-ilvl
+// bag piece above the force pass's worn piece and swaps it straight back every tick (644 [GearEquip] lines, mean ilvl
+// 85.5 -> 86.5; e.g. Durnstan head 36215 ilvl146 <-> 25976 ilvl96 fifteen times). True = keep the worn piece, i.e. the
+// stock EQUIP / REPLACE of `candIlvl` into this slot must be refused, because the force pass would have equipped the
+// worn piece over that candidate (worn usable and, treating the worn piece as the bag candidate, DecideEquipBag says
+// Ilvl). Pure; empty / unusable worn is never protected (nothing to swap back to). Flag-gated at the call site.
+[[nodiscard]] inline bool KeepsWornOverCandidate(EquipBagParams const& p, std::uint32_t wornIlvl, bool wornUsable,
+                                                 bool wornBestArmorType, std::uint32_t candIlvl, EquipSlotKind kind)
+{
+    if (!wornUsable || wornIlvl == 0)
+        return false;
+    EquipBagFacts worn;
+    worn.bagIlvl = wornIlvl;    // the worn piece as the "candidate to equip"
+    worn.wornIlvl = candIlvl;   // against the bag candidate as the "worn"
+    worn.usable = true;
+    worn.bestArmorType = wornBestArmorType;
+    worn.kind = kind;
+    return DecideEquipBag(p, worn) == EquipWhy::Ilvl;
 }
 
 // ---- runtime (flag + params; read by AutoWowErrands::LoadConfig, used by NewRpgErrands.cpp and

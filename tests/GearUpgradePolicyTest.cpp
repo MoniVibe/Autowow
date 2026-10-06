@@ -179,4 +179,25 @@ TEST(GearEquipBag, WeaponsNeedABiggerJump)
     EXPECT_EQ(DecideEquipBag(p, Facts(135, 100, EquipSlotKind::Ranged)), EquipWhy::Ilvl);  // +35%: force
     EXPECT_EQ(DecideEquipBag(p, Facts(146, 0, EquipSlotKind::Weapon)), EquipWhy::Empty);   // empty hand
 }
+
+// The S122 swap-back veto: once the force pass equips the high-ilvl piece, the stock scan must not swap the low-ilvl
+// piece back in. KeepsWornOverCandidate(worn, cand) == true means refuse the stock EQUIP/REPLACE of `cand`.
+TEST(GearEquipBag, VetoKeepsHigherWornPiece)
+{
+    EquipBagParams p;
+    // Durnstan head: worn 36215 ilvl146 (mail, best type) vs the stock-preferred bag 25976 ilvl96 -> keep the worn one.
+    EXPECT_TRUE(KeepsWornOverCandidate(p, /*worn*/ 146, true, /*bestType*/ true, /*cand*/ 96, EquipSlotKind::Armor));
+    // A genuine higher-ilvl best-type candidate must NOT be vetoed (worn 96 loses to cand 146).
+    EXPECT_FALSE(KeepsWornOverCandidate(p, 96, true, true, 146, EquipSlotKind::Armor));
+    // Equal ilvl: nothing to protect, let the stock scorer decide on stats.
+    EXPECT_FALSE(KeepsWornOverCandidate(p, 112, true, true, 112, EquipSlotKind::Armor));
+    // Empty / unusable worn is never protected.
+    EXPECT_FALSE(KeepsWornOverCandidate(p, 0, true, true, 50, EquipSlotKind::Ranged));
+    EXPECT_FALSE(KeepsWornOverCandidate(p, 146, /*usable*/ false, true, 96, EquipSlotKind::Armor));
+    // Off-type worn only wins by the margin: worn 120 off-type vs cand 110 -> +9% worn, below 115%, do not veto.
+    EXPECT_FALSE(KeepsWornOverCandidate(p, 120, true, /*bestType*/ false, 110, EquipSlotKind::Armor));
+    EXPECT_TRUE(KeepsWornOverCandidate(p, 130, true, /*bestType*/ false, 110, EquipSlotKind::Armor));  // +18%
+    // Weapon/ranged protection uses the weapon margin (130%): worn 146 vs cand 96 -> keep.
+    EXPECT_TRUE(KeepsWornOverCandidate(p, 146, true, false, 96, EquipSlotKind::Ranged));
+}
 }  // namespace
