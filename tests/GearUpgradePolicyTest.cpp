@@ -101,4 +101,82 @@ TEST(GearCatchUp, AhPlanKeepsTwoHandRule)
     EXPECT_TRUE(HasSlot(plan, kSlotMainHand));
     EXPECT_FALSE(HasSlot(plan, kSlotOffHand));
 }
+
+// ---- AutoWow.Gear.EquipBagUpgrades ----------------------------------------------------------------------------------
+namespace
+{
+EquipBagFacts Facts(std::uint32_t bagIlvl, std::uint32_t wornIlvl, EquipSlotKind kind, bool usable = true,
+                    bool bestArmorType = true, bool stockUpgrade = false)
+{
+    EquipBagFacts f;
+    f.bagIlvl = bagIlvl;
+    f.wornIlvl = wornIlvl;
+    f.kind = kind;
+    f.usable = usable;
+    f.bestArmorType = bestArmorType;
+    f.stockUpgrade = stockUpgrade;
+    return f;
+}
+}  // namespace
+
+TEST(GearEquipBag, MeetsIlvlMargin)
+{
+    EXPECT_TRUE(MeetsIlvlMargin(146, 112, 115));   // +30% clears the 115% armor margin
+    EXPECT_FALSE(MeetsIlvlMargin(120, 110, 115));  // only +9%: below the off-type margin
+    EXPECT_FALSE(MeetsIlvlMargin(100, 100, 100));  // equal ilvl is never an upgrade
+    EXPECT_TRUE(MeetsIlvlMargin(101, 100, 100));   // best-type: any strictly-higher ilvl
+    EXPECT_TRUE(MeetsIlvlMargin(142, 0, 115));     // empty slot handled by the caller, but margin holds vs 0
+}
+
+// The S121 cases: usable, same-slot, far-higher-ilvl bag pieces the stock scorer left in the bags.
+TEST(GearEquipBag, SoakCasesForceEquip)
+{
+    EquipBagParams p;
+    // Faelthas (druid) cloak ilvl142 over a worn ilvl59 cloak.
+    EXPECT_EQ(DecideEquipBag(p, Facts(142, 59, EquipSlotKind::Cloak)), EquipWhy::Ilvl);
+    // Riplash Wristguards (leather) 138 over Elunarian Cuffs 58.
+    EXPECT_EQ(DecideEquipBag(p, Facts(138, 58, EquipSlotKind::Armor)), EquipWhy::Ilvl);
+    // Caribou Vest (leather, druid best type) 146 over a cloth Robe of the Crimson Order 112.
+    EXPECT_EQ(DecideEquipBag(p, Facts(146, 112, EquipSlotKind::Armor)), EquipWhy::Ilvl);
+    // Durnstan (hunter) Orca Helmet (mail) 146 over Helm of Lupine Grace 96.
+    EXPECT_EQ(DecideEquipBag(p, Facts(146, 96, EquipSlotKind::Armor)), EquipWhy::Ilvl);
+    // Delphyne (mage) Bloodspore Sandals (cloth) 134 over Audi's Embroidered Boots 111.
+    EXPECT_EQ(DecideEquipBag(p, Facts(134, 111, EquipSlotKind::Armor)), EquipWhy::Ilvl);
+}
+
+TEST(GearEquipBag, EmptySlotWearsAnyUsable)
+{
+    EquipBagParams p;
+    EXPECT_EQ(DecideEquipBag(p, Facts(130, 0, EquipSlotKind::Armor)), EquipWhy::Empty);
+    EXPECT_EQ(DecideEquipBag(p, Facts(5, 0, EquipSlotKind::Ranged)), EquipWhy::Empty);
+    // but only when usable.
+    EXPECT_EQ(DecideEquipBag(p, Facts(130, 0, EquipSlotKind::Armor, /*usable=*/false)), EquipWhy::None);
+}
+
+TEST(GearEquipBag, DefersToStockWhenItAlreadyEquips)
+{
+    EquipBagParams p;
+    EXPECT_EQ(DecideEquipBag(p, Facts(146, 112, EquipSlotKind::Armor, true, true, /*stockUpgrade=*/true)),
+              EquipWhy::Score);
+}
+
+TEST(GearEquipBag, PrefersBestArmorTypeAtMargin)
+{
+    EquipBagParams p;
+    // Off-type body armor needs the full margin; a +9% off-type piece is left in the bag.
+    EXPECT_EQ(DecideEquipBag(p, Facts(120, 110, EquipSlotKind::Armor, true, /*bestArmorType=*/false)), EquipWhy::None);
+    // The same ilvls in the class's best type force on (any strictly-higher ilvl).
+    EXPECT_EQ(DecideEquipBag(p, Facts(120, 110, EquipSlotKind::Armor, true, /*bestArmorType=*/true)), EquipWhy::Ilvl);
+    // A sidegrade (equal ilvl) never fires.
+    EXPECT_EQ(DecideEquipBag(p, Facts(112, 112, EquipSlotKind::Armor, true, true)), EquipWhy::None);
+}
+
+TEST(GearEquipBag, WeaponsNeedABiggerJump)
+{
+    EquipBagParams p;  // weaponMarginPct = 130
+    EXPECT_EQ(DecideEquipBag(p, Facts(120, 100, EquipSlotKind::Weapon)), EquipWhy::None);  // +20%: not enough
+    EXPECT_EQ(DecideEquipBag(p, Facts(140, 100, EquipSlotKind::Weapon)), EquipWhy::Ilvl);  // +40%: force
+    EXPECT_EQ(DecideEquipBag(p, Facts(135, 100, EquipSlotKind::Ranged)), EquipWhy::Ilvl);  // +35%: force
+    EXPECT_EQ(DecideEquipBag(p, Facts(146, 0, EquipSlotKind::Weapon)), EquipWhy::Empty);   // empty hand
+}
 }  // namespace

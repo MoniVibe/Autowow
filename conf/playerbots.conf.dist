@@ -3985,6 +3985,25 @@ AutoWow.Gear.FlowTickMs = 60000
 AutoWow.Gear.FlowMaxMails = 10
 AutoWow.Gear.FlowMinQuality = 1
 
+#
+#    AutoWow.Gear.EquipBagUpgrades
+#        Description: Equip far-below-ilvl bag upgrades the stock scorer leaves behind (GearUpgradePolicy.h; default 0).
+#                     The stock bag scan equips a bag piece only when its spec-weighted stat score beats the worn
+#                     piece, and that score ignores item level and base armor; so a much higher-ilvl piece with an
+#                     off-weighted stat mix (or a caster druid's int/spi cloth robe vs a stam/agi leather chest) is
+#                     never worn. With this on, the periodic out-of-combat pass (every EquipBagTickMs, per bot) also
+#                     force-equips a usable bag piece whose slot is empty or whose worn ilvl is far below -- bag ilvl
+#                     >= worn x EquipBagIlvlPct% for off-type armor / cloak / neck (any strictly-higher ilvl in the
+#                     class's best armor type), or x EquipBagWeaponPct% for weapons / ranged. Armor / cloak / neck /
+#                     ranged only (the slots the stock equip places without a score re-check); rings / trinkets /
+#                     main-off weapons still defer to the stock scorer. Logs "[GearEquip]".
+#        Default:     0 (off)
+#
+AutoWow.Gear.EquipBagUpgrades = 0
+AutoWow.Gear.EquipBagIlvlPct = 115
+AutoWow.Gear.EquipBagWeaponPct = 130
+AutoWow.Gear.EquipBagTickMs = 90000
+
 # No white / grey weapons (NoWhitePolicy.h; default 0). A weapon slot (main hand; a hunter's ranged; a dual wielder's
 # off hand holding a weapon) is under the floor when empty, grey / white, or below NoWhiteFloorPct of the green item
 # level curve: L+5 to L57, 62 + 4.5 x (L - 58) to L70, 130 + 6.3 x (L - 71) to L80. Covers the cohort, the squad roster

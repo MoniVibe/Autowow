@@ -6,13 +6,18 @@
 
 #include "EquipAction.h"
 #include "Event.h"
+#include "GearUpgradePolicy.h"
 #include "ItemCountValue.h"
 #include "ItemPackets.h"
 #include "ItemUsageValue.h"
 #include "ItemVisitors.h"
 #include "Log.h"
 #include "Playerbots.h"
+#include "RandomItemMgr.h"
 #include "StatsWeightCalculator.h"
+#include "Timer.h"
+#include <mutex>
+#include <unordered_map>
 #include <utility>
 
 namespace
@@ -45,6 +50,112 @@ void LogRaidLootEquip(Player* bot, Item* expectedItem, uint8 slot, uint32 previo
         bot->GetName(), bot->GetGUID().GetRawValue(), bot->GetGUID().GetCounter(), equipped->GetTemplate()->ItemId,
         equipped->GetTemplate()->ItemId, equipped->GetGUID().GetRawValue(), equipped->GetGUID().GetCounter(),
         static_cast<uint32>(slot), previousItemId, previousItemGuidCounter);
+}
+
+// AutoWow.Gear.EquipBagUpgrades: per-bot period gate for the force-equip pass (also rate-limits its [GearEquip] log).
+// ponytail: global mutex over a tiny guid->ms map; fine at bot cadence, shard it only if it ever shows on a profile.
+bool BagOverrideDue(Player* bot)
+{
+    static std::mutex mutex;
+    static std::unordered_map<uint32, uint32> lastMs;  // bot guid counter -> last pass getMSTime()
+    uint32 const now = getMSTime();
+    uint32 const period = AutoWowGear::GetEquipBag().tickMs;
+    uint32 const guid = bot->GetGUID().GetCounter();
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = lastMs.find(guid);
+    if (it != lastMs.end() && getMSTimeDiff(it->second, now) < period)
+        return false;
+    lastMs[guid] = now;
+    return true;
+}
+
+// AutoWow.Gear.EquipBagUpgrades: the single equip slot a bag piece targets and its kind, but only for the slots the
+// stock EquipItem places unconditionally (no score re-gate) -- body armor, cloak, neck, ranged. Returns false for
+// weapons, rings, trinkets and shirt / tabard (those keep deferring to the stock scorer). `wornSlot` is where to read
+// the currently worn piece.
+bool ClassifyForcibleSlot(PlayerbotAI* botAI, ItemTemplate const* proto, AutoWowGear::EquipSlotKind& kind,
+                          uint8& wornSlot)
+{
+    using K = AutoWowGear::EquipSlotKind;
+    uint32 const inv = proto->InventoryType;
+    if (inv == INVTYPE_RANGED || inv == INVTYPE_THROWN || inv == INVTYPE_RANGEDRIGHT)
+    {
+        kind = K::Ranged;
+        wornSlot = EQUIPMENT_SLOT_RANGED;
+        return true;
+    }
+
+    uint8 const dstSlot = botAI->FindEquipSlot(proto, NULL_SLOT, true);
+    switch (dstSlot)
+    {
+        case EQUIPMENT_SLOT_HEAD:
+        case EQUIPMENT_SLOT_SHOULDERS:
+        case EQUIPMENT_SLOT_CHEST:
+        case EQUIPMENT_SLOT_WAIST:
+        case EQUIPMENT_SLOT_LEGS:
+        case EQUIPMENT_SLOT_FEET:
+        case EQUIPMENT_SLOT_WRISTS:
+        case EQUIPMENT_SLOT_HANDS:
+            if (proto->Class != ITEM_CLASS_ARMOR)
+                return false;  // a weapon that somehow maps here: leave it to the stock scorer
+            kind = K::Armor;
+            wornSlot = dstSlot;
+            return true;
+        case EQUIPMENT_SLOT_BACK:
+            kind = K::Cloak;
+            wornSlot = dstSlot;
+            return true;
+        case EQUIPMENT_SLOT_NECK:
+            kind = K::Accessory;
+            wornSlot = dstSlot;
+            return true;
+        default:
+            return false;  // main / off hand, fingers, trinkets, shirt, tabard: defer (EquipItem re-scores those)
+    }
+}
+
+// AutoWow.Gear.EquipBagUpgrades: a bag piece the stock scan did not pick -- should the force pass equip it anyway?
+// Mirrors QueryItemUsageForEquip's front gates, then applies the ilvl rule (DecideEquipBag) in place of the score rule.
+AutoWowGear::EquipWhy ForcibleBagUpgrade(PlayerbotAI* botAI, Player* bot, ItemTemplate const* proto, uint8& slot,
+                                         uint32& wornId, uint32& wornIlvl)
+{
+    using namespace AutoWowGear;
+    slot = 0;
+    wornId = 0;
+    wornIlvl = 0;
+    if (proto->InventoryType == INVTYPE_NON_EQUIP || proto->Class == ITEM_CLASS_CONTAINER ||
+        proto->Class == ITEM_CLASS_QUIVER ||
+        (proto->Class == ITEM_CLASS_WEAPON && proto->SubClass == ITEM_SUBCLASS_WEAPON_MISC))
+        return EquipWhy::None;
+    if (bot->BotCanUseItem(proto) != EQUIP_ERR_OK)
+        return EquipWhy::None;
+
+    // unique-equippable already worn: skip (CanEquipItem would reject it).
+    if (proto->HasFlag(ITEM_FLAG_UNIQUE_EQUIPPABLE) &&
+        bot->GetItemCount(proto->ItemId, true) > bot->GetItemCount(proto->ItemId, false))
+        return EquipWhy::None;
+
+    EquipSlotKind kind;
+    uint8 wornSlot;
+    if (!ClassifyForcibleSlot(botAI, proto, kind, wornSlot))
+        return EquipWhy::None;
+    slot = wornSlot;
+
+    Item* worn = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, wornSlot);
+    EquipBagFacts f;
+    f.bagIlvl = proto->ItemLevel;
+    f.wornIlvl = worn ? worn->GetTemplate()->ItemLevel : 0;
+    f.usable = true;
+    f.kind = kind;
+    f.bestArmorType = kind == EquipSlotKind::Armor &&
+                      sRandomItemMgr.CanEquipArmor(proto, bot->getClass(), bot->GetLevel());
+    f.stockUpgrade = false;  // caller only reaches here when the stock scan rejected the piece
+    if (worn)
+    {
+        wornId = worn->GetTemplate()->ItemId;
+        wornIlvl = f.wornIlvl;
+    }
+    return DecideEquipBag(GetEquipBag(), f);
 }
 }
 
@@ -384,6 +495,9 @@ ItemIds EquipAction::SelectInventoryItemsToEquip(std::string const& source)
     IterateItems(&visitor, ITERATE_ITEMS_IN_BAGS);
 
     std::string const telemetrySource = RaidLootSourceName(source);
+    // AutoWow.Gear.EquipBagUpgrades: run the far-below-ilvl force pass at most once per EquipBagTickMs, out of combat.
+    bool const runBagOverride =
+        AutoWowGear::EquipBagEnabled() && !bot->IsInCombat() && BagOverrideDue(bot);
     ItemIds items;
     for (auto i = visitor.items.begin(); i != visitor.items.end(); ++i)
     {
@@ -417,6 +531,22 @@ ItemIds EquipAction::SelectInventoryItemsToEquip(std::string const& source)
                 telemetrySource, bot->GetName(), bot->GetGUID().GetRawValue(), bot->GetGUID().GetCounter(), itemId,
                 itemId, item->GetGUID().GetRawValue(), item->GetGUID().GetCounter(), static_cast<uint32>(usage));
             items.insert(itemId);
+        }
+        else if (runBagOverride)
+        {
+            // AutoWow.Gear.EquipBagUpgrades: the stock scan rejected it (score not above the worn piece), but it is a
+            // usable far-below-ilvl upgrade for a slot EquipItem places unconditionally -- force it on.
+            uint8 slot = 0;
+            uint32 wornId = 0;
+            uint32 wornIlvl = 0;
+            AutoWowGear::EquipWhy const why = ForcibleBagUpgrade(botAI, bot, itemTemplate, slot, wornId, wornIlvl);
+            if (why == AutoWowGear::EquipWhy::Empty || why == AutoWowGear::EquipWhy::Ilvl)
+            {
+                items.insert(itemId);
+                LOG_INFO("playerbots", "[GearEquip] bot={} slot={} old={}({}) new={}({}) why={}", bot->GetName(),
+                    static_cast<uint32>(slot), wornId, wornIlvl, itemId, itemTemplate->ItemLevel,
+                    AutoWowGear::EquipWhyName(why));
+            }
         }
     }
     return items;

@@ -492,8 +492,108 @@ struct FlowTaker
     return best;
 }
 
+// ---- AutoWow.Gear.EquipBagUpgrades (default 0) --------------------------------------------------------------------
+// Lane equipfix (live DB soak S121, cohort 62955-63004 L68+): 85 bag items of ilvl >= 130 carried vs 108 equipped;
+// cohort L60+ mean equipped ilvl 85.5 against a real green ~133-175 for L70-78; deaths / 2h rose 79 -> 186 entering
+// Northrend, to same / lower-level mobs (gear, not overpull). Root cause: the stock periodic bag scan
+// (EquipAction::SelectInventoryItemsToEquip -> ItemUsageValue "item upgrade" -> QueryItemUsageForEquip) equips a bag
+// piece only when StatsWeightCalculator scores it strictly above the worn piece (isBetter = itemScore > oldScore),
+// and that score is a pure sum of spec-weighted stat mods (StatsWeightCalculator.cpp: weight_ += stats_weights_[i] *
+// stats[i]; the armor-type penalty is commented out) -- item level and base armor are NOT in it. So a much higher
+// ilvl piece whose stat mix the spec weights less than a lower-ilvl worn piece (off-stat, or a caster druid's int /
+// spi cloth robe vs a stam / agi leather chest) is never worn, however much armor / stamina / survival it carries.
+// With the flag on, the periodic out-of-combat pass ALSO force-equips a usable bag piece in a slot whose worn ilvl is
+// far below (bag ilvl >= worn x IlvlMarginPct%, or the slot is empty), past the marginal score loss; it prefers the
+// class's best armor type (any strictly-higher ilvl in the best type, the margin for an off-type piece). Weapons /
+// ranged need the matching proficiency and a bigger jump (WeaponMarginPct). Decision is here (pure, integer ilvl math,
+// no floats / RNG); the runtime is EquipAction.cpp over the single armor / cloak / neck / ranged slots the stock equip
+// places unconditionally. Logs "[GearEquip]".
+struct EquipBagParams
+{
+    std::uint32_t ilvlMarginPct = 115;    // AutoWow.Gear.EquipBagIlvlPct: off-type armor / cloak / neck bag ilvl >= worn x this%
+    std::uint32_t weaponMarginPct = 130;  // AutoWow.Gear.EquipBagWeaponPct: weapons / ranged need a bigger jump
+    std::uint32_t tickMs = 90000;         // AutoWow.Gear.EquipBagTickMs: per-bot pass period (also the log rate limit)
+};
+
+enum class EquipSlotKind : std::uint8_t
+{
+    Armor = 0,  // body armor with an armor type: head / shoulders / chest / waist / legs / feet / wrists / hands
+    Cloak,      // back: no armor-type proficiency
+    Accessory,  // neck / ring / trinket: no armor type (ring / trinket are two-slot)
+    Weapon,     // main / off hand (1H or 2H)
+    Ranged,     // bow / gun / crossbow / wand / thrown
+};
+
+enum class EquipWhy : std::uint8_t
+{
+    None = 0,  // leave it in the bag
+    Empty,     // worn slot empty: wear any usable piece
+    Ilvl,      // worn slot far below: force past the marginal score
+    Score,     // the stock scorer already equips it (defer: nothing to force)
+};
+
+struct EquipBagFacts
+{
+    std::uint32_t bagIlvl = 0;
+    std::uint32_t wornIlvl = 0;   // 0 = slot empty
+    bool usable = false;          // BotCanUseItem == OK (class / proficiency / required level) and an equip slot exists
+    bool bestArmorType = false;   // body armor only: the piece is the class's required armor subclass (CanEquipArmor)
+    bool stockUpgrade = false;    // the stock scorer already rates it an equip for this slot
+    EquipSlotKind kind = EquipSlotKind::Armor;
+};
+
+// bag ilvl reaches pct% of worn ilvl and is strictly higher (integer; pct == 100 means any strictly-higher ilvl).
+[[nodiscard]] inline bool MeetsIlvlMargin(std::uint32_t bagIlvl, std::uint32_t wornIlvl, std::uint32_t pct)
+{
+    return bagIlvl > wornIlvl && std::uint64_t(bagIlvl) * 100 >= std::uint64_t(wornIlvl) * pct;
+}
+
+// Should the periodic pass force this bag piece on, past the stock score? Pure.
+[[nodiscard]] inline EquipWhy DecideEquipBag(EquipBagParams const& p, EquipBagFacts const& f)
+{
+    if (!f.usable)
+        return EquipWhy::None;
+    if (f.stockUpgrade)
+        return EquipWhy::Score;  // the stock scan already equips it; nothing to force
+    if (f.wornIlvl == 0)
+        return EquipWhy::Empty;  // empty slot: wear any usable piece
+    switch (f.kind)
+    {
+        case EquipSlotKind::Weapon:
+        case EquipSlotKind::Ranged:
+            return MeetsIlvlMargin(f.bagIlvl, f.wornIlvl, p.weaponMarginPct) ? EquipWhy::Ilvl : EquipWhy::None;
+        case EquipSlotKind::Armor:
+        {
+            // Best armor type: any strictly-higher ilvl is worth it. Off-type (e.g. cloth on a druid): require the
+            // margin, so the class's own type still wins at equal ilvl.
+            std::uint32_t const pct = f.bestArmorType ? 100 : p.ilvlMarginPct;
+            return MeetsIlvlMargin(f.bagIlvl, f.wornIlvl, pct) ? EquipWhy::Ilvl : EquipWhy::None;
+        }
+        case EquipSlotKind::Cloak:
+        case EquipSlotKind::Accessory:
+        default:
+            return MeetsIlvlMargin(f.bagIlvl, f.wornIlvl, p.ilvlMarginPct) ? EquipWhy::Ilvl : EquipWhy::None;
+    }
+}
+
+[[nodiscard]] inline char const* EquipWhyName(EquipWhy why)
+{
+    switch (why)
+    {
+        case EquipWhy::Empty:
+            return "empty";
+        case EquipWhy::Ilvl:
+            return "ilvl";
+        case EquipWhy::Score:
+            return "score";
+        default:
+            return "none";
+    }
+}
+
 // ---- runtime (flag + params; read by AutoWowErrands::LoadConfig, used by NewRpgErrands.cpp and
-// NewRpgBaseAction::BestRewardIndex; the auction part by AutoWowTrade.cpp; the flow by AutoWowSupply.cpp) -----------
+// NewRpgBaseAction::BestRewardIndex; the auction part by AutoWowTrade.cpp; the flow by AutoWowSupply.cpp;
+// the bag-upgrade pass by EquipAction.cpp) -----------------------------------------------------------------------
 namespace detail
 {
 inline bool gEnabled = false;
@@ -502,6 +602,8 @@ inline bool gAuctionEnabled = false;
 inline AhParams gAhParams;
 inline bool gFlowEnabled = false;
 inline FlowParams gFlowParams;
+inline bool gEquipBagEnabled = false;
+inline EquipBagParams gEquipBagParams;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
 inline Params const& Get() { return detail::gParams; }
@@ -509,6 +611,8 @@ inline bool AuctionEnabled() { return detail::gAuctionEnabled; }
 inline AhParams const& GetAh() { return detail::gAhParams; }
 inline bool FlowEnabled() { return detail::gFlowEnabled; }
 inline FlowParams const& GetFlow() { return detail::gFlowParams; }
+inline bool EquipBagEnabled() { return detail::gEquipBagEnabled; }
+inline EquipBagParams const& GetEquipBag() { return detail::gEquipBagParams; }
 }  // namespace AutoWowGear
 
 #endif  // AUTOWOW_GEAR_UPGRADE_POLICY_H
