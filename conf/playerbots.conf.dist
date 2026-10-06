@@ -4028,6 +4028,23 @@ AutoWow.Gear.NoWhiteRetryPasses = 60
 AutoWow.Gear.NoWhiteMaxMails = 10
 AutoWow.Gear.NoWhiteStarterIlvl = 5
 
+# AH broker (AhBrokerPolicy.h; default 0). A bot whose AH-gear run is due but has no reachable auction town (the
+# [AhGear] run_drop no_reachable_auction_town / town_lacks_auctioneer cases -- e.g. a L61-80 bot stranded in
+# Northrend / Outland, which have no faction auction house) files one open broker request instead of dropping:
+# its guid, faction, level and the already-computed AH-gear budget. A house rep resident at its faction capital's
+# auctioneer (the broker) drains the queue, scans the faction AH with the requester's own selection
+# (AutoWowGear::AhPlan over listings the stock scorer rates an equip / ilvl upgrade for the requester's live
+# character, within the budget), buys with the broker's own gold (treasury-backed) and mails each item to the
+# requester COD for the buyout (+ AhBrokerFeeCopper, default 0). The requester's errand mail stop pays the COD
+# from its own purse and equips the piece, else the mail returns to the broker. Real gold, real items, no free
+# anything. One open request per bot; at most AhBrokerMaxBuysPerMin buys per broker per minute; once per level
+# (the same token the AH-gear scan consumes). Needs AutoWow.Trade.Enable + AutoWow.Gear.AuctionUpgrades +
+# AutoWow.Supply.Enable (the reps). Logs "[AhBroker]" request / buy / cod_paid / cod_returned.
+AutoWow.Gear.AhBroker = 0
+AutoWow.Gear.AhBrokerMaxBuysPerMin = 6
+AutoWow.Gear.AhBrokerFeeCopper = 0
+AutoWow.Gear.AhBrokerTickMs = 30000
+
 # Self-sufficiency secondary professions for cohort adventurers (SelfCraftPolicy.h; default 0). Not supply
 # reps / artisans, not Oracle-managed bots. Learning is the stock errand trainer stop (the learn filter admits
 # AutoWow.Professions.Secondaries, default 129,185,356; ranks and recipes cost real gold). With the flag on,
