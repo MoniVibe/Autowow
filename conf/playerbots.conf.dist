@@ -3712,11 +3712,17 @@ AutoWow.Market.SellerYards = 120
 #    The seller is the background bot at the auctioneer (an existing non-cohort character). DailyCap bounds the created
 #    listings per faction house per game day; a (slot, band) with fewer than ThinThreshold buyout listings is topped up
 #    to the threshold, at most SeedPerVisit per visit. Needs a background bot reaching a faction auctioneer.
+#    The band seeded each pass is demand-weighted: the band with the most online faction bots that still need a seeded
+#    slot (an empty trinket / ring / neck / back / off-hand / ranged, or gear far below the ilvl curve) is topped up
+#    first, so a few low-level bots cannot eat the daily cap on bands nobody is stuck in (the L61-80 gear gap). Seeded
+#    item levels follow the real green curve, so L71-80 pieces are Northrend-grade greens.
+#  - SeedMinLevel: a hard floor; neither demand nor seeding counts a bot or item below this level (default 1).
 AutoWow.Auction.ListLoot = 0
 AutoWow.Auction.SeedThinSlots = 0
 AutoWow.Auction.DailyCap = 20
 AutoWow.Auction.ThinThreshold = 3
 AutoWow.Auction.SeedPerVisit = 3
+AutoWow.Auction.SeedMinLevel = 1
 
 # Artisan bag hygiene (lane artisanbags / ahsupply; needs AutoWow.Professions.ArtisanBagHygiene; off by default).
 #  - ArtisanBagHygiene: a master artisan at home equips spare carried bags and clears its own crafted-output surplus

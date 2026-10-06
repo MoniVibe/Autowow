@@ -8,6 +8,7 @@
 #define AUTOWOW_TRADE_POLICY_H
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -120,6 +121,7 @@ struct Params
     std::uint32_t seedDailyCap = 20;     // AutoWow.Auction.DailyCap: seeded listings per faction house per game day
     std::uint32_t seedThinThreshold = 3; // a (slot, level band) with fewer buyout listings than this is thin
     std::uint32_t seedPerVisit = 3;      // seeded listings created at one auctioneer visit (bounded by the daily cap)
+    std::uint32_t seedMinLevel = 1;      // AutoWow.Auction.SeedMinLevel: never seed (or count demand) below this level
     std::uint32_t seedDurationMin = 1440;// seeded auctions' listing time (minutes; the core accepts 720 / 1440 / 2880)
 };
 
@@ -300,6 +302,22 @@ inline void NoteSeed(SeedWindow& w, std::uint64_t day, std::uint32_t n)
     if (listingCount >= threshold || !room)
         return 0;
     return std::min(threshold - listingCount, room);
+}
+
+// Demand-weighted seed band order. demand[b] = online faction bots whose level is in band b and who still need a
+// seeded slot (an empty trinket / ring / neck / back / off-hand / ranged, or gear far below the ilvl curve). The
+// neediest band is topped up first so a few low-level bots cannot eat the daily cap on bands nobody is stuck in
+// (soak S120: Alliance bands 1-4 spent the whole cap in 25 min, L61-80 got nothing). Order: higher demand first,
+// ties -> higher band first (the gear gap that strands bots is the top bands). Zero-demand bands are dropped.
+[[nodiscard]] inline std::vector<std::uint8_t> SeedBandOrder(std::array<std::uint32_t, kSeedBands> const& demand)
+{
+    std::vector<std::uint8_t> order;
+    for (std::uint8_t b = 0; b < kSeedBands; ++b)
+        if (demand[b])
+            order.push_back(b);
+    std::sort(order.begin(), order.end(), [&](std::uint8_t a, std::uint8_t b)
+              { return demand[a] != demand[b] ? demand[a] > demand[b] : a > b; });
+    return order;
 }
 
 // ---- buying -----------------------------------------------------------------------------------------

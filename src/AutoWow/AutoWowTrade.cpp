@@ -40,6 +40,7 @@
 #include "PlayerbotWorldThreadProcessor.h"
 #include "Playerbots.h"
 #include "RandomItemMgr.h"
+#include "RandomPlayerbotMgr.h"
 #include "SupplyPolicy.h"
 #include "TradePolicy.h"
 #include "WorldPacket.h"
@@ -53,6 +54,40 @@ namespace
 // thread reads it to decide whether to queue a pass). Keyed by AuctionHouseEntry::houseId.
 std::mutex gSeedLock;
 std::map<std::uint32_t, SeedWindow> gSeedWindows;
+std::map<std::uint32_t, std::uint64_t> gSeedPassLogMs;  // per-house last `[Seed] pass` log (game-time ms), rate-limited
+
+// The equipment slots the thin-slot seeder stocks (EQUIPMENT_SLOT_*): neck, both rings, both trinkets, back,
+// off-hand and ranged. An empty one of these is the demand the seeder exists to answer.
+constexpr std::array<std::uint8_t, 8> kSeededEquipSlots = {
+    EQUIPMENT_SLOT_NECK,     EQUIPMENT_SLOT_FINGER1, EQUIPMENT_SLOT_FINGER2, EQUIPMENT_SLOT_TRINKET1,
+    EQUIPMENT_SLOT_TRINKET2, EQUIPMENT_SLOT_BACK,    EQUIPMENT_SLOT_OFFHAND, EQUIPMENT_SLOT_RANGED};
+
+// Average equipped item level of `bot` (empty slots skipped; mirrors NewRpgErrands::AvgIlvl, armor slots only so it
+// matches the AhRunDue curve test). Used to decide gear is far below the band's ilvl curve.
+[[nodiscard]] std::uint32_t BotAvgIlvl(Player* bot)
+{
+    std::uint32_t sum = 0, count = 0;
+    for (std::uint8_t slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (slot == EQUIPMENT_SLOT_BODY || slot == EQUIPMENT_SLOT_TABARD || slot == EQUIPMENT_SLOT_OFFHAND ||
+            slot == EQUIPMENT_SLOT_RANGED)
+            continue;
+        if (Item* item = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            sum += item->GetTemplate()->ItemLevel;
+        ++count;
+    }
+    return count ? sum / count : 0;
+}
+
+// Does `bot` still need gear the seeder supplies? An empty seeded slot, or equipped ilvl far below the band curve
+// (the AhGear run-due test, reused). Drives the demand-weighted band order.
+[[nodiscard]] bool NeedsSeededGear(Player* bot)
+{
+    for (std::uint8_t const slot : kSeededEquipSlots)
+        if (!bot->GetItemByPos(INVENTORY_SLOT_BAG_0, slot))
+            return true;
+    return AutoWowGear::IlvlFarBelow(AutoWowGear::GetAh(), BotAvgIlvl(bot), bot->GetLevel());
+}
 // AutoWow.Gear.NoWhite: an auction gear weapon is ledger reason ah_weapon (the weapon floor's source b).
 char const* GearReason(std::uint32_t item)
 {
@@ -422,8 +457,8 @@ private:
 class SeedOperation : public PlayerbotOperation
 {
 public:
-    SeedOperation(ObjectGuid bot, ObjectGuid auctioneer, std::uint32_t band)
-        : bot_(bot), auctioneer_(auctioneer), band_(band)
+    SeedOperation(ObjectGuid bot, ObjectGuid auctioneer, std::vector<std::uint8_t> bands)
+        : bot_(bot), auctioneer_(auctioneer), bands_(std::move(bands))
     {
     }
 
@@ -442,9 +477,9 @@ public:
         std::uint64_t const now = static_cast<std::uint64_t>(std::max<int64>(0, GameTime::GetGameTimeMS().count()));
         std::uint64_t const day = now / kSeedDayMs;
 
-        // Buyout listings of each seeded slot in this band, and the item ids already listed there (never seed a
-        // duplicate the scanners already see).
-        std::array<std::uint32_t, kSeedSlots + 1> count{};
+        // Buyout listings of each seeded slot per band, and the item ids already listed (never seed a duplicate the
+        // scanners already see). Bucketed by band so one pass can fall from the neediest band to the next.
+        std::array<std::array<std::uint32_t, kSeedSlots + 1>, kSeedBands> count{};
         std::set<std::uint32_t> listed;
         for (auto const& [id, a] : ah->GetAuctions())
         {
@@ -454,40 +489,50 @@ public:
             if (!proto)
                 continue;
             SeedSlot const slot = SeedSlotOf(proto->InventoryType);
-            if (slot == SeedSlot::None || SeedBandOf(proto->RequiredLevel) != band_)
+            if (slot == SeedSlot::None)
                 continue;
-            ++count[static_cast<std::size_t>(slot)];
+            ++count[SeedBandOf(proto->RequiredLevel)][static_cast<std::size_t>(slot)];
             listed.insert(a->item_template);
         }
 
-        std::vector<Post> posts;  // for the ledger rows after the listings go in
+        std::vector<Post> posts;         // for the ledger rows after the listings go in
+        std::vector<std::uint8_t> bandOf; // the band each post was seeded into (parallel to posts)
         {
             std::lock_guard<std::mutex> guard(gSeedLock);
             SeedWindow& w = gSeedWindows[house->houseId];
             std::uint32_t room = std::min(SeedRoom(w, day, p.seedDailyCap), p.seedPerVisit);
             std::uint32_t made = 0;
-            for (std::uint8_t s = 1; s <= kSeedSlots && room; ++s)
+            for (std::uint8_t band : bands_)  // demand order, highest first
             {
-                std::uint32_t const need = SeedCount(count[s], p.seedThinThreshold, room);
-                for (std::uint32_t k = 0; k < need; ++k)
+                if (!room)
+                    break;
+                for (std::uint8_t s = 1; s <= kSeedSlots && room; ++s)
                 {
-                    std::uint32_t const item = PickCandidate(static_cast<SeedSlot>(s), listed);
-                    if (!item)
-                        break;
-                    if (!ListCreated(bot, ah, house, item, posts))
-                        break;
-                    listed.insert(item);  // one per item id per pass
-                    --room;
-                    ++made;
+                    std::uint32_t const need = SeedCount(count[band][s], p.seedThinThreshold, room);
+                    for (std::uint32_t k = 0; k < need; ++k)
+                    {
+                        std::uint32_t const item = PickCandidate(band, static_cast<SeedSlot>(s), listed);
+                        if (!item)
+                            break;
+                        std::size_t const before = posts.size();
+                        if (!ListCreated(bot, ah, house, item, posts))
+                            break;
+                        if (posts.size() > before)
+                            bandOf.push_back(band);
+                        listed.insert(item);  // one per item id per pass
+                        --room;
+                        ++made;
+                    }
                 }
             }
             if (made)
                 NoteSeed(w, day, made);
         }
-        for (Post const& post : posts)
+        for (std::size_t i = 0; i < posts.size(); ++i)
         {
+            Post const& post = posts[i];
             LOG_INFO("playerbots", "[Seed] bot={} house={} band={} item={} buyout={}", bot->GetName(), house->houseId,
-                     band_, post.entry, post.buyout);
+                     i < bandOf.size() ? bandOf[i] : 0, post.entry, post.buyout);
             if (AutoWowQuestLedger::Enabled())
                 AutoWowQuestLedger::EmitTrade(bot, "seed",
                                               LedgerFields(Action::Post, post.entry, 1, post.buyout, 0, 0, "seed"));
@@ -499,24 +544,36 @@ public:
     std::string GetName() const override { return "AutoWowTradeSeed"; }
 
 private:
-    // The lowest-id green BoE item of `slot` in this band that is not already listed / seeded this pass. 0 = none.
-    std::uint32_t PickCandidate(SeedSlot slot, std::set<std::uint32_t> const& taken) const
+    // A green BoE item of `slot` in `band` (required level >= SeedMinLevel), not already listed / seeded this pass,
+    // whose item level is closest to the real green curve for the band's top level (GreenIlvl, the live AH census:
+    // L70 -> 116 Outland, L80 -> 186 Northrend), so a seeded L71-80 piece is Northrend-grade not an off-curve relic.
+    // Ties -> lower item id (deterministic). 0 = none.
+    std::uint32_t PickCandidate(std::uint8_t band, SeedSlot slot, std::set<std::uint32_t> const& taken) const
     {
-        std::uint32_t best = 0;
-        std::uint32_t const lo = band_ * 10u + 1u, hi = band_ * 10u + 10u;
+        std::uint32_t const floorLvl = detail::gParams.seedMinLevel;
+        std::uint32_t const lo = std::max<std::uint32_t>(band * 10u + 1u, floorLvl), hi = band * 10u + 10u;
+        std::uint32_t const target = AutoWowNoWhite::GreenIlvl(hi);  // the band's top-level green ilvl
+        std::uint32_t best = 0, bestDist = 0;
         auto consider = [&](InventoryType invType)
         {
             for (std::uint32_t level = lo; level <= hi; ++level)
                 for (std::uint32_t const item : sRandomItemMgr.GetEquipmentNew(level, invType))
                 {
-                    if ((best && item >= best) || taken.count(item))
+                    if (taken.count(item))
                         continue;
                     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
                     if (!proto || proto->Quality != kQualityUncommon || !proto->SellPrice ||
                         proto->Bonding == kBindOnPickup || proto->Bonding == kBindQuestItem ||
-                        SeedSlotOf(proto->InventoryType) != slot || SeedBandOf(proto->RequiredLevel) != band_)
+                        SeedSlotOf(proto->InventoryType) != slot || SeedBandOf(proto->RequiredLevel) != band ||
+                        proto->RequiredLevel < floorLvl)
                         continue;
-                    best = item;
+                    std::uint32_t const dist = proto->ItemLevel > target ? proto->ItemLevel - target
+                                                                         : target - proto->ItemLevel;
+                    if (!best || dist < bestDist || (dist == bestDist && item < best))
+                    {
+                        best = item;
+                        bestDist = dist;
+                    }
                 }
         };
         for (InventoryType const invType : InvTypesOf(slot))
@@ -580,7 +637,7 @@ private:
 
     ObjectGuid bot_;
     ObjectGuid auctioneer_;
-    std::uint32_t band_;
+    std::vector<std::uint8_t> bands_;  // seed band order, highest demand first
 };
 }  // namespace
 
@@ -604,14 +661,16 @@ void LoadConfig()
     p.seedDailyCap = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.DailyCap", 20);
     p.seedThinThreshold = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.ThinThreshold", 3));
     p.seedPerVisit = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.SeedPerVisit", 3));
+    p.seedMinLevel = std::max<std::uint32_t>(1, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Auction.SeedMinLevel", 1));
     if (p.randomSellers)
         LOG_INFO("server.loading", "[Trade] market random sellers on: cap={}/h scan_ms={} yards={}", p.sellerCapPerHour,
                  p.sellerScanMs, p.sellerYards);
     if (p.listLoot)
         LOG_INFO("server.loading", "[Trade] auction list-loot on: unneeded BoE green / blue gear is listed, not vendored");
     if (p.seedThinSlots)
-        LOG_INFO("server.loading", "[Trade] auction thin-slot seeding on: cap={}/day/house threshold={} per_visit={}",
-                 p.seedDailyCap, p.seedThinThreshold, p.seedPerVisit);
+        LOG_INFO("server.loading",
+                 "[Trade] auction thin-slot seeding on: cap={}/day/house threshold={} per_visit={} min_level={}",
+                 p.seedDailyCap, p.seedThinThreshold, p.seedPerVisit, p.seedMinLevel);
 }
 
 bool HasCollectableMail(Player* bot)
@@ -843,8 +902,40 @@ std::uint32_t SeedThinSlotsAt(Player* bot, Creature* auctioneer)
     }
     if (!room)
         return 0;  // the house's daily cap is spent
+
+    // Demand per band: online bots of this house's faction, at or above the floor, that still need a seeded slot.
+    // ponytail: linear scan of every online bot each pass (~200), equipment pointer reads only; passes are already
+    // throttled (per-bot scan interval + the house daily cap). Cache per house with a short TTL if it ever bites.
+    bool const wantAlliance = house->houseId == uint32(AuctionHouseId::Alliance);
+    std::array<std::uint32_t, kSeedBands> demand{};
+    for (auto const& entry : sRandomPlayerbotMgr.GetAllBots())
+    {
+        Player* member = entry.second;
+        if (!member || !member->IsInWorld() || (member->GetTeamId() == TEAM_ALLIANCE) != wantAlliance)
+            continue;
+        std::uint32_t const level = member->GetLevel();
+        if (level < detail::gParams.seedMinLevel || !NeedsSeededGear(member))
+            continue;
+        ++demand[SeedBandOf(level)];
+    }
+    std::vector<std::uint8_t> order = SeedBandOrder(demand);
+    if (order.empty())
+        return 0;  // nobody of this faction needs a seeded slot right now
+
+    {
+        std::lock_guard<std::mutex> guard(gSeedLock);
+        std::uint64_t& lastMs = gSeedPassLogMs[house->houseId];
+        if (now >= lastMs + 60000 || !lastMs)  // once a game-minute per house
+        {
+            lastMs = now;
+            std::string ord;
+            for (std::uint8_t const b : order)
+                ord += (ord.empty() ? "" : ",") + ("b" + std::to_string(b) + ":" + std::to_string(demand[b]));
+            LOG_INFO("playerbots", "[Seed] pass house={} order={}", house->houseId, ord);
+        }
+    }
     PlayerbotWorldThreadProcessor::instance().QueueOperation(
-        std::make_unique<SeedOperation>(bot->GetGUID(), auctioneer->GetGUID(), SeedBandOf(bot->GetLevel())));
+        std::make_unique<SeedOperation>(bot->GetGUID(), auctioneer->GetGUID(), std::move(order)));
     return std::min(room, detail::gParams.seedPerVisit);
 }
 
