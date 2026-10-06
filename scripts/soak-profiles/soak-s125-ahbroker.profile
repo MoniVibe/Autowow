@@ -59,7 +59,7 @@ pb|AutoWow.OracleRuntime.BotGuids|"7,10,101,112,121,123,139,144,154,166,236,244,
 pb|AutoWow.OracleRuntime.MaxBots|27
 pb|AutoWow.OracleRuntime.SliceBots|8
 pb|AutoWow.Ledger.Enable|1
-pb|AutoWow.Ledger.RunId|"soak-s125-ahbroker-r1"
+pb|AutoWow.Ledger.RunId|"soak-s125-ahbroker-r2"
 pb|AutoWow.Ledger.BlockedDedupeMs|60000
 pb|AutoWow.QuestFullBagRelief.Enable|1
 pb|AutoWow.PvpRealmZoneRules.Enable|1
