@@ -272,6 +272,33 @@ TEST(AuctionSeed, SeedCountTopsUpToThreshold)
     EXPECT_EQ(SeedCount(0, 3, 0), 0u);
 }
 
+TEST(AuctionSeed, BandOrderByDemandThenHigherBand)
+{
+    std::array<std::uint32_t, kSeedBands> demand{};
+    EXPECT_TRUE(SeedBandOrder(demand).empty());  // no demand: seed nothing
+
+    demand = {};
+    demand[6] = 9;
+    demand[7] = 12;  // L71-80 the neediest (the soak gap)
+    EXPECT_EQ(SeedBandOrder(demand), (std::vector<std::uint8_t>{7, 6}));
+
+    demand = {};
+    demand[2] = 5;
+    demand[5] = 5;  // tie -> higher band first
+    EXPECT_EQ(SeedBandOrder(demand), (std::vector<std::uint8_t>{5, 2}));
+
+    demand = {};
+    demand[0] = 3;  // only band 0 has demand; zero bands dropped
+    EXPECT_EQ(SeedBandOrder(demand), (std::vector<std::uint8_t>{0}));
+
+    demand = {};  // soak S120: low bands crowded, high bands the real gap -> high bands still ordered by count
+    demand[1] = 6;
+    demand[3] = 3;
+    demand[6] = 1;
+    demand[7] = 9;
+    EXPECT_EQ(SeedBandOrder(demand), (std::vector<std::uint8_t>{7, 1, 3, 6}));
+}
+
 TEST(AuctionSeed, DailyCapWindow)
 {
     SeedWindow w;
