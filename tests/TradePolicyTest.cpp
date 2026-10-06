@@ -8,6 +8,11 @@
 
 #include "gtest/gtest.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <map>
+#include <vector>
+
 namespace
 {
 using namespace AutoWowTrade;
@@ -339,5 +344,50 @@ TEST(AuctionSeed, CandidateAdmission)
     // Regression: a random-suffix / random-property world-drop green is NOT excluded here -- admission is blind to
     // the random fields (the suffix is rolled at creation). This is what lets the L61-80 bands seed at all.
     EXPECT_TRUE(SeedCandidateOk(kGreen, kBoE, kFinger, 74, SeedSlot::Ring, 7, 58));
+}
+
+// Regression for the live S123 bug: the seeder looks up the equipment cache by the item's required level, but
+// RandomItemMgr::GetEquipmentNew clamps the query level to AiPlayerbot.RandomBotMaxLevel (60 in the soak) unless
+// called with clampToBotLevel=false. This models the cache (keyed by required level) and both lookup modes, then
+// runs the seeder's own admission, proving the top bands only seed when the clamp is bypassed.
+TEST(AuctionSeed, RequiredLevelLookupIgnoresBotLevelClamp)
+{
+    constexpr std::uint32_t kFinger = 11, kBoE = 2, kCap = 60;  // RandomBotMaxLevel = 60
+    // A per-required-level cache of green BoE rings for the whole L58-80 range (one item id per level).
+    std::map<std::uint32_t, std::vector<std::uint32_t>> cache;
+    for (std::uint32_t lvl = 58; lvl <= 80; ++lvl)
+        cache[lvl] = {40000u + lvl};  // item id encodes its required level
+    auto requiredLevelOf = [](std::uint32_t item) { return item - 40000u; };
+
+    // GetEquipmentNew(level): clamp folds every above-cap key onto kCap; raw keys by the true required level.
+    auto lookup = [&](std::uint32_t level, bool clamp) -> std::vector<std::uint32_t> const& {
+        static std::vector<std::uint32_t> const empty;
+        std::uint32_t const key = clamp ? std::min(level, kCap) : level;
+        auto const it = cache.find(key);
+        return it == cache.end() ? empty : it->second;
+    };
+
+    // The seeder's PickCandidate scan for a band: iterate the band's level range, admit by SeedCandidateOk.
+    auto pick = [&](std::uint8_t band, bool clamp) -> std::uint32_t {
+        std::uint32_t const floor = 58;
+        std::uint32_t const lo = std::max<std::uint32_t>(band * 10u + 1u, floor), hi = band * 10u + 10u;
+        for (std::uint32_t level = lo; level <= hi; ++level)
+            for (std::uint32_t item : lookup(level, clamp))
+                if (SeedCandidateOk(kQualityUncommon, kBoE, kFinger, requiredLevelOf(item), SeedSlot::Ring, band, floor))
+                    return item;
+        return 0;
+    };
+
+    // Band 5 (L58-60): at or below the cap, so both modes find a candidate.
+    EXPECT_NE(pick(5, /*clamp*/ true), 0u);
+    EXPECT_NE(pick(5, /*clamp*/ false), 0u);
+
+    // Bands 6 and 7 (L61-80): the clamp redirects every query to key 60, whose only item is required level 60
+    // (band 5) -- SeedCandidateOk rejects it for bands 6/7, so the clamped lookup strands the top bands.
+    EXPECT_EQ(pick(6, /*clamp*/ true), 0u);
+    EXPECT_EQ(pick(7, /*clamp*/ true), 0u);
+    // Without the clamp the true L61-70 / L71-80 keys are read and the bands seed (the fix).
+    EXPECT_EQ(pick(6, /*clamp*/ false), 40061u);
+    EXPECT_EQ(pick(7, /*clamp*/ false), 40071u);
 }
 }  // namespace

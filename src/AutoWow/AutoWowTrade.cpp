@@ -518,9 +518,10 @@ public:
                     if (!need)
                         continue;  // slot already stocked in this band
                     std::uint32_t slotMade = 0;
+                    std::uint32_t rawSeen = 0;  // candidates the cache returned (pre-admission), for empty_pool triage
                     for (std::uint32_t k = 0; k < need; ++k)
                     {
-                        std::uint32_t const item = PickCandidate(band, static_cast<SeedSlot>(s), listed);
+                        std::uint32_t const item = PickCandidate(band, static_cast<SeedSlot>(s), listed, &rawSeen);
                         if (!item)
                             break;
                         std::size_t const before = posts.size();
@@ -543,8 +544,10 @@ public:
                         if (loggedMark != day + 1)
                         {
                             loggedMark = day + 1;
-                            LOG_INFO("playerbots", "[Seed] empty_pool house={} band={} slot={}", house->houseId, band,
-                                     s);
+                            // raw>0 = the cache had items but none passed admission (quality / bonding / band / taken);
+                            // raw=0 = the cache returned nothing for this band/slot (true thin pool, or a lookup gap).
+                            LOG_INFO("playerbots", "[Seed] empty_pool house={} band={} slot={} raw={}", house->houseId,
+                                     band, s, rawSeen);
                         }
                     }
                 }
@@ -572,7 +575,8 @@ private:
     // whose item level is closest to the real green curve for the band's top level (GreenIlvl, the live AH census:
     // L70 -> 116 Outland, L80 -> 186 Northrend), so a seeded L71-80 piece is Northrend-grade not an off-curve relic.
     // Ties -> lower item id (deterministic). 0 = none.
-    std::uint32_t PickCandidate(std::uint8_t band, SeedSlot slot, std::set<std::uint32_t> const& taken) const
+    std::uint32_t PickCandidate(std::uint8_t band, SeedSlot slot, std::set<std::uint32_t> const& taken,
+                                std::uint32_t* rawSeen = nullptr) const
     {
         std::uint32_t const floorLvl = detail::gParams.seedMinLevel;
         std::uint32_t const lo = std::max<std::uint32_t>(band * 10u + 1u, floorLvl), hi = band * 10u + 10u;
@@ -580,9 +584,14 @@ private:
         std::uint32_t best = 0, bestDist = 0;
         auto consider = [&](InventoryType invType)
         {
+            // clampToBotLevel=false: key by the item's real required level, not AiPlayerbot.RandomBotMaxLevel. With
+            // the cap at 60 the default clamp folds every L61-80 query onto key 60 (only L60 items, band 5) so the
+            // band-6/7 admission below never matches and the top bands strand -- the bug this seeder hit live.
             for (std::uint32_t level = lo; level <= hi; ++level)
-                for (std::uint32_t const item : sRandomItemMgr.GetEquipmentNew(level, invType))
+                for (std::uint32_t const item : sRandomItemMgr.GetEquipmentNew(level, invType, false))
                 {
+                    if (rawSeen)
+                        ++*rawSeen;  // diagnostic: items the cache returned for this band/slot before admission
                     if (taken.count(item))
                         continue;
                     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
