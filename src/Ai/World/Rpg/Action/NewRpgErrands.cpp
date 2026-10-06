@@ -1423,6 +1423,13 @@ void LoadConfig()
     fl.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FlowTickMs", 60000);
     fl.maxMails = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FlowMaxMails", 10);
     fl.minQuality = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.FlowMinQuality", 1);
+    // AutoWow.Gear.EquipBagUpgrades (GearUpgradePolicy.h; the pass is EquipAction::SelectInventoryItemsToEquip): the
+    // periodic out-of-combat bag scan force-equips a usable far-below-ilvl bag piece past the stock score.
+    AutoWowGear::detail::gEquipBagEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.EquipBagUpgrades", false);
+    AutoWowGear::EquipBagParams& eb = AutoWowGear::detail::gEquipBagParams;
+    eb.ilvlMarginPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagIlvlPct", 115);
+    eb.weaponMarginPct = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagWeaponPct", 130);
+    eb.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.EquipBagTickMs", 90000);
     // AutoWow.Gear.NoWhite (NoWhitePolicy.h; the world pass is AutoWowNoWhite::WorldUpdate).
     AutoWowNoWhite::detail::gEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.NoWhite", false);
     AutoWowNoWhite::Params& nw = AutoWowNoWhite::detail::gParams;
