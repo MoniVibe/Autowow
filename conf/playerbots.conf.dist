@@ -3996,13 +3996,16 @@ AutoWow.Gear.FlowMinQuality = 1
 #                     >= worn x EquipBagIlvlPct% for off-type armor / cloak / neck (any strictly-higher ilvl in the
 #                     class's best armor type), or x EquipBagWeaponPct% for weapons / ranged. Armor / cloak / neck /
 #                     ranged only (the slots the stock equip places without a score re-check); rings / trinkets /
-#                     main-off weapons still defer to the stock scorer. Logs "[GearEquip]".
+#                     main-off weapons still defer to the stock scorer. Logs "[GearEquip]". When on, the stock
+#                     equip-upgrade scan also refuses a swap that would downgrade a worn piece this pass protects
+#                     (no ping-pong), and a forced piece that does not stick is parked for EquipBagFailBackoffMs.
 #        Default:     0 (off)
 #
 AutoWow.Gear.EquipBagUpgrades = 0
 AutoWow.Gear.EquipBagIlvlPct = 115
 AutoWow.Gear.EquipBagWeaponPct = 130
 AutoWow.Gear.EquipBagTickMs = 90000
+AutoWow.Gear.EquipBagFailBackoffMs = 1800000
 
 # No white / grey weapons (NoWhitePolicy.h; default 0). A weapon slot (main hand; a hunter's ranged; a dual wielder's
 # off hand holding a weapon) is under the floor when empty, grey / white, or below NoWhiteFloorPct of the green item
