@@ -55,6 +55,7 @@ namespace
 std::mutex gSeedLock;
 std::map<std::uint32_t, SeedWindow> gSeedWindows;
 std::map<std::uint32_t, std::uint64_t> gSeedPassLogMs;  // per-house last `[Seed] pass` log (game-time ms), rate-limited
+std::map<std::uint32_t, std::uint64_t> gSeedEmptyLogDay;  // last `[Seed] empty_pool` day per house*10000+band*100+slot
 
 // The equipment slots the thin-slot seeder stocks (EQUIPMENT_SLOT_*): neck, both rings, both trinkets, back,
 // off-hand and ranged. An empty one of these is the demand the seeder exists to answer.
@@ -502,13 +503,21 @@ public:
             SeedWindow& w = gSeedWindows[house->houseId];
             std::uint32_t room = std::min(SeedRoom(w, day, p.seedDailyCap), p.seedPerVisit);
             std::uint32_t made = 0;
+            // A slot a higher-demand band could not fill: never spend the cap seeding that same slot a band lower
+            // (the L61-80 gear gap is the point; topping up L51-60 instead is the waste this seeder exists to avoid).
+            std::array<bool, kSeedSlots + 1> slotLocked{};
             for (std::uint8_t band : bands_)  // demand order, highest first
             {
                 if (!room)
                     break;
                 for (std::uint8_t s = 1; s <= kSeedSlots && room; ++s)
                 {
+                    if (slotLocked[s])
+                        continue;  // a needier band is stranded in this slot: do not fall back to a lower band
                     std::uint32_t const need = SeedCount(count[band][s], p.seedThinThreshold, room);
+                    if (!need)
+                        continue;  // slot already stocked in this band
+                    std::uint32_t slotMade = 0;
                     for (std::uint32_t k = 0; k < need; ++k)
                     {
                         std::uint32_t const item = PickCandidate(band, static_cast<SeedSlot>(s), listed);
@@ -522,6 +531,21 @@ public:
                         listed.insert(item);  // one per item id per pass
                         --room;
                         ++made;
+                        ++slotMade;
+                    }
+                    if (!slotMade)
+                    {
+                        // Thin but nothing could be created: this (band, slot) has no usable BoE candidate. Lock the
+                        // slot so a lower band cannot eat the cap in its place, and log it once per game-day.
+                        slotLocked[s] = true;
+                        std::uint32_t const key = house->houseId * 10000u + band * 100u + s;
+                        std::uint64_t& loggedMark = gSeedEmptyLogDay[key];  // stores day+1; 0 = never logged
+                        if (loggedMark != day + 1)
+                        {
+                            loggedMark = day + 1;
+                            LOG_INFO("playerbots", "[Seed] empty_pool house={} band={} slot={}", house->houseId, band,
+                                     s);
+                        }
                     }
                 }
             }
@@ -562,10 +586,9 @@ private:
                     if (taken.count(item))
                         continue;
                     ItemTemplate const* proto = sObjectMgr->GetItemTemplate(item);
-                    if (!proto || proto->Quality != kQualityUncommon || !proto->SellPrice ||
-                        proto->Bonding == kBindOnPickup || proto->Bonding == kBindQuestItem ||
-                        SeedSlotOf(proto->InventoryType) != slot || SeedBandOf(proto->RequiredLevel) != band ||
-                        proto->RequiredLevel < floorLvl)
+                    if (!proto || !proto->SellPrice ||
+                        !SeedCandidateOk(proto->Quality, proto->Bonding, proto->InventoryType, proto->RequiredLevel,
+                                         slot, band, floorLvl))
                         continue;
                     std::uint32_t const dist = proto->ItemLevel > target ? proto->ItemLevel - target
                                                                          : target - proto->ItemLevel;
@@ -611,6 +634,10 @@ private:
         Item* created = Item::CreateItem(item, 1, bot);
         if (!created)
             return false;
+        // "of the <suffix>" world-drop greens (most L61-80 jewellery) carry no stats until a random property/suffix
+        // is rolled; roll one the way loot generation does so the seeded piece is a real upgrade, not a bare base.
+        if (proto->RandomProperty || proto->RandomSuffix)
+            created->SetItemRandomProperties(Item::GenerateItemRandomPropertyId(item));
         AuctionEntry* entry = new AuctionEntry;
         entry->Id = sObjectMgr->GenerateAuctionID();
         entry->houseId = AuctionHouseId(house->houseId);
