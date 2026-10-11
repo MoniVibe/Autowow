@@ -134,7 +134,7 @@ bool LeaveFarAwayAction::isUseful()
         return false;
 
     if (botAI->IsAltBot() &&
-        (!groupLeaderBotAI || IsSelfBot(groupLeader)))  // Don't leave when an altbot is grouped under a regular real player or a selfbot.
+        (!groupLeaderBotAI || IsSelfBot(groupLeader)))  // Don't leave when an altbot is grouped under a regular real player or a SelfBot.
         return false;
 
     if (botAI->GetGrouperType() == GrouperType::SOLO)

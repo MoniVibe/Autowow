@@ -96,7 +96,13 @@ TEST(QuestFinisherBranchWiringContractTest, OracleOptInControlsStrictAndNoTelepo
               std::string::npos);
     EXPECT_NE(action.find("AllowLegacyTeleportRecovery(\n                    rt.oracleFinisherAuthorized, rt.oracleFinisherDecisionId)"),
               std::string::npos);
-    EXPECT_NE(action.find("/*questNoTeleport*/ oracleQuestNoTeleport"), std::string::npos);
+    EXPECT_NE(action.find("questNoTeleport = oracleQuestNoTeleport || autoWowQuestNoTeleport"),
+              std::string::npos);
+    EXPECT_NE(action.find("AutoWowPolicy::IsNoTeleport(bot->GetGUID().GetCounter())"),
+              std::string::npos);
+    EXPECT_NE(action.find("MoveFarTo(dest, questNoTeleport, &stuck"), std::string::npos);
+    EXPECT_NE(action.find("rt.oracleFinisherAuthorized, rt.oracleFinisherDecisionId) && !autoWowQuestNoTeleport"),
+              std::string::npos);
     EXPECT_NE(action.find("/*deterministicPath*/ strictOracleRoute"), std::string::npos);
     EXPECT_NE(action.find("strictRoute,\n                                         allowLegacyTeleportRecovery"),
               std::string::npos);

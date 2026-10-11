@@ -25,11 +25,11 @@
 //   1. a bot whose AhGear run is due but has no reachable auction town (the run_drop cases) files ONE open broker
 //      request (requester guid, faction, level, hunter, the AhGear budget already computed). Once per level, via the
 //      existing lastAhGearLevel token (a completed file consumes it, exactly like a completed scan), so it does not
-//      re-file every check window.
+//      re-file every check window. An expired unserved request permits one fresh same-level assessment.
 //   2. a broker (an existing house rep, one per faction, resident at its capital's auctioneer) drains the queue on the
-//      world thread when it is at/near its auctioneer: it scans the faction AH with the SAME selection as the requester
-//      would (AutoWowGear::AhPlan over offers the stock "item upgrade" scorer rates an equip and ilvl upgrade for the
-//      requester's live Player*, within the request budget), buys the buyout listings with the broker's OWN gold
+//      rep's auctioneer visit: it scans the faction AH for usable slot-ilvl upgrades that meet the level-relative
+//      minimum (without invoking another bot's cached stock scorer), then uses AutoWowGear::AhPlan within the request
+//      budget. It buys the buyout listings with the broker's OWN gold
 //      (treasury-backed, like the finished-bag market), and records a pending COD delivery per won item.
 //   3. the broker mails each won item to the requester COD for the buyout price (+ FeeCopper, default 0). The
 //      requester's existing errand mail stop pays the COD if it has the gold and takes the item (the stock equip pass
@@ -52,6 +52,7 @@ struct Params
     std::uint32_t maxBuysPerMin = 6;  // AutoWow.Gear.AhBrokerMaxBuysPerMin: buys per broker per rolling minute
     std::uint32_t feeCopper = 0;      // AutoWow.Gear.AhBrokerFeeCopper: fixed COD surcharge over the buyout (default 0)
     std::uint32_t tickMs = 30000;     // AutoWow.Gear.AhBrokerTickMs: world-thread broker-pass period
+    std::uint32_t minIlvlPct = 100;   // AutoWow.Gear.AhBrokerMinIlvlPct: minimum % of the level green-gear curve
 };
 
 // A requester's one open order. `team` is the core TeamId (0 alliance, 1 horde): string-free faction canon. `filedSec`
@@ -117,6 +118,15 @@ inline bool Erase(std::vector<Request>& queue, std::uint32_t guid)
     return buysThisMinute < p.maxBuysPerMin;
 }
 
+// Reject obsolete filler even when it improves an empty slot. This uses the expansion-aware green curve regardless
+// of CatchUp's run-due flag. A zero percentage explicitly disables the floor; 100 requires that level's expectation.
+// Integer comparison rounds the minimum up, and clamps configuration to 0..100 without overflow.
+[[nodiscard]] inline bool MeetsGearFloor(Params const& p, std::uint32_t level, std::uint32_t itemIlvl)
+{
+    std::uint32_t const pct = std::min<std::uint32_t>(p.minIlvlPct, 100);
+    return std::uint64_t(itemIlvl) * 100 >= std::uint64_t(AutoWowGear::ExpectedIlvlCatchUp(level)) * pct;
+}
+
 // The COD a won item is mailed for: its buyout plus the fixed fee. (COD is a uint32 field in the core; the runtime
 // clamps, but at real buyouts + a small fee this never approaches the limit.)
 [[nodiscard]] inline std::uint64_t CodPrice(Params const& p, std::uint64_t buyout)
@@ -178,6 +188,7 @@ inline Params gParams;
 // flag-on run without a broker online cannot grow it without limit; the oldest-position request is dropped first.
 inline std::mutex gQueueLock;
 inline std::vector<Request> gQueue;
+inline std::vector<Request> gUnservedExpired;
 inline constexpr std::size_t kMaxOpen = 512;
 }  // namespace detail
 inline bool Enabled() { return detail::gEnabled; }
@@ -193,6 +204,7 @@ inline void File(Request const& req)
     if (!detail::gEnabled)
         return;
     std::lock_guard<std::mutex> guard(detail::gQueueLock);
+    Erase(detail::gUnservedExpired, req.guid);
     Upsert(detail::gQueue, req);
     while (detail::gQueue.size() > detail::kMaxOpen)
         detail::gQueue.erase(detail::gQueue.begin());
@@ -205,11 +217,47 @@ inline void File(Request const& req)
     return OrderForTeam(detail::gQueue, team);
 }
 
-// The broker: drop a request once it is served, stale, or the requester has moved on.
+// Served or cancelled requests do not authorize another same-level attempt.
 inline void Forget(std::uint32_t guid)
 {
     std::lock_guard<std::mutex> guard(detail::gQueueLock);
     Erase(detail::gQueue, guid);
+    Erase(detail::gUnservedExpired, guid);
+}
+
+// Only the still-current, unserved request may expire. A newer producer replacement is not erased.
+[[nodiscard]] inline bool ExpireUnserved(Request const& observed)
+{
+    if (!Enabled())
+        return false;
+    std::lock_guard<std::mutex> guard(detail::gQueueLock);
+    std::size_t const index = Find(detail::gQueue, observed.guid);
+    if (index == kNone)
+        return false;
+    Request const& current = detail::gQueue[index];
+    if (current.team != observed.team || current.level != observed.level || current.hunter != observed.hunter ||
+        current.budget != observed.budget || current.filedSec != observed.filedSec)
+        return false;
+    Upsert(detail::gUnservedExpired, current);
+    detail::gQueue.erase(detail::gQueue.begin() + index);
+    while (detail::gUnservedExpired.size() > detail::kMaxOpen)
+        detail::gUnservedExpired.erase(detail::gUnservedExpired.begin());
+    return true;
+}
+
+// Consume one unserved outcome, not a purchase/delivery receipt. The caller must reassess live need and budget.
+[[nodiscard]] inline bool ConsumeUnservedExpiry(std::uint32_t guid, std::uint32_t level,
+                                                std::uint32_t lastAhGearLevel)
+{
+    if (!Enabled() || level != lastAhGearLevel)
+        return false;
+    std::lock_guard<std::mutex> guard(detail::gQueueLock);
+    std::size_t const index = Find(detail::gUnservedExpired, guid);
+    if (index == kNone || Find(detail::gQueue, guid) != kNone)
+        return false;
+    bool const sameLevel = detail::gUnservedExpired[index].level == level;
+    detail::gUnservedExpired.erase(detail::gUnservedExpired.begin() + index);
+    return sameLevel;
 }
 }  // namespace AutoWowBroker
 

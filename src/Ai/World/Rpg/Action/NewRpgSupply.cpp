@@ -547,9 +547,12 @@ bool NewRpgBaseAction::SupplyStep()
     RoleInfo const role = RoleOf(guid);
     if (role.role == Role::None || AutoWowOracleRuntime::IsManagedBot(guid))
         return false;
+    // City artisans hold instance-ineligible ticks without taking over motion or falling through to adventure work.
+    if (role.role == Role::Artisan && detail::gParams.cityArtisans && ActiveRoleOf(bot).role == Role::None)
+        return true;
     // Apprentice phase (ArtisanMinLevel): below it the artisan adventures like any cohort member (ActiveRoleOf, the
     // same gate as the party / self-craft / chain checks); at the level it goes home and trains.
-    if (role.role == Role::Artisan)
+    if (role.role == Role::Artisan && !detail::gParams.cityArtisans)
     {
         bool const apprentice = ActiveRoleOf(bot).role == Role::None;
         RoleState a = LoadRole(guid);
@@ -1007,7 +1010,7 @@ bool NewRpgBaseAction::SupplyStep()
                 MineDue(BuyItems(gview),
                         bot->HasSkill(SKILL_MINING) && bot->HasItemTotemCategory(kMiningPickCategory) &&
                             AutoWowGatherDetour::Enabled(),
-                        gst.mine.set, p.mineMs, now, s.mineReadyMs))
+                        gst.mine.set, p.mineMs, now, s.mineReadyMs, p.cityArtisans))
             {
                 next = Task::Mine;
                 s.stuck = 0;

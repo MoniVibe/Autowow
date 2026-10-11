@@ -195,8 +195,7 @@ public:
             ((1 << (cls - 1)) & sWorld->getIntConfig(CONFIG_CHARACTER_CREATING_DISABLED_CLASSMASK)))
             return refuse(name, "race_class_disabled");
 
-        // The temporary session's destructor writes account.online = 0 and totaltime, so never run
-        // beside a live session of the same account (provisioning runs in a maintenance window).
+        // Provisioning runs in maintenance; never create beside a live session of the same account.
         if (sWorldSessionMgr->FindSession(accountId))
             return refuse(name, "account_online");
         if (AccountMgr::GetCharactersCount(accountId) >= sWorld->getIntConfig(CONFIG_CHARACTERS_PER_REALM))
@@ -207,7 +206,7 @@ public:
             totalTime = (*result)[0].Get<uint32>();
 
         WorldSession* session = new WorldSession(accountId, "", 0x0, nullptr, SEC_PLAYER, EXPANSION_WRATH_OF_THE_LICH_KING,
-                                                 time_t(0), LOCALE_enUS, 0, false, false, totalTime, true);
+                                                 time_t(0), LOCALE_enUS, 0, false, false, totalTime);
         Player* player = RandomPlayerbotFactory::CreateNamedCharacter(session, race, cls, gender, name);
         if (!player)
         {

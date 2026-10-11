@@ -183,7 +183,9 @@ TEST(OracleExecutorTypesTest, RejectsUnknownAndContractBlockedOperations)
     EXPECT_EQ(blocked.reason, ExecutorReason::OperationBlocked);
     EXPECT_EQ(blocked.receipt.operation, OperationCode::GatherSource);
     EXPECT_EQ(blocked.receipt.gather.spawnId, 9001U);
-    EXPECT_EQ(blocked.request.gatherGoal, GatherGoal::ObtainMaterial);
+    EXPECT_EQ(blocked.receipt.gatherGoal, GatherGoal::ObtainMaterial);
+    EXPECT_FALSE(blocked.request.valid);
+    EXPECT_EQ(blocked.request.gatherGoal, GatherGoal::Unknown);
 }
 
 TEST(OracleExecutorTypesTest, ReceiptsCarryTypedIdentityAndEvidenceProof)

@@ -144,7 +144,7 @@ public:
     NewRpgWanderNpcAction(PlayerbotAI* botAI) : NewRpgBaseAction(botAI, "new rpg move npcs") {}
     bool Execute(Event event) override;
 
-    const uint32 npcStayTime = 8 * 1000;
+    const uint32 npcStayTime = 8 * IN_MILLISECONDS;
 };
 
 class NewRpgDoQuestAction : public NewRpgBaseAction
@@ -219,7 +219,7 @@ protected:
                                int32 objectiveIdx, bool finisher);
     WorldObject* BindExactOracleRouteTarget(QuestObjectiveRuntime& runtime, bool finisher);
 
-    const uint32 poiStayTime = 5 * 60 * 1000;
+    const uint32 poiStayTime = 5 * MINUTE * IN_MILLISECONDS;
     // Distance under which travel phases count the destination as reached.
     const float questTravelArriveDist = 10.0f;
     // Time budget spent working a single source (acquire/engage/loot) before

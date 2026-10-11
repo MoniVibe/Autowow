@@ -38,8 +38,10 @@ inline constexpr std::uint8_t kPolicyVersion = 1;
 namespace detail
 {
 inline bool gCatchUpEnabled = false;
+inline bool gBodyFirstEnabled = false;
 }  // namespace detail
 inline bool CatchUpEnabled() { return detail::gCatchUpEnabled; }
+inline bool BodyFirstEnabled() { return detail::gBodyFirstEnabled; }
 
 struct Params
 {
@@ -363,6 +365,40 @@ struct AhOffer
 inline constexpr std::array<std::uint8_t, 17> kAhOrderHunter = {15, 17, 16, 4, 6, 0, 2, 9, 7, 5, 8, 14, 1, 10, 11, 12, 13};
 inline constexpr std::array<std::uint8_t, 17> kAhOrderOther = {15, 16, 4, 6, 0, 2, 9, 7, 5, 8, 14, 17, 1, 10, 11, 12, 13};
 
+// Combat priority for both auction and crafted gear: weapons, major body armor, smaller body armor, cloak,
+// neck/rings, then trinkets. Slot numbers are the core EQUIPMENT_SLOT_* values; shirt/tabard are never requested.
+[[nodiscard]] inline std::uint8_t CombatSlotPriority(std::uint8_t slot)
+{
+    switch (slot)
+    {
+        case kSlotMainHand:
+        case kSlotOffHand:
+        case 17:  // ranged
+            return 0;
+        case 6:  // legs
+        case 4:  // chest
+        case 0:  // head
+        case 2:  // shoulders
+            return 1;
+        case 8:  // wrists
+        case 7:  // feet
+        case 5:  // waist
+        case 9:  // hands
+            return 2;
+        case 14:  // back
+            return 3;
+        case 1:  // neck
+        case 10:
+        case 11:  // rings
+            return 4;
+        case 12:
+        case 13:  // trinkets
+            return 5;
+        default:
+            return 6;
+    }
+}
+
 // Same slot: more gain per copper (cross-multiplied, no floats), then more gain, then cheaper, then lower id.
 [[nodiscard]] inline bool AhBetter(AhOffer const& a, AhOffer const& b)
 {
@@ -404,12 +440,16 @@ inline constexpr std::array<std::uint8_t, 17> kAhOrderOther = {15, 16, 4, 6, 0, 
     std::size_t const maxBuys = std::min<std::size_t>(ap.maxBuys, kAhMaxBuys);
     std::array<std::uint8_t, 17> const& order = hunter ? kAhOrderHunter : kAhOrderOther;
     std::vector<std::uint8_t> seq(order.begin(), order.end());
-    if (CatchUpEnabled())
+    if (CatchUpEnabled() || BodyFirstEnabled())
     {
         std::size_t const weapons = hunter ? 3 : 2;  // {15,17,16} / {15,16}: keep ahead of the sorted tail
         std::stable_sort(seq.begin() + weapons, seq.end(),
                          [&](std::uint8_t a, std::uint8_t b)
                          {
+                             if (BodyFirstEnabled() && CombatSlotPriority(a) != CombatSlotPriority(b))
+                                 return CombatSlotPriority(a) < CombatSlotPriority(b);
+                             if (!CatchUpEnabled())
+                                 return false;  // retain the original order within each priority band
                              std::size_t const ia = BestOfferForSlot(offers, a, cap);
                              std::size_t const ib = BestOfferForSlot(offers, b, cap);
                              if (ia == kNone || ib == kNone)
@@ -537,7 +577,7 @@ struct EquipBagFacts
 {
     std::uint32_t bagIlvl = 0;
     std::uint32_t wornIlvl = 0;   // 0 = slot empty
-    bool usable = false;          // BotCanUseItem == OK (class / proficiency / required level) and an equip slot exists
+    bool usable = false;          // CanUseItem == OK (class / proficiency / required level) and an equip slot exists
     bool bestArmorType = false;   // body armor only: the piece is the class's required armor subclass (CanEquipArmor)
     bool stockUpgrade = false;    // the stock scorer already rates it an equip for this slot
     EquipSlotKind kind = EquipSlotKind::Armor;

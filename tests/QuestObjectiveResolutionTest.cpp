@@ -1149,13 +1149,14 @@ TEST(QuestObjectiveResolutionSourceContract, ExplicitBridgePersistsDeferredNewRp
 
     std::size_t const enableDriver =
         questParty.find("ChangeStrategy(\"+grind,-travel,-move random,-follow,+new rpg\"");
-    std::size_t const primeTick = questParty.find("DoSpecificAction(\"new rpg do quest\"");
+    std::size_t const primeTick = questParty.find("bool const primingActionStarted = bridgeMayDispatch && leaderAI->DoSpecificAction(");
     std::size_t const directivePostcondition = questParty.find("bool const rpgDirectiveActive");
     ASSERT_NE(enableDriver, std::string::npos);
     ASSERT_NE(primeTick, std::string::npos);
     ASSERT_NE(directivePostcondition, std::string::npos);
     EXPECT_LT(enableDriver, primeTick);
     EXPECT_LT(primeTick, directivePostcondition);
+    EXPECT_NE(questParty.find("\"new rpg do quest\", Event", primeTick), std::string::npos);
     EXPECT_NE(questParty.find("priming_action_started"), std::string::npos);
 }
 

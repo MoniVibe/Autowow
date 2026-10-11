@@ -74,6 +74,7 @@ constexpr uint32 SPELL_TITAN_GRIP = 49152;
 constexpr uint32 SPELL_DK_FROST_PRESENCE = 48263;
 constexpr uint32 SPELL_GRAVITY_LAPSE_TK = 39432;
 constexpr uint32 SPELL_GRAVITY_LAPSE_MGT = 44226;
+constexpr uint32 VEHICLE_FLAG_FIXED_POSITION = 0x00200000;
 }
 
 std::vector<std::string> PlayerbotAI::dispel_whitelist = {
@@ -917,7 +918,7 @@ void PlayerbotAI::HandleTeleportAck()
     if (!bot || !bot->GetSession())
         return;
 
-    // Skip acknowledgment for selfbots. The player's client handles that.
+    // Skip acknowledgment for SelfBots. The player's client handles that.
     if (IsSelfBot(bot))
         return;
 
@@ -1483,8 +1484,9 @@ void PlayerbotAI::HandleBotOutgoingPacket(WorldPacket const& packet)
             bot->GetMotionMaster()->Clear();
 
             // Unit* currentTarget = GetAiObjectContext()->GetValue<Unit*>("current target")->Get();
-            bot->GetMotionMaster()->MoveKnockbackFromForPlayer(bot->GetPositionX() - vcos, bot->GetPositionY() - vsin,
-                                                               horizontalSpeed, verticalSpeed);
+            // Bots are client-controlled players, so opt past the guard that protects real clients.
+            bot->GetMotionMaster()->MoveKnockbackFrom(bot->GetPositionX() - vcos, bot->GetPositionY() - vsin,
+                                                      horizontalSpeed, verticalSpeed, true);
 
             // bot->AddUnitMovementFlag(MOVEMENTFLAG_FALLING);
             // bot->AddUnitMovementFlag(MOVEMENTFLAG_FORWARD);
@@ -2644,7 +2646,7 @@ bool PlayerbotAI::IsBotMainTank(Player* player)
         return false;
 
     WorldSession* session = player->GetSession();
-    if (!session || !session->IsBot())
+    if (!session || !session->IsHeadless())
         return false;
 
     if (!IsTank(player))
@@ -2674,7 +2676,7 @@ bool PlayerbotAI::IsBotMainTank(Player* player)
         if (memberAssistTankIndex == botAssistTankIndex && player == member)
             return true;
 
-        if (memberAssistTankIndex < botAssistTankIndex && member->GetSession()->IsBot())
+        if (memberAssistTankIndex < botAssistTankIndex && member->GetSession()->IsHeadless())
             return false;
     }
 
@@ -4586,7 +4588,7 @@ bool PlayerbotAI::canDispel(SpellInfo const* spellInfo, uint32 dispelType)
 
 bool IsRealPlayer(Player* player)
 {
-    // No PlayerbotAI attached means this is not a bot of any kind, including selfbots. This is an actual person
+    // No PlayerbotAI attached means this is not a bot of any kind, including SelfBots. This is an actual person
     // controlling their character manually through the client.
     // "player" check needed, otherwise GET_PLAYERBOT_AI(nullptr) reads as a "real player".
     return player && !GET_PLAYERBOT_AI(player);
@@ -4594,7 +4596,7 @@ bool IsRealPlayer(Player* player)
 
 bool IsSelfBot(Player* player)
 {
-    // Selfbot: "player" has PlayerbotAI attached, and it has a master who is itself (player).
+    // SelfBot: "player" has PlayerbotAI attached, and it has a master who is itself (player).
     PlayerbotAI* botAI = GET_PLAYERBOT_AI(player);
     return botAI && botAI->GetMaster() == player;
 }
@@ -4648,7 +4650,7 @@ Player* PlayerbotAI::FindNewMaster()
     return nullptr;
 }
 
-// An altbot is a bot whose master is client-based (a regular player or a selfbot), and is not a randombot, and is not a selfbot.
+// An altbot is a bot whose master is client-based (a regular player or a SelfBot), and is not a randombot, and is not a SelfBot.
 // For the purpose of this bool, all addclassbots return true for IsAltBot, but not all altbots return true for IsAddClassBot, since
 // IsAddClassBot requires the bot to come from a type 2 account in playerbots_account_type.
 bool PlayerbotAI::IsAltBot() { return HasGameClientMaster() && !sRandomPlayerbotMgr.IsRandomBot(bot) && !IsSelfBot(bot); }

@@ -1017,7 +1017,7 @@ TEST(DungeonNavigatorConvoySourceContract,
     ASSERT_FALSE(source.empty());
 
     std::size_t const completionCheck = source.find(
-        "IsEncounterComplete(script, travelRouteEncounterId)");
+        "IsEncounterComplete(script, map->GetId(), travelRouteEncounterId)");
     std::size_t const convoyGate = source.find("auto combatGateAllowsConvoy");
     ASSERT_NE(completionCheck, std::string::npos);
     ASSERT_NE(convoyGate, std::string::npos);

@@ -7,6 +7,9 @@
 #include "AhBrokerPolicy.h"
 #include "gtest/gtest.h"
 
+#include <atomic>
+#include <thread>
+
 namespace
 {
 using namespace AutoWowBroker;
@@ -90,6 +93,55 @@ TEST(AhBrokerRate, CanBuyUntilCap)
     EXPECT_FALSE(CanBuy(p, 7));
 }
 
+TEST(AhBrokerGear, RejectsNorthrendFillerEvenForEmptySlots)
+{
+    Params p;
+    for (std::uint32_t const ilvl : {21u, 30u, 36u, 49u, 65u})
+        EXPECT_FALSE(MeetsGearFloor(p, 70, ilvl));
+    EXPECT_FALSE(MeetsGearFloor(p, 75, 154));
+    EXPECT_TRUE(MeetsGearFloor(p, 75, 155));
+    EXPECT_FALSE(MeetsGearFloor(p, 78, 173));
+    EXPECT_TRUE(MeetsGearFloor(p, 78, 174));
+}
+
+TEST(AhBrokerGear, UsesExpansionCurveRegardlessOfRunDueFlag)
+{
+    Params p;
+    bool const saved = AutoWowGear::detail::gCatchUpEnabled;
+    for (bool const enabled : {false, true})
+    {
+        AutoWowGear::detail::gCatchUpEnabled = enabled;
+        EXPECT_FALSE(MeetsGearFloor(p, 70, 115));
+        EXPECT_TRUE(MeetsGearFloor(p, 70, 116));
+        EXPECT_FALSE(MeetsGearFloor(p, 71, 129));
+        EXPECT_TRUE(MeetsGearFloor(p, 71, 130));
+    }
+    AutoWowGear::detail::gCatchUpEnabled = saved;
+}
+
+TEST(AhBrokerGear, ConfigurableFloorRoundsUpAndClamps)
+{
+    Params p;
+    p.minIlvlPct = 75;
+    EXPECT_FALSE(MeetsGearFloor(p, 78, 130));
+    EXPECT_TRUE(MeetsGearFloor(p, 78, 131));
+    p.minIlvlPct = 0;
+    EXPECT_TRUE(MeetsGearFloor(p, 78, 21));
+    p.minIlvlPct = 0xffffffffu;
+    EXPECT_FALSE(MeetsGearFloor(p, 78, 173));
+    EXPECT_TRUE(MeetsGearFloor(p, 78, 174));
+    EXPECT_TRUE(MeetsGearFloor(p, 78, 0xffffffffu));
+}
+
+TEST(AhBrokerGear, LowLevelsKeepTheirGreenCurve)
+{
+    Params p;
+    EXPECT_FALSE(MeetsGearFloor(p, 10, 14));
+    EXPECT_TRUE(MeetsGearFloor(p, 10, 15));
+    EXPECT_FALSE(MeetsGearFloor(p, 58, 61));
+    EXPECT_TRUE(MeetsGearFloor(p, 58, 62));
+}
+
 TEST(AhBrokerCod, PriceAddsFee)
 {
     Params p;
@@ -126,5 +178,157 @@ TEST(AhBrokerPlan, ForwardsToAhPlanWithinBudget)
     EXPECT_FALSE(plan.empty());
     // A zero budget buys nothing.
     EXPECT_TRUE(PlanForRequest(R(1, 0, 70, 0, 1), offers).empty());
+}
+
+class AhBrokerRenewal : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        std::lock_guard<std::mutex> guard(detail::gQueueLock);
+        _enabled = detail::gEnabled;
+        _queue = detail::gQueue;
+        _expired = detail::gUnservedExpired;
+        detail::gEnabled = true;
+        detail::gQueue.clear();
+        detail::gUnservedExpired.clear();
+    }
+
+    void TearDown() override
+    {
+        std::lock_guard<std::mutex> guard(detail::gQueueLock);
+        detail::gEnabled = _enabled;
+        detail::gQueue = _queue;
+        detail::gUnservedExpired = _expired;
+    }
+
+    bool _enabled = false;
+    std::vector<Request> _queue;
+    std::vector<Request> _expired;
+};
+
+TEST_F(AhBrokerRenewal, UnservedLevel80ReassessesOnceWithFreshBudget)
+{
+    Request const request = R(9001, 0, 80, 10000000, 1);
+    File(request);
+    ASSERT_TRUE(ExpireUnserved(request));
+    ASSERT_TRUE(ConsumeUnservedExpiry(request.guid, 80, 80));
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 80));
+    AutoWowGear::AhParams const params;
+    EXPECT_TRUE(AutoWowGear::AhRunDue(params, 80, 0, 10000000, 0, 0));
+    EXPECT_FALSE(AutoWowGear::AhRunDue(params, 80, 0, 0, 0, 0));
+}
+
+TEST_F(AhBrokerRenewal, ServedRequestHasNoRenewalAuthority)
+{
+    Request const request = R(9001, 0, 80, 10000000, 1);
+    File(request);
+    Forget(request.guid);
+    EXPECT_FALSE(ExpireUnserved(request));
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 80));
+}
+
+TEST_F(AhBrokerRenewal, StaleSnapshotPreservesEveryReplacementTerm)
+{
+    Request const original = R(9001, 0, 80, 10000000, 1);
+    for (unsigned term = 0; term < 5; ++term)
+    {
+        File(original);
+        Request replacement = original;
+        switch (term)
+        {
+            case 0: replacement.team = 1; break;
+            case 1: replacement.level = 79; break;
+            case 2: replacement.hunter = true; break;
+            case 3: replacement.budget = 9999999; break;
+            case 4: replacement.filedSec = 2; break;
+        }
+        File(replacement);
+        EXPECT_FALSE(ExpireUnserved(original));
+        std::vector<Request> const pending = TeamRequests(replacement.team);
+        ASSERT_EQ(pending.size(), 1u);
+        EXPECT_EQ(pending[0].team, replacement.team);
+        EXPECT_EQ(pending[0].level, replacement.level);
+        EXPECT_EQ(pending[0].hunter, replacement.hunter);
+        EXPECT_EQ(pending[0].budget, replacement.budget);
+        EXPECT_EQ(pending[0].filedSec, replacement.filedSec);
+        EXPECT_FALSE(ConsumeUnservedExpiry(original.guid, 80, 80));
+        Forget(original.guid);
+    }
+}
+
+TEST_F(AhBrokerRenewal, NewRequestClearsOldExpiry)
+{
+    Request const request = R(9001, 0, 80, 10000000, 1);
+    File(request);
+    ASSERT_TRUE(ExpireUnserved(request));
+    Request replacement = request;
+    replacement.filedSec = 2;
+    File(replacement);
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 80));
+    ASSERT_EQ(TeamRequests(0).size(), 1u);
+    EXPECT_EQ(TeamRequests(0)[0].filedSec, 2u);
+}
+
+TEST_F(AhBrokerRenewal, LevelMismatchCannotRenewOldToken)
+{
+    Request const request = R(9001, 0, 80, 10000000, 1);
+    File(request);
+    ASSERT_TRUE(ExpireUnserved(request));
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 79));
+    EXPECT_TRUE(ConsumeUnservedExpiry(request.guid, 80, 80));
+    File(request);
+    ASSERT_TRUE(ExpireUnserved(request));
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 79, 79));
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 80));
+}
+
+TEST_F(AhBrokerRenewal, DisabledFeatureDoesNotExpireOrConsume)
+{
+    Request const request = R(9001, 0, 80, 10000000, 1);
+    File(request);
+    detail::gEnabled = false;
+    EXPECT_FALSE(ExpireUnserved(request));
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 80));
+    EXPECT_EQ(TeamRequests(0).size(), 1u);
+    EXPECT_TRUE(detail::gUnservedExpired.empty());
+    detail::gEnabled = true;
+    ASSERT_TRUE(ExpireUnserved(request));
+    detail::gEnabled = false;
+    EXPECT_FALSE(ConsumeUnservedExpiry(request.guid, 80, 80));
+    detail::gEnabled = true;
+    EXPECT_TRUE(ConsumeUnservedExpiry(request.guid, 80, 80));
+}
+
+TEST_F(AhBrokerRenewal, ExpiryStorageRemainsBounded)
+{
+    for (std::uint32_t guid = 1; guid <= detail::kMaxOpen + 1; ++guid)
+    {
+        Request const request = R(guid, 0, 80, 10000000, 1);
+        File(request);
+        ASSERT_TRUE(ExpireUnserved(request));
+    }
+    EXPECT_EQ(detail::gUnservedExpired.size(), detail::kMaxOpen);
+    EXPECT_TRUE(TeamRequests(0).empty());
+    EXPECT_FALSE(ConsumeUnservedExpiry(1, 80, 80));
+    EXPECT_TRUE(ConsumeUnservedExpiry(detail::kMaxOpen + 1, 80, 80));
+}
+
+TEST_F(AhBrokerRenewal, ConcurrentConsumptionHasOneWinner)
+{
+    Request const request = R(9001, 0, 80, 10000000, 1);
+    File(request);
+    ASSERT_TRUE(ExpireUnserved(request));
+    std::atomic<unsigned> winners{0};
+    std::vector<std::thread> threads;
+    for (unsigned i = 0; i < 8; ++i)
+        threads.emplace_back([&]()
+        {
+            if (ConsumeUnservedExpiry(request.guid, 80, 80))
+                ++winners;
+        });
+    for (std::thread& thread : threads)
+        thread.join();
+    EXPECT_EQ(winners.load(), 1u);
 }
 }  // namespace

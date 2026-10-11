@@ -3012,7 +3012,7 @@ bool PlayerbotFactory::CanEquipUnseenItem(uint8 slot, uint16& dest, uint32 item)
 {
     dest = 0;
 
-    if (Item* pItem = Item::CreateItem(item, 1, bot, false, 0, true))
+    if (Item* pItem = Item::CreateItem(item, 1, bot))
     {
         InventoryResult result = botAI ? botAI->CanEquipItem(slot, dest, pItem, true, true)
                                        : bot->CanEquipItem(slot, dest, pItem, true, true);
@@ -5425,13 +5425,26 @@ void PlayerbotFactory::ApplyEnchantAndGemsNew(bool /*destroyOld*/)
             item->SetEnchantment(PERM_ENCHANTMENT_SLOT, bestEnchantId, 0, 0, bot->GetGUID());
             bot->ApplyEnchantment(item, PERM_ENCHANTMENT_SLOT, true);
         }
+        // HasSocket() covers both the template sockets and the one a buckle adds.
         if (!item->HasSocket())
             continue;
 
-        for (uint32 enchant_slot = SOCK_ENCHANTMENT_SLOT; enchant_slot < SOCK_ENCHANTMENT_SLOT + 3; ++enchant_slot)
+        // A buckle's gem goes into the first colourless template socket - see WorldSession::HandleSocketOpcode.
+        uint8 firstPrismatic = 0;
+        while (firstPrismatic < MAX_GEM_SOCKETS && item->GetTemplate()->Socket[firstPrismatic].Color)
+            ++firstPrismatic;
+
+        bool const hasPrismaticSocket = item->GetEnchantmentId(PRISMATIC_ENCHANTMENT_SLOT) != 0;
+
+        for (uint32 enchant_slot = SOCK_ENCHANTMENT_SLOT; enchant_slot < SOCK_ENCHANTMENT_SLOT + MAX_GEM_SOCKETS;
+             ++enchant_slot)
         {
-            uint8 socketColor = item->GetTemplate()->Socket[enchant_slot - SOCK_ENCHANTMENT_SLOT].Color;
-            if (!socketColor)
+            uint32 socketIndex = enchant_slot - SOCK_ENCHANTMENT_SLOT;
+            uint8 socketColor = item->GetTemplate()->Socket[socketIndex].Color;
+
+            // The buckle socket takes any gem the meta check below lets through.
+            bool const isPrismatic = !socketColor && hasPrismaticSocket && socketIndex == firstPrismatic;
+            if (!socketColor && !isPrismatic)
                 continue;
 
             int32 enchantIdChosen = -1;
@@ -5477,7 +5490,7 @@ void PlayerbotFactory::ApplyEnchantAndGemsNew(bool /*destroyOld*/)
                     }
                 }
                 if (socketColor & gemProperties->color)
-                    score *= 1.2;
+                    score *= 1.2f;
                 if (score > bestGemScore)
                 {
                     enchantIdChosen = enchant_id;

@@ -194,6 +194,7 @@ public:
     bool enableBroadcasts;
     bool enableGreet;
     bool randomBotSayWithoutMaster;
+    bool AnnounceConsumableUse;
 
     uint32 broadcastChanceMaxValue;
 
@@ -475,6 +476,7 @@ public:
     int32 maxAddedBots;
     int32 addClassCommand;
     int32 addClassAccountPoolSize;
+    bool addClassRandomCharacter;
     int32 maintenanceCommand;
     bool altMaintenanceAttunementQs,
             altMaintenanceBags,

@@ -33,6 +33,7 @@
 #include "PlayerbotFactory.h"
 #include "Playerbots.h"
 #include "ScriptMgr.h"
+#include "ServerScript.h"
 #include "SoloSpecPolicy.h"
 #include "Spell.h"
 #include "SpellAuras.h"
@@ -199,17 +200,20 @@ public:
 };
 
 // Failed attempts: SMSG_CAST_FAILED reaches every session (bots included) through this hook.
-class LabPacketScript : public PlayerbotScript
+class LabPacketScript : public ServerScript
 {
 public:
-    LabPacketScript() : PlayerbotScript("AutoWowLabPacket") {}
+    LabPacketScript() : ServerScript("AutoWowLabPacket", {SERVERHOOK_ON_PACKET_SENT}) {}
 
-    void OnPlayerbotPacketSent(Player* player, WorldPacket const* packet) override
+    void OnPacketSent(WorldSession* session, WorldPacket const& packet) override
     {
-        if (!gTrace || !packet || packet->GetOpcode() != SMSG_CAST_FAILED || packet->size() < 6 || !InLab(player))
+        if (!gTrace || !session || packet.GetOpcode() != SMSG_CAST_FAILED || packet.size() < 6)
             return;
-        std::uint32_t const spellId = packet->read<std::uint32_t>(1);
-        std::uint32_t const result = packet->read<std::uint8_t>(5);
+        Player* player = session->GetPlayer();
+        if (!InLab(player))
+            return;
+        std::uint32_t const spellId = packet.read<std::uint32_t>(1);
+        std::uint32_t const result = packet.read<std::uint8_t>(5);
         std::lock_guard<std::mutex> lock(gMutex);
         if (gRun.empty())
             return;

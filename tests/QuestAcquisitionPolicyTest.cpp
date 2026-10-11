@@ -534,7 +534,18 @@ TEST(QuestAcquisitionContractTest, BridgeUsesExactPersistentTravelAndNormalOpcod
     EXPECT_NE(source.find("path_type"), std::string::npos);
     EXPECT_NE(source.find("QuestAcquisitionSnapshotJson(bot, botAI, travelTarget)"),
               std::string::npos);
-    EXPECT_NE(body.find("setNullTravelTarget(leader)"), std::string::npos);
+    EXPECT_NE(body.find("ReleaseTerminalTravelTarget(leader, travelTarget)"), std::string::npos);
+    std::size_t const releaseBegin = source.find("bool ReleaseTerminalTravelTarget(");
+    std::size_t const releaseEnd = source.find("bool IsReadyForNativeWorkHandoff()", releaseBegin);
+    ASSERT_NE(releaseBegin, std::string::npos);
+    ASSERT_NE(releaseEnd, std::string::npos);
+    std::string const release = source.substr(releaseBegin, releaseEnd - releaseBegin);
+    EXPECT_NE(release.find("target->getDestination() == &destination"), std::string::npos);
+    std::size_t const consume = release.find("terminalTravelTargetReleased = true;");
+    std::size_t const clear = release.find("setNullTravelTarget(leader)");
+    ASSERT_NE(consume, std::string::npos);
+    ASSERT_NE(clear, std::string::npos);
+    EXPECT_LT(consume, clear);
     EXPECT_NE(source.find("HandleQuestgiverAcceptQuestOpcode(packet)"), std::string::npos);
     EXPECT_NE(source.find("previousLeaderStatus == QUEST_STATUS_NONE"), std::string::npos);
     EXPECT_NE(source.find("observedLeaderStatus == QUEST_STATUS_INCOMPLETE"), std::string::npos);

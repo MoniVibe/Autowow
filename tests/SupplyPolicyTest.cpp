@@ -4,6 +4,7 @@
  * or (at your option) any later version.
  */
 
+#include "MarketFundingPolicy.h"
 #include "SupplyPolicy.h"
 
 #include <unordered_map>
@@ -2753,4 +2754,79 @@ TEST(SupplyVendorJunk, SellsGreyBookQuestItemAndForeignReagentSurplusOnly)
     EXPECT_EQ(sell[2], 12u);
     EXPECT_EQ(sell[3], 21u);
     EXPECT_EQ(sell[4], 23u);
+}
+
+TEST(SupplyGearBodyFirst, CriticalSlotsAheadOfEmptyTrinkets)
+{
+    using namespace AutoWowSupply;
+    std::vector<GearNeed> const needs = {{1, 1, 12, kNoPriority, 0}, {2, 2, 4, kNoPriority, 100},
+                                       {3, 3, 15, kNoPriority, 300}, {4, 4, 8, kNoPriority, 20}};
+    auto const ranked = RankGearNeeds(needs, true);
+    ASSERT_EQ(ranked.size(), 4u);
+    EXPECT_EQ(ranked[0].slot, 15u);
+    EXPECT_EQ(ranked[1].slot, 4u);
+    EXPECT_EQ(ranked[2].slot, 8u);
+    EXPECT_EQ(ranked[3].slot, 12u);
+    auto const orders = PlanGearOrders(ranked, {}, 2, 0);
+    ASSERT_EQ(orders.size(), 2u);
+    EXPECT_EQ(orders[0].recipe, 3u);
+    EXPECT_EQ(orders[1].recipe, 2u);
+    auto const legacy = RankGearNeeds(needs);
+    EXPECT_EQ(legacy[0].slot, 12u);
+}
+
+TEST(SupplyGearBodyFirst, PreservesExplicitRecipientsAndAmmo)
+{
+    using namespace AutoWowSupply;
+    auto const ranked = RankGearNeeds({{1, 1, 12, 0, 0}, {2, 2, 4, kNoPriority, 100},
+                                       {3, 3, kAmmoSlot, kNoPriority, 300}}, true);
+    ASSERT_EQ(ranked.size(), 3u);
+    EXPECT_EQ(ranked[0].guid, 1u);
+    EXPECT_EQ(ranked[1].slot, kAmmoSlot);
+    EXPECT_EQ(ranked[2].slot, 4u);
+}
+
+TEST(SupplyCityArtisans, KeepsApprenticesOnCityWorkButPreservesInstanceAndOtherRoles)
+{
+    using namespace AutoWowSupply;
+    EXPECT_EQ(GatedRole(Role::Artisan, 5, 10, false, true), Role::Artisan);
+    EXPECT_EQ(GatedRole(Role::Artisan, 5, 10, false), Role::None);
+    EXPECT_EQ(GatedRole(Role::Artisan, 72, 10, true, true), Role::None);
+    EXPECT_EQ(GatedRole(Role::Rep, 1, 10, false, true), Role::Rep);
+    EXPECT_EQ(GatedRole(Role::None, 72, 10, false, true), Role::None);
+}
+
+TEST(SupplyCityArtisans, RefusesNewSelfMiningWithoutChangingLegacyAdmission)
+{
+    using namespace AutoWowSupply;
+    EXPECT_TRUE(MineDue({2835}, true, true, 1200000, 100, 0));
+    EXPECT_FALSE(MineDue({2835}, true, true, 1200000, 100, 0, true));
+    EXPECT_FALSE(MineDue({}, true, true, 1200000, 100, 0));
+    EXPECT_FALSE(MineDue({2835}, true, true, 1200000, 100, 101));
+}
+
+TEST(SupplyPolicy, MarketWorkingCashAvoidsDoubleFunding)
+{
+    EXPECT_EQ(0u, AutoWowSupply::MarketTopUp(335673, 4210452, 1000));
+    EXPECT_EQ(0u, AutoWowSupply::MarketTopUp(2000, 3000, 1000));
+    EXPECT_EQ(500u, AutoWowSupply::MarketTopUp(2000, 2500, 1000));
+    EXPECT_EQ(2000u, AutoWowSupply::MarketTopUp(2000, 999, 1000));
+}
+
+TEST(SupplyPolicy, MarketRefundReturnsOnlyUnspentTreasuryTopUp)
+{
+    EXPECT_EQ(0u, AutoWowSupply::MarketRefund(0, 2000, 0, 3000));
+    EXPECT_EQ(500u, AutoWowSupply::MarketRefund(500, 2000, 0, 3000));
+    EXPECT_EQ(200u, AutoWowSupply::MarketRefund(500, 2000, 1800, 1200));
+    EXPECT_EQ(100u, AutoWowSupply::MarketRefund(500, 2000, 0, 100));
+    EXPECT_EQ(0u, AutoWowSupply::MarketRefund(500, 2000, 2500, 1000));
+}
+
+TEST(SupplyPolicy, MarketFundingDoesNotOverflowAtCurrencyBounds)
+{
+    constexpr std::uint64_t max = UINT64_MAX;
+    EXPECT_EQ(0u, AutoWowSupply::MarketTopUp(0, 0, max));
+    EXPECT_EQ(max, AutoWowSupply::MarketTopUp(max, 0, 0));
+    EXPECT_EQ(1u, AutoWowSupply::MarketTopUp(max, max, 1));
+    EXPECT_EQ(max, AutoWowSupply::MarketRefund(max, max, 0, max));
 }

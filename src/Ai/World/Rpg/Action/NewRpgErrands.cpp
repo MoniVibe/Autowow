@@ -1439,6 +1439,7 @@ void LoadConfig()
     // AutoWow.Gear.CatchUp (GearUpgradePolicy.h): recalibrate the auction catch-up to the real green ilvl curve and
     // let a visit reach empty accessory slots. Refines AutoWow.Gear.AuctionUpgrades; no effect on its own.
     AutoWowGear::detail::gCatchUpEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.CatchUp", false);
+    AutoWowGear::detail::gBodyFirstEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.BodyFirst", false);
     // AutoWow.Gear.Flow (GearUpgradePolicy.h; the pass runs on the world thread, AutoWowSupply::GearFlowUpdate).
     AutoWowGear::detail::gFlowEnabled = sConfigMgr->GetOption<bool>("AutoWow.Gear.Flow", false);
     AutoWowGear::FlowParams& fl = AutoWowGear::detail::gFlowParams;
@@ -1470,6 +1471,8 @@ void LoadConfig()
     ab.maxBuysPerMin = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerMaxBuysPerMin", 6);
     ab.feeCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerFeeCopper", 0);
     ab.tickMs = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerTickMs", 30000);
+    ab.minIlvlPct = std::min<std::uint32_t>(
+        100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Gear.AhBrokerMinIlvlPct", 100));
     if (detail::gEnabled)
         BuildCatalog();
 }
@@ -1853,6 +1856,13 @@ bool NewRpgBaseAction::ErrandsStep(bool relocationRetirementOnly)
         {
             retireFinishedPredecessor();
             return true;
+        }
+        if (AutoWowBroker::ConsumeUnservedExpiry(guid, bot->GetLevel(), s.lastAhGearLevel))
+        {
+            s.lastAhGearLevel = 0;
+            StoreState(guid, s);
+            LOG_INFO("playerbots", "[AhBroker] retry_due bot={} lvl={} reason=unserved_expired",
+                     bot->GetName(), bot->GetLevel());
         }
         Assessment const a = AssessBot(bot, s, now);
         if (a.urgent & NeedTool)

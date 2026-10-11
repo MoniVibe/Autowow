@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "AutoWowGuildsPolicy.h"
+#include "GearUpgradePolicy.h"
 
 class Player;
 
@@ -100,6 +101,7 @@ struct Params
     // Artisan upkeep (lane F):
     std::uint32_t artisanFreeSlots = 4;  // AutoWow.Supply.ArtisanFreeSlots: the artisan makes room below this many
                                          // free bag slots (0 = off; a blocked craft still makes one)
+    bool cityArtisans = false;         // AutoWow.Supply.CityArtisans: work progression only, no apprentice adventures/mining
     std::uint32_t artisanMinLevel = 10;  // AutoWow.Supply.ArtisanMinLevel: below it a configured artisan is an
                                          // apprentice, an ordinary cohort adventurer (0 = off)
     // Rep storage (lane T, soak-s48-full-r1; a bug fix, on by default):
@@ -2332,6 +2334,8 @@ inline constexpr std::uint32_t kNoPriority = 0xFFFFFFFFu;
     return out;
 }
 
+inline constexpr std::uint8_t kAmmoSlot = 19;  // GearNeed.slot of an ammo need (EQUIPMENT_SLOT_END: no equipment slot)
+
 // One equipment slot of a recipient a known recipe's product upgrades (the stock "item upgrade" value: EQUIP into an
 // empty slot or REPLACE the worn piece, class / spec weights, armor type, level). ilvl = the recipient's summed
 // equipped item level (the worst geared rank first).
@@ -2344,12 +2348,24 @@ struct GearNeed
     std::uint32_t ilvl = 0;
 };
 
-// Priority list first (its order), then the worst geared (lowest summed item level), ties the lower guid, then slot.
-[[nodiscard]] inline std::vector<GearNeed> RankGearNeeds(std::vector<GearNeed> needs)
+// Explicit recipient priority first, optionally combat-slot priority, then worst geared, lower guid and slot.
+[[nodiscard]] inline std::vector<GearNeed> RankGearNeeds(std::vector<GearNeed> needs, bool bodyFirst = false)
 {
-    std::sort(needs.begin(), needs.end(), [](GearNeed const& a, GearNeed const& b)
-              { return std::tie(a.priority, a.ilvl, a.guid, a.slot, a.recipe) <
-                       std::tie(b.priority, b.ilvl, b.guid, b.slot, b.recipe); });
+    std::sort(needs.begin(), needs.end(), [bodyFirst](GearNeed const& a, GearNeed const& b)
+              {
+                  if (a.priority != b.priority)
+                      return a.priority < b.priority;  // preserve explicit recipient priorities
+                  if (bodyFirst)
+                  {
+                      // Ammo belongs with weapons: an unloaded hunter cannot use its ranged upgrade.
+                      std::uint8_t const pa = a.slot == kAmmoSlot ? 0 : AutoWowGear::CombatSlotPriority(a.slot);
+                      std::uint8_t const pb = b.slot == kAmmoSlot ? 0 : AutoWowGear::CombatSlotPriority(b.slot);
+                      if (pa != pb)
+                          return pa < pb;
+                  }
+                  return std::tie(a.priority, a.ilvl, a.guid, a.slot, a.recipe) <
+                         std::tie(b.priority, b.ilvl, b.guid, b.slot, b.recipe);
+              });
     return needs;
 }
 
@@ -2498,9 +2514,9 @@ enum class WeaponOrderVerdict : std::uint8_t
 // Market / Route reagents still short), it mines (skill and a pick), MineMs is on, its MineSpot is set and the last
 // stint ended at least MineCooldownMs ago.
 [[nodiscard]] inline bool MineDue(std::vector<std::uint32_t> const& lacks, bool canMine, bool spot, std::uint32_t mineMs,
-                                  std::uint64_t nowMs, std::uint64_t readyMs)
+                                  std::uint64_t nowMs, std::uint64_t readyMs, bool cityArtisans = false)
 {
-    if (!mineMs || !canMine || !spot || nowMs < readyMs)
+    if (cityArtisans || !mineMs || !canMine || !spot || nowMs < readyMs)
         return false;
     return std::any_of(lacks.begin(), lacks.end(), [](std::uint32_t item)
                        {
@@ -2753,8 +2769,6 @@ struct GearDelivery
 
 // ---- ammo (lane AA Tinkers, NeedRule::AmmoStock; a gear line whose products are shot) ----
 
-inline constexpr std::uint8_t kAmmoSlot = 19;  // GearNeed.slot of an ammo need (EQUIPMENT_SLOT_END: no equipment slot)
-
 // A recipient wants this shot: a hunter with a gun, shot (bullets) usable at its level, not weaker than the ammo it has
 // loaded (damage = DamageMin + DamageMax; 0 = none loaded) and fewer than `target` bullets held (bags + mailbox).
 [[nodiscard]] inline bool WantsAmmo(bool hunter, bool gun, bool bullets, std::uint32_t level, std::uint32_t reqLevel,
@@ -2820,8 +2834,11 @@ struct RoleInfo
 // runs errands, joins parties like any cohort adventurer; soak-s45-full-r1: the level 1-2 Brewers artisans could
 // never learn Apprentice Alchemy, which needs level 5); at the level it goes home, but never out of a dungeon run.
 // Reps are never gated.
-[[nodiscard]] inline Role GatedRole(Role r, std::uint32_t level, std::uint32_t minLevel, bool inInstance)
+[[nodiscard]] inline Role GatedRole(Role r, std::uint32_t level, std::uint32_t minLevel, bool inInstance,
+                                    bool cityArtisans = false)
 {
+    if (cityArtisans && r == Role::Artisan)
+        return inInstance ? Role::None : r;  // city work ignores the adventure-age gate, never instance eligibility
     return r == Role::Artisan && minLevel && (level < minLevel || inInstance) ? Role::None : r;
 }
 

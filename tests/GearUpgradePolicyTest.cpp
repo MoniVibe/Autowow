@@ -201,3 +201,44 @@ TEST(GearEquipBag, VetoKeepsHigherWornPiece)
     EXPECT_TRUE(KeepsWornOverCandidate(p, 146, true, false, 96, EquipSlotKind::Ranged));
 }
 }  // namespace
+
+TEST(GearBodyFirst, AuctionRejectsAccessoryPriorityOverBodyArmor)
+{
+    using namespace AutoWowGear;
+    bool const savedBody = detail::gBodyFirstEnabled;
+    bool const savedCatch = detail::gCatchUpEnabled;
+    detail::gBodyFirstEnabled = true;
+    detail::gCatchUpEnabled = true;
+    AhParams p;
+    p.maxBuys = 2;
+    std::vector<AhOffer> offers = {{1, 1, 1, 180, 12}, {2, 2, 1000, 50, 4}, {3, 3, 1000, 50, 15}};
+    auto const plan = AhPlan(p, offers, 75, false, 3000);
+    ASSERT_EQ(plan.size(), 2u);
+    EXPECT_EQ(plan[0].slot, 15u);
+    EXPECT_EQ(plan[1].slot, 4u);  // cheap empty trinket cannot consume the chest's budget/order place
+    detail::gBodyFirstEnabled = false;
+    auto const legacy = AhPlan(p, offers, 75, false, 3000);
+    ASSERT_EQ(legacy.size(), 2u);
+    EXPECT_EQ(legacy[1].slot, 12u);
+    detail::gBodyFirstEnabled = savedBody;
+    detail::gCatchUpEnabled = savedCatch;
+}
+
+TEST(GearBodyFirst, KeepsBudgetAndTwoHandRuleWithoutCatchUp)
+{
+    using namespace AutoWowGear;
+    bool const savedBody = detail::gBodyFirstEnabled;
+    bool const savedCatch = detail::gCatchUpEnabled;
+    detail::gBodyFirstEnabled = true;
+    detail::gCatchUpEnabled = false;
+    AhParams p;
+    p.maxBuys = 4;
+    std::vector<AhOffer> offers = {{1, 1, 1000, 50, 15, true}, {2, 2, 1, 180, 16},
+                                 {3, 3, 1000, 50, 6}, {4, 4, 1, 180, 12}};
+    auto const plan = AhPlan(p, offers, 75, false, 1001);
+    ASSERT_EQ(plan.size(), 2u);
+    EXPECT_EQ(plan[0].slot, 15u);
+    EXPECT_EQ(plan[1].slot, 12u);  // unaffordable legs do not suppress affordable fallback
+    detail::gBodyFirstEnabled = savedBody;
+    detail::gCatchUpEnabled = savedCatch;
+}

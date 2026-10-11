@@ -47,6 +47,7 @@
 #include "Playerbots.h"
 #include "SelfCraftPolicy.h"
 #include "SquadPolicy.h"
+#include "MarketFundingPolicy.h"
 #include "SupplyPolicy.h"
 #include "WeaponOrderPolicy.h"
 #include "TradePolicy.h"
@@ -2055,7 +2056,8 @@ std::vector<GearOrder> BootstrapGearOrder(Line line, bool alliance, Player* art,
         options.push_back({tier.spell, static_cast<std::uint8_t>(i), false,
                            known[i] && own && held[i] < p.skillupCasts, tier.grey, true, cost, true});
     }
-    std::vector<GearNeed> const need = RankGearNeeds(ScanGearNeeds(static_cast<std::size_t>(line), alliance, blocked));
+    std::vector<GearNeed> const need = RankGearNeeds(ScanGearNeeds(static_cast<std::size_t>(line), alliance, blocked),
+                                                  AutoWowGear::BodyFirstEnabled());
     std::vector<GearOrder> out;
     if (!castable.empty())
         options = PreferCastable(std::move(options), castable, skill);
@@ -2241,7 +2243,7 @@ void GearTick(Line line, bool alliance, bool overlord)
             known[i] = art && art->HasSpell(G.tiers[i].spell);
             held[i] = castUnits(static_cast<std::uint8_t>(i), house(G.tiers[i].product));
         }
-        needs = RankGearNeeds(ScanGearNeeds(li, alliance, known));
+        needs = RankGearNeeds(ScanGearNeeds(li, alliance, known), AutoWowGear::BodyFirstEnabled());
         if (WeaponOrders() && line == Line::MailGear)
             needs = MergeWeaponNeeds(needs, WeaponOrderNeeds(li, alliance, known, art ? art : rep));
         std::vector<GearOrder> orders = PlanGearOrders(needs, held, p.gearMaxOrder, p.repStockPerItem);
@@ -2673,7 +2675,8 @@ private:
         std::uint64_t total = 0;
         for (MarketListing const& b : buys_)
             total += b.buyout;
-        if (!gid || !AutoWowGuilds::Pay(gid, bot, total))
+        std::uint64_t const topUp = MarketTopUp(total, bot->GetMoney(), detail::gParams.listFloat);
+        if (!gid || AutoWowGuilds::RepOf(gid) != Low(bot) || (topUp && !AutoWowGuilds::Pay(gid, bot, topUp)))
         {
             Emit(bot, Reason::Refused, 0, buys_.front().item, 0, total, 0, Low(bot), "buy");
             return false;
@@ -2693,7 +2696,7 @@ private:
             spent += m0 - bot->GetMoney();
             Emit(bot, Reason::Buy, 0, b.item, b.count, m0 - bot->GetMoney(), Low(bot), 0);
         }
-        std::uint64_t const back = std::min<std::uint64_t>(total > spent ? total - spent : 0, bot->GetMoney());
+        std::uint64_t const back = MarketRefund(topUp, total, spent, bot->GetMoney());
         if (back)
             AutoWowGuilds::Deposit(bot, back);
         return spent != 0;
@@ -3134,6 +3137,7 @@ void LoadConfig()
     p.outfitGearCopper = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitGearCopper", 25);
     p.outfitGearBudgetPerHour = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.OutfitGearBudgetPerHour", 50000);
     p.artisanFreeSlots = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanFreeSlots", 4);
+    p.cityArtisans = sConfigMgr->GetOption<bool>("AutoWow.Supply.CityArtisans", false);
     p.artisanMinLevel = sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.ArtisanMinLevel", 10);
     p.repStore = sConfigMgr->GetOption<bool>("AutoWow.Supply.RepStore", true);
     p.repMailCap = std::min<std::uint32_t>(100, sConfigMgr->GetOption<std::uint32_t>("AutoWow.Supply.RepMailCap", 80));
@@ -3762,7 +3766,7 @@ RoleInfo ActiveRoleOf(Player* p)
         return {};
     RoleInfo r = RoleOf(Low(p));
     r.role = GatedRole(r.role, p->GetLevel(), detail::gParams.artisanMinLevel,
-                       p->GetMap() && p->GetMap()->Instanceable());
+                       p->GetMap() && p->GetMap()->Instanceable(), detail::gParams.cityArtisans);
     return r;
 }
 
@@ -4352,7 +4356,8 @@ constexpr std::uint32_t kBrokerMaxPerVisit = 8;  // buys per auctioneer visit, o
 constexpr std::int64_t kBrokerTimeoutSec = 1800; // 30 min: a never-delivered / stale request is dropped
 
 // The requester's AH-gear offers from this faction house: a buyout listing it can use that raises the ilvl of the slot
-// it fills. Lightweight (usability + FindEquipSlot + worn ilvl, as the gear-flow pass), no heavy stock scorer.
+// it fills, above the level-relative green-gear floor. Lightweight (usability + FindEquipSlot + worn ilvl),
+// no heavy stock scorer or additional cross-thread AI-cache access.
 // ponytail: the rep reads another online player's equip cross-thread here, exactly as the finished-bag market reads
 // recipient->CanUseItem at this same seam; acceptable per that precedent, the live soak watches it.
 std::vector<AutoWowGear::AhOffer> BrokerOffers(Player* requester, AuctionHouseObject* ah)
@@ -4370,6 +4375,7 @@ std::vector<AutoWowGear::AhOffer> BrokerOffers(Player* requester, AuctionHouseOb
             continue;
         ItemTemplate const* proto = sObjectMgr->GetItemTemplate(a->item_template);
         if (!proto || proto->InventoryType == INVTYPE_NON_EQUIP || proto->RequiredLevel > level ||
+            !AutoWowBroker::MeetsGearFloor(AutoWowBroker::Get(), level, proto->ItemLevel) ||
             requester->CanUseItem(proto) != EQUIP_ERR_OK)
             continue;
         uint8 const slot = ai->FindEquipSlot(proto, NULL_SLOT, true);
@@ -4418,16 +4424,17 @@ void QueueBrokerBuys(Player* rep, std::uint64_t auctioneerRawGuid)
         {
             if (nowSec - static_cast<time_t>(req.filedSec) > kBrokerTimeoutSec)
             {
-                LOG_INFO("playerbots", "[AhBroker] drop req={} reason=offline_stale", req.guid);
-                AutoWowBroker::Forget(req.guid);
+                if (AutoWowBroker::ExpireUnserved(req))
+                    LOG_INFO("playerbots", "[AhBroker] drop req={} reason=offline_stale", req.guid);
             }
             continue;  // offline but fresh: leave it for a later visit
         }
         if (requester->GetLevel() >= req.level + 2 || nowSec - static_cast<time_t>(req.filedSec) > kBrokerTimeoutSec)
         {
-            LOG_INFO("playerbots", "[AhBroker] drop req={} reason={} lvl={}->{}", req.guid,
-                     requester->GetLevel() >= req.level + 2 ? "outleveled" : "stale", req.level, requester->GetLevel());
-            AutoWowBroker::Forget(req.guid);
+            if (AutoWowBroker::ExpireUnserved(req))
+                LOG_INFO("playerbots", "[AhBroker] drop req={} reason={} lvl={}->{}", req.guid,
+                         requester->GetLevel() >= req.level + 2 ? "outleveled" : "stale", req.level,
+                         requester->GetLevel());
             continue;
         }
         std::vector<AutoWowGear::AhOffer> const plan = AutoWowBroker::PlanForRequest(req, BrokerOffers(requester, ah));

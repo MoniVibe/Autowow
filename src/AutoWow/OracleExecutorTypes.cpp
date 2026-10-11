@@ -107,6 +107,7 @@ ExecutorReceipt ReceiptForDecision(Decision const& decision, ExecutorStatus stat
     receipt.actorGuid = decision.actorGuid;
     receipt.quest = decision.quest;
     receipt.gather = decision.gather;
+    receipt.gatherGoal = decision.gather.goal;
     receipt.ownershipProof = ownershipProof;
     receipt.observedTick = now;
     receipt.frameVersion = decision.preconditions.frameVersion;

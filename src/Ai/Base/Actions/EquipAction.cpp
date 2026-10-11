@@ -127,7 +127,7 @@ AutoWowGear::EquipWhy ForcibleBagUpgrade(PlayerbotAI* botAI, Player* bot, ItemTe
         proto->Class == ITEM_CLASS_QUIVER ||
         (proto->Class == ITEM_CLASS_WEAPON && proto->SubClass == ITEM_SUBCLASS_WEAPON_MISC))
         return EquipWhy::None;
-    if (bot->BotCanUseItem(proto) != EQUIP_ERR_OK)
+    if (bot->CanUseItem(proto) != EQUIP_ERR_OK)
         return EquipWhy::None;
 
     // unique-equippable already worn: skip (CanEquipItem would reject it).
@@ -141,7 +141,7 @@ AutoWowGear::EquipWhy ForcibleBagUpgrade(PlayerbotAI* botAI, Player* bot, ItemTe
         return EquipWhy::None;
 
     // Ranged slot: the class must actually be proficient with this ranged weapon subclass (bow / gun / crossbow /
-    // wand / thrown). BotCanUseItem can admit a ranged piece the stock equip then fails to place (S122: Saewash /
+    // wand / thrown). CanUseItem can admit a ranged piece the stock equip then fails to place (S122: Saewash /
     // Lythalis retried an empty ranged slot 30+ times); CanEquipWeapon is the same proficiency gate the scorer uses.
     if (kind == EquipSlotKind::Ranged &&
         (proto->Class != ITEM_CLASS_WEAPON || !sRandomItemMgr.CanEquipWeapon(proto, bot->getClass())))
@@ -211,7 +211,7 @@ bool VetoStockReplace(PlayerbotAI* botAI, Player* bot, ItemTemplate const* candP
     if (!worn)
         return false;  // empty slot: let the stock equip fill it
     ItemTemplate const* wornProto = worn->GetTemplate();
-    bool const wornUsable = bot->BotCanUseItem(wornProto) == EQUIP_ERR_OK;
+    bool const wornUsable = bot->CanUseItem(wornProto) == EQUIP_ERR_OK;
     bool const wornBestType = kind == EquipSlotKind::Armor &&
                               sRandomItemMgr.CanEquipArmor(wornProto, bot->getClass(), bot->GetLevel());
     return KeepsWornOverCandidate(GetEquipBag(), wornProto->ItemLevel, wornUsable, wornBestType, candProto->ItemLevel,

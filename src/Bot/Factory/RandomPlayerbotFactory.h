@@ -72,6 +72,7 @@ private:
     friend class ArenaTeamAssignOperation;
     std::string const CreateRandomBotName(NameRaceAndGender raceAndGender);
 
+    static bool IsEligibleForBotArenaTeam(Player* bot);
     static void AssignBotToArenaTeamInternal(Player* bot);
     static void CollectJoinableBotArenaTeams(ArenaType type, TeamId faction, std::vector<ArenaTeam*>& out);
     static void CreateBotArenaTeam(Player* bot, ArenaType type);

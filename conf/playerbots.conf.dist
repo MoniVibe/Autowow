@@ -139,6 +139,12 @@ AiPlayerbot.MaxAddedBots = 40
 # Default: 1 (enabled)
 AiPlayerbot.AddClassCommand = 1
 
+# Pick a random eligible character each time the addclass command adds a bot of a given class.
+# When disabled, addclass keeps adding the same character for a class as long as it is available,
+# so a bot geared with init or tweak comes back on the next call.
+# Default: 0 (always the same character)
+AiPlayerbot.AddClassRandomCharacter = 0
+
 # Bot group invitation permission level (0 = GM only, 1 = accept based on level, 2 = always accept)
 # Default: 1 (accept based on level)
 AiPlayerbot.GroupInvitationPermission = 1
@@ -2517,8 +2523,9 @@ PlayerbotsDatabaseInfo = "127.0.0.1;3306;acore;acore;acore_playerbots"
 PlayerbotsDatabase.WorkerThreads     = 1
 
 #    PlayerbotsDatabase.SynchThreads
-#        Description: The amount of MySQL connections spawned to handle.
-#        Default:     1 - (PlayerbotDatabase.WorkerThreads)
+#        Description: The amount of MySQL connections spawned to handle synchronous (blocking) MySQL
+#                     statements.
+#        Default:     1 - (PlayerbotsDatabase.SynchThreads)
 
 PlayerbotsDatabase.SynchThreads     = 1
 
@@ -4044,6 +4051,21 @@ AutoWow.Gear.AhBroker = 0
 AutoWow.Gear.AhBrokerMaxBuysPerMin = 6
 AutoWow.Gear.AhBrokerFeeCopper = 0
 AutoWow.Gear.AhBrokerTickMs = 30000
+# Broker offers must reach this % of the expansion-aware green item-level curve, including empty slots.
+# 100: minimum ilvl116 at L70,155 at L75,174 at L78. 0 disables; values above100 clamp to100.
+# Applies only with AhBroker enabled; ordinary direct-AH purchases are unchanged.
+AutoWow.Gear.AhBrokerMinIlvlPct = 100
+
+# Prioritize weapons and body armor over accessories in auction plans and crafted-gear demand/skill-up goals.
+# Default0 preserves existing ordering.1: weapons/ammo,legs/chest/head/shoulders,wrists/feet/waist/hands,
+# cloak,neck/rings,trinkets. Explicit Supply.PriorityGuids and all usability/budget/skill/rank guards remain.
+AutoWow.Gear.BodyFirst = 0
+
+# City-only artisan progression. Default0 preserves apprentice adventures and optional self-mining.
+# 1 keeps configured artisans on the existing supply/work-XP/trainer path even below ArtisanMinLevel,
+# and refuses NEW self-mining jobs. Existing owned mining completes naturally; no motion is cleared.
+# Native profession/rank/recipe level requirements remain: no skill,recipe,XP or material grants are added.
+AutoWow.Supply.CityArtisans = 0
 
 # Self-sufficiency secondary professions for cohort adventurers (SelfCraftPolicy.h; default 0). Not supply
 # reps / artisans, not Oracle-managed bots. Learning is the stock errand trainer stop (the learn filter admits
@@ -4511,6 +4533,10 @@ AIPlayerbot.GuildFeedback = 1
 AiPlayerbot.GuildRepliesRate = 100
 # Bots without a master will say their lines
 AiPlayerbot.RandomBotSayWithoutMaster = 0
+# Bots whisper their master when they eat/drink/feast ("Eating [item] (85%)"). Set to 0 to
+# suppress those consumable-use messages (bots still sit and eat, just silently).
+# Default: 1 (enabled)
+AiPlayerbot.AnnounceConsumableUse = 1
 
 #
 #
