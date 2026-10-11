@@ -1,0 +1,1543 @@
+{
+  "utc": "2026-10-11T10:19:09.300254+00:00",
+  "module": {
+    "root": "/root/autowow-advisor-t1-module",
+    "head": "05dc42d9ccc983bc6d0327ad15a85797be8f7e5a",
+    "files": [
+      {
+        "path": ".agents/docs/cpp-guidelines.md",
+        "sha256": "001aea90ecdacf7639b15e06061d3c9f4d942e223119b3d25e475047a80418ff"
+      },
+      {
+        "path": ".agents/docs/cpp-playerbots.md",
+        "sha256": "c5965660a16d4f637510b58f62f497eb519868726a3cd9907b12b9c272d10834"
+      },
+      {
+        "path": ".coderabbit.yaml",
+        "sha256": "efcb0e497096d9e155d7597b6b4db41350973d1b93c9c088ff3f05a3e335cd9f"
+      },
+      {
+        "path": "conf/playerbots.conf.dist",
+        "sha256": "8bc4ebc9603b54ef9f39daf9ffc91a8983176349146fd5a5cd0f1786f79b6ebe"
+      },
+      {
+        "path": "data/sql/characters/base/0000_playerbots_arena_team_names.sql",
+        "sha256": "c95698da81313764acd8e0c0bed7cb33526f494a0213e518c908e556ff8264fb"
+      },
+      {
+        "path": "data/sql/characters/base/0000_playerbots_guild_names.sql",
+        "sha256": "cc898c89d15da98c89ebe18fb46c208d546628b54ee66ddb89751c12f37bfdc5"
+      },
+      {
+        "path": "data/sql/characters/base/0000_playerbots_names.sql",
+        "sha256": "183edef3053aec99e153d39cabf36d5248a0c2a98a86d242a7b7578f4ab207a2"
+      },
+      {
+        "path": "data/sql/characters/base/playerbots_arena_team_names.sql",
+        "sha256": null
+      },
+      {
+        "path": "data/sql/characters/base/playerbots_guild_names.sql",
+        "sha256": null
+      },
+      {
+        "path": "data/sql/characters/base/playerbots_names.sql",
+        "sha256": null
+      },
+      {
+        "path": "data/sql/playerbots/updates/2026_09_13_00_ai_playerbot_target_requester_text.sql",
+        "sha256": "9fcadd6d6a4bb23e86f16b5c692c089ce0e22f0ff8ff112cf03e3c4f3f1a88d9"
+      },
+      {
+        "path": "data/sql/playerbots/updates/2026_09_21_00_playerbots_speech.sql",
+        "sha256": "c810d18212250d4646625a54a47096e363245bee8224cb7a3092b2e81106f696"
+      },
+      {
+        "path": "data/sql/world/base/0000_playerbots_rpg_races.sql",
+        "sha256": "e140ed72c8f0734ccec472e218fe9f3ec979275be83ae0d9aa0512461ca91d80"
+      },
+      {
+        "path": "data/sql/world/base/charsections_dbc.sql",
+        "sha256": null
+      },
+      {
+        "path": "data/sql/world/base/emotetextsound_dbc.sql",
+        "sha256": null
+      },
+      {
+        "path": "data/sql/world/base/playerbots_rpg_races.sql",
+        "sha256": null
+      },
+      {
+        "path": "src/Ai/Base/Actions/AcceptInvitationAction.cpp",
+        "sha256": "25ad58da2150a05fe9d4f1aac469bc9bbb1c1c0db98b764b7d4db7a2d81e26d1"
+      },
+      {
+        "path": "src/Ai/Base/Actions/AreaTriggerAction.cpp",
+        "sha256": "9dd6ef1ce32c549e17943d8a1f187436ef0b82a0b99e8fbe2bf7b01756611dad"
+      },
+      {
+        "path": "src/Ai/Base/Actions/BattleGroundJoinAction.cpp",
+        "sha256": "9dc9a9eb687878b434c65a7207632769a0c408dec9eb509aa49045769dc1afe7"
+      },
+      {
+        "path": "src/Ai/Base/Actions/CheckMountStateAction.cpp",
+        "sha256": "19e61d9bcc3ae94f846764ab98a9d15d430cf7f7dbf8aeb07550e9e50d56d99e"
+      },
+      {
+        "path": "src/Ai/Base/Actions/ChooseTargetActions.cpp",
+        "sha256": "fa437939fe72895055dfa2e574ad32d1e7a313891d020a157f11e8e700da3780"
+      },
+      {
+        "path": "src/Ai/Base/Actions/ChooseTargetActions.h",
+        "sha256": "9499f0db751120144ea071d00f33ce7504897209fb2aa9dc9e5a731563cb29d2"
+      },
+      {
+        "path": "src/Ai/Base/Actions/CustomStrategyEditAction.cpp",
+        "sha256": "dbbbf0f086c48e654cb2830c8ea881342d6641f3bde7123deeb4e06a5f47ae92"
+      },
+      {
+        "path": "src/Ai/Base/Actions/DebugAction.cpp",
+        "sha256": "cd5751de571ebd6b674e02d3e02af873896a270c49a42c29b895ea7616482159"
+      },
+      {
+        "path": "src/Ai/Base/Actions/DestroyItemAction.cpp",
+        "sha256": "9b5c9484ee1d64d01e5d917842b3afe642dd7df824aeb0839fb0bd842cf930b7"
+      },
+      {
+        "path": "src/Ai/Base/Actions/EquipAction.cpp",
+        "sha256": "eeede2758c160e1ceadd4815c4b7e4824c2ed79307475028f569b76b17d86915"
+      },
+      {
+        "path": "src/Ai/Base/Actions/FollowActions.cpp",
+        "sha256": "111a44b0d02cd7827977e362ae264756afcb83410fc5669d3c40f909f389268a"
+      },
+      {
+        "path": "src/Ai/Base/Actions/GuildCreateActions.cpp",
+        "sha256": "9e3d837cfcaf5d1e49843113b7f4ab0164601a0f218c63767eef68987b15b282"
+      },
+      {
+        "path": "src/Ai/Base/Actions/InviteToGroupAction.cpp",
+        "sha256": "9ce4aefdea6c8bc969c8bc0388ccdb3ee1de132654edd890046eb24a7c16839a"
+      },
+      {
+        "path": "src/Ai/Base/Actions/LeaveGroupAction.cpp",
+        "sha256": "91a2a99bb4704e5057c13395bb6c9f0f55e7272bb9118298594f0917ff882043"
+      },
+      {
+        "path": "src/Ai/Base/Actions/LfgActions.cpp",
+        "sha256": "cc7e0b6b172c3792965ce01fa8e44bfbaba925fce8cac192249e3ddcd0fe2c66"
+      },
+      {
+        "path": "src/Ai/Base/Actions/LootRollAction.cpp",
+        "sha256": "01e6cc0ddf4d3933e003b59083bc6da874792f2f128bb8353f90897e9ec21f54"
+      },
+      {
+        "path": "src/Ai/Base/Actions/MovementActions.cpp",
+        "sha256": "9f406cb1ca2ab26b305b614dba760332d89178a62ecf74433f3a9a0ee65471ea"
+      },
+      {
+        "path": "src/Ai/Base/Actions/MovementActions.h",
+        "sha256": "504b9cadd79336c8c0d44e3b32bf8e53ae756436c310bda8c85d822cf99b898d"
+      },
+      {
+        "path": "src/Ai/Base/Actions/NonCombatActions.cpp",
+        "sha256": "3cd7da3799ed4f84476e53d3c6b3f07a4b5f2fffbd8190e9f40c4e20169c1c5d"
+      },
+      {
+        "path": "src/Ai/Base/Actions/RtscAction.cpp",
+        "sha256": "08f044027e7605cf7770768dfc47aa260a56b520451f65ae4dbe61a2e2bd69b8"
+      },
+      {
+        "path": "src/Ai/Base/Actions/SeeSpellAction.cpp",
+        "sha256": "5c86bce7447923683f5e4a866f9bc7df4cfe181bf1687405906a0cc04a6845a8"
+      },
+      {
+        "path": "src/Ai/Base/Actions/TellPvpStatsAction.cpp",
+        "sha256": "1def4bb3fab0d58c5caf088846093694878f254e981c2c2a3c81b0416beecd67"
+      },
+      {
+        "path": "src/Ai/Base/Actions/TradeStatusAction.cpp",
+        "sha256": "dfa6771f1f2281e4a5527a096d36b39df50ae92e23066dc2a605d42eacb2d408"
+      },
+      {
+        "path": "src/Ai/Base/Actions/UseItemAction.cpp",
+        "sha256": "cf5cdca3e76d265854b7743b1a10b64f919639b33e00107468ad547e32e442e4"
+      },
+      {
+        "path": "src/Ai/Base/ChatActionContext.h",
+        "sha256": "0c8d49112fb6b8203f360bae359f386e3e5869eb670a41e2d56d57c8388df236"
+      },
+      {
+        "path": "src/Ai/Base/ChatTriggerContext.h",
+        "sha256": "aca723481b38c0b06f58621f19094d1db02b7eff7697f2d72e0c7a06f39ec00d"
+      },
+      {
+        "path": "src/Ai/Base/Strategy/ChatCommandHandlerStrategy.cpp",
+        "sha256": "f20f1a6d1559f97a0c61e37b2aa174f72cb63695017c4b4688deacca415daead"
+      },
+      {
+        "path": "src/Ai/Base/Trigger/CureTriggers.h",
+        "sha256": "095401f5fef9fe8650252f788dd1c0ca27c0e8456260b8f66533ddda142f0df5"
+      },
+      {
+        "path": "src/Ai/Base/Trigger/GenericTriggers.h",
+        "sha256": "6796cc43290665fc22491bfabc29157a1c43b9fd7a4ff06977186cbe1b3815d3"
+      },
+      {
+        "path": "src/Ai/Base/Trigger/GuildTriggers.cpp",
+        "sha256": "df3991a732873b3aed3582ccd247d6516da5a34149bdeb7971a0a4a9349b0d5a"
+      },
+      {
+        "path": "src/Ai/Base/Trigger/HealthTriggers.h",
+        "sha256": "ace67c0986773f695091c851a576fe5ddcb105bfc9a990bbe834b94366015da5"
+      },
+      {
+        "path": "src/Ai/Base/Trigger/LfgTriggers.h",
+        "sha256": "d5511f9bc2c4b5d1de4e22dd561379e79597d84ac325418633c4d7552c450b6e"
+      },
+      {
+        "path": "src/Ai/Base/Value/AttackersValue.h",
+        "sha256": "377cd324182a51ebc95bd1894ddad439dffdb3383f8ea3704a46811e7473c08f"
+      },
+      {
+        "path": "src/Ai/Base/Value/EnemyPlayerValue.cpp",
+        "sha256": "5091a3da425c783430ffed00a3c6ec751a640ba86caf40fb5093eac4077a8c01"
+      },
+      {
+        "path": "src/Ai/Base/Value/EnemyPlayerValue.h",
+        "sha256": "207e4bfe2f9792e182d19da64e761b9c7aee911c2df2aa2fd051ae5c50b7288a"
+      },
+      {
+        "path": "src/Ai/Base/Value/EstimatedLifetimeValue.cpp",
+        "sha256": "c7ae631d5e33e519fb8399dbcb69c119dc52030d54fc55196ff97ba38de7750a"
+      },
+      {
+        "path": "src/Ai/Base/Value/EstimatedLifetimeValue.h",
+        "sha256": "0988ebed98f797a82c47dc140307413319728fbf6f5f34645f1fc6044edd46b6"
+      },
+      {
+        "path": "src/Ai/Base/Value/GroupValues.h",
+        "sha256": "64f0e06dfa22cce2af05c1f1abb209911009d1c25bd407db492bea638c2ae317"
+      },
+      {
+        "path": "src/Ai/Base/Value/ItemUsageValue.cpp",
+        "sha256": "bda7de77f3d61e0bf9c9687af299ae55d9c349c9ffd00718df4e879bfc3a2ef7"
+      },
+      {
+        "path": "src/Ai/Base/Value/LootValues.h",
+        "sha256": "e839c9ebd1705ff7c79561f318f244943da04566bb09c3d46d8249fca8a5da2a"
+      },
+      {
+        "path": "src/Ai/Base/Value/MaintenanceValues.h",
+        "sha256": "4eb7c190dea896288f3861a21e1d3cf909a40ded1f712b8506c19613d56ab1dc"
+      },
+      {
+        "path": "src/Ai/Base/Value/NearestGameObjects.h",
+        "sha256": "3652b14f87d3b036cb8165a9e3638b8b8a24cb17049d6cbeedfe084a2a86ff3a"
+      },
+      {
+        "path": "src/Ai/Base/Value/PartyMemberValue.h",
+        "sha256": "cd7b97f74cf27e83919d059c6bff54596b78c5a3815a2c4e4e93670a5079bb09"
+      },
+      {
+        "path": "src/Ai/Base/Value/PossibleTargetsValue.h",
+        "sha256": "53e092f15d2e125d9113eac1cd35fd28e71fd7dc36f90aeff4e8b92a9b51ca85"
+      },
+      {
+        "path": "src/Ai/Base/Value/SpellIdValue.cpp",
+        "sha256": "e2ea164aad3b4bb9763b38a422af03f07b7f99117b940125841c2a2eb52a71bb"
+      },
+      {
+        "path": "src/Ai/Base/Value/StatsValues.h",
+        "sha256": "267cc8a4659bac332f7cc31762b92cb8e2d00c128bd7a042061ef9919aa31c5e"
+      },
+      {
+        "path": "src/Ai/Base/Value/TargetValue.h",
+        "sha256": "e768dc93e261e3e3f5d1518f189319f1d2071b1f3405aa1086ef1af4cf47c3b7"
+      },
+      {
+        "path": "src/Ai/Class/Dk/DKActions.cpp",
+        "sha256": "ac2681f65cc8fb58c7e6105dd768e8df2df21317f0c513a3cca8b460a733fc00"
+      },
+      {
+        "path": "src/Ai/Class/Druid/DruidTriggers.h",
+        "sha256": "4450d0b23e1e42c644c71daecba8b5f10cc0d3104fa0dee45e27f99d1c47bb2c"
+      },
+      {
+        "path": "src/Ai/Class/Hunter/HunterTriggers.cpp",
+        "sha256": "6e86a59ef1f6d54ffe5d76df9db87bc1e433c6f08ede7df858446ebde02cd241"
+      },
+      {
+        "path": "src/Ai/Class/Mage/MageTriggers.h",
+        "sha256": "ef6c29214cada9621d93b7bb8ba66181369c55bbe36d91bbbc67094dd5b06ba0"
+      },
+      {
+        "path": "src/Ai/Class/Paladin/Actions/PaladinGreaterBlessingAction.cpp",
+        "sha256": "8106d42f1e6d302cbd2bb2da49cb147522c6ed556a45e3a3d8578ae1569d40a3"
+      },
+      {
+        "path": "src/Ai/Class/Paladin/PaladinTriggers.h",
+        "sha256": "51df97a50b0332029e17d2c7e0ccf061f414b2d1eaf39f9148a8871a233a29ea"
+      },
+      {
+        "path": "src/Ai/Class/Priest/PriestTriggers.h",
+        "sha256": "2b88672aa9f91ab6fffb72ef7c4bbe3137c61f77540faa21af76d7d444cc9715"
+      },
+      {
+        "path": "src/Ai/Class/Shaman/ShamanTriggers.h",
+        "sha256": "64423e062acea25a3b0604277577b8abd16b8828deec9d06b5bfa959a802eb89"
+      },
+      {
+        "path": "src/Ai/Class/Warlock/WarlockTriggers.h",
+        "sha256": "5051e3bfd448404b076c057ee691fda43e7b2fd233ca14e1bfaf73118f1ebe7a"
+      },
+      {
+        "path": "src/Ai/Dungeon/DTK/DTKStrategy.cpp",
+        "sha256": "2c5afbe463d827623d69903810dd912201396eaa4d39e228605d4ed7a0efccf0"
+      },
+      {
+        "path": "src/Ai/Dungeon/Nex/NexStrategy.cpp",
+        "sha256": "0f0b338e06f756ae9aa217a48f654ac992b873a89f4d6c91cca7efb534e2775d"
+      },
+      {
+        "path": "src/Ai/Dungeon/OC/OCActions.cpp",
+        "sha256": "60f99ca4197ce0d0912b8a567a12c8dfe7bc091f0e72c5245de1fe8bba9b135c"
+      },
+      {
+        "path": "src/Ai/Dungeon/TOC/TOCActions.cpp",
+        "sha256": "4b8ef60225d8afbc7556146167d860434a768da0e6865f821059418460550a34"
+      },
+      {
+        "path": "src/Ai/Dungeon/TOC/TOCActions.h",
+        "sha256": "a29c1b48debaf7eb1b8d2c9d4d2edf35c97ffd4b9bad40c9fdb40763d425f2f9"
+      },
+      {
+        "path": "src/Ai/Dungeon/TOC/TOCMultipliers.cpp",
+        "sha256": "cc5882f349e722a0f02f35d67caa3102ee6b8721da16d803bcd44857186542da"
+      },
+      {
+        "path": "src/Ai/Dungeon/TOC/TOCMultipliers.h",
+        "sha256": "8fa769cf00b327c32f0344d21bb6c662b457a14eb38a5afdca941e762f536fe5"
+      },
+      {
+        "path": "src/Ai/Dungeon/TOC/TOCStrategy.cpp",
+        "sha256": "58ab40426e4f31a6d2178c7c0b7b3f35b841997dfa508116373cb674f4ed7b5d"
+      },
+      {
+        "path": "src/Ai/Dungeon/TOC/TOCTriggers.h",
+        "sha256": "27c8aefd9974337831f3174206e2c85418ec34287887b999e435666a9dce460f"
+      },
+      {
+        "path": "src/Ai/Raid/Aq20/Aq20Triggers.cpp",
+        "sha256": "83cbe65c110463c78002085ada38856b19b5f49fdce202bed03404eb4284efe2"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLActionContext.h",
+        "sha256": "34ca25b36fab96121a838f3ec905c2f192138e8a7edde4606f69e69a6a2ce6d1"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLActions.cpp",
+        "sha256": "49eab4a87a294bca2a283ff3435cff18efefa1447f6cce797589b3935b3b3e24"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLActions.h",
+        "sha256": "3302a6a5b1e18d401b8378e02a12c1727920db07898c8be0167acd523e75ee16"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLHelpers.cpp",
+        "sha256": "e6b9bd0f711389eb85905c198f8afcf04f10f56b26de230ebd6b48283aa7656c"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLHelpers.h",
+        "sha256": "33b25d0e20dc4e21a8897fdc03cb769d34736a194f0073c1ad5b7c80087273a5"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLStrategy.cpp",
+        "sha256": "f0b3c51b7caa89e5a0c9905869801b3b706994c55f2f90257693db90f7c780ec"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLStrategy.h",
+        "sha256": "7d5dbbf0b82ac7bb033cd2f1430d2c6d68f138bef54e181b6e4e47d209cdb51d"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLTriggerContext.h",
+        "sha256": "0b2d6537083417c9781f39ea76fa1137a34f7dab4c9cb205e316e678e0b56995"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLTriggers.cpp",
+        "sha256": "6e8f9aa5d28e44cc7f15feb8c750295325135b275c6a5bdc7d8a5216dcbe86f4"
+      },
+      {
+        "path": "src/Ai/Raid/BWL/BWLTriggers.h",
+        "sha256": "37d888dc8d9db90dc2ecfa5d58b3c63c5f9378fba6caf4988987acf388a5fad1"
+      },
+      {
+        "path": "src/Ai/Raid/Kara/KaraActionContext.h",
+        "sha256": "9883f04d648f50129d016a10ac1200bb6de5f7cf036b17bb88c9611763d125b3"
+      },
+      {
+        "path": "src/Ai/Raid/Kara/KaraActions.cpp",
+        "sha256": "bc2233445ec1022c30267213d56cac2702d4bfff56901f788d625c08a8aab9ac"
+      },
+      {
+        "path": "src/Ai/Raid/Kara/KaraActions.h",
+        "sha256": "d3bc7af3a753c481ee5c73a1afc51460fc6a215a669b3f3968e700c65394b84c"
+      },
+      {
+        "path": "src/Ai/Raid/Kara/KaraMultipliers.cpp",
+        "sha256": "df9b8473c7648dfb5851099df4968085477212e0b2209fe0beddf58fb249b6e7"
+      },
+      {
+        "path": "src/Ai/Raid/Kara/KaraStrategy.cpp",
+        "sha256": "b469b84a61ec50bc7216c467b0c98741d1e370fcfda04a7da360a07a0fd42564"
+      },
+      {
+        "path": "src/Ai/Raid/Kara/KaraTriggers.cpp",
+        "sha256": "7e79a59025d92cf716d93f09780831c0bf4a2b712b315a9cb5d27dc22ea8660c"
+      },
+      {
+        "path": "src/Ai/Raid/MC/MCActions.cpp",
+        "sha256": "976b5e4d9695fdf391fb2b933e63bbaba8aa21a8ba9e5ae45cb0af4e446fc274"
+      },
+      {
+        "path": "src/Ai/Raid/MC/MCStrategy.cpp",
+        "sha256": "3f5ca6b4d287ba3e5b85ce0e653d760b6de553d1b1406a12041fb7424bca4769"
+      },
+      {
+        "path": "src/Ai/Raid/Naxx/Action/NaxxActions_Razuvious.cpp",
+        "sha256": "399f15d50a67371bc830699e8f900ad278597d3401f0453351a5ca8def1078d5"
+      },
+      {
+        "path": "src/Ai/Raid/RS/Action/RSActions.h",
+        "sha256": "27d3e986f4496c0b276db9177f84ab1b4a14b8aa5abf56e9df584b6031719295"
+      },
+      {
+        "path": "src/Ai/World/Rpg/Action/NewRpgAction.h",
+        "sha256": "c6eed1a964ec5e2d7674d0ec3c2e9213a05680344b47d5d776ae11c946105ca4"
+      },
+      {
+        "path": "src/Ai/World/Rpg/Action/NewRpgBaseAction.h",
+        "sha256": "26c16d52ff496fc321cbffe4248865fff59565859687a579b9be2c3204877fde"
+      },
+      {
+        "path": "src/Ai/World/Rpg/Action/NewRpgErrands.cpp",
+        "sha256": "1c637cd28a0a3eeb44e16b7182f6e64958c8200cdebd091cdf3bb210e43964d7"
+      },
+      {
+        "path": "src/Ai/World/Rpg/Action/NewRpgSupply.cpp",
+        "sha256": "52edd9a642daa7728c2ccdea3ed65a261eefad9200fc908878316eb8706f8f72"
+      },
+      {
+        "path": "src/AutoWow/AhBrokerPolicy.h",
+        "sha256": "87602d4e1960748df5126f1a2f7d37079f771afa3d162346097134cf0c0132eb"
+      },
+      {
+        "path": "src/AutoWow/AutoWowSupply.cpp",
+        "sha256": "2995169016bb086a310da036a81dfc9c6556935873405330e1d6ba70894880b0"
+      },
+      {
+        "path": "src/AutoWow/GearUpgradePolicy.h",
+        "sha256": "3ac57275dd886fe0ccc91d56113c7ecabe8de49c7df8cb0a0d9d32be8abd3d48"
+      },
+      {
+        "path": "src/AutoWow/LabControl.cpp",
+        "sha256": "f0b3eb9b92da1d098aeae3ea8abf89c1233d51fd994858ae55b9d19ccfc9dc4b"
+      },
+      {
+        "path": "src/AutoWow/MarketFundingPolicy.h",
+        "sha256": "98b8df336ca760638d3c759b974c4dc53d0aeb9c49386aa5ff62980922eda13a"
+      },
+      {
+        "path": "src/AutoWow/OracleExecutorTypes.cpp",
+        "sha256": "c2e8cabae5ff2325924aaf608dda26a85ae10e76561b114fc803558bbed923fb"
+      },
+      {
+        "path": "src/AutoWow/SupplyPolicy.h",
+        "sha256": "ef278e11d805b506c7d1ccd3e657413f74aadf0de9b4ef080cc762af2512650e"
+      },
+      {
+        "path": "src/Bot/Cmd/ChatHelper.cpp",
+        "sha256": "82f977f9053cc3e3c0b5e7dc77def138c4edc736c59ee8f5beb219ee422dd546"
+      },
+      {
+        "path": "src/Bot/Debug/PerfMonitor.cpp",
+        "sha256": "cb2c868b6a5af930d711689322148944ebb80f88d8a627e88f1a11a3c7b57169"
+      },
+      {
+        "path": "src/Bot/Debug/PerfMonitor.h",
+        "sha256": "1f6566aa343f9440b4435538a9081f5ea86669284c4d642c2e741c65787700d1"
+      },
+      {
+        "path": "src/Bot/Engine/AiObjectContext.cpp",
+        "sha256": "995976545bb7d39c524dd0b2c2a98dd98afadf315e47699bd1557ae45c071fa2"
+      },
+      {
+        "path": "src/Bot/Engine/Engine.cpp",
+        "sha256": "2d8b332f607bd1d5bac63632e64e3a3e43c89fa53bf459c9b4b1d94c28654a7e"
+      },
+      {
+        "path": "src/Bot/Engine/Multiplier.cpp",
+        "sha256": "0cfbe4c331259ae029562f43731d6f0db451e5c6a6c792050acc36d48739e524"
+      },
+      {
+        "path": "src/Bot/Engine/Multiplier.h",
+        "sha256": "157ded95bae295720d53c3f9f88ee86808bf1b183bf8dc1710c8b0ae2c39eff8"
+      },
+      {
+        "path": "src/Bot/Engine/Trigger/Trigger.cpp",
+        "sha256": "04da317baf0ceae1239f56343bcf9dbab21c4d94917ac1ac4efe176e12bdc7f3"
+      },
+      {
+        "path": "src/Bot/Engine/Value/Value.h",
+        "sha256": "c11d8ce0d3e49b2a2aa5d262469006699f55f6aede79a0ae57037667e38b4770"
+      },
+      {
+        "path": "src/Bot/Factory/PlayerbotFactory.cpp",
+        "sha256": "f376b51bd25f124b3bef726a5b3b5553bd8e983ba0462aa3a1068f80180073e7"
+      },
+      {
+        "path": "src/Bot/Factory/RandomPlayerbotFactory.cpp",
+        "sha256": "a1b8bdd43796c5fc93864b77d049f97b1cc41039320dd4fd8e7508346eed34e6"
+      },
+      {
+        "path": "src/Bot/Factory/RandomPlayerbotFactory.h",
+        "sha256": "6d6d1da533dfde7b09792bc1d39f29c49eb539059ade69dff8e8c8db1415b836"
+      },
+      {
+        "path": "src/Bot/PlayerbotAI.cpp",
+        "sha256": "76cc312a1d8f4220cb7b48c0317121a814104b4b76aa19091da1ea7559f5421e"
+      },
+      {
+        "path": "src/Bot/PlayerbotMgr.cpp",
+        "sha256": "5081d05c3271062817e042308d6cd36aec6b32091fbcad1b7f0fd4cd5a4b0e50"
+      },
+      {
+        "path": "src/Bot/PlayerbotMgr.h",
+        "sha256": "b969142c211fa5ab3d42f6ec31483e7839e147bd7c252a210d174d3c2d5ff87d"
+      },
+      {
+        "path": "src/Bot/RandomBotLevelMgr.cpp",
+        "sha256": "5eddb7f600ab5d47dd1e2461097183832438a9310d19352dd8724efef73319ab"
+      },
+      {
+        "path": "src/Bot/RandomPlayerbotMgr.cpp",
+        "sha256": "5d96ac95b910e52d7291dbe4a563b6106bf260c7ab84322c52eee9b30371bd80"
+      },
+      {
+        "path": "src/Bot/RandomPlayerbotMgr.h",
+        "sha256": "9824c4878c9aa6daccea9b24dc7f7544cc86a179c76a86f4c29f53ec8c8c2f77"
+      },
+      {
+        "path": "src/Db/PlayerbotRepository.cpp",
+        "sha256": "4bc52f116aaf7504a9091adb611c974518e92246c6d8850c26bbc92dbd15e001"
+      },
+      {
+        "path": "src/Db/PlayerbotRepository.h",
+        "sha256": "7be0abd94f881e93ebe3e58cb46b5555a81b1391bf1697545bcfd9480e20b18a"
+      },
+      {
+        "path": "src/Db/PlayerbotsDatabase.cpp",
+        "sha256": "8a6fddaa800927fbcb23fc1c333c5b9a6fb32e57a585ecb0b93a37b6b733d897"
+      },
+      {
+        "path": "src/Db/PlayerbotsDatabase.h",
+        "sha256": "f2745cc0d8e2794117a4664d8601f89dd720323e7b89d5fc05a4787860e21692"
+      },
+      {
+        "path": "src/Mgr/Guild/GuildTaskMgr.cpp",
+        "sha256": "29044adb62dfb884235c3d11c46c3b2e15870b317ed052515db1d70d15ed6676"
+      },
+      {
+        "path": "src/Mgr/Guild/PlayerbotGuildMgr.cpp",
+        "sha256": "6900c2a4ecf133aaa406f61b8b9d4e21118930de00201f926d741ae8fda6a76f"
+      },
+      {
+        "path": "src/Mgr/Travel/TravelMgr.cpp",
+        "sha256": "0e829d4bf8588315cf9a2e39382ff4515b364e7d03debe0c7180aba420d0cd86"
+      },
+      {
+        "path": "src/Mgr/Travel/TravelMgr.h",
+        "sha256": "0861fb00feb5969f989c8a64ac64db6f392a9aab4251486685c2bc8657ad4e64"
+      },
+      {
+        "path": "src/PlayerbotAIConfig.cpp",
+        "sha256": "deb9d78feb84a28de7a73f1eae6062a6a218559f63b2be5e4176cc9dd69a4fdc"
+      },
+      {
+        "path": "src/PlayerbotAIConfig.h",
+        "sha256": "1b25662771a355f8bebb05b2c9a87b02095c8483ae217f1663f2c23e17f4eca3"
+      },
+      {
+        "path": "src/Script/PlayerbotCommandScript.cpp",
+        "sha256": "d1e73485ef8e271eeccdbb1b51caf23f828adbe085fefe3514433a0b720f8d4d"
+      },
+      {
+        "path": "src/Script/Playerbots.cpp",
+        "sha256": "c5514e3f3ba205530991cb764c10d7cab05a6f10f85a143605152764e1ac8484"
+      },
+      {
+        "path": "src/Script/PlayerbotsSecureLogin.cpp",
+        "sha256": "ef69906e6536dacf72c94e4ef95985c4352a8e9305c7c40ac6c4c6766b5517a5"
+      },
+      {
+        "path": "src/Script/PlayerbotsSelfBotAfk.cpp",
+        "sha256": "017778821ab0154ce38cbf15d9010fc5d0b37c86716a4bf8e3d0a1bb5cf366ba"
+      },
+      {
+        "path": "src/Util/ServerFacade.cpp",
+        "sha256": "c892a53233cfe04455ef0d040b7412400764d234557e9b97bde077c30c403e4c"
+      },
+      {
+        "path": "tests/AhBrokerPolicyTest.cpp",
+        "sha256": "62263535534bfbdaa4fc95ca71e564f357c2b5ba5a4507a82f2f33968a995092"
+      },
+      {
+        "path": "tests/DungeonRouteReconnectPolicyTest.cpp",
+        "sha256": "a258894cfc36fe09efb3c12c751fce008cd1a2e52ecafc1e198c160b1f866b84"
+      },
+      {
+        "path": "tests/GearUpgradePolicyTest.cpp",
+        "sha256": "d758e15f31186a31781fd4dd5d708cfe088a83440406b87a737eafe2e909a3d9"
+      },
+      {
+        "path": "tests/OracleExecutorTypesTest.cpp",
+        "sha256": "033e129868e051e859058d9ed9031cc07dc7b3d8b5ca74d0b3455d5c76e4ff7e"
+      },
+      {
+        "path": "tests/QuestAcquisitionPolicyTest.cpp",
+        "sha256": "1fdbd737cf623f52248db9a453c3da6eb43f617ca914cf3bd0f330434c3eed25"
+      },
+      {
+        "path": "tests/QuestFinisherPartyContractTest.cpp",
+        "sha256": "9cd52188164223c83d45995855e3843841ebb57ffd49e0e4ef120ae1469639d6"
+      },
+      {
+        "path": "tests/QuestObjectiveResolutionTest.cpp",
+        "sha256": "be0b184e9c51a88a85e1855f71ef6d392ef4b0be784629288d6ce30e81d95ee7"
+      },
+      {
+        "path": "tests/SupplyPolicyTest.cpp",
+        "sha256": "8f09bd40d51f1d79b6b9bf0f72512f99705176005eece201d596a6e59049f373"
+      }
+    ],
+    "upstream_base": "7bae1b5c58c76a0aa20381155edc08096d1485b2",
+    "upstream_target": "037c01418b5d01506917a3db9b44fd56ac5f965c",
+    "upstream_authors": [
+      "Alex Dcnh <140754794+Wishmaster117@users.noreply.github.com>",
+      "Atanas Petrov <47080620+waterdrinkerAP@users.noreply.github.com>",
+      "Christopher Weeter <christopher.weeter@gmail.com>",
+      "Crow <pengchengw@me.com>",
+      "HennyWilly <5954598+HennyWilly@users.noreply.github.com>",
+      "Keleborn <22352763+Celandriel@users.noreply.github.com>",
+      "Matija Huremovi\u0107 <matija.huremovic@gmail.com>",
+      "Michael <michael@malura.de>",
+      "NSO <108399823+NSO73@users.noreply.github.com>",
+      "Orry Goodwin <94092417+Jgoodwin64@users.noreply.github.com>",
+      "Revision <tkn963@gmail.com>",
+      "Terry Raimondo <terry.raimondo@gmail.com>",
+      "avirar <luke.thorpe@gmail.com>",
+      "jrad7 <106174524+jrad7@users.noreply.github.com>",
+      "kadeshar <kadeshar@gmail.com>"
+    ]
+  },
+  "core": {
+    "root": "/root/autowow-lane-core",
+    "head": "6cf9009f639b10f2dcc8983fd6f514de206137ba",
+    "files": [
+      {
+        "path": ".agents/docs/sql-guidelines.md",
+        "sha256": "1b8d25252a5964ed2c562b124c6a5acbc77336b2b7b9aaca24f3d0e26227022f"
+      },
+      {
+        "path": ".github/actions/linux-build/action.yml",
+        "sha256": "d6b51822abaededef4eb93d80832413c34d39a8f5a25b622adc0dff39f6b4044"
+      },
+      {
+        "path": ".github/workflows/core-build-nopch.yml",
+        "sha256": "9391b728c8ee64144364fb793109af7c067cd098fcdd3d466a9b4f21a2e7a306"
+      },
+      {
+        "path": ".github/workflows/core-build-pch.yml",
+        "sha256": "50cb05d672fee6cabf2b3fbe349dc0a6ce6315afb2f7235ab9dfda5645a99e16"
+      },
+      {
+        "path": ".github/workflows/core-build-playerbots.yml",
+        "sha256": "22553121d3bf414082eba91bf524072520515e962f6fa7e5aab7dbdb31956518"
+      },
+      {
+        "path": ".github/workflows/import_pending.yml",
+        "sha256": "a1d81d5e04ac59737c69fdd5e0d2bcfb85c246f4c30eb2b607f9e86de9d21c64"
+      },
+      {
+        "path": ".github/workflows/macos_build.yml",
+        "sha256": "97d4dd947d8e0be2b54c4f94f02d31c6f60bf4170c2cdf93553dc2a9ed4a3126"
+      },
+      {
+        "path": ".github/workflows/windows_build.yml",
+        "sha256": "b1abf57ef7d117f7dea2b27ed521366083bd8bb7de6e2e85135257e96b28c912"
+      },
+      {
+        "path": ".gitignore",
+        "sha256": "4ea44b0638827feddb17896de9069e2f398b0e8f0db8213128a1c787de77f885"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_20_01.sql",
+        "sha256": "5aa9162f5f4e990f771a110220b8a78d2af80e0d617047430690558eeb6c6dc0"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_00.sql",
+        "sha256": "5ce3912901e6f249219fa02423a22ad3b8fa3347e0e2c4304149b0a2d6954bda"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_01.sql",
+        "sha256": "9d9db50a7bf4f0d54d803e7a24957a0a02d756b39bc9157de2143e4ab64f8088"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_02.sql",
+        "sha256": "ed587f5c9fb7ebd37a8d95ab0bf4cf05dbaee00f9d32f971d8df8b95619de837"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_03.sql",
+        "sha256": "182e869692aa142c9b8a99bed4f812e2747072f1b3038723f2954b8c9f601a92"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_04.sql",
+        "sha256": "ddf653432bbcf4b1074f39db98c973575d7c35f88d2e980c003616fca65753c7"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_05.sql",
+        "sha256": "17c7eb178f714c440600ec413aefc6d6c2f3fdcf1ec7758df2d5e09057d83160"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_06.sql",
+        "sha256": "1cff8704dd88a0245d015e1dc3f32ec75e577dc5ce6b6d511cbe7aae9692858a"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_07.sql",
+        "sha256": "aa51dddacd954de2303ac9624c568a0434ee0673a034a0ba07121d05cc2bcc74"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_21_08.sql",
+        "sha256": "d97c3e0f5583129d21d9fca412925a36c79898783e2933cc63c61eeb7bfa06ff"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_00.sql",
+        "sha256": "ca63f1eb431e62a39143b93af831205f42701dbb33dcdba98f152e904bec691c"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_01.sql",
+        "sha256": "8a8ae4ea0ed7f56fbb72654b00414b670f520aa0993013399f91d6a0170408e7"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_02.sql",
+        "sha256": "da1ef680654e14d625e62d67c25436572a37554d1c6aeb2bf3a1aff0f40ee927"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_03.sql",
+        "sha256": "4e93f167ce8f34d64af9367ce7a377886a9f0817f5cd38b74ebf2fac85aef557"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_04.sql",
+        "sha256": "b1b2dd0a3a7f845736e3d54d76338c6e13d110b32f310a06f766ccbd6bc1e5c6"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_05.sql",
+        "sha256": "604799e2b96afd6fc0e1ccb1c120885f576b39289f0d9e9668f485c7f12dfd4a"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_06.sql",
+        "sha256": "a25015e782981eb4ceea537a99bcabd10e89740d591b59abedff5a75905c9bca"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_22_07.sql",
+        "sha256": "92847ebba26ea087ac5ad6a57e71da9a9e872adef69df4d90b69e8490bdb9b7b"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_23_00.sql",
+        "sha256": "baeea1b11b7776fd3d7c52a225116bb97f6a7128a48862c8f4fd7e9ac4302023"
+      },
+      {
+        "path": "data/sql/updates/db_world/2026_09_23_01.sql",
+        "sha256": "b6d2cbf94ad375492016c1311ad48734cf432a67cf8da5eb13a3c7a3cb07a51d"
+      },
+      {
+        "path": "data/sql/updates/pending_db_characters/2026_10_09_00_autowow_knowledge.sql",
+        "sha256": "1687b9fe7e26f656c295134d655bde49fc078f1df0d8f1b5634f79ba5368b9c9"
+      },
+      {
+        "path": "e2e/README.md",
+        "sha256": "9187d23546e9c54f29352f1a45aba1d5e027c7bf0a3cb175c9b29437ae4f36f2"
+      },
+      {
+        "path": "e2e/suites/instances/northrend/ulduar/thorim_evade_e2e_test.go",
+        "sha256": "54ac3dd0a8eeef811eafd6b28223ba5caad7e6e1447dc9796195b54b8d44ae6d"
+      },
+      {
+        "path": "e2e/suites/instances/northrend/ulduar/ulduar_e2e_test.go",
+        "sha256": "81d73f075c8bb49df01452e22ea12842f739b4f84ba85f5eeac3b2fd6ad3583f"
+      },
+      {
+        "path": "e2e/suites/professions/trainers/trainers_e2e_test.go",
+        "sha256": "5904030fdd9d72cf09927bb63351ebf1d71dd07e3e763d70049ff74d2d310cbe"
+      },
+      {
+        "path": "src/server/database/Database/DatabaseLoader.h",
+        "sha256": "02854fd90ffe7803c2346a3707a9e0f266a08b3452f6544fd4ec49bc3f396921"
+      },
+      {
+        "path": "src/server/database/Database/DatabaseWorkerPool.cpp",
+        "sha256": "4906ec541e21d74a125db3a144da501300acc3a3fa2a43432d8f0114546ca65b"
+      },
+      {
+        "path": "src/server/database/Database/Implementation/CharacterDatabase.cpp",
+        "sha256": "9bbf98e07d5a070e907616ae5fb2dfe9821a59abf0f6b0de9f343cd46d55bc1a"
+      },
+      {
+        "path": "src/server/database/Database/Implementation/CharacterDatabase.h",
+        "sha256": "d96796784a703a31e9ad558c97afbbcd3073bdcc498014b36dbc5cf7a9079bb3"
+      },
+      {
+        "path": "src/server/database/Database/Implementation/LoginDatabase.cpp",
+        "sha256": "ec04d824521ccc9aa4d7508085b6729309bc1c87a88bcd59a91263ee18aa5b5e"
+      },
+      {
+        "path": "src/server/database/Database/Implementation/LoginDatabase.h",
+        "sha256": "ac23c575034c2df2d122b3770b94cc6f03649acb27d17d328484aa20ce5fc1e4"
+      },
+      {
+        "path": "src/server/database/Database/ModuleDatabasePool.cpp",
+        "sha256": "be79a55b19d33af3611bc8446cbcc3c6d14c8142ea33e8c53a0ed3b43eecb8a4"
+      },
+      {
+        "path": "src/server/database/Database/ModuleDatabasePool.h",
+        "sha256": "f365631ffb1c79543a02be86767c3546e03fe53d86659bbf2610cd012647b839"
+      },
+      {
+        "path": "src/server/database/Database/MySQLConnection.cpp",
+        "sha256": "10596c2d604cbf2f2817f3d0020496f8d0cab626501e6ef100b53685c8f1d40b"
+      },
+      {
+        "path": "src/server/database/Database/SQLOperation.h",
+        "sha256": "eea023d4440a27dcc9116366ee96166730db8df343994dac864db8a59bebcfb8"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/ArenaTeam.cpp",
+        "sha256": "afeac78c91f580538c9806ed33a475b42763278adaa8b29d4f7d353c7a351172"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/ArenaTeam.h",
+        "sha256": "1c35f06e8529082a34ac3bb57cbcac6c53db2e412c6c6e4953684d22ba1ca77a"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/BattlegroundMgr.cpp",
+        "sha256": "e64133e513dd413a45c46df62b25f0284d9f23675bb6f713b899c24c1c1a9918"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/Zones/BattlegroundAB.h",
+        "sha256": "f5532b12d4bb72e1173d43bd9678fdfb6ec98e81fdfceaa7b7b07dc222af5334"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/Zones/BattlegroundAV.h",
+        "sha256": "e006e9d276acc1ad4671e66223da4d546ac49ce829b42e5b99b15fba0aa70930"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/Zones/BattlegroundEY.cpp",
+        "sha256": "07b813926bc463828c8d6dc696d2fd475f8522ffb04ee8e13f5bf6ff01bdfb77"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/Zones/BattlegroundEY.h",
+        "sha256": "1bbe6477c3962491dbcbde77315d4083344a76518c88059a3e5d99fb98d287f8"
+      },
+      {
+        "path": "src/server/game/Battlegrounds/Zones/BattlegroundIC.h",
+        "sha256": "d2e5bf65991eca6d42e7978b6c34e0836d9110bf339d29a16a5809f9009a1e91"
+      },
+      {
+        "path": "src/server/game/Chat/Channels/ChannelMgr.h",
+        "sha256": "acacb0dae38bf0d0d6ae3bc040760fec70c2909b947bd12c4352968fec18e633"
+      },
+      {
+        "path": "src/server/game/DataStores/DBCStores.cpp",
+        "sha256": "b17adcf400fc9a627bc5ab00619fc03e56bc0dfbe4f57232e6ef618054b4146c"
+      },
+      {
+        "path": "src/server/game/DataStores/DBCStores.h",
+        "sha256": "e6587a34fc227b226e3286f5ab370c1bb3a2bd875e58035305f94d6d8f5046e6"
+      },
+      {
+        "path": "src/server/game/DungeonFinding/LFGQueue.cpp",
+        "sha256": "ad75e412069067871ab5ebdd8ed09f22cff52d98b5e7b281bf22cdff5b96ab8c"
+      },
+      {
+        "path": "src/server/game/DungeonFinding/LFGQueue.h",
+        "sha256": "f9475897747265be13624e45db65a132d2bba35a3f19e748a5820c140cf6a5a3"
+      },
+      {
+        "path": "src/server/game/Entities/Creature/CreatureData.h",
+        "sha256": "cb8db724906ec46bbc5bee14ad72e77ffc718e72ffdb7b713921da4fbf0319aa"
+      },
+      {
+        "path": "src/server/game/Entities/Item/Item.cpp",
+        "sha256": "146001ae02c7e2d1e983817a3a5dfb398d9b8c4a93080e3884c209044cafe07c"
+      },
+      {
+        "path": "src/server/game/Entities/Item/Item.h",
+        "sha256": "28809c951704728a890574d7e25602a20c3dcfa911155a039c89006ff7f7db7d"
+      },
+      {
+        "path": "src/server/game/Entities/Item/ItemTemplate.h",
+        "sha256": "b4c0e0da5df1a90ba3cf31e3962f6b183010d6688ec3cae78a550c9d21a363f4"
+      },
+      {
+        "path": "src/server/game/Entities/Player/Player.cpp",
+        "sha256": "da4f6682e9bc748df928701468e2ecc3745845a4e7de23a293a52c80730d293a"
+      },
+      {
+        "path": "src/server/game/Entities/Player/Player.h",
+        "sha256": "ca2aaefbc2217bb2a8c1240cb91444ed7f2d63d612c9ac27e8b7d63915734091"
+      },
+      {
+        "path": "src/server/game/Entities/Player/PlayerStorage.cpp",
+        "sha256": "a0c2f407507362ad0283c61c7c7c08abaa8ce8b998123c2e3945cd30cdf641cd"
+      },
+      {
+        "path": "src/server/game/Entities/Unit/Unit.cpp",
+        "sha256": "768a899627c9c0def402e9310b5acc8cbb2a93088aceae2d0e43bcd4ead4e6be"
+      },
+      {
+        "path": "src/server/game/Entities/Unit/Unit.h",
+        "sha256": "b869229e1a013d84d963f60093da2fa7fe6d2b884d56a38777bdaf69359d0d4c"
+      },
+      {
+        "path": "src/server/game/Entities/Vehicle/VehicleDefines.h",
+        "sha256": "1b13107abe68108a7ef433643cff350eb13a25dd7061d8e0d0fcf8fab7555612"
+      },
+      {
+        "path": "src/server/game/Groups/Group.h",
+        "sha256": "60426071d5c10b2e47e969bf6acd7256ffd09c116d36611cfc1a81463c75f1fe"
+      },
+      {
+        "path": "src/server/game/Guilds/Guild.cpp",
+        "sha256": "2cb13ae14798057263ea1b851eb713dc38d44e916fb95c960a6749e6ac60da97"
+      },
+      {
+        "path": "src/server/game/Guilds/Guild.h",
+        "sha256": "43d93000f2809431a494bf6981a0363f912ac01abec94fbc1fbac78de4c88643"
+      },
+      {
+        "path": "src/server/game/Handlers/CharacterHandler.cpp",
+        "sha256": "dbefe4dd47c97dc935c9f31a90fc83510f9f6b980a5b3b8d4ac00c6193a8f43a"
+      },
+      {
+        "path": "src/server/game/Handlers/ChatHandler.cpp",
+        "sha256": "16c1d94de7e19c2201f4ac2155fb372372980cdf1335a01083327e18144d28f9"
+      },
+      {
+        "path": "src/server/game/Handlers/PetitionsHandler.cpp",
+        "sha256": "74967f622f9867f57848917bf93f67c31f71e89602421b41eedbaeecfe5616e0"
+      },
+      {
+        "path": "src/server/game/Maps/Map.cpp",
+        "sha256": "086851cfb5236773c55e98f7e496218bb7c2f501f61e073838ba82b6f15b92f3"
+      },
+      {
+        "path": "src/server/game/Misc/GameGraveyard.cpp",
+        "sha256": "a665287410a9d39f9d5ce53e9a056ac5bb14ebd14a65b447b5c5bacc9bf5c4f2"
+      },
+      {
+        "path": "src/server/game/Misc/GameGraveyard.h",
+        "sha256": "6f3eb791b712f9ed9590f7094b4a41ec46e2473f0640a0bf5da6dea5174bfb6a"
+      },
+      {
+        "path": "src/server/game/Movement/MotionMaster.cpp",
+        "sha256": "fad89c68344ffe2693b09d025172fdb2f592023bb455826e7f2c777d211b19e0"
+      },
+      {
+        "path": "src/server/game/Movement/MotionMaster.h",
+        "sha256": "602b9da0c7b8c50ea5117b3c47ee199d115f7a9a91de7d09efe4f9a9f10c8e81"
+      },
+      {
+        "path": "src/server/game/Movement/MovementGenerators/PathGenerator.cpp",
+        "sha256": "0a1d44dc4f4f7a771badff858dfbcb8c5758d1452fb6e2776ed3c6b8262d184e"
+      },
+      {
+        "path": "src/server/game/Movement/MovementGenerators/PointMovementGenerator.cpp",
+        "sha256": "69f10b65e51a2cd897659b832b5a24cd1ea1654c25dbb1aae8acb2e6b4b3eaa5"
+      },
+      {
+        "path": "src/server/game/Movement/MovementGenerators/PointMovementGenerator.h",
+        "sha256": "6c0ae30b9ef7fb37f2a89bd43115ccefe2c32a0646989f25ddba1822013e6d79"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/AllMapScript.cpp",
+        "sha256": "d0cd7ff4d74f5d7e44471091c18627858b85e0fd2d9c6e1e3f1ba8f05d7ea8e7"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/AllMapScript.h",
+        "sha256": "333538ce704c0659b3d2d4f3af62ece07725a867af63419f700663bda62ca658"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/AllScriptsObjects.h",
+        "sha256": "4c8c64f5247c5879385df5187a79966ed0853dd88398e3325eb1f9a4642d2609"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/DatabaseScript.cpp",
+        "sha256": "d6f29b4e4a6f84dbba14af78ea0d35f16853c4e32c58f4b80c1554823932fef0"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/DatabaseScript.h",
+        "sha256": "9c38d6a58654237ff10d0a987f7dfc9ebf877a7131e63efa0bb8a9a4d4229144"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/GlobalScript.cpp",
+        "sha256": "f1427f5ffebce8529024c18dfbdb838a58ea6d4e49bc3d61dff86be5bb222584"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/GlobalScript.h",
+        "sha256": "0b5e519fe81ff4b55943dc5f9e5bf1280d3c665e56fbfb483117385001fcaa63"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/PlayerScript.cpp",
+        "sha256": "f7db0621916ec0b1e9dc3dd01ca8c1ed37e013e747f63209987e6840428d06ff"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/PlayerScript.h",
+        "sha256": "a5e72b99462e3ca33d3cb1906ee592ea9c3b6d6ca463fa0de421a52162cdea53"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/PlayerbotsScript.cpp",
+        "sha256": null
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/ServerScript.cpp",
+        "sha256": "b5467bf0f8f8faf2fd1a323679c01a8716c9d60c68e1776f21e77b57af4f7dfd"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/ServerScript.h",
+        "sha256": "80b234fe3ecf93d3f0e6ff0fddb9b57ea41e42283784e6b27ed4f57f31a46d67"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/SessionScript.cpp",
+        "sha256": "a5742a62251d92904d9db55231210802722b68f13bbeae9e158849a5ffb7702a"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptDefines/SessionScript.h",
+        "sha256": "a0c1d27fdc8c38b367741347e2a55cd8464e68b49d929147c773ebfe958c8151"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptMgr.cpp",
+        "sha256": "8945da66e4a9efcc55ceaa0b9d916227a16855485886d952491619d9a6c07f40"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptMgr.h",
+        "sha256": "cd6f58b7be1b5c02da0d437fad6e17e2d40b3c5edffef7451d059cbf653c72f0"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptObject.h",
+        "sha256": "23dd60c4a0d28b50ab3f8b6b01c44a2c8f2afa24b39d30aa7359e6786a49de20"
+      },
+      {
+        "path": "src/server/game/Scripting/ScriptObjectFwd.h",
+        "sha256": "448905efcebd134623280e8afa6a456a13dd2f03be19300417ad86e90ab2139f"
+      },
+      {
+        "path": "src/server/game/Server/WorldSession.cpp",
+        "sha256": "27c8d7f80bd36f72902b8074e728dfa4524de60a96dece27cec8adfe519b188e"
+      },
+      {
+        "path": "src/server/game/Server/WorldSession.h",
+        "sha256": "345f36a57a0535b8c6fbaa251af6e0c80e67b67860f3d5e9fb54d64eae2ab770"
+      },
+      {
+        "path": "src/server/game/Server/WorldSessionMgr.cpp",
+        "sha256": "425b55598764eed8971f187f50e696b92254334fe7d41761566cf55bb5102478"
+      },
+      {
+        "path": "src/server/game/Spells/SpellEffects.cpp",
+        "sha256": "e8e6badb203d035d8572e936057c4c9d12fa4b7186bc97c9e5797863c8de1ee0"
+      },
+      {
+        "path": "src/server/game/Spells/SpellInfoCorrections.cpp",
+        "sha256": "8af6e7e69bb079a1c21a6d71ef507d04ac57ebfe2ea72d332cba3c303ea32844"
+      },
+      {
+        "path": "src/server/game/World/IWorld.h",
+        "sha256": "2abb8c4d44f52e97dd083db85d62d609f659c9c6e936729725c3af1d30ec7646"
+      },
+      {
+        "path": "src/server/game/World/World.cpp",
+        "sha256": "ec8957d2138b41a0e635bc501de27318db7a5eea97835c8eba9d817fba5c0c1b"
+      },
+      {
+        "path": "src/server/game/World/World.h",
+        "sha256": "3bb0800444191bd16da37f63ae7970b0f4810dd7508c388735386b5a6f084451"
+      },
+      {
+        "path": "src/server/scripts/Northrend/IcecrownCitadel/boss_deathbringer_saurfang.cpp",
+        "sha256": "056e385c3c1d7d0e08f1ad0d41dfb478f47ac8025b7ba6302ffedd7143825f11"
+      },
+      {
+        "path": "src/server/scripts/Northrend/IcecrownCitadel/icecrown_citadel.h",
+        "sha256": "b21058f3cfb10014049c45dcbf04df89d07d491413f65e79ce143baf085783b4"
+      },
+      {
+        "path": "src/server/scripts/Northrend/IcecrownCitadel/instance_icecrown_citadel.cpp",
+        "sha256": "51421dfc727d8b88f5d01f508e2100d4f33a8dc19ae749438363e159af589da8"
+      },
+      {
+        "path": "src/server/scripts/Northrend/Ulduar/Ulduar/boss_ignis.cpp",
+        "sha256": "adbeadb0bea16cb5c19ebc401d63b8be3213a040d13fb95d2bfdbb0f5df8233d"
+      },
+      {
+        "path": "src/server/scripts/Northrend/Ulduar/Ulduar/boss_mimiron.cpp",
+        "sha256": "79f1acf2f0bdf7521d3add671da773a46e9a0be0f37b7b5947a6ccf60c94077a"
+      },
+      {
+        "path": "src/server/scripts/Northrend/Ulduar/Ulduar/boss_thorim.cpp",
+        "sha256": "8dce9ef8bbf758a5b66a4c92a27a145ff30bbc418a2730ead7eb6b7e41c6ebdc"
+      },
+      {
+        "path": "src/server/scripts/Northrend/Ulduar/Ulduar/boss_yoggsaron.cpp",
+        "sha256": "c2ee840efdb34716d2f7ee849f5203045885feb9dd520c3adc0a8448478cc83d"
+      },
+      {
+        "path": "src/server/scripts/Pet/pet_generic.cpp",
+        "sha256": "938ca47032777a314be02a7107d8638c93495a5b266e8dcc1eb38c58caa220a6"
+      },
+      {
+        "path": "src/server/scripts/Spells/spell_item.cpp",
+        "sha256": "3751da5e31f74a738363fd408b76d40e348fdd2e6bfafb63f400b1a6ac9aed12"
+      },
+      {
+        "path": "src/server/shared/DataStores/DBCStructure.h",
+        "sha256": "77294144cb34a2660ae8769c067334498db5170d838fbefa4892c78a38dc3f70"
+      },
+      {
+        "path": "src/server/shared/SharedDefines.h",
+        "sha256": "7b17defee7cfb58fe42bcfbc2aab304b210eb922446cdf4193925d220b9bdf47"
+      },
+      {
+        "path": "src/test/mocks/TestMap.cpp",
+        "sha256": "83a566f0ea90a8b13abfceb90045bd20c4a68af9e7c2b0e3ee13cd2705a500af"
+      },
+      {
+        "path": "src/tools/mmaps_generator/Config.cpp",
+        "sha256": "05e35555e79226c7d51eee55d1c3c9d2bc565431b98055d8f887e488efa09c00"
+      },
+      {
+        "path": "src/tools/mmaps_generator/MapBuilder.cpp",
+        "sha256": "ebd1b43fc06035f9b1179279e34a75ed23dd5ffad8d44fe1e05627a6743ac11c"
+      }
+    ],
+    "upstream_base": "7f12e89ee5f467a50e62eba1d525eac7dc953d03",
+    "upstream_target": "f19a18799a35f7c24bdcdc9ea399c601f166259b",
+    "upstream_authors": [
+      "Andrew <47818697+Nyeriah@users.noreply.github.com>",
+      "EricksOliveira <ericksoliveira258@gmail.com>",
+      "Fazzul <carwasil023@gmail.com>",
+      "Keleborn <22352763+Celandriel@users.noreply.github.com>",
+      "Stefano Borz\u00ec <stefanoborzi32@gmail.com>",
+      "Vox <7539282+Voxstrasza@users.noreply.github.com>",
+      "github-actions[bot] <github-actions[bot]@users.noreply.github.com>",
+      "llupa <41073314+llupa@users.noreply.github.com>",
+      "moostigre <moostigre@proton.me>",
+      "navaishkhan <navaishkhan55@gmail.com>",
+      "sogladev <sogladev@gmail.com>",
+      "wwww <MarcelineVQ@users.noreply.github.com>"
+    ]
+  },
+  "exports": [
+    {
+      "path": "core-patches/offline-checkpoint-20261011/README.md",
+      "sha256": "131c0eb9168ffefe16b5da33bf39eb0d26dbf60468cafa326f015849b904d163",
+      "bytes": 2114
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/checkpoint-state.json",
+      "sha256": "d46722e47be0ae3cef8a654098b9f9a5ad374d8b740c56fe88e9821a610ec0e9",
+      "bytes": 1329
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-checkpoint.bundle",
+      "sha256": "12909d19ba7c201a9afd5fee7db293825a6a0c66e08a462abed180c4ee881771",
+      "bytes": 72755
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-tracked.patch",
+      "sha256": "1619b428336cf9b508fb603bb558131c56a372f67b2230b681bd169f06b33ffc",
+      "bytes": 369598
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_20_01.sql",
+      "sha256": "5aa9162f5f4e990f771a110220b8a78d2af80e0d617047430690558eeb6c6dc0",
+      "bytes": 460
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_00.sql",
+      "sha256": "5ce3912901e6f249219fa02423a22ad3b8fa3347e0e2c4304149b0a2d6954bda",
+      "bytes": 294
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_01.sql",
+      "sha256": "9d9db50a7bf4f0d54d803e7a24957a0a02d756b39bc9157de2143e4ab64f8088",
+      "bytes": 4880
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_02.sql",
+      "sha256": "ed587f5c9fb7ebd37a8d95ab0bf4cf05dbaee00f9d32f971d8df8b95619de837",
+      "bytes": 245
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_03.sql",
+      "sha256": "182e869692aa142c9b8a99bed4f812e2747072f1b3038723f2954b8c9f601a92",
+      "bytes": 484
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_04.sql",
+      "sha256": "ddf653432bbcf4b1074f39db98c973575d7c35f88d2e980c003616fca65753c7",
+      "bytes": 3364
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_05.sql",
+      "sha256": "17c7eb178f714c440600ec413aefc6d6c2f3fdcf1ec7758df2d5e09057d83160",
+      "bytes": 991
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_06.sql",
+      "sha256": "1cff8704dd88a0245d015e1dc3f32ec75e577dc5ce6b6d511cbe7aae9692858a",
+      "bytes": 455
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_07.sql",
+      "sha256": "aa51dddacd954de2303ac9624c568a0434ee0673a034a0ba07121d05cc2bcc74",
+      "bytes": 72888
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_21_08.sql",
+      "sha256": "d97c3e0f5583129d21d9fca412925a36c79898783e2933cc63c61eeb7bfa06ff",
+      "bytes": 365
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_00.sql",
+      "sha256": "ca63f1eb431e62a39143b93af831205f42701dbb33dcdba98f152e904bec691c",
+      "bytes": 5346
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_01.sql",
+      "sha256": "8a8ae4ea0ed7f56fbb72654b00414b670f520aa0993013399f91d6a0170408e7",
+      "bytes": 189
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_02.sql",
+      "sha256": "da1ef680654e14d625e62d67c25436572a37554d1c6aeb2bf3a1aff0f40ee927",
+      "bytes": 734
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_03.sql",
+      "sha256": "4e93f167ce8f34d64af9367ce7a377886a9f0817f5cd38b74ebf2fac85aef557",
+      "bytes": 490
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_04.sql",
+      "sha256": "b1b2dd0a3a7f845736e3d54d76338c6e13d110b32f310a06f766ccbd6bc1e5c6",
+      "bytes": 411
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_05.sql",
+      "sha256": "604799e2b96afd6fc0e1ccb1c120885f576b39289f0d9e9668f485c7f12dfd4a",
+      "bytes": 4132
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_06.sql",
+      "sha256": "a25015e782981eb4ceea537a99bcabd10e89740d591b59abedff5a75905c9bca",
+      "bytes": 232
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_22_07.sql",
+      "sha256": "92847ebba26ea087ac5ad6a57e71da9a9e872adef69df4d90b69e8490bdb9b7b",
+      "bytes": 7518
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_23_00.sql",
+      "sha256": "baeea1b11b7776fd3d7c52a225116bb97f6a7128a48862c8f4fd7e9ac4302023",
+      "bytes": 632
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/db_world/2026_09_23_01.sql",
+      "sha256": "b6d2cbf94ad375492016c1311ad48734cf432a67cf8da5eb13a3c7a3cb07a51d",
+      "bytes": 429
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/data/sql/updates/pending_db_characters/2026_10_09_00_autowow_knowledge.sql",
+      "sha256": "1687b9fe7e26f656c295134d655bde49fc078f1df0d8f1b5634f79ba5368b9c9",
+      "bytes": 1236
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/e2e/suites/professions/trainers/trainers_e2e_test.go",
+      "sha256": "5904030fdd9d72cf09927bb63351ebf1d71dd07e3e763d70049ff74d2d310cbe",
+      "bytes": 21971
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/src/server/game/Scripting/ScriptDefines/SessionScript.cpp",
+      "sha256": "a5742a62251d92904d9db55231210802722b68f13bbeae9e158849a5ffb7702a",
+      "bytes": 1459
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-untracked/src/server/game/Scripting/ScriptDefines/SessionScript.h",
+      "sha256": "a0c1d27fdc8c38b367741347e2a55cd8464e68b49d929147c773ebfe958c8151",
+      "bytes": 1511
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/core-upstream-provenance.txt",
+      "sha256": "8e5da8095b97204fa3ea8eb9ca2f781921423c93fe0889647e969d5759fc6629",
+      "bytes": 10663
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/module-upstream-provenance.txt",
+      "sha256": "ef5b653fa1652651d164d33b12663015af78d2a06e19d780e9ea7aaaae8aae6d",
+      "bytes": 5681
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/.agents/plans/strategic-world/strategic-world.PLAN.md",
+      "sha256": "d4c27808ef07b632b78ea55f3fcf3fbf2e23111c6c0211e746e6a4e8f1675fbe",
+      "bytes": 11704
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/CMakeLists.txt",
+      "sha256": "69c7e35bda962c29e472983f148ac5a0aa1a934afb991412f95943c889d6b4a9",
+      "bytes": 162
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/README.md",
+      "sha256": "528b5008c46f108d3e2714af8cba0a2960dc35e40909c3f87d6e8900ac32643b",
+      "bytes": 7744
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/conf/autowow-strategy.conf.dist",
+      "sha256": "57da96c85fd802df1378351aa6f677b14935bf4869c8c999efacd90021b9e103",
+      "bytes": 732
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/data/sql/custom/db_characters/2026_10_10_00_autowow_workshop_drafts.sql",
+      "sha256": "88f0fec06f4deb3343b1fb4961f734be63f239ccf92eedbc3decaa00c3f8c5b5",
+      "bytes": 1062
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/BANKS.md",
+      "sha256": "b71dd92a9bd0fc519dc598d17eb1adaaeb2f9f831e2db0b66857f012d44796c0",
+      "bytes": 7996
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/BOSS_LEGACIES.md",
+      "sha256": "72429287e7577f143d5a013e829ab46461a19caddf295890adad9dbe81aa2eb3",
+      "bytes": 7482
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/CAMPAIGNS.md",
+      "sha256": "183b485aafaebfc03c8df21b3f9e9ae84f71311ae343d18c5ff98156b1af09a6",
+      "bytes": 8070
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/DISCOVERIES.md",
+      "sha256": "cb296c0c471c28773215ea1ec855347b3c9a64145c17193a4c7e2edc40a2967c",
+      "bytes": 9015
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/MERCENARIES_MASTERWORKS.md",
+      "sha256": "01d81f3424bd0b08d32bf68e66f0d7c1b10aa1f7588efdb0bbb4e58721a1fcb9",
+      "bytes": 7954
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/SUPPLY_CONTRACTS.md",
+      "sha256": "bd3ebe7d9ba969553bd9ef34cabca5753a83e0b36b33de683e7ca5d29d7d607a",
+      "bytes": 8781
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/TERRITORIAL_ARMIES.md",
+      "sha256": "6981083d2999002ce86b9b3eebd2aec170857d164294a248b1d5a17d67fba103",
+      "bytes": 8236
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/docs/WORKSHOPS.md",
+      "sha256": "370ef862175354976b2ec89ec5ad1d3a743094e8cd1c72588a1f103a4ad6b3ff",
+      "bytes": 7917
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/BankPolicy.h",
+      "sha256": "da27df028a126a0bc72432ca154c9fd05188a00a647fd7605f0c97debbeef718",
+      "bytes": 8320
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/BossLegacyPolicy.h",
+      "sha256": "8c61c1e1ccb530d90893a487b85a6a669046ea63d1adadc7b5bab75ac4fe5746",
+      "bytes": 3411
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/CaravanPolicy.h",
+      "sha256": "a875952671e32021b97293b4677532ab1bd8eddd68b6cd57dcf84574214183cc",
+      "bytes": 7674
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/CheckedAsyncOperation.h",
+      "sha256": "30e54afc3d8bbf8c6d6ecf523d82b7138bc8b5bc5c6b4ea5aa93e66bb30cdff6",
+      "bytes": 1941
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/CheckedTransactionPolicy.h",
+      "sha256": "33bbc1e13c7eb14eef04c925e1f97d651224eb46d5176b552b89c6f9019dc78c",
+      "bytes": 1148
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/GuildPolicy.h",
+      "sha256": "7047bf450ea6a36f6a75ff0dd733fd4a919617cfd986afbfd424e6bee5e7e8be",
+      "bytes": 2544
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/KnowledgePolicy.h",
+      "sha256": "ef0346a3f391ffe63a4b0ab2cdd6ab5fabadcb300f7312bf36698c8b877de3dc",
+      "bytes": 3516
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/KnowledgeRepository.cpp",
+      "sha256": "ee3d872ae87c33c9777a3e7812ec2c053f3f17292ee4d39692f07a5d5862e431",
+      "bytes": 18105
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/KnowledgeRepository.h",
+      "sha256": "bdb5db1288c1718cd6f15bb4d148a4008bb5787ec703508f32c21a7af61ee3ea",
+      "bytes": 1990
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/KnowledgeSettlementPolicy.h",
+      "sha256": "5085d3b0e2276ba917bc0e72705b4941c6e5ec318ec9907d9323fbb2891c3b7e",
+      "bytes": 2702
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/MasterworkPolicy.h",
+      "sha256": "3c4020c855b3edf75612d0a6c1f312e3b223acb0eebbd0354fc5759a45dcb69a",
+      "bytes": 2484
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/OwnedConnectionInfo.h",
+      "sha256": "ff7a20c6a97bc7581a5dd1ab6b9b5432a9409a6273b92d6b2265545d5e5ac3a0",
+      "bytes": 692
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/StrategyPolicy.h",
+      "sha256": "5a98af24bb4f25a82f76c3eadff4a9a4ce1d7164c014d7f8bc19db2a2d2e0f22",
+      "bytes": 4673
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/StrategyScripts.cpp",
+      "sha256": "6ba2cbe2a8a597f2d13fba41486631f9cf66e8384b1f1a576b671032ea59b2ec",
+      "bytes": 7349
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/SupplyContractPolicy.h",
+      "sha256": "97d60eb036b2ba61cfb50aca0ec947acb5947db1a117136e829ccb4e4de58563",
+      "bytes": 8828
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/TerritorialArmyPolicy.h",
+      "sha256": "e9001d9536c05a9914fcb6d9043a073b90785f27ae44115234e3a63e4df6da13",
+      "bytes": 16457
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/TreasuryPolicy.h",
+      "sha256": "0db6ef8873506b8507821476086b7ec863bd8be31054109e2ab1bf061b0bc18c",
+      "bytes": 3310
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/WorkshopPolicy.h",
+      "sha256": "75d10f72e4abeef490b02ced7b2e2385fef3c3634fe52de265d9114bdfdadb61",
+      "bytes": 8487
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/WorkshopQueueRepository.cpp",
+      "sha256": "91ed4554d917d6d0f6b65ccbdd6d73465a3811ecb27d70f7053ece53861b21f8",
+      "bytes": 17457
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/src/WorkshopQueueRepository.h",
+      "sha256": "a42dee2e49f3cc670e04b9fec52714c7b35fa1c1576063f178fc026037b21b23",
+      "bytes": 2070
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/BankPolicyTests.cpp",
+      "sha256": "812cb4dc084ecaa735ca564fd89fb20cd79c17ae828c05116c53ae5065c621dd",
+      "bytes": 7395
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/BossLegacyPolicyTests.cpp",
+      "sha256": "9e7d3de075cfdd669ab550e95dd027e83947420b7591388eed0761e6d282cb2b",
+      "bytes": 3883
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/CaravanPolicyTests.cpp",
+      "sha256": "fe933802fffcf777adf3ed9c7ab70ada23358250e231dd2fccc1d73325a21e75",
+      "bytes": 4194
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/CheckedAsyncOperationTests.cpp",
+      "sha256": "f538c75fa60ae76e5bbb74e951952676d7e45fc80d6a90c9a289fa2be06e9fea",
+      "bytes": 4360
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/CheckedTransactionPolicyTests.cpp",
+      "sha256": "97f14c4dfa6f72c15293110a692a39ecf8ccb200744b1ce06a9c512910eb8706",
+      "bytes": 2304
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/GuildPolicyTests.cpp",
+      "sha256": "1bae795b70f4bdf02959ba20a7423dfae5f49a8070e38c4621feaf29ca67fc8d",
+      "bytes": 3797
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/KnowledgePolicyTests.cpp",
+      "sha256": "11adbd689ccaf65c076b08246a0cf9b28d4a09218ed664a8003d8fd68c0c39f9",
+      "bytes": 5952
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/KnowledgeRepositoryLifecycleTests.cpp",
+      "sha256": "a08d3508956bbe5ac8c6e4262261cbb75720ec2dad776af0858d8bbe98cc6ec6",
+      "bytes": 1828
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/KnowledgeRepositoryTests.cpp",
+      "sha256": "c88d6bb150b553e85b1d7be899ea63e0a6e3f1678ba6dd2a85cc9b258139cc5c",
+      "bytes": 3994
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/MasterworkPolicyTests.cpp",
+      "sha256": "fbe3435a158e4b94532dce78386007ac042f035ea2c796c0b2a1d8b2c1d78b4a",
+      "bytes": 3597
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/OwnedConnectionInfoTests.cpp",
+      "sha256": "1f8f54878079430216b776807b8f5f347e5a58986cf760ca07ffff24318b86dc",
+      "bytes": 3763
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/StrategyPolicyTests.cpp",
+      "sha256": "2eaaedbffaf876c74d45854c55d2829a1017fb3d6c8960b2dd31605831474318",
+      "bytes": 4801
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/SupplyContractPolicyTests.cpp",
+      "sha256": "d13638d43e8a6666c9b9cb69d91d8ef86a6fe0dac47a91e0dba06e9a3422eadf",
+      "bytes": 6462
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/TerritorialArmyPolicyTests.cpp",
+      "sha256": "e415dfe174ae833c70ffea522532edf1c9ca79a1d7158c2acff61ee218b1b4d0",
+      "bytes": 9262
+    },
+    {
+      "path": "core-patches/offline-checkpoint-20261011/strategy-module/tests/WorkshopPolicyTests.cpp",
+      "sha256": "db9831b9d735f68d834475cdd870e643576ecc45b3cf9b74ac8b8b7d6924f1c1",
+      "bytes": 8044
+    }
+  ],
+  "checkpoint_state": "checkpoint-state.json"
+}

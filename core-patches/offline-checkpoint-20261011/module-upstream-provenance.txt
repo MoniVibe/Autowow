@@ -1,0 +1,135 @@
+commit 037c01418b5d01506917a3db9b44fd56ac5f965c
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Merge pull request #2873 from mod-playerbots/test-staging
+
+commit b0cd0ea7bca4a8d2e89402df951a1e36a8b085b4
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Align with async modular database (#2830)
+
+commit 7a892387b37a192cdaa772d1e832fddf1aab6582
+Author: Crow <pengchengw@me.com>
+Subject: Update practices re comments for agent guidelines and coderabbit (#2864)
+
+commit 7a1d7a1d71e74c24d2953b91f742d39a59f0891e
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: chore(CodeRabbit): Flag multi-line and redundant code comments (#2852)
+
+commit c1de318e01a7c57873a46b15653d595140619328
+Author: Crow <pengchengw@me.com>
+Subject: Clean up BwL & Kara fear strats (#2831)
+
+commit 3c5e1eb82ffed8ca1867f21a2a916954c046a93e
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Fix/arena team assignment (#2823)
+
+commit 9e6a8a940ec81bc3434c8b2c4478fec7ff05af05
+Author: jrad7 <106174524+jrad7@users.noreply.github.com>
+Subject: feat(pmon): track relevance multipliers (#2737)
+
+commit 74c21389ef2dd523d774f735c712e1cbf723d545
+Author: HennyWilly <5954598+HennyWilly@users.noreply.github.com>
+Subject: Bots can learn spell tomes on command (#2806)
+
+commit d46a7baa7e20f0963b5236fb9585c4f68c7cd58a
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Fix/selfbot cheat (#2824)
+
+commit 29c9312605943fb47bb4d7229851ca274d9baa6a
+Author: avirar <luke.thorpe@gmail.com>
+Subject: fix(loot): value quest source items via the core quest-item predicate (#2781)
+
+commit bee4826d89447a136be9b619abbe8ac26c2f112a
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Fix/warning (#2840)
+
+commit 9e8ceed9212cb416bbab9cde042203bbabb0816f
+Author: Crow <pengchengw@me.com>
+Subject: Use ms constant for times + CastTimeMultiplier fix (#2839)
+
+commit 4517bfcffd447e83734a4ae8624caa069813f1f1
+Author: Christopher Weeter <christopher.weeter@gmail.com>
+Subject: Fix bots being teleported out of battlegrounds after dying (#2834)
+
+commit 3b1b22bafa75f91000e0e2f3f6cf322809fc511e
+Author: Michael <michael@malura.de>
+Subject: feat(Bot): Add AnnounceConsumableUse to silence eat/drink whispers (#2832)
+
+commit 7fcc0ffa8321a90df5ce555268fd2032c2e54853
+Author: kadeshar <kadeshar@gmail.com>
+Subject: fix(lfg): drop dead packet parsing in AcceptInvitationAction (#2828)
+
+commit b94e0a9c8e91664946c0cfc5a38fd5fec72d163a
+Author: Orry Goodwin <94092417+Jgoodwin64@users.noreply.github.com>
+Subject: Normalize SelfBot naming in comments and messages (#2815)
+
+commit 9af1877e2b48095c225da9495fa0d9d124918d96
+Author: Terry Raimondo <terry.raimondo@gmail.com>
+Subject: fix(Bot): build the shared bot contexts once, not on every reload (#2812)
+
+commit 5b3dc4c87c6e53d4f9d984f26451c50c677921cc
+Author: avirar <luke.thorpe@gmail.com>
+Subject: fix(loot): keep item-target casts out of the loot-target GO branch (#2805)
+
+commit e2cf04c064886270cd532e7692541cea7c24b7ca
+Author: NSO <108399823+NSO73@users.noreply.github.com>
+Subject: fix(addclass): pick a random eligible bot instead of the first one (#2796)
+
+commit 001b8854ceb52754fcc057ce7518eb126b14061d
+Author: avirar <luke.thorpe@gmail.com>
+Subject: fix(loot): open key-locked chests using the key's own use spell (#2780)
+
+commit 039c537b34432ab4df04e6a248839c5952b020f0
+Author: jrad7 <106174524+jrad7@users.noreply.github.com>
+Subject: feat(toc): rework mounted joust combat (#2775)
+
+commit 4981967935f12a30d4f6b64db74d131589a7303b
+Author: Atanas Petrov <47080620+waterdrinkerAP@users.noreply.github.com>
+Subject: Add target me command (#2763)
+
+commit 741814e807ea82cdde46549d7be15831ff61bb0b
+Author: HennyWilly <5954598+HennyWilly@users.noreply.github.com>
+Subject: BWL Boss Strategies: Broodlord, Black Drakes, and Nefarian (#2736)
+
+commit ddf54880e6e13e2e64faac68ab4b952f330b3e89
+Author: Matija Huremović <matija.huremovic@gmail.com>
+Subject: Fix/infinite gathering loop (#2638)
+
+commit 7e3e27ae58b947ebddd6931717b397eef3824dab
+Author: Alex Dcnh <140754794+Wishmaster117@users.noreply.github.com>
+Subject: Fix Issue Eternal Belt Buckle usage #1791 (#1792)
+
+commit 5824bc82476f3e4a082f173726b42fbeb28026a5
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Remove uneeded SQL and add prefix to custom sql to ensure proper ordering on creation.  (#2835)
+
+commit 97014ee77152af4341d039201cafa331ecba5504
+Author: Revision <tkn963@gmail.com>
+Subject: Remove obsolete tables and statements (#2818)
+
+commit 1e5add8878784dc682d5669d099a118f74b851f9
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Change bot to headless, use default knockback.  New packet handler (#2792)
+
+commit cc54f8f2934fec6cba5bd4081e1c07ff4af7d734
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject:  Replace fork-only core calls with upstream AzerothCore equivalents (#2820)
+
+commit d8ac0d4fa259048bd995670fe0b347778e64c47d
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Change Roll to a const from the getter (#2770)
+
+commit 56a0f3830173914e631173a3dafb381788f55048
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Remove unecesssary custom hooks. (#2765)
+
+commit 2442e9174f08b30bbef82c93d8952f0ad17363a7
+Author: kadeshar <kadeshar@gmail.com>
+Subject: Autolabel fix (#2826)
+
+commit a7951db02ff6eb784017262b01e6c86adf955549
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: (Ci) remove no anon namespace rule (#2822)
+
+commit 2303eefb9578147cc6fe8bc5e51af73800633584
+Author: kadeshar <kadeshar@gmail.com>
+Subject: Code rabbit - autolabel (#2813)

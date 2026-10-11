@@ -1,0 +1,31 @@
+{
+  "module": {
+    "commit": "e9d801199667a70f59a3f517b176febb67798c40",
+    "status": ""
+  },
+  "core": {
+    "commit": "bb599d71c8b21122c700340afaed183f0cab83e4",
+    "branch": "checkpoint/s128-offline-20261011",
+    "status": "",
+    "bundle_sha256": "12909d19ba7c201a9afd5fee7db293825a6a0c66e08a462abed180c4ee881771",
+    "bundle_bytes": 72755
+  },
+  "cleanup": {
+    "utc": "2026-10-11T10:21:06.075077+00:00",
+    "status": "PASS_EXACT_OBSOLETE_GENERATED_FILE_PRUNE",
+    "count": 2036,
+    "allocated_guest_bytes_removed": 15974502400,
+    "plan_sha256": "7458eaa6b0425fa2e4abded121811133beeee37bd7e9aa470eb2c075ae9f8235",
+    "journal_sha256": "daf33f95e68d43bb1ef626d9f9a38e944698930014712b25de142e2b8142aa2c",
+    "rollback_hashes": {
+      "/root/autowow-soak/bin/s125/worldserver": "4b0f0bf2b573f5f194d61d1768494eff24ab103dad648066e7bf027af6917201",
+      "/root/autowow-upstream-s83-build/src/server/apps/authserver": "e89d49d9179540be9a82a7ee0230a89945ad54ea921d3b3eb723515a421bc2bd",
+      "/root/autowow-soak/bin/s128-market-funding-20261011-r1/worldserver": "00f2f2a13e74e0816acaadd01f6b7bed71d381b555fb898e9b856e9344542fbe"
+    },
+    "vhdx_compaction": false,
+    "windows_space_gain": "Not claimed; VHD remains mounted."
+  },
+  "server": "stopped",
+  "strategic_admission": false,
+  "vhdx_compacted": false
+}

@@ -19,3 +19,6 @@
 *.gcda
 *.log
 __pycache__/
+
+# Private runtime science logs stay local.
+/scripts/logs/

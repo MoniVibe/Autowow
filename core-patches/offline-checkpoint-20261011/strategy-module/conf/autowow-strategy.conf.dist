@@ -1,0 +1,12 @@
+# Native AutoWoW strategic module — initial observation slice.
+# Both switches default off. Observation emits candidates only: no territory stock,
+# items, money, XP, honor, faction reputation, guild standing or official glory.
+# PvP preview state resets with the server; it must not back spendable rewards.
+# Limit proposal: eligible opponent 10/5/2 points, unordered pair, 10-minute cooldown,
+# maximum 50 preview points per player per UTC day. These are initial observation rules.
+
+AutoWow.Strategy.Glory.Observe = 0
+
+# Receipts for due 30-minute periods only. Initial cursor starts at this startup;
+# no historical/offline payouts, territory catalogue or physical materials are created.
+AutoWow.Strategy.Territory.Observe = 0

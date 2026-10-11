@@ -1,0 +1,247 @@
+commit f19a18799a35f7c24bdcdc9ea399c601f166259b
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Merge pull request #258 from mod-playerbots/test-staging
+
+commit ff8d117739e515ea9d2180cfeea2969f25b95e9b
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Merge branch 'pr/module-db-async'
+
+commit b19e04c603fa91c2249532b2039b4730e8c526c8
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Re-add queryholder
+
+commit a3b25a1a94da857a4580038f1343efcf742b6b5b
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Merge pull request #257 from Celandriel/core-align
+
+commit 5b7808369ce67efb3260bd0d88d354ad9113e55e
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Merge branch 'test-staging' into core-align
+
+commit eed8f2c9aa49ee3137abd0b1df74bdcbf9b80f51
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Fix merge issues
+
+commit 64f9dc2aca67652260961f763625384ef16c8471
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Delete File
+
+commit f1b18a2ea82acaf301f65df9fa1416aa3b06ed26
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Final set of changes
+
+commit 6fe64cb9bd3ea04e4afb20d24638e2663ee84b35
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Strip out  things that are not needed anymore.
+
+commit d03021d845b21fb1fbba093c8e15c1ce5746911b
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Merge origin/master
+
+commit 63950a9843e2767c43045e20b1ca41339bec989a
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Fix Whitespace alignment.
+
+commit 7e40c7ae4da7850ba0f5825eac9e658555ae896a
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Whitespace clean up to align with core.
+
+commit 9fa3553724c10fc3647cb85c46cf7ca186f960bb
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: Remove type specification aligning with Core
+
+commit 92fed92eaa34ac3519cb454d501883d312793a18
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: feat(Core): support headless sessions and add session-less APIs (#27533)
+
+commit 2d6742b267fe2e86200d223214b08cfff94c979a
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: feat(Core/Scripting): add OnPlayerCanMarkAccountOffline player hook (#27599)
+
+commit e3bc57dcacd259abb0e04a78b6a7db5c4c2f9556
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: fix(Scripts/Items): play the Toy Train Set sound (#27750)
+
+commit ca3e66ae0054e15e4650775feb67054421c7822c
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 1732d6aaf4b4a9f43eddc1c0106ce3961afe96a4
+Author: EricksOliveira <ericksoliveira258@gmail.com>
+Subject: fix(DB/Loot): correct disenchant results for nine Northrend rare items (#27660)
+
+commit 2c4fe4c32f0b2f5d78e2af65857d4c4a30411893
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit dc81f4afd894ebca98a2fe7cf53d51b2b0a18947
+Author: Vox <7539282+Voxstrasza@users.noreply.github.com>
+Subject: fix(DB/Creature): set Power Spark to level 80 (#27763)
+
+commit 7ceedc3131ddf27a7a1c009ca3857e9734293ffc
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 1e4d5463d30324b523e8581ee460a6971c2e87f9
+Author: navaishkhan <navaishkhan55@gmail.com>
+Subject: fix(DB/SAI): prevent the Proto Drake from attacking players on Quest 11280 (#26669)
+
+commit 002d4623f4b69a5dc1999956282ac2fae256a276
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 88d7aa69fceb983345becda175612b56a4908b50
+Author: sogladev <sogladev@gmail.com>
+Subject: fix(Core/Creature): Target Dummy level (#26792)
+
+commit 16ff042a2a57208b5d1b6cf0a4056ecf607197b4
+Author: moostigre <moostigre@proton.me>
+Subject: fix(DB/Loot): Set Champion's Purse seal drop chance to 10% (#27761)
+
+commit a7575dcef138d7acf6837c366d87bfbaa41eb339
+Author: moostigre <moostigre@proton.me>
+Subject: fix(DB/Gameobject): Add missing Blacksmithing Plans in Blackrock Depths (#27745)
+
+commit 7185e0a9c2d7e33362fe6cb65155c30366393edb
+Author: Andrew <47818697+Nyeriah@users.noreply.github.com>
+Subject: refactor(Scripts/Ulduar): track Thorim's defeat through the boss state (#27755)
+
+commit 02f2eb1b71392f92db0b7815334d2f07ac8ee2c4
+Author: EricksOliveira <ericksoliveira258@gmail.com>
+Subject: fix(Core/Spells): scale Heroic Strike 45026 and 29426 from spell level 10 (#27737)
+
+commit b5d207f980721d42893670199f67e1a7c1d267b9
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit ca99c0af16c84bb9c430a26d3cb81e79a1f27496
+Author: moostigre <moostigre@proton.me>
+Subject: fix(DB/Creature): Use the walking bomb model for XT Boombots (#27714)
+
+commit d8a567d9ff2b4c79b8d917bdac91ff88b18e296b
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit d1813fe4bb4af0b3e9ea8f13b2f1f0e49fcd9939
+Author: Andrew <47818697+Nyeriah@users.noreply.github.com>
+Subject: fix(Scripts/Ulduar): kill every Iron Construct when Ignis dies (#27751)
+
+commit c7fa8b57214008c4e72698ddc5c930625682304d
+Author: Fazzul <carwasil023@gmail.com>
+Subject: fix(Scripts/Ulduar): Phase 2 of yoggsaron spawns too many corruptors (#27753)
+
+commit 88d991555380134811165be3c7352be338627215
+Author: Andrew <47818697+Nyeriah@users.noreply.github.com>
+Subject: docs(Agents): record creature_template_model probability semantics (#27754)
+
+commit e0183adf01ed2aab2fd563fcf6ae4191d4954e88
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 81a0c2a6c411d917883c0ab2a885ba3249a4e505
+Author: EricksOliveira <ericksoliveira258@gmail.com>
+Subject: fix(DB/Trainer): let tailors learn the flying carpet recipes without … (#27613)
+
+commit a13ab50c4e98c067675a9b1170fa54452de580de
+Author: llupa <41073314+llupa@users.noreply.github.com>
+Subject: fix(DB/Trainer): Add missing master Engineering recipes (#27573)
+
+commit 9803352ba7765fe0741b4b02563c1f09e52854e7
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 29aadbcb23b4fe5f729c47a411fef61f3fc95543
+Author: wwww <MarcelineVQ@users.noreply.github.com>
+Subject: fix(Scripts/Ulduar): aim VX-001's Rapid Burst at a stationary Burst Target (#27711)
+
+commit 798d926a7fcd15d622d265bc1e4f5703248c885e
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 002c53a5f4954074fbefab5a2cfd58f7ec2af618
+Author: moostigre <moostigre@proton.me>
+Subject: fix(DB/ZulFarrak): restore patrols and courtyard channeling (#27742)
+
+commit 1f1e4653d2e4e1807cdcd4803d587d15642f331c
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 553ba25add336f11f9cb3b38f7ede41a0d7baf99
+Author: EricksOliveira <ericksoliveira258@gmail.com>
+Subject: fix(DB/Areatrigger): send the Forge of Souls and Pit of Saron end por… (#27668)
+
+commit 46cf79aa907d1c0188f7aad092378fa20d572a91
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 0126bc3cc865810bb3736854bf43da8c062a078a
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: feat(Core/DBC): load CharSections and EmotesTextSound (#27578)
+
+commit 6792c7de3747359b8eb8f40bab4e0da8e7d83370
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: feat(Core/Scripting): add SessionScript and hooks for server-driven characters (#27531)
+
+commit 4b5e842b6626b2587c19bc515a860f64ac1c5d32
+Author: moostigre <moostigre@proton.me>
+Subject: fix(Core/Player): Apply proc cooldown to equipped enchants (#26833)
+
+commit e87dae69b8523f3a02e4baf62b08f2f6e67d07d2
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: fix(Core/Spells): forward-declare Position as struct (#27713)
+
+commit 129a2d0e2206048bc5b23d21550ce6dc04093478
+Author: Keleborn <22352763+Celandriel@users.noreply.github.com>
+Subject: feat(Core/Misc): Add read-only module accessors (#27579)
+
+commit 6a8a1f45fa8b771fb231d87634f6f0f6833f0a66
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit d66f3928f14ca3721e8b1db411828db5848edb37
+Author: EricksOliveira <ericksoliveira258@gmail.com>
+Subject: fix(DB/Quest): make Silverbrook NPCs hostile to Alliance after Escape… (#27671)
+
+commit 40f3e8e6392c86d2a94ca8f10e46d26b4fb6b338
+Author: EricksOliveira <ericksoliveira258@gmail.com>
+Subject: fix(DB/Ulduar): make the Displacement Device float and move (#27684)
+
+commit 67b5102718736f0d8c3e9b5c9ff9175b741cf9eb
+Author: sogladev <sogladev@gmail.com>
+Subject: fix(Core/Spells): Corrupted Wisdom doubles Judgements of the Wise mana (#27729)
+
+commit 6a4e1e68e95d97f660ae48b44204bf43233feca0
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 06d1badf358c64a88acc991c838dd5183a083ac9
+Author: moostigre <moostigre@proton.me>
+Subject: fix(DB/Loot): guarantee Shadowforge Torch drops (#27732)
+
+commit 81f17ad2a5bd9cf4140be59161d51782a02563bd
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 215579c828adcb6a3e35449eff4a2a780d104b34
+Author: Andrew <47818697+Nyeriah@users.noreply.github.com>
+Subject: fix(Scripts/ICC): time the Deathbringer Saurfang intro, outro and camp to the sniffs (#27663)
+
+commit 55e47172532ffce6eb7590269d3566e1b4e43f07
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 3a02e645af709090a8de35ceb95cf1cde03235f1
+Author: moostigre <moostigre@proton.me>
+Subject: fix(Core/Spells): correct Headless Horseman flying model (#27497)
+
+commit af021ab30af9d9e915d5e68b81f9072c407c48ef
+Author: Stefano Borzì <stefanoborzi32@gmail.com>
+Subject: feat(CI): let the linux build add extra data files before the dry run (#27735)
+
+commit c3d40aca1d233751d2aff7a66f8bbd8a20295ecc
+Author: github-actions[bot] <github-actions[bot]@users.noreply.github.com>
+Subject: chore(DB): import pending files
+
+commit 0951838e050bc95f9e1af5fcd96c90ca7ca5d36f
+Author: sogladev <sogladev@gmail.com>
+Subject: refactor(Scripts/Pet): Move Proto-Drake fly tier to DB (#27730)
