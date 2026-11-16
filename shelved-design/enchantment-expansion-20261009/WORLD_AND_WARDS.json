@@ -1,0 +1,1369 @@
+{
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "world_wards",
+  "candidates": [
+    {
+      "design_id": "enchant2.legend.azuregos",
+      "name": "Azure Refraction",
+      "tier": "legendary",
+      "source_boss": "Azuregos",
+      "source_encounter": "Original Classic open-world raid boss in Azshara: Azuregos of the Blue Dragonflight guards magical artifacts; Blizzard describes a frosty reception. Only the frost/arcane defensive theme inspires this custom proposal.",
+      "host": "One buyer-supplied one-handed caster/healer weapon or two-handed staff with one qualified compatible enchant finish channel. Base weapon and its existing damage/stats are required; the finish replaces a compatible channel.",
+      "roles": [
+        "caster_damage",
+        "healer"
+      ],
+      "wearer_gate": "Character level 80; equip the exact qualified caster/healer weapon. Custom response is wearer-only and can trigger only from direct hostile NPC spell damage. Native class, item, level, and channel restrictions still apply.",
+      "artisan_gate": "Enchanting 425 minimum, character level 80, this custom pattern taught, and continuously observed work at a real faction-city enchanting station. These are proposed gates; enforce the target server's actual profession/rank/character rules rather than bypassing them.",
+      "unlock": "A durable eligible-participation receipt for the exact Classic Azuregos encounter may unlock a city apprenticeship. An allied core-holder separately supplies one real Azuregos Relic Core under an approved custody path. The core is custom and unimplemented; the receipt is neither the core nor a claimed boss drop.",
+      "mechanic": {
+        "trigger": "Once per 45 seconds, after the wearer takes one direct spell-damage hit from a hostile non-player character while this exact weapon is equipped.",
+        "effect": "Consume one charge to reduce the next direct hostile NPC spell hit against the wearer by 12% within 5 seconds. No reflection, ally effect, immunity, or damage nullification.",
+        "numbers": {
+          "custom_equipped_item_adapter": {
+            "reduction_percent": 12,
+            "eligible_impacts": 1,
+            "response_window_seconds": 5,
+            "target": "wearer",
+            "minimum_damage_taken": 1,
+            "eligible_source": "hostile non-player character; direct spell hit only"
+          },
+          "native_stat_effect_adapter": {
+            "status": "NOT_ADMITTED",
+            "native_stat_change": "none",
+            "note": "Custom event/effect has no admitted native stat channel or spell ID."
+          },
+        "stacking": "One copy of this family can be active per wearer; identical effects do not multiply. This 24-charge item reservoir limits only this effect's individual potency, not the character's earned encounters or overall progression."
+        },
+        "icd_seconds": 45,
+        "charges": 24,
+        "empty_behavior": "The compatible ordinary item baseline remains; the custom response is dormant at zero charges. Unequip, death, relog, bank, mail, trade, and restart do not refill or reset the item-bound charge/cooldown ledger."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        },
+        {
+          "name": "Azuregos Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 20,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Water",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 75,
+        "charge_restored": 24
+      },
+      "stages": [
+        {
+          "name": "Preparation: qualify receipt, weapon, role budget, core custody, and shared blueprint",
+          "active_minutes": 60
+        },
+        {
+          "name": "Weaving: prepare city-station substrate against the exact buyer weapon",
+          "active_minutes": 75
+        },
+        {
+          "name": "Tempering: bind the approved frost/arcane defensive profile within the base budget",
+          "active_minutes": 90
+        },
+        {
+          "name": "Signature finishing: consume one Azuregos Relic Core and bind one response family",
+          "active_minutes": 120
+        },
+        {
+          "name": "Inspection and attunement: inspect provenance, replacement channel, charge ledger, and lifecycle",
+          "active_minutes": 45
+        }
+      ],
+      "teaching": "A city instructor teaches this custom pattern through one separate owner-accepted useful apprenticeship commission after the artisan completes one ordinary useful enchanting order. One teaching record per learner/design; no native skill, recipe ID, or free material.",
+      "maker_reward": "One useful finished commission accepted by its owner may earn one non-combat custom maker signature/mastery record per artisan/design, tied to item GUID, material lots, core contributor, station, and collaborators. Recharge earns no mastery, native skill, XP, reputation, or boss legacy.",
+      "bot_rules": [
+        "City artisan remains at the assigned station with verified station/control/alive-safe state, inventory custody, recipe gate, and continuously observed active work.",
+        "Reserve the exact weapon, one real core, and all listed inputs; no generated base, substitute relic, or free stage output.",
+        "Each active stage needs its own durable slice. Login catch-up, restart, pause, combat, travel, or uncertain ownership credits no work."
+      ],
+      "abuse_rules": [
+        "Persist charge and ICD by exact item identity across swap, relog, death, bank, mail, trade, and restart; none resets them.",
+        "No PvP, self-damage, periodic ticks, reflection, environmental/friendly events, or recursive procs trigger or feed the response.",
+        "Deduplicate item/core claims and stage/recharge claims durably; one input ledger can be consumed once.",
+        "No second enchant stacks on the compatible channel; identical effects do not multiply."
+      ],
+      "dependencies": [
+        "The relic core is one custom, unimplemented input consumed exactly once at signature finishing. A boss receipt is not the relic and does not assert a drop table, new boss spawn, or new loot.",
+        "A city enchanter produces the finish at a real faction-city enchanting station. A real weapon maker supplies the compatible base; the core-holder and other collaborators contribute original goods or useful child orders.",
+        "Five stages are active work on one commission, not five free components or five extra native skill awards. The base item remains one buyer-supplied item.",
+        "No native IDs, recipe, spell, cast, effect, item, save field, boss reward, native skill gain, character XP, reputation, or class skill is admitted by this proposal.",
+        "Boss receipt eligibility and permanent personal legacy accounting follow the separate boss-legacy policy; crafting this item awards no additional kill bonus or personal legacy.",
+        "Requires a separately qualified equipped-item event and save/load/cleanup adapter. Until it is admitted, the design is inert."
+      ],
+      "sources": [
+        {
+          "kind": "primary_game_source",
+          "title": "WoW Classic: World Bosses and PvP Honor System Available",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/23221132/wow-classic-world-bosses-and-pvp-honor-system-available",
+          "supports": "Blizzard identifies Azuregos in Azshara, as Blue Dragonflight, guarding magical artifacts, and the encounter's frosty theme."
+        },
+        {
+          "kind": "primary_implementation_reference",
+          "title": "AzerothCore boss_azuregos.cpp reference",
+          "url": "https://www.azerothcore.org/doxygen/d8/dd0/boss__azuregos_8cpp.html",
+          "supports": "A 3.3.5a implementation lists frost, arcane, and reflection themes; inspiration only, not an admitted item effect."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "supports": "Participation and personal boss-legacies remain separate from custom maker output."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "City station, five active stages, and durable work/craft separation."
+        },
+        {
+          "kind": "materials_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "supports": "Historical material names only; costs/routes remain proposals."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.kazzak",
+      "name": "Tainted Volley Counterseal",
+      "tier": "legendary",
+      "source_boss": "Lord Kazzak",
+      "source_encounter": "Classic incarnation of Lord Kazzak at the Tainted Scar in the Blasted Lands, explicitly not the later Doomlord Kazzak in Outland. Blizzard describes Shadow Bolt Volley and a fast, time-sensitive fight.",
+      "host": "One buyer-supplied one-handed or two-handed melee weapon with one qualified compatible enchant finish channel. The existing weapon remains the sole host and keeps its own damage/stats.",
+      "roles": [
+        "melee_damage",
+        "tank",
+        "interrupt_capable_support"
+      ],
+      "wearer_gate": "Character level 80; equip the exact eligible melee weapon and already know a native interrupt. Only the wearer's verified successful interrupt of a hostile caster NPC can trigger it; no class skill is granted.",
+      "artisan_gate": "Enchanting 425 minimum, character level 80, this custom pattern taught, and continuously observed work at a real faction-city station. Proposed gates preserve rather than waive native restrictions.",
+      "unlock": "An eligible durable receipt from Classic Lord Kazzak may unlock a city apprenticeship; an allied core-holder separately provides one real Lord Kazzak Relic Core. The core is custom/unimplemented with no native entry or asserted drop route, and is consumed once at finishing.",
+      "mechanic": {
+        "trigger": "Once per 50 seconds, after the wearer successfully interrupts a hostile non-player caster's current cast with an ability already learned and used under native rules.",
+        "effect": "Consume one charge to create a 5-second opening on that same NPC. Its next direct harmful spell cast in the window deals 8% less damage to its valid targets. The enchant does not interrupt, silence, or prevent a cast.",
+        "numbers": {
+          "custom_equipped_item_adapter": {
+            "next_direct_harmful_spell_damage_reduction_percent": 8,
+            "response_window_seconds": 5,
+            "target": "same interrupted hostile caster NPC",
+            "eligible_impacts": 1,
+            "required_interrupt": "successful existing native interrupt"
+          },
+          "native_stat_effect_adapter": {
+            "status": "NOT_ADMITTED",
+            "native_stat_change": "none",
+            "note": "Proposed event response, not a native stat or spell ID."
+          },
+        "stacking": "One response per source caster; identical counterseals do not stack. This 24-charge item reservoir limits only this effect's individual potency, not the character's earned encounters or overall progression."
+        },
+        "icd_seconds": 50,
+        "charges": 24,
+        "empty_behavior": "Ordinary weapon remains usable; no counterseal event fires at zero charges. Charge and cooldown state persists through swap, relog, death, mail, bank, trade, and restart."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        },
+        {
+          "name": "Lord Kazzak Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 20,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Shadow",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 80,
+        "charge_restored": 24
+      },
+      "stages": [
+        {
+          "name": "Preparation: verify Classic receipt, weapon, learned interrupt, and core custody",
+          "active_minutes": 55
+        },
+        {
+          "name": "Weaving: prepare city-station substrate and accepted defensive purpose",
+          "active_minutes": 75
+        },
+        {
+          "name": "Tempering: balance response within the base weapon's role budget",
+          "active_minutes": 90
+        },
+        {
+          "name": "Signature finishing: consume one Lord Kazzak Relic Core and bind one counterseal family",
+          "active_minutes": 120
+        },
+        {
+          "name": "Inspection and attunement: verify exact item, source-cast attribution, and cleanup",
+          "active_minutes": 50
+        }
+      ],
+      "teaching": "A city mentor teaches the custom pattern after one ordinary useful enchanting commission and a distinct accepted counterseal apprenticeship. One teaching receipt per artisan/design; no native skill or recipe-state mutation.",
+      "maker_reward": "One accepted useful finished commission may earn one custom non-combat maker signature/mastery record per artisan/design, tied to original material/core custody and item GUID. No kill bonus, native XP/skill, reputation, or free craft mastery; recharge earns no new maker credit.",
+      "bot_rules": [
+        "All production remains at the city station with verified custody, current recipe/rank, safe state, and uninterrupted active-work observations.",
+        "Use one actual buyer weapon, one collaborator-supplied core, and the exact reserved inputs; each of five stages is scheduled work, not a free output.",
+        "Apprenticeship and order acceptance are custom records and cannot substitute for native character/profession gates."
+      ],
+      "abuse_rules": [
+        "Only a verified successful interrupt triggers; cast starts, failed interrupts, repeated callbacks, and interrupt immunity do not count.",
+        "No charge or ICD reset on swapping, relog, death, restart, delivery, or group change; no recursive procs or repeated weakening of one spell.",
+        "Only hostile NPC casts are eligible; exclude PvP, self/friendly casts, environmental events, and unqualified scripted boss casts.",
+        "Deduplicate source cast, charge, stage, core, and item claims durably."
+      ],
+      "dependencies": [
+        "The relic core is one custom, unimplemented input consumed exactly once at signature finishing. A boss receipt is not the relic and does not assert a drop table, new boss spawn, or new loot.",
+        "A city enchanter produces the finish at a real faction-city enchanting station. A real weapon maker supplies the compatible base; the core-holder and other collaborators contribute original goods or useful child orders.",
+        "Five stages are active work on one commission, not five free components or five extra native skill awards. The base item remains one buyer-supplied item.",
+        "No native IDs, recipe, spell, cast, effect, item, save field, boss reward, native skill gain, character XP, reputation, or class skill is admitted by this proposal.",
+        "Boss receipt eligibility and permanent personal legacy accounting follow the separate boss-legacy policy; crafting this item awards no additional kill bonus or personal legacy.",
+        "Keep Classic Lord Kazzak distinct from Outland Doomlord Kazzak in encounter receipts and any future relic provenance.",
+        "Requires a qualified verified-interrupt/source-cast adapter; until then the effect cannot run."
+      ],
+      "sources": [
+        {
+          "kind": "primary_game_source",
+          "title": "WoW Classic: World Bosses and PvP Honor System Available",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/23221132/wow-classic-world-bosses-and-pvp-honor-system-available",
+          "supports": "Blizzard locates Classic Lord Kazzak in the Tainted Scar, Blasted Lands, and describes Shadow Bolt Volley and the timed fight."
+        },
+        {
+          "kind": "primary_game_source",
+          "title": "Adventures in Classic Hardcore: What's Playing",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/23988663",
+          "supports": "Blizzard says Classic Era encounter mechanics remain the source for the classic world boss lineup."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "supports": "Encounter identity/participation remain separate from maker rewards and impose no overall hero earning cap."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "Five active stages and city-only production."
+        },
+        {
+          "kind": "materials_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "supports": "Historical material names only; custom core remains unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.doomwalker",
+      "name": "Faultline Conductor",
+      "tier": "legendary",
+      "source_boss": "Doomwalker",
+      "source_encounter": "The Burning Crusade Outland world boss, a massive Fel Reaver; Blizzard's anniversary feature calls out its Earthquake attack. This design borrows the local tremor motif only.",
+      "host": "One buyer-supplied one-handed or two-handed melee weapon with one qualified compatible enchant finish channel. No separate weapon, creature, or ground object is created.",
+      "roles": [
+        "melee_damage",
+        "tank",
+        "front_line_support"
+      ],
+      "wearer_gate": "Character level 80; equip the exact qualified weapon. Trigger only after a direct hostile NPC melee hit; native target, immunity, and damage rules remain in force.",
+      "artisan_gate": "Enchanting 425 minimum, character level 80, custom pattern taught, and continuously observed work at a real faction-city enchanting station. No native profession, character, or item restriction is waived.",
+      "unlock": "A durable eligible receipt from the Outland Doomwalker encounter may unlock a city apprenticeship. An allied holder separately contributes one real Doomwalker Relic Core under approved custody. This is an unimplemented custom material, not a drop claim; consume it once at finishing.",
+      "mechanic": {
+        "trigger": "Once per 60 seconds, after the wearer takes a direct melee hit from a hostile non-player character while the exact weapon is equipped.",
+        "effect": "Consume one charge to pulse around the wearer: deal 420 physical damage to hostile non-player characters within 8 yards and reduce their movement speed by 15% for 3 seconds. Native immunity applies; no knockback, stun, or forced aggro is added.",
+        "numbers": {
+          "custom_equipped_item_adapter": {
+            "physical_damage": 420,
+            "radius_yards": 8,
+            "movement_speed_reduction_percent": 15,
+            "slow_duration_seconds": 3,
+            "valid_targets": "hostile non-player characters only"
+          },
+          "native_stat_effect_adapter": {
+            "status": "NOT_ADMITTED",
+            "native_stat_change": "none",
+            "note": "Pulse and slow require a custom effect adapter; no native spell/effect ID is proposed."
+          },
+        "stacking": "One pulse family per item/wearer; duplicate copies cannot overlap their slow. This 24-charge item reservoir limits only this effect's individual potency, not the character's earned encounters or overall progression."
+        },
+        "icd_seconds": 60,
+        "charges": 24,
+        "empty_behavior": "At zero charges the weapon retains only its compatible ordinary baseline. Charge/ICD state persists through equipment change, relog, death, bank, mail, trade, and restart."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        },
+        {
+          "name": "Doomwalker Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 20,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 90,
+        "charge_restored": 24
+      },
+      "stages": [
+        {
+          "name": "Preparation: qualify Outland receipt, weapon, buyer purpose, and core custody",
+          "active_minutes": 60
+        },
+        {
+          "name": "Weaving: prepare city-station substrate for a real front-line weapon",
+          "active_minutes": 75
+        },
+        {
+          "name": "Tempering: set pulse profile within the buyer weapon's role budget",
+          "active_minutes": 95
+        },
+        {
+          "name": "Signature finishing: consume one Doomwalker Relic Core and bind one pulse family",
+          "active_minutes": 120
+        },
+        {
+          "name": "Inspection and attunement: check target filter, duplicate suppression, cooldown, and provenance",
+          "active_minutes": 50
+        }
+      ],
+      "teaching": "A city instructor records one custom apprenticeship after an ordinary useful enchanting order and a distinct accepted Faultline Conductor commission. Teaching awards no native skill and does not relax actual character/rank gates.",
+      "maker_reward": "The first useful, owner-accepted finish earns at most one non-combat custom maker signature/mastery record per artisan/design. Recharges, encounter kills, native XP/skill, reputation, and free craft mastery earn no credit.",
+      "bot_rules": [
+        "Artisan works at the assigned city station and advances one durably observed stage at a time; downtime/interruption never catches up.",
+        "Consume one buyer weapon, one real allied core, and the listed bill; do not create a separate pulse item or creature.",
+        "Keep item/effect source stable across save/load; no timer produces an output."
+      ],
+      "abuse_rules": [
+        "Exclude PvP, self/friendly damage, periodic/environmental damage, non-melee events, and duplicate callbacks.",
+        "Apply once per source hit/charge; reject recursive procs and overlapping identical slows.",
+        "Persist charges/ICD through swap, relog, death, restart, mail, bank, and trade; recharge cannot consume another encounter relic.",
+        "No native immunity is bypassed; no NPC, spawn, threat override, or loot is created."
+      ],
+      "dependencies": [
+        "The relic core is one custom, unimplemented input consumed exactly once at signature finishing. A boss receipt is not the relic and does not assert a drop table, new boss spawn, or new loot.",
+        "A city enchanter produces the finish at a real faction-city enchanting station. A real weapon maker supplies the compatible base; the core-holder and other collaborators contribute original goods or useful child orders.",
+        "Five stages are active work on one commission, not five free components or five extra native skill awards. The base item remains one buyer-supplied item.",
+        "No native IDs, recipe, spell, cast, effect, item, save field, boss reward, native skill gain, character XP, reputation, or class skill is admitted by this proposal.",
+        "Boss receipt eligibility and permanent personal legacy accounting follow the separate boss-legacy policy; crafting this item awards no additional kill bonus or personal legacy.",
+        "Distinguish the Outland Doomwalker event from Classic Lord Kazzak and anniversary/timewalking variants.",
+        "Requires qualified item event, local target selection, effect, and lifecycle adapters; until admitted all numbers are proposals."
+      ],
+      "sources": [
+        {
+          "kind": "primary_game_source",
+          "title": "Burning Crusade Classic: Zul'Aman Is Now Open",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/23783585/burning-crusade-classic-zulaman-is-now-open",
+          "supports": "Blizzard identifies Doomwalker as an Outland world boss."
+        },
+        {
+          "kind": "primary_game_source",
+          "title": "Celebrate 17 Years of World of Warcraft!",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/23745821/celebrate-17-years-of-world-of-warcraft",
+          "supports": "Blizzard describes Doomwalker as a massive Fel Reaver world boss and references Earthquake."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "supports": "Encounter receipts, personal legacies, and artisan output remain distinct."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "Five-stage active city production and durable stage observation."
+        },
+        {
+          "kind": "materials_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "supports": "Historical material names only; custom core remains unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.ysondre",
+      "name": "Dreambough Renewal",
+      "tier": "legendary",
+      "source_boss": "Ysondre",
+      "source_encounter": "Original Classic open-world green Dragon of Nightmare, one of the four named Nightmare Dragons. Blizzard material also distinguishes the original world boss from the later instanced Nightmare Grove version.",
+      "host": "One buyer-supplied main-hand caster/healer weapon with one qualified compatible enchant finish channel. The base weapon is required and keeps its ordinary stats.",
+      "roles": [
+        "healer",
+        "caster_support"
+      ],
+      "wearer_gate": "Character level 80; equip the exact eligible weapon and already know/use a native direct healing spell. Trigger only when effectively healing another injured party/raid member whose injury came from a genuine hostile NPC in the same active combat; overhealing does not count and no class skill is taught.",
+      "artisan_gate": "Enchanting 425 minimum, character level 80, custom pattern taught, and continuously observed work at an actual faction-city enchanting station. These design gates preserve all native trainer/character restrictions.",
+      "unlock": "A durable eligible receipt for the original Classic Ysondre encounter may unlock a city apprenticeship. An allied holder separately supplies a real Ysondre Relic Core under an approved custody path. The core is unimplemented, is not an asserted boss drop, and is consumed once.",
+      "mechanic": {
+        "trigger": "Once per 60 seconds, after the wearer lands an effective direct heal on an injured party/raid member other than the wearer, where the target's injury is attributed to a genuine hostile NPC hit in the same active combat, while the exact weapon is equipped.",
+        "effect": "Consume one charge to release one immediate Dreambough pulse at the healed ally: heal up to three other injured party/raid members within 8 yards for 2% of each target's maximum health, capped at 900 per target. No overheal transfer or recursive proc.",
+        "numbers": {
+          "custom_equipped_item_adapter": {
+            "target_count_max": 3,
+            "radius_yards": 8,
+            "heal_percent_max_health": 2,
+            "heal_cap_per_target": 900,
+            "pulses": 1,
+            "target_rule": "other injured current party/raid members only, wearer excluded; recheck group, health, and range at pulse"
+          },
+          "native_stat_effect_adapter": {
+            "status": "NOT_ADMITTED",
+            "native_stat_change": "none",
+            "note": "Requires a custom effective-heal/ally-selection adapter; no native spell, aura, or healing ID is proposed."
+          },
+          "stacking": "One Dreambough family per wearer; same-family pulses never multiply or recurse. This 24-charge item reservoir limits only this effect's individual potency, not the character's earned encounters or overall progression."
+        },
+        "icd_seconds": 60,
+        "charges": 24,
+        "empty_behavior": "The ordinary weapon remains usable without a custom pulse. Charge/ICD state is tied to the exact item and survives swap, relog, death, bank, mail, trade, and restart."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        },
+        {
+          "name": "Ysondre Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "consumed_at_stage": 4
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 20,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Life",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 80,
+        "charge_restored": 24
+      },
+      "stages": [
+        {
+          "name": "Preparation: qualify original Ysondre receipt, weapon, recipient rules, and core custody",
+          "active_minutes": 55
+        },
+        {
+          "name": "Weaving: prepare city-station healing substrate for the real base weapon",
+          "active_minutes": 75
+        },
+        {
+          "name": "Tempering: set bounded restorative profile within the agreed role budget",
+          "active_minutes": 90
+        },
+        {
+          "name": "Signature finishing: consume one Ysondre Relic Core and bind one renewal family",
+          "active_minutes": 120
+        },
+        {
+          "name": "Inspection and attunement: verify range/group rules, no overheal, no recursion, and provenance",
+          "active_minutes": 50
+        }
+      ],
+      "teaching": "A city instructor teaches this custom pattern after one ordinary useful enchanting order and one distinct accepted Dreambough apprenticeship. Record once per artisan/design; no native profession skill or character progression.",
+      "maker_reward": "One useful commission accepted by its owner may grant one non-combat custom maker signature/mastery record per artisan/design with item, material/core custody, station, and collaborators. Teaching and recharge give no native XP, skill, reputation, boss legacy, or free craft mastery.",
+      "bot_rules": [
+        "City artisans remain at their assigned station and use real station, rank, recipe, inventory, and control evidence; only observed active time advances stages.",
+        "Use the exact buyer weapon, an allied holder's one core, and the full direct material bill; stage timers create no components.",
+        "A custom heal adapter rechecks group membership, life/health, distance, and effective heal at event time."
+      ],
+      "abuse_rules": [
+        "Reject overheal, periodic ticks, self-heals, invalid/out-of-range targets, changed groups, and duplicate callbacks. The healed ally's injury must be attributed to a genuine hostile NPC hit in the same active combat; self, friendly, environmental, or arranged damage does not qualify.",
+        "The one pulse cannot trigger another; identical effects do not multiply. Exclude PvP pending a separate policy.",
+        "Charges/ICD persist through swap, relog, death, mail, bank, trade, and restart; no kill receipt resets them.",
+        "No item/core claim, stage completion, or maker reward settles twice."
+      ],
+      "dependencies": [
+        "The relic core is one custom, unimplemented input consumed exactly once at signature finishing. A boss receipt is not the relic and does not assert a drop table, new boss spawn, or new loot.",
+        "A city enchanter produces the finish at a real faction-city enchanting station. A real weapon maker supplies the compatible base; the core-holder and other collaborators contribute original goods or useful child orders.",
+        "Five stages are active work on one commission, not five free components or five extra native skill awards. The base item remains one buyer-supplied item.",
+        "No native IDs, recipe, spell, cast, effect, item, save field, boss reward, native skill gain, character XP, reputation, or class skill is admitted by this proposal.",
+        "Boss receipt eligibility and permanent personal legacy accounting follow the separate boss-legacy policy; crafting this item awards no additional kill bonus or personal legacy.",
+        "Keep the original Classic outdoor Ysondre key distinct from later Nightmare Grove and Emerald Nightmare raid encounters.",
+        "Requires a qualified custom effective-heal/group-range lifecycle adapter; until then all numbers are inert proposals."
+      ],
+      "sources": [
+        {
+          "kind": "primary_game_source",
+          "title": "Now Live! Temple Ahn'Qiraj, Ruins of Ahn'Qiraj, and Nightmare Grove",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/24148556/now-live-temple-ahnqiraj-ruins-of-ahnqiraj-and-nightmare-grove",
+          "supports": "Blizzard lists Ysondre among the four Dragons of Nightmare and describes a later instanced version."
+        },
+        {
+          "kind": "primary_game_source",
+          "title": "Go on a Shopping Spree During the WoW 20th Anniversary Celebration",
+          "url": "https://worldofwarcraft.blizzard.com/en-us/news/24146991/go-on-a-shopping-spree-during-the-wow-20th-anniversary-celebration",
+          "supports": "Blizzard lists Ysondre with the original outdoor world bosses."
+        },
+        {
+          "kind": "secondary_lore_reference",
+          "title": "Ysondre (Classic)",
+          "url": "https://warcraft.wiki.gg/wiki/Ysondre_(tactics)",
+          "supports": "Identifies the Classic encounter as a green dragon and one of the four Dragons of Nightmare; used only for the dragon-color label."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "supports": "Boss participation and personal legacies are separate from this custom maker commission."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "Five active stages, city production, and durable work/craft separation."
+        },
+        {
+          "kind": "materials_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "supports": "Historical material names only; custom core remains unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.ward.approach",
+      "name": "Waywatcher Listening Ward",
+      "tier": "masterwork",
+      "source_boss": null,
+      "source_encounter": "Local territorial route/objective approach event; no boss encounter.",
+      "host": "One non-wearable listening fixture at one existing configured territorial objective or route checkpoint.",
+      "roles": [
+        "territory_defense",
+        "local_patrol",
+        "site_custodian"
+      ],
+      "wearer_gate": "Not wearable. Signal is visible only to the current owner-authorized site custodian and designated garrison actors at this site; no player-wide map or radar.",
+      "artisan_gate": "Level 80 city enchanter with Enchanting 400 minimum and the custom pattern, plus an allied level 80 engineer/blacksmith with skill 400 minimum for separate mount/install work. The current owner appoints the local installer.",
+      "unlock": "Custom city apprenticeship follows one accepted useful ward-service order for a real local shortage and an authorized territory owner. No kill reward, native recipe, skill grant, or free ward.",
+      "mechanic": {
+        "trigger": "Once per 90 seconds, use exactly one evidence route: campaign mode accepts an authoritative route-step for an exact already registered hostile militia troop entering the site's 35-yard radius; physical mode requires the server to observe an actual visible hostile actor within 35 yards and line of sight. Unknown or hidden actors are never inferred.",
+        "effect": "A qualifying event consumes one charge and sends one local alert to the current site custodian and authorized garrison actors already within 40 yards. No tracking outside the radius, stealth/hidden reveal, unknown-actor identification, or global/map-wide ping.",
+        "numbers": {
+          "adapter_versions": {
+            "campaign_npc_points_adapter": {
+              "combat_stat_change": "none",
+              "effect": "one local alert record for the exact objective/version",
+              "evidence_source": "authoritative route-step for exact registered hostile militia troop IDs"
+            },
+            "native_stat_effect_adapter": {
+              "status": "NOT_ADMITTED",
+              "combat_stat_change": "none",
+              "detection_radius_yards": 35,
+              "notification_radius_yards": 40,
+              "line_of_sight_required": true,
+              "visible_actor_required": true,
+              "evidence_source": "server-observed visible hostile actor; no hidden scan"
+            }
+          },
+          "site_radius_yards": 35,
+          "recipient_radius_yards": 40,
+          "max_alerts_per_trigger": 1
+        },
+        "icd_seconds": 90,
+        "charges": 4,
+        "empty_behavior": "Fixture stays installed but silent at zero charges. Time, owner change, movement, relog, and capture never replenish it; authorized paid recharge is required."
+      },
+      "inputs": [
+        {
+          "name": "Saronite Bar",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Infinite Dust",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 4,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Air",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 25,
+        "charge_restored": 4
+      },
+      "stages": [
+        {
+          "name": "Cut one fixture frame at the city station",
+          "active_minutes": 20
+        },
+        {
+          "name": "Bind listening conduit and exact site identity",
+          "active_minutes": 20
+        },
+        {
+          "name": "Inspect custody, charges, alert recipients, and field-install packet",
+          "active_minutes": 20
+        }
+      ],
+      "teaching": "A city mentor signs one custom apprenticeship after an ordinary useful enchanting order and an owner-accepted ward commission. Teaching is once/design and gives no native skill or recipe record.",
+      "maker_reward": "One useful ward installed and accepted by its owner may earn one non-combat maker signature/mastery record per artisan/design, tied to site and original lots. Recharge/capture rebind earns no mastery.",
+      "bot_rules": [
+        "Enchanter remains at the city station; a separately authorized local installer records the actual site action and cannot teleport.",
+        "Reserve/consume exact named material from current owner stock; troop and original kit custody remain separate.",
+        "Position, faction, site version, line of sight, authority, charge, and local-recipient evidence must come from trusted adapters."
+      ],
+      "abuse_rules": [
+        "No global omniscient scan, hidden reveal, remote tracking, arbitrary site, free replacement, automatic placement, or charge regeneration.",
+        "Deduplicate trigger/charge per exact actor/site/version; stale owner, unknown position, no LOS, or uncertain event holds without use.",
+        "Capture never seizes guild materials/reservations; owner change cannot refill, duplicate, or move the fixture."
+      ],
+      "dependencies": [
+        "Requires an admitted site identity, trusted local position/LOS evidence, and bounded alert interface; otherwise uninstalled/inert.",
+        "Campaign alert and native local signal are alternative adapters; neither gives a combat bonus."
+      ],
+      "installation": {
+        "anchor": "One existing configured territorial objective or supply-route checkpoint with stable site identity. If the site fixture/record is not admitted, installation is blocked.",
+        "authorization": "The current territory/route owner and its authorized guild representative approve the exact site and version. A locally present authorized installer records the real install action; neither an order nor proximity teleports or places the ward.",
+        "city_station": "The enchanter works at an admitted station inside the faction city. A real allied engineer or blacksmith makes/installs the mount on site as a separately tracked custody step; city production and field installation are separate.",
+        "inventory_custody": "Reserve each listed input from the owning account's available guild inventory, preserving original stack/GUID provenance. Consume it once at the accepted stage; reserved goods cannot also be withdrawn for troop kits or another order. There is no automatic restock.",
+        "food_and_artillery": "The ward creates no food, rations, weapons, armor, ammunition, artillery, troops, or replacements. Existing squads still consume their ordinary one ration per living troop at battle entry and retain only their original issued kits. A ward cannot upgrade kit grade or artillery stock.",
+        "effect_scope": "Site-local only. Apply to the exact objective/checkpoint and verified actor/event specified by the selected adapter; no global radar or arbitrary off-site coverage."
+      },
+      "ownership": {
+        "custody": "The installed fixture remains anchored to its site; its ledger retains original maker, material lots, former owner, charges, and installation identity.",
+        "capture_behavior": "A committed owner/version change makes the ward dormant and revokes the former owner's operational authority. Capture alone does not move guild inventory, transfer reservations, refill charges, install another ward, or grant the new owner a free service.",
+        "next_service": "The new owner may authorize a paid rebind/recharge only after its own control version is current, using its own available materials at the exact ordinary recharge bill/time. That service restores only the listed charge count up to capacity; no boss core is required.",
+        "no_seizure": "The new owner cannot withdraw the previous owner's stock or claim the old guild's maker/material provenance. Unknown custody or unresolved reservations remain held for reconciliation."
+      },
+      "sources": [
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/TERRITORIAL_ARMIES.md",
+          "supports": "Campaign points, original NPC roster/kit custody, food debit, owner/version settlement, and no arbitrary spawning or free replacements."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/SUPPLY_CONTRACTS.md",
+          "supports": "Original cargo custody, exact manifests, local route checkpoints, and held outcomes for uncertain handoff."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "City production, active-work timing, staged orders, and no timer-created goods or skill."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.ward.defender-shield",
+      "name": "Hearthward Bastion Seal",
+      "tier": "masterwork",
+      "source_boss": null,
+      "source_encounter": "Verified defense battle at the single installed territorial objective; no boss encounter.",
+      "host": "One non-wearable bastion fixture at one existing configured territory objective.",
+      "roles": [
+        "territory_defense",
+        "militia_garrison",
+        "site_custodian"
+      ],
+      "wearer_gate": "Not wearable. Only the current owner's exact existing defending militia roster at the installed objective benefits; no player or newly spawned NPC receives a buff.",
+      "artisan_gate": "Level 80 city enchanter with Enchanting 400 minimum and custom pattern; separate level 80 engineer/blacksmith with skill 400 minimum makes and installs the mount under current-owner authority.",
+      "unlock": "Taught through an owner-approved city apprenticeship attached to a useful ward-service order. Control version and site must be current; no troop gear, rank, or battle reward is created.",
+      "mechanic": {
+        "trigger": "At most once per 600 seconds and only when an authoritative battle starts defending this exact owner-controlled objective with an already registered militia roster.",
+        "effect": "Consume one charge. Select exactly one adapter: campaign resolution grants +1 campaign armor point to each original living defender for the first 3 rounds; a future physical-NPC adapter instead grants 3% incoming damage reduction to exact assigned defender actors within 25 yards for 15 seconds. Never apply both.",
+        "numbers": {
+          "adapter_selection": "Select exactly one resolution mode per battle; campaign points are not converted into or stacked with native creature stats.",
+          "campaign_npc_points_adapter": {
+            "armor_points_per_original_living_defender": 1,
+            "duration_battle_rounds": 3,
+            "health_points_added": 0,
+            "roster_source": "exact registered defending troop IDs"
+          },
+          "native_stat_effect_adapter": {
+            "status": "PROPOSAL_ONLY_NOT_IMPLEMENTED",
+            "incoming_damage_reduction_percent": 3,
+            "duration_seconds": 15,
+            "radius_yards": 25,
+            "actor_scope": "exact already materialized defender NPC identities only"
+          }
+        },
+        "icd_seconds": 600,
+        "charges": 3,
+        "empty_behavior": "No defense effect at zero charges. Battle entry still consumes the ordinary ration per living militia troop under the existing army policy."
+      },
+      "inputs": [
+        {
+          "name": "Saronite Bar",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 40,
+        "charge_restored": 3
+      },
+      "stages": [
+        {
+          "name": "Forge bastion frame at city station",
+          "active_minutes": 25
+        },
+        {
+          "name": "Bind and test local defender resonance",
+          "active_minutes": 25
+        },
+        {
+          "name": "Record owner/site custody, charge ledger, and install packet",
+          "active_minutes": 20
+        }
+      ],
+      "teaching": "One custom apprenticeship follows an ordinary useful enchanting order and an accepted defense-ward service for an actual owner site. No native skill, XP, or free kit.",
+      "maker_reward": "One accepted useful installation may earn one custom non-combat maker signature/mastery record per artisan/design tied to site, owner, materials, and installer. Recharge/capture rebind is maintenance only.",
+      "bot_rules": [
+        "Artisan remains at city station; authorized installer separately performs a real field install at the exact controlled objective.",
+        "Only the existing militia roster and already issued kit are eligible; the ward never recruits, heals, equips, replaces, or resurrects troops.",
+        "Battle start, objective owner/version, roster, food debit, charge debit, and settlement commit atomically in the selected adapter."
+      ],
+      "abuse_rules": [
+        "Reject caller-selected roster, stale site/version, unknown actor presence, duplicate battle entry, or second charge debit.",
+        "No free charge on capture, restart, new battle proposal, reassignment, kit change, or casualty.",
+        "Never apply both campaign and native versions; same ward family cannot stack with itself or recurse."
+      ],
+      "dependencies": [
+        "Campaign mode uses only policy armor points and original troop IDs. Physical mode requires a qualified exact mapping to native NPC templates/lifecycle; no conversion is admitted.",
+        "Existing militia food and kit accounting remains the supply source; ward inputs are an extra owner-paid service."
+      ],
+      "installation": {
+        "anchor": "One existing configured territorial objective or supply-route checkpoint with stable site identity. If the site fixture/record is not admitted, installation is blocked.",
+        "authorization": "The current territory/route owner and its authorized guild representative approve the exact site and version. A locally present authorized installer records the real install action; neither an order nor proximity teleports or places the ward.",
+        "city_station": "The enchanter works at an admitted station inside the faction city. A real allied engineer or blacksmith makes/installs the mount on site as a separately tracked custody step; city production and field installation are separate.",
+        "inventory_custody": "Reserve each listed input from the owning account's available guild inventory, preserving original stack/GUID provenance. Consume it once at the accepted stage; reserved goods cannot also be withdrawn for troop kits or another order. There is no automatic restock.",
+        "food_and_artillery": "The ward creates no food, rations, weapons, armor, ammunition, artillery, troops, or replacements. Existing squads still consume their ordinary one ration per living troop at battle entry and retain only their original issued kits. A ward cannot upgrade kit grade or artillery stock.",
+        "effect_scope": "Site-local only. Apply to the exact objective/checkpoint and verified actor/event specified by the selected adapter; no global radar or arbitrary off-site coverage."
+      },
+      "ownership": {
+        "custody": "The installed fixture remains anchored to its site; its ledger retains original maker, material lots, former owner, charges, and installation identity.",
+        "capture_behavior": "A committed owner/version change makes the ward dormant and revokes the former owner's operational authority. Capture alone does not move guild inventory, transfer reservations, refill charges, install another ward, or grant the new owner a free service.",
+        "next_service": "The new owner may authorize a paid rebind/recharge only after its own control version is current, using its own available materials at the exact ordinary recharge bill/time. That service restores only the listed charge count up to capacity; no boss core is required.",
+        "no_seizure": "The new owner cannot withdraw the previous owner's stock or claim the old guild's maker/material provenance. Unknown custody or unresolved reservations remain held for reconciliation."
+      },
+      "sources": [
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/TERRITORIAL_ARMIES.md",
+          "supports": "Campaign points, original NPC roster/kit custody, food debit, owner/version settlement, and no arbitrary spawning or free replacements."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/SUPPLY_CONTRACTS.md",
+          "supports": "Original cargo custody, exact manifests, local route checkpoints, and held outcomes for uncertain handoff."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "City production, active-work timing, staged orders, and no timer-created goods or skill."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.ward.siege-disrupt",
+      "name": "Ram-Break Grounding Ward",
+      "tier": "masterwork",
+      "source_boss": null,
+      "source_encounter": "A future authoritative siege-action event at one installed territorial objective; no boss encounter.",
+      "host": "One non-wearable grounding fixture at one configured site with an admitted siege-action record.",
+      "roles": [
+        "territory_defense",
+        "siege_support",
+        "site_custodian"
+      ],
+      "wearer_gate": "Not wearable. It can affect only an existing hostile siege squad/action verified against this exact site and owner/version; no hero weapon or attack bonus.",
+      "artisan_gate": "Level 80 city enchanter with Enchanting 400 minimum and custom pattern; an allied engineer/blacksmith with skill 400 minimum builds and installs the mount after current site authorization.",
+      "unlock": "Custom apprenticeship follows a useful owner-accepted ward service. Siege actions are not yet in the territorial army model, so the pattern stays locked until a real action/event and ownership adapter exist.",
+      "mechanic": {
+        "trigger": "Once per 900 seconds on the first authoritative hostile siege-action event against the exact installed objective, after siege events are separately admitted.",
+        "effect": "Consume one charge without cancelling the action or creating a weapon. Campaign mode applies -1 campaign attack point per original living hostile attacker for the next 2 rounds; physical mode instead reduces the next admitted siege-NPC damage event by 5% for 10 seconds within 20 yards. Never both.",
+        "numbers": {
+          "adapter_selection": "Choose campaign policy or physical actor mode for this event; the numeric versions are alternatives and never stack.",
+          "campaign_npc_points_adapter": {
+            "attack_points_per_original_living_hostile_troop": -1,
+            "duration_battle_rounds": 2,
+            "troop_source": "exact original hostile troop IDs in verified siege battle"
+          },
+          "native_stat_effect_adapter": {
+            "status": "PROPOSAL_ONLY_NOT_IMPLEMENTED",
+            "siege_damage_reduction_percent": 5,
+            "duration_seconds": 10,
+            "radius_yards": 20,
+            "actor_scope": "existing hostile NPC identities registered to the admitted siege event"
+          }
+        },
+        "icd_seconds": 900,
+        "charges": 3,
+        "empty_behavior": "At zero charges the ward cannot disrupt or delay an action. A siege event is not cancelled, blocked, or falsely settled because a fixture exists."
+      },
+      "inputs": [
+        {
+          "name": "Saronite Bar",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 3
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Saronite Bar",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Infinite Dust",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 50,
+        "charge_restored": 3
+      },
+      "stages": [
+        {
+          "name": "Forge grounding frame/anchor plate at city station",
+          "active_minutes": 25
+        },
+        {
+          "name": "Bind shock-diffusion line to the proposed local action family",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspect and hand over site/version install packet and charge custody",
+          "active_minutes": 20
+        }
+      ],
+      "teaching": "City mentor teaches only after a separate useful order and owner-accepted site order. Until siege state is supported, apprenticeship authorizes no fictional siege or battle.",
+      "maker_reward": "One accepted useful installation may earn one custom non-combat signature/mastery record per artisan/design. Provenance only; no native skill, XP, reputation, siege credit, or free craft mastery.",
+      "bot_rules": [
+        "Enchanter works at an actual city station; authorized engineer/blacksmith separately installs on site.",
+        "This proposal does not issue siege orders, spawn artillery, move squads, or simulate a siege.",
+        "Selected adapter may run only after the exact hostile event, roster, ownership, supplies, and battle settlement are approved."
+      ],
+      "abuse_rules": [
+        "No effect on players, heroes, friendly/unverified units, unsupplied squads, unrelated NPCs, or unverified actions.",
+        "No cancellation, guaranteed defense, immunity, artillery creation, replacement, free ward, or unearned capture.",
+        "Consume a charge once per original event; stale/duplicate/unknown physical evidence holds for reconciliation.",
+        "Never apply campaign attack points and native damage reduction in the same resolution."
+      ],
+      "dependencies": [
+        "Territorial armies documentation marks sieges as later work. Until an authoritative siege event exists, this ward has no trigger and cannot be installed for use.",
+        "Physical mode requires an existing siege actor/action and qualified native effect mapping; this record creates neither."
+      ],
+      "installation": {
+        "anchor": "One existing configured territorial objective or supply-route checkpoint with stable site identity. If the site fixture/record is not admitted, installation is blocked.",
+        "authorization": "The current territory/route owner and its authorized guild representative approve the exact site and version. A locally present authorized installer records the real install action; neither an order nor proximity teleports or places the ward.",
+        "city_station": "The enchanter works at an admitted station inside the faction city. A real allied engineer or blacksmith makes/installs the mount on site as a separately tracked custody step; city production and field installation are separate.",
+        "inventory_custody": "Reserve each listed input from the owning account's available guild inventory, preserving original stack/GUID provenance. Consume it once at the accepted stage; reserved goods cannot also be withdrawn for troop kits or another order. There is no automatic restock.",
+        "food_and_artillery": "The ward creates no food, rations, weapons, armor, ammunition, artillery, troops, or replacements. Existing squads still consume their ordinary one ration per living troop at battle entry and retain only their original issued kits. A ward cannot upgrade kit grade or artillery stock.",
+        "effect_scope": "Site-local only. Apply to the exact objective/checkpoint and verified actor/event specified by the selected adapter; no global radar or arbitrary off-site coverage."
+      },
+      "ownership": {
+        "custody": "The installed fixture remains anchored to its site; its ledger retains original maker, material lots, former owner, charges, and installation identity.",
+        "capture_behavior": "A committed owner/version change makes the ward dormant and revokes the former owner's operational authority. Capture alone does not move guild inventory, transfer reservations, refill charges, install another ward, or grant the new owner a free service.",
+        "next_service": "The new owner may authorize a paid rebind/recharge only after its own control version is current, using its own available materials at the exact ordinary recharge bill/time. That service restores only the listed charge count up to capacity; no boss core is required.",
+        "no_seizure": "The new owner cannot withdraw the previous owner's stock or claim the old guild's maker/material provenance. Unknown custody or unresolved reservations remain held for reconciliation."
+      },
+      "sources": [
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/TERRITORIAL_ARMIES.md",
+          "supports": "Campaign points, original NPC roster/kit custody, food debit, owner/version settlement, and no arbitrary spawning or free replacements."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/SUPPLY_CONTRACTS.md",
+          "supports": "Original cargo custody, exact manifests, local route checkpoints, and held outcomes for uncertain handoff."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "City production, active-work timing, staged orders, and no timer-created goods or skill."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.ward.caravan-protection",
+      "name": "Caravan Shelter Ward",
+      "tier": "masterwork",
+      "source_boss": null,
+      "source_encounter": "Verified arrival of one original carrier and cargo manifest at the installed supply-route checkpoint; no boss encounter.",
+      "host": "One non-wearable shelter fixture at one existing configured caravan checkpoint, bound to that route version.",
+      "roles": [
+        "caravan_protection",
+        "route_custodian",
+        "existing_militia_escort"
+      ],
+      "wearer_gate": "Not wearable. Only the original carrier and already assigned existing escorts on the exact owner-authorized route can benefit; cargo, rations, and troop kits do not.",
+      "artisan_gate": "Level 80 city enchanter with Enchanting 400 minimum and custom pattern; a separately ordered level 80 engineer/blacksmith with skill 400 minimum installs after current route owner approves the exact checkpoint.",
+      "unlock": "Custom apprenticeship requires an accepted useful supply-service order for an actual manifest/route shortage and an authorized owner. It does not complete delivery, settle payment, or reward a boss.",
+      "mechanic": {
+        "trigger": "Once per 300 seconds after the original authorized carrier reaches this checkpoint with the original manifest in verified custody.",
+        "effect": "Consume one charge at verified arrival. Physical mode shelters the original carrier and assigned escorts within 15 yards for 10 seconds. Campaign mode grants +1 campaign armor point to exact registered living escorts for the first 2 rounds only when a route-defense battle for this same site/version is already starting in that arrival event; otherwise the campaign effect expires immediately. Nothing is stored for an unrelated future battle. No cargo, food, health, or charge is created; the caravan can still be intercepted or lost.",
+        "numbers": {
+          "adapter_selection": "Use only one resolution mode; campaign points do not convert to native stats.",
+          "campaign_npc_points_adapter": {
+            "escort_armor_points_per_original_living_troop": 1,
+            "duration_battle_rounds": 2,
+            "response_window_seconds": 0,
+            "battle_binding": "same site/version and already-starting battle at the arrival event; no deferred effect",
+            "troop_source": "exact already registered escort IDs, if any"
+          },
+          "native_stat_effect_adapter": {
+            "status": "PROPOSAL_ONLY_NOT_IMPLEMENTED",
+            "incoming_npc_damage_reduction_percent": 4,
+            "duration_seconds": 10,
+            "radius_yards": 15,
+            "actor_scope": "original carrier plus exact assigned existing escort actors"
+          }
+        },
+        "icd_seconds": 300,
+        "charges": 3,
+        "empty_behavior": "Shelter is inactive at zero charges. Manifest, carrier, food, and escorts still follow ordinary supply/army rules; unresolved custody remains held."
+      },
+      "inputs": [
+        {
+          "name": "Cobalt Bar",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Borean Leather",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 1
+        },
+        {
+          "name": "Crystallized Water",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "consumed_at_stage": 2
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Borean Leather",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Crystallized Water",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Infinite Dust",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 35,
+        "charge_restored": 3
+      },
+      "stages": [
+        {
+          "name": "Prepare shelter frame at city station",
+          "active_minutes": 15
+        },
+        {
+          "name": "Bind checkpoint resonance to one exact route version",
+          "active_minutes": 20
+        },
+        {
+          "name": "Inspect manifest rules and hand over owner install packet",
+          "active_minutes": 15
+        }
+      ],
+      "teaching": "Teach only through a distinct accepted city apprenticeship attached to an ordinary useful order and a real supply contract/route need. It changes no native profession skill or contract state.",
+      "maker_reward": "An owner-accepted useful installation may earn one custom non-combat maker signature/mastery record per artisan/design tied to route version, site, original lots, and contributors. Recharges/deliveries award no craft mastery, native skill, XP, or reputation.",
+      "bot_rules": [
+        "Enchanter stays at city station; a local authorized installer separately completes the real checkpoint installation.",
+        "Cargo remains the same original reserved manifest. Ward cannot skip checkpoints, mark Delivered, release holds, mint rations, or refund a loss.",
+        "Only the original carrier and escort identities qualify; replacement actors cannot inherit an old effect."
+      ],
+      "abuse_rules": [
+        "Trigger only from authoritative checkpoint receipt with current owner/version and full manifest custody; proximity/time is not proof.",
+        "No guaranteed delivery, invulnerability, cargo restoration, free escort, food, kit, or passive stock generation.",
+        "Persist charge/cooldown on exact site across capture/restart; stale or unknown cargo remains held.",
+        "Never stack campaign armor with native reduction or duplicate two ward effects for one event."
+      ],
+      "dependencies": [
+        "Requires exact route-version checkpoint and trusted original manifest/carrier custody from supply-contract policy.",
+        "Campaign and physical versions are alternatives; no effect is admitted until the adapter proves actor identity, event uniqueness, and lifecycle."
+      ],
+      "installation": {
+        "anchor": "One existing configured territorial objective or supply-route checkpoint with stable site identity. If the site fixture/record is not admitted, installation is blocked.",
+        "authorization": "The current territory/route owner and its authorized guild representative approve the exact site and version. A locally present authorized installer records the real install action; neither an order nor proximity teleports or places the ward.",
+        "city_station": "The enchanter works at an admitted station inside the faction city. A real allied engineer or blacksmith makes/installs the mount on site as a separately tracked custody step; city production and field installation are separate.",
+        "inventory_custody": "Reserve each listed input from the owning account's available guild inventory, preserving original stack/GUID provenance. Consume it once at the accepted stage; reserved goods cannot also be withdrawn for troop kits or another order. There is no automatic restock.",
+        "food_and_artillery": "The ward creates no food, rations, weapons, armor, ammunition, artillery, troops, or replacements. Existing squads still consume their ordinary one ration per living troop at battle entry and retain only their original issued kits. A ward cannot upgrade kit grade or artillery stock.",
+        "effect_scope": "Site-local only. Apply to the exact objective/checkpoint and verified actor/event specified by the selected adapter; no global radar or arbitrary off-site coverage."
+      },
+      "ownership": {
+        "custody": "The installed fixture remains anchored to its site; its ledger retains original maker, material lots, former owner, charges, and installation identity.",
+        "capture_behavior": "A committed owner/version change makes the ward dormant and revokes the former owner's operational authority. Capture alone does not move guild inventory, transfer reservations, refill charges, install another ward, or grant the new owner a free service.",
+        "next_service": "The new owner may authorize a paid rebind/recharge only after its own control version is current, using its own available materials at the exact ordinary recharge bill/time. That service restores only the listed charge count up to capacity; no boss core is required.",
+        "no_seizure": "The new owner cannot withdraw the previous owner's stock or claim the old guild's maker/material provenance. Unknown custody or unresolved reservations remain held for reconciliation."
+      },
+      "sources": [
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/TERRITORIAL_ARMIES.md",
+          "supports": "Campaign points, original NPC roster/kit custody, food debit, owner/version settlement, and no arbitrary spawning or free replacements."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/SUPPLY_CONTRACTS.md",
+          "supports": "Original cargo custody, exact manifests, local route checkpoints, and held outcomes for uncertain handoff."
+        },
+        {
+          "kind": "local_design_reference",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "supports": "City production, active-work timing, staged orders, and no timer-created goods or skill."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1153 @@
+{
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "wrath",
+  "candidates": [
+    {
+      "design_id": "enchant2.legend.sapphiron",
+      "name": "Sapphiron's Glacial Watch",
+      "tier": "legendary",
+      "source_boss": "Sapphiron",
+      "source_encounter": "Naxxramas raid, Frostwyrm Lair: Sapphiron (10/25-player encounter family)",
+      "host": "Shield",
+      "roles": [
+        "tank",
+        "shield-bearing defender",
+        "frost-exposed expedition member"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Sapphiron blueprint entitlement through eligible participation and victory in the canonical Naxxramas encounter family; must meet the shield's real equip requirements. The entitlement is not a physical pattern item and grants no native skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified recipe route if one is later admitted, an approved city enchanting station, and reserved materials. The wearer's boss entitlement authorizes this commission; the artisan need not have killed Sapphiron.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Sapphiron encounter family, awarded only after an eligible raid participant contributes and the encounter is won. It is separate from the tradable Sapphiron Relic Core, which must be supplied and consumed once per completed craft. Neither the entitlement nor relic route is implemented or live.",
+      "mechanic": {
+        "trigger": "A direct, non-periodic Frost damage event from a qualifying hostile NPC hits the wearer while this exact shield is equipped.",
+        "effect": "Grant the wearer one self-only shield that absorbs the next direct hostile damage event within 6 seconds, equal to 2% of maximum health, capped at 1,000 damage. It expires unused and cannot stack with another copy.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Frost Resistance",
+            "value": 8,
+            "unit": "resistance points"
+          },
+          "signature_absorb": {
+            "value": 2,
+            "unit": "percent of maximum health",
+            "cap": 1000,
+            "cap_unit": "damage",
+            "duration_seconds": 6,
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 90,
+        "charges": 30,
+        "empty_behavior": "The +8 Frost Resistance passive remains while this exact shield is equipped. Only the signature absorb is unavailable at zero charges; recharge restores charges, never the passive."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Sapphiron Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 30
+        },
+        {
+          "name": "Glacial substrate preparation",
+          "active_minutes": 50
+        },
+        {
+          "name": "Shield-channel tempering",
+          "active_minutes": 60
+        },
+        {
+          "name": "Frost signature binding",
+          "active_minutes": 60
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 40
+        }
+      ],
+      "teaching": "An optional, named apprentice with real Enchanting training may take part in a recorded stage and receive one noncombat lesson credit after this useful project completes. It grants no native skill, XP, item, combat effect, or blueprint entitlement.",
+      "maker_reward": "Proposed custom signature mastery: award the lead artisan one noncombat credit per distinct useful completed project, keyed to design, wearer, original host-item GUID, and durable project ID. Retries, reshipments, or reapplying this same finish cannot duplicate it; no native XP/skill or combat stat is granted, and no global trait cap is added.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Exact shield host, replacement channel, Frost Resistance property, absorb behavior, save/load, item custody, and event source all need separate native/custom route review and observation. No native ID, recipe, item, drop, proc, or live unlock is admitted.",
+        "This enchant awards no boss-legacy +5%/+10% primary attributes and does not duplicate or alter Sapphiron's separate boss trait; no such reward is issued by this design.",
+        "The final real native craft must remain authoritative for material consumption/output and any ordinary profession XP. Timer progress and custom maker credit grant no native progression."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/23826539 (Blizzard: Naxxramas and Sapphiron encounter context)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.instructor-razuvious",
+      "name": "Instructor's Reprisal",
+      "tier": "legendary",
+      "source_boss": "Instructor Razuvious",
+      "source_encounter": "Naxxramas raid, Military Quarter: Instructor Razuvious (10/25-player encounter family)",
+      "host": "One-handed melee weapon",
+      "roles": [
+        "melee tank",
+        "shield-paired front line",
+        "melee defender"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Instructor Razuvious blueprint entitlement through eligible participation and victory in the canonical Naxxramas encounter family; must meet the weapon's real equip requirements. The entitlement grants no native skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified recipe route if one is later admitted, an approved city enchanting station, and reserved materials. The artisan need not have killed Instructor Razuvious.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Instructor Razuvious encounter family, awarded only after eligible raid participation and victory. It is separate from the tradable Instructor Razuvious Relic Core, consumed once per completed craft. Neither entitlement nor relic route is implemented or live.",
+      "mechanic": {
+        "trigger": "The wearer successfully parries a direct melee attack from a qualifying hostile NPC while this exact weapon is equipped.",
+        "effect": "The wearer's next direct weapon hit against that same hostile NPC within 6 seconds deals +50 flat physical damage once. The extra damage is part of the hit resolution and cannot create a proc event.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Defense Rating",
+            "value": 10,
+            "unit": "rating points"
+          },
+          "signature_counter": {
+            "value": 50,
+            "unit": "flat physical damage",
+            "uses_per_charge": 1,
+            "follow_up_window_seconds": 6
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 75,
+        "charges": 30,
+        "empty_behavior": "The +10 Defense Rating passive remains while this exact weapon is equipped. Only the +50 damage counter is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Instructor Razuvious Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 30
+        },
+        {
+          "name": "Counter-discipline substrate preparation",
+          "active_minutes": 55
+        },
+        {
+          "name": "Weapon-channel tempering",
+          "active_minutes": 60
+        },
+        {
+          "name": "Parry-to-counter signature binding",
+          "active_minutes": 65
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 40
+        }
+      ],
+      "teaching": "An optional named apprentice with real Enchanting training may receive one noncombat lesson credit after taking part in a useful completed project; it grants no native skill, XP, item, combat effect, or blueprint entitlement.",
+      "maker_reward": "Proposed custom signature mastery: one noncombat credit to the lead artisan per distinct useful completed project, keyed to design, wearer, original host-item GUID, and durable project ID. No duplicate from retries, mail, reshipment, or reapplication; no native XP/skill or combat stat, with no global trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "One-handed weapon host, replacement channel, defense rating, actual parry evidence, flat damage contribution, and durable per-item state require separate route review. No native ID, recipe, item, drop, proc, or live unlock is admitted.",
+        "No boss-legacy +5%/+10% attributes or native Razuvious trait are granted, replaced, or duplicated by this design.",
+        "Timers grant no native profession skill or XP. A qualified final native craft, if later admitted, remains the sole authority for ordinary native consumption, output, and progression."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/23826539 (Blizzard: Naxxramas raid context)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.kelthuzad",
+      "name": "Kel'Thuzad's Frostbound Chain",
+      "tier": "legendary",
+      "source_boss": "Kel'Thuzad",
+      "source_encounter": "Naxxramas raid, Frostwyrm Lair finale: Kel'Thuzad (10/25-player encounter family)",
+      "host": "Main-hand caster weapon",
+      "roles": [
+        "mana caster",
+        "direct-spell damage dealer"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Kel'Thuzad blueprint entitlement through eligible participation and victory in the canonical Naxxramas encounter family; must meet the caster weapon's real equip requirements. The entitlement grants no native spell skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified recipe route if later admitted, an approved city enchanting station, and reserved materials. The artisan need not have killed Kel'Thuzad.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Kel'Thuzad encounter family, awarded only after eligible raid participation and victory. Separate from a tradable Kel'Thuzad Relic Core consumed once per completed craft. No entitlement, core, drop, or recipe is live.",
+      "mechanic": {
+        "trigger": "The wearer lands two direct, non-periodic hostile damage spells on the same qualifying hostile NPC within 6 seconds; the next direct hostile damage spell to that NPC consumes one charge if it lands within the following 6 seconds.",
+        "effect": "That one next spell deals 2.5% additional direct damage, capped at +1,200 damage. It does not modify periodic ticks, healing, area hits on other targets, or subsequent casts; the bonus is excluded from proc triggering.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Spell Power",
+            "value": 12,
+            "unit": "spell-power points"
+          },
+          "signature_chain": {
+            "qualifying_spells_to_prime": 2,
+            "sequence_window_seconds": 6,
+            "bonus_percent": 2.5,
+            "bonus_cap": 1200,
+            "cap_unit": "damage",
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 90,
+        "charges": 30,
+        "empty_behavior": "The +12 Spell Power passive remains while this exact weapon is equipped. The one-cast chain bonus is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Kel'Thuzad Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 35
+        },
+        {
+          "name": "Frostbound substrate preparation",
+          "active_minutes": 55
+        },
+        {
+          "name": "Caster-channel tempering",
+          "active_minutes": 65
+        },
+        {
+          "name": "Two-spell chain signature binding",
+          "active_minutes": 65
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 40
+        }
+      ],
+      "teaching": "An optional named apprentice with real Enchanting training may receive one noncombat lesson credit after recorded participation in a useful completed project. It conveys no native skill, XP, item, combat effect, or blueprint entitlement.",
+      "maker_reward": "Proposed custom signature mastery: one noncombat credit to the lead artisan for each distinct useful completed project, keyed to design, wearer, original host-item GUID, and durable project ID. Retries and transfers cannot duplicate the reward; it gives no native XP, skill, or combat stat and has no global trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Caster main-hand channel, spell-power passive, direct-spell sequence evidence, one-cast damage modifier/cap, save/load, and exact item identity need separate route review. No native IDs, effect, recipe, drop, or live unlock are admitted.",
+        "This does not award the separate boss-legacy +5%/+10% attributes or duplicate Kel'Thuzad's native trait.",
+        "Workshop time and proposed custom mastery do not grant native skill/XP. A future admitted native craft remains authoritative for normal profession progression and item output."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/23826539 (Blizzard: Kel'Thuzad and Naxxramas encounter context)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.malygos",
+      "name": "Malygos's Arcane Coffer",
+      "tier": "legendary",
+      "source_boss": "Malygos",
+      "source_encounter": "The Eye of Eternity raid: Malygos (10/25-player encounter family)",
+      "host": "Chest armor",
+      "roles": [
+        "caster",
+        "healer",
+        "arcane-exposed defender"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Malygos blueprint entitlement through eligible participation and victory in the canonical Eye of Eternity encounter family; must meet the real chest equip requirements. The entitlement grants no native skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified recipe route if later admitted, an approved city enchanting station, and reserved materials. The artisan need not have killed Malygos.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Malygos encounter family, earned only through eligible participation and victory. Separate from a tradable Malygos Relic Core consumed once per completed craft. No new item/drop, entitlement, or recipe is live.",
+      "mechanic": {
+        "trigger": "A direct, non-periodic Arcane damage event from a qualifying hostile NPC hits the wearer while this exact chest finish is equipped.",
+        "effect": "Reduce the next single direct Arcane damage event from that same hostile NPC within 6 seconds by 4%, up to 900 damage prevented. This is one self-only containment response, not immunity or a reusable aura.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Arcane Resistance",
+            "value": 8,
+            "unit": "resistance points"
+          },
+          "signature_containment": {
+            "value": 4,
+            "unit": "percent of one direct Arcane hit",
+            "cap": 900,
+            "cap_unit": "damage prevented",
+            "duration_seconds": 6,
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 90,
+        "charges": 30,
+        "empty_behavior": "The +8 Arcane Resistance passive remains while this exact chest is equipped. The one-hit containment is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Malygos Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 35
+        },
+        {
+          "name": "Arcane containment substrate preparation",
+          "active_minutes": 60
+        },
+        {
+          "name": "Chest-channel tempering",
+          "active_minutes": 65
+        },
+        {
+          "name": "Arcane coffer signature binding",
+          "active_minutes": 65
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45
+        }
+      ],
+      "teaching": "An optional, named apprentice with real Enchanting training can earn one noncombat lesson credit after recorded participation in this distinct useful commission; no native skill, XP, item, combat effect, or blueprint is granted.",
+      "maker_reward": "Proposed custom signature mastery: one noncombat credit to the lead artisan on successful completion of each distinct useful project, keyed to design, wearer, original host-item GUID, and project ID. Retries/transfers cannot replay it; it is separate from and never grants native progression or combat stats; no global trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Chest route and replacement channel are not qualified in the source catalogue. Arcane resistance, damage-source validation, capped reduction, and exact-item lifecycle all require future native/custom review and observation.",
+        "No boss-legacy +5%/+10% attributes or Malygos native trait are awarded or duplicated. No native IDs, recipes, items, drops, or live unlocks are defined.",
+        "Timed stages and custom credits do not provide native skill or XP; only a later real admitted craft can do so under its ordinary rules."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-gb/news/23837381 (Blizzard: Eye of Eternity and Malygos encounter context)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.yogg-saron",
+      "name": "Whisper-Cleared Circlet",
+      "tier": "legendary",
+      "source_boss": "Yogg-Saron",
+      "source_encounter": "Ulduar raid: Yogg-Saron (10/25-player encounter family)",
+      "host": "Head armor",
+      "roles": [
+        "mana caster",
+        "mana healer",
+        "concentration-focused spell user"
+      ],
+      "wearer_gate": "Level-80 mana-using wearer who personally earned the Yogg-Saron blueprint entitlement through eligible Ulduar participation and victory; must meet the real head-armor requirements. The entitlement grants no native spell or profession skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified recipe route if later admitted, an approved city station, and reserved materials. The artisan need not have killed Yogg-Saron.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Yogg-Saron encounter family, awarded only after eligible raid participation and victory. Separate from the tradable Yogg-Saron Relic Core consumed once per completed craft. No unlock, custom item, drop, or recipe is live.",
+      "mechanic": {
+        "trigger": "After at least 6 seconds with no spell cast by the wearer, the wearer's first direct, non-periodic damage spell that hits a qualifying hostile NPC qualifies. The wearer must still have mana missing.",
+        "effect": "Restore 1% of the wearer's maximum mana, capped at 350 mana. There is no overflow, ally mana transfer, cast-time refund, or effect on full mana.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Intellect",
+            "value": 8,
+            "unit": "attribute points"
+          },
+          "signature_clarity": {
+            "value": 1,
+            "unit": "percent of maximum mana",
+            "cap": 350,
+            "cap_unit": "mana",
+            "quiet_period_seconds": 6,
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 60,
+        "charges": 30,
+        "empty_behavior": "The +8 Intellect passive remains while this exact head item is equipped. The small self-only mana return is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Yogg-Saron Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 40
+        },
+        {
+          "name": "Circlet substrate preparation",
+          "active_minutes": 60
+        },
+        {
+          "name": "Head-channel tempering",
+          "active_minutes": 70
+        },
+        {
+          "name": "Clarity signature binding",
+          "active_minutes": 65
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45
+        }
+      ],
+      "teaching": "An optional named apprentice with real Enchanting training may receive one noncombat lesson credit for direct participation in a distinct useful completed project. It provides no native skill, XP, item, combat effect, or blueprint entitlement.",
+      "maker_reward": "Proposed custom signature mastery: one noncombat artisan credit per distinct useful completed project, keyed by design, wearer, original host-item GUID, and project ID. Idempotent across retries and transfers; never native skill/XP or combat power, with no global earned-trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Head host/channel is unqualified in the source catalogue; native/custom head route, Intellect, mana restoration, exact target, and saved charge state need review. No IDs, item, recipe, trigger, drop, or live unlock are admitted.",
+        "The design does not grant Yogg-Saron's separate boss trait or proposed +5%/+10% attributes.",
+        "Timer progress, lesson credits, and mastery credits do not grant native Enchanting skill or XP."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/23897173 (Blizzard: Ulduar and Yogg-Saron encounter context)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.algalon",
+      "name": "Algalon's Stellar Interval",
+      "tier": "legendary",
+      "source_boss": "Algalon the Observer",
+      "source_encounter": "Ulduar raid, Celestial Planetarium: Algalon the Observer (10/25-player encounter family)",
+      "host": "Shoulder armor",
+      "roles": [
+        "melee damage dealer",
+        "caster",
+        "healer"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Algalon blueprint entitlement through eligible participation and victory in the canonical Algalon encounter family; must meet the real shoulder-armor requirements. The entitlement grants no native skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified route if later admitted, an approved city station, and reserved materials. The artisan need not have killed Algalon.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Algalon encounter family, earned through eligible raid participation and victory. Separate from one tradable Algalon Relic Core consumed per completed craft. No blueprint, core, drop, or recipe is live.",
+      "mechanic": {
+        "trigger": "The first direct hostile hit the wearer lands on a qualifying hostile NPC at least 10 seconds after a durable, committed combat start qualifies; later activations require the ICD and a fresh direct hit. Target changes cannot restart the combat-age timer.",
+        "effect": "Grant +60 Haste Rating to the wearer for 6 seconds. It is one self-only timed stat effect and does not stack with itself.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Haste Rating",
+            "value": 12,
+            "unit": "rating points"
+          },
+          "signature_interval": {
+            "value": 60,
+            "unit": "haste rating points",
+            "duration_seconds": 6,
+            "minimum_encounter_age_seconds": 10,
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 90,
+        "charges": 30,
+        "empty_behavior": "The +12 Haste Rating passive remains while this exact shoulder item is equipped. The six-second +60 Haste signature is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Algalon Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 40
+        },
+        {
+          "name": "Stellar substrate preparation",
+          "active_minutes": 65
+        },
+        {
+          "name": "Shoulder-channel tempering",
+          "active_minutes": 70
+        },
+        {
+          "name": "Timed interval signature binding",
+          "active_minutes": 65
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45
+        }
+      ],
+      "teaching": "An optional, named apprentice with real Enchanting training may receive one noncombat lesson credit after recorded work on a distinct useful completed project. No native skill, XP, item, effect, or blueprint is granted.",
+      "maker_reward": "Proposed custom signature mastery: one noncombat credit for the lead artisan per useful completed project keyed to design, wearer, original host GUID, and project ID; no duplicate on replay or transfer, no native XP/skill or combat stat, and no global earned-trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Shoulder route is unqualified in the source catalogue. Durable combat-age evidence, Haste Rating, compatible channel, and lifecycle all require future route review/observation; no IDs, item, recipe, drop, or live unlock are admitted.",
+        "Algalon's proposed ordinary raid legacy amount and any separate native trait remain independent; this design issues neither and adds no +5%/+10% primary attributes.",
+        "Workshop time and custom mastery/teaching records are not native skill or XP."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/23897173 (Blizzard: Ulduar and Algalon encounter context)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.anubarak-toc",
+      "name": "Anub'arak's Buried Carapace",
+      "tier": "legendary",
+      "source_boss": "Anub'arak",
+      "source_encounter": "Trial of the Crusader RAID encounter, Argent Coliseum: Anub'arak (10/25-player raid version; not the Azjol-Nerub dungeon encounter)",
+      "host": "Shield",
+      "roles": [
+        "shield tank",
+        "block-focused defender"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Trial of the Crusader raid Anub'arak blueprint entitlement through eligible raid participation and victory; must meet the shield's real equip requirements. The Azjol-Nerub dungeon encounter does not qualify.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting 450, a learned/qualified recipe route if later admitted, an approved city station, and reserved materials. The artisan need not have killed Anub'arak.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and the canonical Trial of the Crusader raid Anub'arak encounter family only. Eligible raid victory earns the entitlement; it is separate from one tradable Anub'arak (Trial raid) Relic Core consumed per completed craft. Neither is implemented or live.",
+      "mechanic": {
+        "trigger": "The wearer successfully blocks a qualifying hostile NPC's direct melee attack with this exact shield equipped.",
+        "effect": "The wearer's next successful shield block against that same hostile NPC within 8 seconds absorbs 24 additional flat damage. This single-use carapace reinforcement does not stack and cannot trigger another proc.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Block Value",
+            "value": 16,
+            "unit": "block-value points"
+          },
+          "signature_carapace": {
+            "value": 24,
+            "unit": "additional block value",
+            "follow_up_window_seconds": 8,
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 60,
+        "charges": 30,
+        "empty_behavior": "The +16 Block Value passive remains while this exact shield is equipped. The +24 block reinforcement is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Anub'arak Trial Raid Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Raid-version eligibility, blueprint, and relic custody review",
+          "active_minutes": 40
+        },
+        {
+          "name": "Carapace substrate preparation",
+          "active_minutes": 65
+        },
+        {
+          "name": "Shield-channel tempering",
+          "active_minutes": 75
+        },
+        {
+          "name": "Controlled block signature binding",
+          "active_minutes": 70
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 50
+        }
+      ],
+      "teaching": "A named apprentice with real Enchanting training may earn one noncombat lesson credit after meaningful participation in this useful distinct project; it grants no native skill, XP, item, combat effect, or blueprint entitlement.",
+      "maker_reward": "Proposed custom signature mastery: one noncombat credit to the lead artisan per distinct useful completed project keyed to design, wearer, original host-item GUID, and project ID. Replays, reshipments, and reapplication cannot duplicate it; no native XP/skill or combat stats; no global trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Shield enchant host/replacement channel, Block Value passive, shield-block evidence, and separate Trial raid encounter attribution all need native/custom route review. No native IDs, item, drop, recipe, or live entitlement is admitted.",
+        "No proposed +5%/+10% boss-legacy attributes or separate Anub'arak trait are granted or duplicated.",
+        "City-stage time grants no native skill/XP; ordinary native craft rules remain authoritative if a future route is admitted."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/6873702 (Blizzard: Trial of the Crusader and Anub'arak raid version)",
+        "https://worldofwarcraft.blizzard.com/en-us/news/16561637 (Blizzard hotfix: Trial of the Crusader encounter identification)"
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.lich-king",
+      "name": "Frostmourne's Remembrance",
+      "tier": "legendary",
+      "source_boss": "The Lich King",
+      "source_encounter": "Icecrown Citadel raid, The Frozen Throne: The Lich King (10/25-player encounter family)",
+      "host": "Two-handed melee weapon",
+      "roles": [
+        "melee damage dealer",
+        "front-line fighter",
+        "two-handed weapon user"
+      ],
+      "wearer_gate": "Level-80 wearer who personally earned the Lich King blueprint entitlement through eligible Icecrown Citadel participation and victory; must satisfy the weapon's real equip rules. It uses only the wearer's own survival event and grants no resurrection or native skill.",
+      "artisan_gate": "A real city-based Enchanter with native Enchanting skill 450, a learned/qualified recipe route if later admitted, an approved city station, and reserved materials. The artisan need not have killed the Lich King.",
+      "unlock": "One durable, non-tradable blueprint entitlement per character and canonical Lich King encounter family, earned only after eligible raid participation and victory. Separate from the tradable Lich King Relic Core consumed once per completed craft. No custom core/drop, entitlement, recipe, or live unlock exists today.",
+      "mechanic": {
+        "trigger": "The wearer takes and survives a direct, non-periodic hostile damage event from a qualifying hostile NPC while this exact weapon is equipped.",
+        "effect": "Two seconds later, restore 1% of the wearer's maximum health, capped at 600 health, only if that same wearer is alive and still eligible. This small delayed self-recovery cannot prevent lethal damage, resurrect anyone, consume another character's soul, or affect a friend.",
+        "numbers": {
+          "passive_bonus": {
+            "stat": "Stamina",
+            "value": 8,
+            "unit": "attribute points"
+          },
+          "signature_remembrance": {
+            "value": 1,
+            "unit": "percent of maximum health",
+            "cap": 600,
+            "cap_unit": "health",
+            "delay_seconds": 2,
+            "uses_per_charge": 1
+          },
+          "capacity": 30
+        },
+        "icd_seconds": 120,
+        "charges": 30,
+        "empty_behavior": "The +8 Stamina passive remains while this exact weapon is equipped. The delayed self-only recovery is unavailable at zero charges."
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lich King Relic Core",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City Enchanting Station (facility; reused, not consumed)",
+        "Qualified artisan's ordinary nonconsumable implements (no custom item or entry assigned)"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 15,
+        "charge_restored": 10
+      },
+      "stages": [
+        {
+          "name": "Eligibility, blueprint, and relic custody review",
+          "active_minutes": 45
+        },
+        {
+          "name": "Remembrance substrate preparation",
+          "active_minutes": 65
+        },
+        {
+          "name": "Two-handed weapon-channel tempering",
+          "active_minutes": 75
+        },
+        {
+          "name": "Personal remembrance signature binding",
+          "active_minutes": 70
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 50
+        }
+      ],
+      "teaching": "An optional named apprentice with real Enchanting training may receive one noncombat lesson credit after recorded work on a distinct useful completed project; it grants no native skill, XP, item, combat effect, or blueprint entitlement.",
+      "maker_reward": "Proposed custom signature mastery: award the lead artisan one noncombat credit for each distinct useful completed project, keyed to design, wearer, original host-item GUID, and durable project ID. Replays/transfers cannot duplicate it; it grants no native skill/XP or combat stat and imposes no global earned-trait cap.",
+      "bot_rules": [
+        "Count only continuously observed eligible Enchanting-450 artisan minutes at the assigned safe city station, with reservations and custody verified; pause on logout, outage, combat, absence, danger, disconnect, or uncertainty. Never catch up on login or carry excess time.",
+        "Persist project/stage/event identity, wearer, exact host-item GUID, charges, and ICD. Reconcile before restart-resume; deduplicate callbacks. Charges and cooldown follow the item through relog, death, swap, bank, mail, and trade; active effects end on expiry or normal unequip/death/logout cleanup without free reset."
+      ],
+      "abuse_rules": [
+        "The blueprint and one consumed relic are tied to the named canonical raid encounter; after acquisition, the signature works against qualifying genuine hostile NPCs generally, including world and other-raid targets. Exclude PvP, friendly/self/environment, periodic/reflected/item/proc/legacy sources, pets/summons, encounter adds, trivial grey targets, probes, dummies, and admin fixtures.",
+        "Require a unique direct event and genuine combat-credit NPC (at least wearer level minus 5, or an elite/rare/boss). One charge per resolved event; no recursion, duplicate callback, friend target, add loop, or reset through death/relog/equipment changes.",
+        "The 30-charge item capacity and stated ICD bound this mechanic only; there is no global earned-trait or loadout cap."
+      ],
+      "dependencies": [
+        "Two-handed weapon replacement channel, Stamina, hostile event attribution, delayed bounded self-heal, and exact-item persistence require separate review and observation. No native IDs, item, recipe, drop, proc, or live unlock is admitted.",
+        "The Lich King's proposed +10% raid finale attribute amount and separate native boss trait remain outside this enchant; this design awards neither and does not add them to the item.",
+        "Timers, teaching records, and signature mastery do not grant native profession skill or XP. A later admitted real craft remains authoritative for native inputs, output, and ordinary progression."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.md",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+        "https://worldofwarcraft.blizzard.com/en-us/news/24013834 (Blizzard: Icecrown Citadel and the Frozen Throne encounter context)"
+      ]
+    }
+  ]
+}

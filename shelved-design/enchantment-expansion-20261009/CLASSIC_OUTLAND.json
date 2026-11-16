@@ -1,0 +1,1741 @@
+{
+  "schema_version": 1,
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "classic_outland",
+  "candidate_count": 8,
+  "candidates": [
+    {
+      "design_id": "enchant2.legend.ragnaros",
+      "name": "Emberwake",
+      "tier": "legendary",
+      "source_boss": "Ragnaros",
+      "source_encounter": "Molten Core — Ragnaros",
+      "host": "One two-handed melee weapon; replaces one compatible weapon-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "two-handed melee damage",
+        "weapon-focused solo play"
+      ],
+      "wearer_gate": "The exact finished two-handed weapon must be equipped. Four qualifying owner weapon hits must land on the same hostile target; the effect is item-local.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Ragnaros Emberwake Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.ragnaros",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Molten Core — Ragnaros; no existing item or drop is assumed."
+        },
+        "relic_separation": "Ragnaros Ember Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "While in combat, the wearer lands four direct melee weapon hits on the same hostile target within 10 seconds. The fourth hit spends one charge and arms an 8-second Emberwake window.",
+        "effect": "Persistent passive: +15 Fire resistance points on this item. Charged signature: The next direct melee special on that same target during the window adds Fire damage equal to 15% of that strike's pre-critical, unmodified weapon damage. The bonus is one direct hit and cannot crit or trigger another enchant.",
+        "numbers": {
+          "passive_fire_resistance_points": 15,
+          "qualifying_hits": 4,
+          "hit_window_seconds": 10,
+          "armed_window_seconds": 8,
+          "bonus_fire_damage_percent_of_precrit_weapon_damage": 15
+        },
+        "icd_seconds": 45,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Ragnaros Ember Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Fire",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Ragnaros Ember Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Emberwake Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Ragnaros",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/EasternKingdoms/BlackrockMountain/MoltenCore/boss_ragnaros.cpp",
+          "claim": "The encounter script names Lava Burst and Ragnaros's submerge/emerge cycle. Emberwake borrows that build-and-release rhythm; its four-hit meter and fire burst are a new proposal."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.onyxia",
+      "name": "Skydrake's Eye",
+      "tier": "legendary",
+      "source_boss": "Onyxia",
+      "source_encounter": "Onyxia's Lair — Onyxia",
+      "host": "One ranged weapon (bow, gun, or crossbow); replaces one compatible weapon-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "ranged damage",
+        "mobile ranged play"
+      ],
+      "wearer_gate": "The exact finished ranged weapon must be equipped. The wearer must land the ranged hits personally; pets and triggered damage do not count.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Onyxia Skydrake's Eye Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.onyxia",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Onyxia's Lair — Onyxia; no existing item or drop is assumed."
+        },
+        "relic_separation": "Onyxia Aerial Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "The wearer lands three direct ranged weapon hits on the same hostile target from at least 15 yards away within 6 seconds. The third hit spends one charge and opens a 5-second aim window.",
+        "effect": "Persistent passive: +20 ranged critical-strike rating. Charged signature: The next direct ranged weapon shot against that same target during the window gains +8 percentage points of critical-strike chance. The bonus applies to one shot only and cannot trigger itself.",
+        "numbers": {
+          "passive_ranged_critical_strike_rating": 20,
+          "minimum_range_yards": 15,
+          "qualifying_hits": 3,
+          "hit_window_seconds": 6,
+          "aim_window_seconds": 5,
+          "bonus_critical_chance_percentage_points": 8
+        },
+        "icd_seconds": 60,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Onyxia Aerial Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Air",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Onyxia Aerial Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Skydrake's Eye Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Onyxia",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/Kalimdor/OnyxiasLair/boss_onyxia.cpp",
+          "claim": "The encounter script includes liftoff, flight movement, directional breath, and landing. The proposal translates the aerial sight line into a range-and-aim sequence, not an Onyxia-style flight or breath ability."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.nefarian",
+      "name": "Chromatic Answer",
+      "tier": "legendary",
+      "source_boss": "Nefarian",
+      "source_encounter": "Blackwing Lair — Nefarian",
+      "host": "One shoulders item; replaces one compatible shoulder-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "spell damage",
+        "healing through hostile spell pressure",
+        "school-flexible casters"
+      ],
+      "wearer_gate": "The exact finished shoulder item must be equipped. A charge requires an eligible incoming hostile magic spell and the matching outgoing hostile direct spell; the item does not select or change the wearer's spells.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Nefarian Chromatic Answer Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.nefarian",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Blackwing Lair — Nefarian; no existing item or drop is assumed."
+        },
+        "relic_separation": "Nefarian Chromatic Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "After the wearer takes direct hostile spell damage of Fire, Frost, Arcane, Nature, or Shadow, the item records that school for 8 seconds. If the wearer then lands a direct hostile spell of the same school, one charge is spent.",
+        "effect": "Persistent passive: +18 spell power. Charged signature: That matching spell deals 12% more direct damage. Periodic ticks, triggered spells, pets, friendly targets, and a different school do not qualify. The incoming spell only sets the short-lived school mark.",
+        "numbers": {
+          "passive_spell_power": 18,
+          "eligible_schools": [
+            "Fire",
+            "Frost",
+            "Arcane",
+            "Nature",
+            "Shadow"
+          ],
+          "school_mark_window_seconds": 8,
+          "matching_spell_bonus_damage_percent": 12
+        },
+        "icd_seconds": 60,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Nefarian Chromatic Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Shadow",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Nefarian Chromatic Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Chromatic Answer Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Nefarian",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/EasternKingdoms/BlackrockMountain/BlackwingLair/boss_nefarian.cpp",
+          "claim": "The encounter script includes class calls and Shadow Flame. Chromatic Answer is a proposed school-response lesson; it does not reproduce a boss ability or grant a school."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.twin_emperors",
+      "name": "Conjoined Discipline",
+      "tier": "legendary",
+      "source_boss": "Twin Emperors",
+      "source_encounter": "Temple of Ahn'Qiraj — Twin Emperors (one paired encounter family)",
+      "host": "One chest item of any armor family; replaces one compatible chest-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "hybrid melee-caster damage",
+        "characters whose own kit includes both eligible event types"
+      ],
+      "wearer_gate": "The wearer must naturally have both a direct melee special and a direct hostile spell available. The enchant grants no class ability and does not force a hybrid loadout.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Twin Emperors Conjoined Discipline Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.twin_emperors",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Temple of Ahn'Qiraj — Twin Emperors (one paired encounter family); no existing item or drop is assumed."
+        },
+        "relic_separation": "Twin Emperors Paired Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "The wearer lands one direct melee special and one direct hostile damage spell on the same hostile target, in either order within 8 seconds. The paired sequence spends one charge.",
+        "effect": "Persistent passive: +12 melee hit rating and +12 spell hit rating. Charged signature: For the next 8 seconds, the wearer's next direct melee special and next direct hostile damage spell each deal 8% more damage. Each event can benefit once; unused benefit expires without a refund.",
+        "numbers": {
+          "passive_melee_hit_rating": 12,
+          "passive_spell_hit_rating": 12,
+          "pairing_window_seconds": 8,
+          "reciprocal_window_seconds": 8,
+          "bonus_damage_percent_per_event": 8,
+          "eligible_event_types": [
+            "direct melee special",
+            "direct hostile damage spell"
+          ]
+        },
+        "icd_seconds": 75,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Twin Emperors Paired Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Air",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Twin Emperors Paired Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Conjoined Discipline Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Twin Emperors",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/Kalimdor/TempleOfAhnQiraj/boss_twinemperors.cpp",
+          "claim": "The encounter script separates the twin bosses' melee and arcane roles. This is one paired-family recipe that rewards a wearer's own martial/arcane alternation."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.hakkar",
+      "name": "Blood Debt",
+      "tier": "legendary",
+      "source_boss": "Hakkar",
+      "source_encounter": "Zul'Gurub — Hakkar",
+      "host": "One one-handed melee weapon; replaces one compatible weapon-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "melee damage",
+        "health-aware solo play"
+      ],
+      "wearer_gate": "The exact finished weapon must be equipped. Only an owner-landed direct hit on a hostile target in combat can call the signature.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Hakkar Blood Debt Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.hakkar",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Zul'Gurub — Hakkar; no existing item or drop is assumed."
+        },
+        "relic_separation": "Hakkar Blood Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "When a direct melee special lands on a hostile target, the wearer may spend 2% of maximum health to empower the hit, but only if paying that cost leaves the wearer at or above 30% maximum health. Otherwise the charge and health are untouched.",
+        "effect": "Persistent passive: +15 Shadow resistance points. Charged signature: A paid hit spends one charge and adds Shadow damage equal to 12% of the hit's pre-critical, unmodified weapon damage. It heals nobody. The health cost is never borrowed from allies or paid by pets.",
+        "numbers": {
+          "passive_shadow_resistance_points": 15,
+          "health_cost_percent_of_max": 2,
+          "minimum_postcost_health_percent": 30,
+          "bonus_shadow_damage_percent_of_precrit_weapon_damage": 12
+        },
+        "icd_seconds": 60,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Hakkar Blood Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Shadow",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Hakkar Blood Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Blood Debt Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Hakkar",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/EasternKingdoms/ZulGurub/boss_hakkar.cpp",
+          "claim": "Hakkar's encounter script includes Blood Siphon and Corrupted Blood. This design turns that blood-exchange theme into an explicitly paid, nonlethal strike; it grants no siphon heal."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.lady_vashj",
+      "name": "Tidal Interchange",
+      "tier": "legendary",
+      "source_boss": "Lady Vashj",
+      "source_encounter": "Serpentshrine Cavern — Lady Vashj",
+      "host": "One mail chest item; replaces one compatible chest-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "mail wearers",
+        "nature-pressure defense",
+        "any role that can answer a direct hostile hit"
+      ],
+      "wearer_gate": "The exact finished mail chest must be equipped. The incoming Nature spell and the wearer's answering hit must involve the same hostile target.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Lady Vashj Tidal Interchange Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.lady_vashj",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Serpentshrine Cavern — Lady Vashj; no existing item or drop is assumed."
+        },
+        "relic_separation": "Lady Vashj Tidal Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "Taking direct Nature spell damage from a hostile target opens a 6-second Tidal window. If the wearer lands a direct hostile hit on that same target during the window, it becomes Static-marked for 4 seconds.",
+        "effect": "Persistent passive: +15 Nature resistance points. Charged signature: The wearer's next direct hit on the Static-marked target within 4 seconds adds Nature damage equal to 10% of that hit's pre-critical, unmodified base damage, then spends one charge. No second hit means no charge is spent.",
+        "numbers": {
+          "passive_nature_resistance_points": 15,
+          "tidal_window_seconds": 6,
+          "static_mark_window_seconds": 4,
+          "bonus_nature_damage_percent_of_precrit_base": 10
+        },
+        "icd_seconds": 45,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lady Vashj Tidal Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Water",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Lady Vashj Tidal Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Tidal Interchange Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Lady Vashj",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/Outland/CoilfangReservoir/SerpentShrine/boss_lady_vashj.cpp",
+          "claim": "The encounter script lists Static Charge and Forked Lightning. The proposed Tidal-to-Static sequence uses a short reactive window; no tainted-core or add handling is used as a trigger."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.kaelthas",
+      "name": "Phoenix Reprise",
+      "tier": "legendary",
+      "source_boss": "Kael'thas Sunstrider",
+      "source_encounter": "Tempest Keep: The Eye — Kael'thas Sunstrider",
+      "host": "One caster-appropriate head item; replaces one compatible head-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "spell damage",
+        "casters who can cast a direct hostile spell after surviving a dangerous hit"
+      ],
+      "wearer_gate": "The exact finished head item must be equipped. The wearer must survive the qualifying hostile hit and personally land the follow-up spell.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Kael'thas Phoenix Reprise Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.kaelthas",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Tempest Keep: The Eye — Kael'thas Sunstrider; no existing item or drop is assumed."
+        },
+        "relic_separation": "Kael'thas Phoenix Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "A direct hostile hit that leaves the wearer alive at or below 30% maximum health spends one charge and opens a 5-second Phoenix window.",
+        "effect": "Persistent passive: +18 spell critical-strike rating. Charged signature: The wearer's next direct hostile spell during the window causes a single delayed Fire echo one second later for 30% of the wearer's spell power. It is one bounded hit, not a periodic effect; it cannot crit, recur, restore mana, heal, or prevent death. The echo resolves only if wearer and hostile target remain alive and eligible.",
+        "numbers": {
+          "passive_spell_critical_strike_rating": 18,
+          "health_threshold_percent": 30,
+          "phoenix_window_seconds": 5,
+          "fire_echo_total_percent_of_spell_power": 30,
+          "fire_echo_delay_seconds": 1
+        },
+        "icd_seconds": 90,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Kael'thas Phoenix Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Fire",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Kael'thas Phoenix Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Phoenix Reprise Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Kael'thas Sunstrider",
+          "url": "https://www.azerothcore.org/doxygen/d4/d67/boss__kaelthas_8cpp.html",
+          "claim": "Kael'thas's encounter script includes a summoned Phoenix and phase transitions. Reprise borrows a brief return-of-fire image; it explicitly grants no resurrection, healing, damage prevention, or extra life."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    },
+    {
+      "design_id": "enchant2.legend.illidan",
+      "name": "Fel Pursuit",
+      "tier": "legendary",
+      "source_boss": "Illidan Stormrage",
+      "source_encounter": "Black Temple — Illidan Stormrage",
+      "host": "One shoulders item; replaces one compatible shoulder-enchant channel, subject to a future route qualification.",
+      "roles": [
+        "melee damage",
+        "voluntary gap-closing",
+        "mobile solo play"
+      ],
+      "wearer_gate": "The exact finished shoulder item must be equipped. The wearer must move under their own control toward a hostile combat target and land the qualifying melee special personally.",
+      "artisan_gate": {
+        "profession": "Enchanting",
+        "minimum_trained_skill": 375,
+        "minimum_character_level": 70,
+        "requirements": "The artisan must have naturally trained Enchanting 375 and character level 70, know this exact custom design entitlement, and work at an approved city enchanting station. Native profession rank, character level, reagent, slot, and recipe checks remain authoritative; this design grants no skill, rank, or XP."
+      },
+      "unlock": {
+        "exact_recipe_entitlement": "A per-character entitlement to this design only. It is created only when the recipient learns the matching custom pattern folio; it is not granted by possessing the craft relic, by guild membership, or by a boss legacy attribute reward.",
+        "blueprint": {
+          "name": "Illidan Fel Pursuit Pattern Folio",
+          "kind": "custom_unimplemented",
+          "native_item_entry": null,
+          "transferable_until_learned": true,
+          "consumed_on_learning": true,
+          "learns_only": "enchant2.legend.illidan",
+          "acquisition": "Proposed transferable encounter reward after verified eligible participation in Black Temple — Illidan Stormrage; no existing item or drop is assumed."
+        },
+        "relic_separation": "Illidan Fel Relic is a distinct transferable encounter-earned craft input, consumed once for each finished commission. It does not unlock the recipe and does not refresh charges.",
+        "encounter_award": "Both pattern folio and craft relic are proposed unimplemented encounter rewards. Award only from verified actual encounter participation and victory; never infer from a boss name, corpse, add, probe, or historical gear."
+      },
+      "mechanic": {
+        "trigger": "While in combat with a hostile target, the wearer voluntarily moves at least 8 yards toward it and lands a direct melee special on that same target within 3 seconds. One charge is then spent.",
+        "effect": "Persistent passive: +18 Agility. Charged signature: For 4 seconds, the wearer gains +20% run speed and their next direct melee special against that target deals 10% more damage. Movement is ordinary player-controlled movement; there is no forced relocation or control immunity.",
+        "numbers": {
+          "passive_agility": 18,
+          "voluntary_distance_yards": 8,
+          "approach_to_hit_window_seconds": 3,
+          "pursuit_duration_seconds": 4,
+          "run_speed_percent": 20,
+          "next_melee_special_bonus_damage_percent": 10
+        },
+        "icd_seconds": 60,
+        "icd_rule": "Cooldown begins when a charge is spent and remains attached to this item through relog and equipment changes.",
+        "charges": 30,
+        "empty_behavior": "At zero charges, the persistent passive remains and the signature is inert. A recharge batch is accepted only when at least five charges are missing; it restores exactly five. No charge is granted by relog, equip swap, death, trade, or a boss legacy award.",
+        "initial_charges": 30
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 32,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Illidan Fel Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reusable_tools": [
+        "City-owned enchanting rod and workbench fixtures",
+        "Reusable elemental containment crucible matched to this pattern",
+        "Reusable signature-alignment frame",
+        "Reusable inspection mirror and calibration weights"
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Shadow",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 10,
+        "charge_restored": 5,
+        "maximum_charges": 30,
+        "requires_boss_relic": false,
+        "requires_pattern_folio": false,
+        "notes": "Requires at least five missing charges. Consumes the complete ordinary-material bill and restores exactly five, without overfilling. No boss kill, relic/core, blueprint, or encounter token is used. Recharging is an active city workshop order; it cannot progress offline.",
+        "requires_minimum_missing_charges": 5
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualification",
+          "active_minutes": 35,
+          "activity": "Confirm the exact item, recipient entitlement, transferable boss relic, trained artisan, city station, and accepted blueprint."
+        },
+        {
+          "name": "Dust substrate",
+          "active_minutes": 75,
+          "activity": "Consume the listed Infinite Dust, Greater Cosmic Essence, and Dream Shard into the finish substrate."
+        },
+        {
+          "name": "Elemental temper",
+          "active_minutes": 60,
+          "activity": "Consume the listed Eternal materials to set this design's encounter-specific signature."
+        },
+        {
+          "name": "Relic binding",
+          "active_minutes": 85,
+          "activity": "Consume two Abyss Crystals and one Illidan Fel Relic; bind only this design's bounded passive and charged signature."
+        },
+        {
+          "name": "Inspection and attunement",
+          "active_minutes": 45,
+          "activity": "Verify the exact host, replacement channel, maker lineage, passive, charge state, and clean removal behavior before delivery."
+        }
+      ],
+      "teaching": {
+        "eligibility": "An artisan earns eligibility to teach this exact custom design only after completing one first distinct useful commission on a real customer-supplied eligible item.",
+        "method": "A separate, individually accepted city lesson can grant this exact per-character custom recipe entitlement to one learner. The learner must independently meet native Enchanting skill/rank and character-level requirements; no guild-wide or automatic learning occurs.",
+        "progression": "Teaching grants no native profession skill, profession rank, character level, XP, boss legacy reward, or combat attribute."
+      },
+      "maker_reward": {
+        "first_distinct_useful_job_only": true,
+        "custom_signature_mastery": "Proposed maker record: Fel Pursuit Signature Mastery, credited once to the artisan after a real, delivered commission using a distinct supplied item and one consumed boss relic.",
+        "teaching_eligibility": "The same first completed useful job makes the artisan eligible for the one-recipient teaching service above; it does not teach anyone automatically.",
+        "separation": "This custom craft mastery is a maker credential only. It re-awards no boss attribute or legacy, gives no native skill/rank/XP, and adds no global hero or legacy loadout cap."
+      },
+      "bot_rules": [
+        "The artisan remains in an approved city workshop for all five stages; adventurers bring the earned relic and pattern folio to the city.",
+        "Count only continuously observed eligible active workshop time. Pause on offline state, outage, combat, death, station departure, loss of control custody, missing inputs, or uncertain attempt ownership; never grant offline catch-up.",
+        "Stages are sequential and total 300 active minutes (5 hours) per completed legendary commission. No stage timer creates an intermediate free item, native skill gain, or XP.",
+        "Before any eventual native final craft, recheck exact host, entitlement, trained skill/rank, materials, inventory space, and attempt identity. Native completion and any skill gain must come from an admitted real craft."
+      ],
+      "abuse_rules": [
+        "Only the item's wearer and its own direct qualifying events can arm or resolve the signature; reject self, friendly, duel-training dummy, environmental, periodic, pet/guardian, reflected, triggered, and proc-recursive events.",
+        "The exact item's charges, cooldown, meter/marks, and active windows persist by item identity through relog, equip swap, death, and trade. Unequipping or dying may cancel an active window but never refunds a spent charge or resets cooldown.",
+        "No signature chains into another copy of itself or another proc. Same-family enchant copies cannot stack on one item; the finish replaces a single qualified channel.",
+        "No effect creates or refunds mana, materials, gold, loot, relics, charges beyond the stated recharge bill, or other goods. No encounter relic is consumed for recharge.",
+        "This design adds no global boss-legacy cap, hero cap, or forced loadout limit. Charge counts, effect windows, and cooldowns are per-item mechanic budgets."
+      ],
+      "dependencies": [
+        "All custom recipes, pattern folios, encounter relics, passives, procs, rates, item-slot channels, and recharge routes are unimplemented; native entries remain null.",
+        "Boss-specific folio and relic awards require a separately admitted encounter-participation and victory settlement; no existing boss drop or item ID is presumed.",
+        "The base weapon or armor is supplied by the customer and is not included in this material bill. One custom boss relic and the listed normal materials are consumed per finished item.",
+        "Material names come from the historical verified-name reference only; a Classic Outland acquisition/source route and correct-era availability still require qualification.",
+        "All five workshop stages are active city work totaling five hours; fees, delivery, cancellation settlement, and exact native completion route remain separately unimplemented.",
+        "The passive and signature are local to this exact finished item and do not replace, duplicate, or re-award the boss's separate personal legacy."
+      ],
+      "sources": [
+        {
+          "kind": "encounter_theme_primary_source",
+          "title": "AzerothCore encounter script: Illidan Stormrage",
+          "url": "https://github.com/azerothcore/azerothcore-wotlk/blob/master/src/server/scripts/Outland/BlackTemple/boss_illidan.cpp",
+          "claim": "Illidan's encounter script includes his demon transformation, Flame Crash, and changing phases. Fel Pursuit turns the theme into voluntary movement; it never teleports, charges, roots, or takes control of the wearer."
+        },
+        {
+          "kind": "local_design_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md",
+          "claim": "Boss flavor must express encounter identity; permanent boss legacy power remains uncapped and separate; custom effects require bounded triggers and anti-farming rules."
+        },
+        {
+          "kind": "local_workshop_policy",
+          "path": "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+          "claim": "Legendary work uses five sequential timed active city stages; offline catch-up, stage-generated free outputs, and timer-awarded skill are excluded."
+        },
+        {
+          "kind": "local_material_name_reference",
+          "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+          "claim": "existing_name_reference names are historical verified names only; no material ID, source route, recipe, cost, or native finish is admitted by this reference."
+        },
+        {
+          "kind": "existing_enchanting_catalogue",
+          "path": "outputs/profession-catalogues-20261009/enchanting.md",
+          "claim": "Existing legendary enchant concepts are separate; this lane proposes eight new exact designs with all native routes and effects unimplemented."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1949 @@
+{
+  "schema_version": 1,
+  "status": "PROPOSED_EARLY_JC_AND_SOCKET_POLICY_NOT_IMPLEMENTED",
+  "native_active": false,
+  "new_gem_designs": 30,
+  "socket_policy_version": 1,
+  "intent": "Useful affordable jewelcrafting throughout recipient levels1-60, occasional new-gear sockets and city work paid by real demand.",
+  "socket_roll": {
+    "route_candidate": "native single added prismatic enchantment channel; exact enchantment ID/client route unadmitted",
+    "eligible_sources": [
+      "qualified native craft completion",
+      "qualified earned-loot creation"
+    ],
+    "eligible_slots": [
+      "main-hand",
+      "off-hand-weapon-or-shield",
+      "ranged-weapon",
+      "chest",
+      "legs",
+      "head",
+      "shoulders",
+      "bracers",
+      "feet",
+      "waist",
+      "gloves"
+    ],
+    "quality_chances_proposed": [
+      {
+        "quality": "common",
+        "chance_basis_points": 1500
+      },
+      {
+        "quality": "uncommon",
+        "chance_basis_points": 2000
+      },
+      {
+        "quality": "rare",
+        "chance_basis_points": 2500
+      },
+      {
+        "quality": "epic",
+        "chance_basis_points": 3000
+      }
+    ],
+    "poor_and_legendary_random_roll": false,
+    "legendary_sockets": "accepted blueprint only; no extra random layer",
+    "new_sockets_per_success": 1,
+    "new_socket_color": "prismatic",
+    "requires_no_existing_added_socket": true,
+    "preserve_native_template_sockets": true,
+    "native_total_limit_requires_verification": 3,
+    "empty_roll_awards_no_gem_or_stats": true,
+    "rate_is_per_created_equipment_unit_not_batch": true,
+    "all_levels_candidate_scope": "admitted gear from level1 onward; levels61+ use separately admitted existing/later gems",
+    "event_identity": [
+      "source_event",
+      "output_item_guid",
+      "policy_version"
+    ],
+    "must_persist_no_socket_outcomes": true,
+    "rng": "server-owned unbiased draw, retained once; no client seed, re-open or crash retry reroll",
+    "non_roll_events": [
+      "auction purchase",
+      "mail",
+      "bank",
+      "trade",
+      "equip",
+      "login",
+      "save-load",
+      "repair",
+      "gem replacement",
+      "resale"
+    ],
+    "existing_items_retrofit": false,
+    "random_template_global_mutation": false,
+    "adapter_admitted": false,
+    "excluded_sources": [
+      "probe",
+      "fixture",
+      "conjured",
+      "background-factory-free-gear",
+      "admin-grant",
+      "quest-use-prop"
+    ],
+    "requires_available_native_gem_socket_position": true,
+    "creation_anchor_unique_across_policy_versions": true,
+    "first_captured_policy_version_immutable": true,
+    "policy_reload_may_not_reroll_existing_item": true
+  },
+  "tiers": [
+    {
+      "id": "novice",
+      "name": "Novice",
+      "levels": [
+        1,
+        10
+      ],
+      "skill": 1,
+      "stone": "Rough Stone",
+      "materials": [
+        "Tigerseye",
+        "Tigerseye",
+        "Tigerseye",
+        "Malachite",
+        "Tigerseye",
+        "Malachite"
+      ],
+      "values": [
+        1,
+        1,
+        1,
+        2,
+        1,
+        1
+      ],
+      "time_seconds": 20
+    },
+    {
+      "id": "apprentice",
+      "name": "Apprentice",
+      "levels": [
+        11,
+        20
+      ],
+      "skill": 50,
+      "stone": "Coarse Stone",
+      "materials": [
+        "Shadowgem",
+        "Shadowgem",
+        "Lesser Moonstone",
+        "Moss Agate",
+        "Shadowgem",
+        "Lesser Moonstone"
+      ],
+      "values": [
+        2,
+        2,
+        2,
+        3,
+        2,
+        2
+      ],
+      "time_seconds": 25
+    },
+    {
+      "id": "journeyman",
+      "name": "Journeyman",
+      "levels": [
+        21,
+        30
+      ],
+      "skill": 100,
+      "stone": "Heavy Stone",
+      "materials": [
+        "Citrine",
+        "Jade",
+        "Citrine",
+        "Jade",
+        "Citrine",
+        "Jade"
+      ],
+      "values": [
+        3,
+        3,
+        3,
+        4,
+        3,
+        3
+      ],
+      "time_seconds": 30
+    },
+    {
+      "id": "adept",
+      "name": "Adept",
+      "levels": [
+        31,
+        45
+      ],
+      "skill": 150,
+      "stone": "Solid Stone",
+      "materials": [
+        "Star Ruby",
+        "Star Ruby",
+        "Citrine",
+        "Aquamarine",
+        "Star Ruby",
+        "Aquamarine"
+      ],
+      "values": [
+        4,
+        4,
+        4,
+        6,
+        5,
+        4
+      ],
+      "time_seconds": 40
+    },
+    {
+      "id": "artisan",
+      "name": "Artisan",
+      "levels": [
+        46,
+        60
+      ],
+      "skill": 225,
+      "stone": "Dense Stone",
+      "materials": [
+        "Large Opal",
+        "Huge Emerald",
+        "Azerothian Diamond",
+        "Blue Sapphire",
+        "Large Opal",
+        "Huge Emerald"
+      ],
+      "values": [
+        6,
+        6,
+        6,
+        9,
+        8,
+        6
+      ],
+      "time_seconds": 50
+    }
+  ],
+  "gems": [
+    {
+      "design_id": "jewel.early.novice.bold",
+      "proposed_name": "Novice Bold Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        1,
+        10
+      ],
+      "recipient_min_level": 1,
+      "host_min_required_level": 1,
+      "tier_id": "novice",
+      "color": "red",
+      "stat": "strength",
+      "flat_amount": 1,
+      "role_candidates": [
+        "melee-strength",
+        "tank-strength"
+      ],
+      "craft_skill_min_proposed": 1,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Tigerseye",
+          "quantity": 1,
+          "native_item_entry": 818,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Rough Stone",
+          "quantity": 2,
+          "native_item_entry": 2835,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 20,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.novice.delicate",
+      "proposed_name": "Novice Delicate Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        1,
+        10
+      ],
+      "recipient_min_level": 1,
+      "host_min_required_level": 1,
+      "tier_id": "novice",
+      "color": "red",
+      "stat": "agility",
+      "flat_amount": 1,
+      "role_candidates": [
+        "melee-agility",
+        "ranged-physical"
+      ],
+      "craft_skill_min_proposed": 1,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Tigerseye",
+          "quantity": 1,
+          "native_item_entry": 818,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Rough Stone",
+          "quantity": 2,
+          "native_item_entry": 2835,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 20,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.novice.brilliant",
+      "proposed_name": "Novice Brilliant Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        1,
+        10
+      ],
+      "recipient_min_level": 1,
+      "host_min_required_level": 1,
+      "tier_id": "novice",
+      "color": "yellow",
+      "stat": "intellect",
+      "flat_amount": 1,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 1,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Tigerseye",
+          "quantity": 1,
+          "native_item_entry": 818,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Rough Stone",
+          "quantity": 2,
+          "native_item_entry": 2835,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 20,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.novice.solid",
+      "proposed_name": "Novice Solid Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        1,
+        10
+      ],
+      "recipient_min_level": 1,
+      "host_min_required_level": 1,
+      "tier_id": "novice",
+      "color": "blue",
+      "stat": "stamina",
+      "flat_amount": 2,
+      "role_candidates": [
+        "tank",
+        "survival-demand"
+      ],
+      "craft_skill_min_proposed": 1,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Malachite",
+          "quantity": 1,
+          "native_item_entry": 774,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Rough Stone",
+          "quantity": 2,
+          "native_item_entry": 2835,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 20,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.novice.runed",
+      "proposed_name": "Novice Runed Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        1,
+        10
+      ],
+      "recipient_min_level": 1,
+      "host_min_required_level": 1,
+      "tier_id": "novice",
+      "color": "red",
+      "stat": "spell_power",
+      "flat_amount": 1,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 1,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Tigerseye",
+          "quantity": 1,
+          "native_item_entry": 818,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Rough Stone",
+          "quantity": 2,
+          "native_item_entry": 2835,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 20,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.novice.lustrous",
+      "proposed_name": "Novice Lustrous Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        1,
+        10
+      ],
+      "recipient_min_level": 1,
+      "host_min_required_level": 1,
+      "tier_id": "novice",
+      "color": "blue",
+      "stat": "spirit",
+      "flat_amount": 1,
+      "role_candidates": [
+        "spirit-using-healer",
+        "spirit-using-caster"
+      ],
+      "craft_skill_min_proposed": 1,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Malachite",
+          "quantity": 1,
+          "native_item_entry": 774,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Rough Stone",
+          "quantity": 2,
+          "native_item_entry": 2835,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 20,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.apprentice.bold",
+      "proposed_name": "Apprentice Bold Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        11,
+        20
+      ],
+      "recipient_min_level": 11,
+      "host_min_required_level": 11,
+      "tier_id": "apprentice",
+      "color": "red",
+      "stat": "strength",
+      "flat_amount": 2,
+      "role_candidates": [
+        "melee-strength",
+        "tank-strength"
+      ],
+      "craft_skill_min_proposed": 50,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Shadowgem",
+          "quantity": 1,
+          "native_item_entry": 1210,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Coarse Stone",
+          "quantity": 2,
+          "native_item_entry": 2836,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 25,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.apprentice.delicate",
+      "proposed_name": "Apprentice Delicate Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        11,
+        20
+      ],
+      "recipient_min_level": 11,
+      "host_min_required_level": 11,
+      "tier_id": "apprentice",
+      "color": "red",
+      "stat": "agility",
+      "flat_amount": 2,
+      "role_candidates": [
+        "melee-agility",
+        "ranged-physical"
+      ],
+      "craft_skill_min_proposed": 50,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Shadowgem",
+          "quantity": 1,
+          "native_item_entry": 1210,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Coarse Stone",
+          "quantity": 2,
+          "native_item_entry": 2836,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 25,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.apprentice.brilliant",
+      "proposed_name": "Apprentice Brilliant Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        11,
+        20
+      ],
+      "recipient_min_level": 11,
+      "host_min_required_level": 11,
+      "tier_id": "apprentice",
+      "color": "yellow",
+      "stat": "intellect",
+      "flat_amount": 2,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 50,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Lesser Moonstone",
+          "quantity": 1,
+          "native_item_entry": 1705,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Coarse Stone",
+          "quantity": 2,
+          "native_item_entry": 2836,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 25,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.apprentice.solid",
+      "proposed_name": "Apprentice Solid Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        11,
+        20
+      ],
+      "recipient_min_level": 11,
+      "host_min_required_level": 11,
+      "tier_id": "apprentice",
+      "color": "blue",
+      "stat": "stamina",
+      "flat_amount": 3,
+      "role_candidates": [
+        "tank",
+        "survival-demand"
+      ],
+      "craft_skill_min_proposed": 50,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Moss Agate",
+          "quantity": 1,
+          "native_item_entry": 1206,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Coarse Stone",
+          "quantity": 2,
+          "native_item_entry": 2836,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 25,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.apprentice.runed",
+      "proposed_name": "Apprentice Runed Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        11,
+        20
+      ],
+      "recipient_min_level": 11,
+      "host_min_required_level": 11,
+      "tier_id": "apprentice",
+      "color": "red",
+      "stat": "spell_power",
+      "flat_amount": 2,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 50,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Shadowgem",
+          "quantity": 1,
+          "native_item_entry": 1210,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Coarse Stone",
+          "quantity": 2,
+          "native_item_entry": 2836,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 25,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.apprentice.lustrous",
+      "proposed_name": "Apprentice Lustrous Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        11,
+        20
+      ],
+      "recipient_min_level": 11,
+      "host_min_required_level": 11,
+      "tier_id": "apprentice",
+      "color": "blue",
+      "stat": "spirit",
+      "flat_amount": 2,
+      "role_candidates": [
+        "spirit-using-healer",
+        "spirit-using-caster"
+      ],
+      "craft_skill_min_proposed": 50,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Lesser Moonstone",
+          "quantity": 1,
+          "native_item_entry": 1705,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Coarse Stone",
+          "quantity": 2,
+          "native_item_entry": 2836,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 25,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.journeyman.bold",
+      "proposed_name": "Journeyman Bold Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        21,
+        30
+      ],
+      "recipient_min_level": 21,
+      "host_min_required_level": 21,
+      "tier_id": "journeyman",
+      "color": "red",
+      "stat": "strength",
+      "flat_amount": 3,
+      "role_candidates": [
+        "melee-strength",
+        "tank-strength"
+      ],
+      "craft_skill_min_proposed": 100,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Citrine",
+          "quantity": 1,
+          "native_item_entry": 3864,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Heavy Stone",
+          "quantity": 2,
+          "native_item_entry": 2838,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 30,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.journeyman.delicate",
+      "proposed_name": "Journeyman Delicate Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        21,
+        30
+      ],
+      "recipient_min_level": 21,
+      "host_min_required_level": 21,
+      "tier_id": "journeyman",
+      "color": "red",
+      "stat": "agility",
+      "flat_amount": 3,
+      "role_candidates": [
+        "melee-agility",
+        "ranged-physical"
+      ],
+      "craft_skill_min_proposed": 100,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Jade",
+          "quantity": 1,
+          "native_item_entry": 1529,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Heavy Stone",
+          "quantity": 2,
+          "native_item_entry": 2838,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 30,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.journeyman.brilliant",
+      "proposed_name": "Journeyman Brilliant Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        21,
+        30
+      ],
+      "recipient_min_level": 21,
+      "host_min_required_level": 21,
+      "tier_id": "journeyman",
+      "color": "yellow",
+      "stat": "intellect",
+      "flat_amount": 3,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 100,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Citrine",
+          "quantity": 1,
+          "native_item_entry": 3864,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Heavy Stone",
+          "quantity": 2,
+          "native_item_entry": 2838,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 30,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.journeyman.solid",
+      "proposed_name": "Journeyman Solid Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        21,
+        30
+      ],
+      "recipient_min_level": 21,
+      "host_min_required_level": 21,
+      "tier_id": "journeyman",
+      "color": "blue",
+      "stat": "stamina",
+      "flat_amount": 4,
+      "role_candidates": [
+        "tank",
+        "survival-demand"
+      ],
+      "craft_skill_min_proposed": 100,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Jade",
+          "quantity": 1,
+          "native_item_entry": 1529,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Heavy Stone",
+          "quantity": 2,
+          "native_item_entry": 2838,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 30,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.journeyman.runed",
+      "proposed_name": "Journeyman Runed Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        21,
+        30
+      ],
+      "recipient_min_level": 21,
+      "host_min_required_level": 21,
+      "tier_id": "journeyman",
+      "color": "red",
+      "stat": "spell_power",
+      "flat_amount": 3,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 100,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Citrine",
+          "quantity": 1,
+          "native_item_entry": 3864,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Heavy Stone",
+          "quantity": 2,
+          "native_item_entry": 2838,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 30,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.journeyman.lustrous",
+      "proposed_name": "Journeyman Lustrous Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        21,
+        30
+      ],
+      "recipient_min_level": 21,
+      "host_min_required_level": 21,
+      "tier_id": "journeyman",
+      "color": "blue",
+      "stat": "spirit",
+      "flat_amount": 3,
+      "role_candidates": [
+        "spirit-using-healer",
+        "spirit-using-caster"
+      ],
+      "craft_skill_min_proposed": 100,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Jade",
+          "quantity": 1,
+          "native_item_entry": 1529,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Heavy Stone",
+          "quantity": 2,
+          "native_item_entry": 2838,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 30,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.adept.bold",
+      "proposed_name": "Adept Bold Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        31,
+        45
+      ],
+      "recipient_min_level": 31,
+      "host_min_required_level": 31,
+      "tier_id": "adept",
+      "color": "red",
+      "stat": "strength",
+      "flat_amount": 4,
+      "role_candidates": [
+        "melee-strength",
+        "tank-strength"
+      ],
+      "craft_skill_min_proposed": 150,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Star Ruby",
+          "quantity": 1,
+          "native_item_entry": 7910,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Solid Stone",
+          "quantity": 2,
+          "native_item_entry": 7912,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 40,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.adept.delicate",
+      "proposed_name": "Adept Delicate Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        31,
+        45
+      ],
+      "recipient_min_level": 31,
+      "host_min_required_level": 31,
+      "tier_id": "adept",
+      "color": "red",
+      "stat": "agility",
+      "flat_amount": 4,
+      "role_candidates": [
+        "melee-agility",
+        "ranged-physical"
+      ],
+      "craft_skill_min_proposed": 150,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Star Ruby",
+          "quantity": 1,
+          "native_item_entry": 7910,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Solid Stone",
+          "quantity": 2,
+          "native_item_entry": 7912,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 40,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.adept.brilliant",
+      "proposed_name": "Adept Brilliant Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        31,
+        45
+      ],
+      "recipient_min_level": 31,
+      "host_min_required_level": 31,
+      "tier_id": "adept",
+      "color": "yellow",
+      "stat": "intellect",
+      "flat_amount": 4,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 150,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Citrine",
+          "quantity": 1,
+          "native_item_entry": 3864,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Solid Stone",
+          "quantity": 2,
+          "native_item_entry": 7912,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 40,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.adept.solid",
+      "proposed_name": "Adept Solid Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        31,
+        45
+      ],
+      "recipient_min_level": 31,
+      "host_min_required_level": 31,
+      "tier_id": "adept",
+      "color": "blue",
+      "stat": "stamina",
+      "flat_amount": 6,
+      "role_candidates": [
+        "tank",
+        "survival-demand"
+      ],
+      "craft_skill_min_proposed": 150,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Aquamarine",
+          "quantity": 1,
+          "native_item_entry": 7909,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Solid Stone",
+          "quantity": 2,
+          "native_item_entry": 7912,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 40,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.adept.runed",
+      "proposed_name": "Adept Runed Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        31,
+        45
+      ],
+      "recipient_min_level": 31,
+      "host_min_required_level": 31,
+      "tier_id": "adept",
+      "color": "red",
+      "stat": "spell_power",
+      "flat_amount": 5,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 150,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Star Ruby",
+          "quantity": 1,
+          "native_item_entry": 7910,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Solid Stone",
+          "quantity": 2,
+          "native_item_entry": 7912,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 40,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.adept.lustrous",
+      "proposed_name": "Adept Lustrous Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        31,
+        45
+      ],
+      "recipient_min_level": 31,
+      "host_min_required_level": 31,
+      "tier_id": "adept",
+      "color": "blue",
+      "stat": "spirit",
+      "flat_amount": 4,
+      "role_candidates": [
+        "spirit-using-healer",
+        "spirit-using-caster"
+      ],
+      "craft_skill_min_proposed": 150,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Aquamarine",
+          "quantity": 1,
+          "native_item_entry": 7909,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Solid Stone",
+          "quantity": 2,
+          "native_item_entry": 7912,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 40,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.artisan.bold",
+      "proposed_name": "Artisan Bold Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        46,
+        60
+      ],
+      "recipient_min_level": 46,
+      "host_min_required_level": 46,
+      "tier_id": "artisan",
+      "color": "red",
+      "stat": "strength",
+      "flat_amount": 6,
+      "role_candidates": [
+        "melee-strength",
+        "tank-strength"
+      ],
+      "craft_skill_min_proposed": 225,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Large Opal",
+          "quantity": 1,
+          "native_item_entry": 12799,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Dense Stone",
+          "quantity": 2,
+          "native_item_entry": 12365,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 50,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.artisan.delicate",
+      "proposed_name": "Artisan Delicate Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        46,
+        60
+      ],
+      "recipient_min_level": 46,
+      "host_min_required_level": 46,
+      "tier_id": "artisan",
+      "color": "red",
+      "stat": "agility",
+      "flat_amount": 6,
+      "role_candidates": [
+        "melee-agility",
+        "ranged-physical"
+      ],
+      "craft_skill_min_proposed": 225,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Huge Emerald",
+          "quantity": 1,
+          "native_item_entry": 12364,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Dense Stone",
+          "quantity": 2,
+          "native_item_entry": 12365,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 50,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.artisan.brilliant",
+      "proposed_name": "Artisan Brilliant Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        46,
+        60
+      ],
+      "recipient_min_level": 46,
+      "host_min_required_level": 46,
+      "tier_id": "artisan",
+      "color": "yellow",
+      "stat": "intellect",
+      "flat_amount": 6,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 225,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Azerothian Diamond",
+          "quantity": 1,
+          "native_item_entry": 12800,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Dense Stone",
+          "quantity": 2,
+          "native_item_entry": 12365,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 50,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.artisan.solid",
+      "proposed_name": "Artisan Solid Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        46,
+        60
+      ],
+      "recipient_min_level": 46,
+      "host_min_required_level": 46,
+      "tier_id": "artisan",
+      "color": "blue",
+      "stat": "stamina",
+      "flat_amount": 9,
+      "role_candidates": [
+        "tank",
+        "survival-demand"
+      ],
+      "craft_skill_min_proposed": 225,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Blue Sapphire",
+          "quantity": 1,
+          "native_item_entry": 12361,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Dense Stone",
+          "quantity": 2,
+          "native_item_entry": 12365,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 50,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.artisan.runed",
+      "proposed_name": "Artisan Runed Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        46,
+        60
+      ],
+      "recipient_min_level": 46,
+      "host_min_required_level": 46,
+      "tier_id": "artisan",
+      "color": "red",
+      "stat": "spell_power",
+      "flat_amount": 8,
+      "role_candidates": [
+        "caster",
+        "healer"
+      ],
+      "craft_skill_min_proposed": 225,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Large Opal",
+          "quantity": 1,
+          "native_item_entry": 12799,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Dense Stone",
+          "quantity": 2,
+          "native_item_entry": 12365,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 50,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    },
+    {
+      "design_id": "jewel.early.artisan.lustrous",
+      "proposed_name": "Artisan Lustrous Cut",
+      "profession": "jewelcrafting",
+      "recipient_level_reference_band": [
+        46,
+        60
+      ],
+      "recipient_min_level": 46,
+      "host_min_required_level": 46,
+      "tier_id": "artisan",
+      "color": "blue",
+      "stat": "spirit",
+      "flat_amount": 6,
+      "role_candidates": [
+        "spirit-using-healer",
+        "spirit-using-caster"
+      ],
+      "craft_skill_min_proposed": 225,
+      "trained_rank_and_recipe_required": true,
+      "native_crafter_level_gates_required": true,
+      "recipient_requires_jewelcrafting": false,
+      "output": {
+        "quantity": 1,
+        "unit": "cut gem"
+      },
+      "materials": [
+        {
+          "item_name": "Huge Emerald",
+          "quantity": 1,
+          "native_item_entry": 12364,
+          "native_name_verified": true
+        },
+        {
+          "item_name": "Dense Stone",
+          "quantity": 2,
+          "native_item_entry": 12365,
+          "native_name_verified": true
+        }
+      ],
+      "tools_held_not_consumed": [
+        {
+          "item_name": "Jeweler's Kit",
+          "native_item_entry": 20815
+        },
+        {
+          "item_name": "Simple Grinder",
+          "native_item_entry": 20824
+        }
+      ],
+      "proposed_observed_city_work_seconds": 50,
+      "native_recipe_costs_verified": false,
+      "native_ids_admitted": false,
+      "native_active": false,
+      "socketing_level_adapter_admitted": false,
+      "costs_proposed": true
+    }
+  ],
+  "dependencies": [
+    "atomic creation/once-roll persistence",
+    "native compatible socket enchantment",
+    "client-visible gem properties and effect records",
+    "all-user host/recipient level enforcement at socket/equip/load",
+    "native trained recipes/material consumption",
+    "bot role-aware demand/socket action",
+    "save-load-mail-equip lifecycle"
+  ],
+  "host_tier_gate": "max(1, verified native host RequiredLevel) >= gem minimum; wearer level must also qualify"
+}

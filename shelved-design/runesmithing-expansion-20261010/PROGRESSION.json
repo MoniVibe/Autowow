@@ -1,0 +1,1752 @@
+{
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "progression",
+  "career": {
+    "name": "Runesmithing",
+    "kind": "custom_city_workshop_mastery",
+    "range": [
+      1,
+      450
+    ],
+    "native_profession_skill": false,
+    "grants": [
+      "custom_career_points_only",
+      "non_repeat_teaching_citations",
+      "maker_fame"
+    ],
+    "never_grants": [
+      "character_xp",
+      "native_profession_skill_or_rank",
+      "character_level",
+      "class_ability",
+      "armor_or_weapon_proficiency",
+      "items_or_reagents",
+      "equipment_permission"
+    ],
+    "training": [
+      {
+        "at_skill": 1,
+        "lesson": "initial_city_apprenticeship",
+        "cap": 50,
+        "rank": "Novice"
+      },
+      {
+        "at_skill": 50,
+        "lesson": "Apprentice",
+        "cap": 125
+      },
+      {
+        "at_skill": 125,
+        "lesson": "Journeyman",
+        "cap": 200
+      },
+      {
+        "at_skill": 200,
+        "lesson": "Artisan",
+        "cap": 275
+      },
+      {
+        "at_skill": 275,
+        "lesson": "Expert",
+        "cap": 350
+      },
+      {
+        "at_skill": 350,
+        "lesson": "Master",
+        "cap": 400
+      },
+      {
+        "at_skill": 400,
+        "lesson": "Grandmaster",
+        "cap": 450
+      }
+    ],
+    "practice": {
+      "award": "1 custom career point per unique settled, funded host-application order, capped at 450; never per new item output",
+      "requires": [
+        "full listed reagent bill consumed and recorded by an authoritative application receipt",
+        "buyer- or guild-supplied compatible existing host; preserve its same item GUID",
+        "quoted commission fee paid by player, recipient, or guild treasury with a funded demand receipt",
+        "successful authoritative inscription application records the same host GUID, new inscription revision, exact recipe design, consumed input receipt, and active rune-channel state",
+        "delivery returns that same host GUID with the inscription to a distinct intended recipient character who has genuine equipment use; recipient may share maker account or guild, including a society bot",
+        "replacement application uses a different admitted design ID with a functional upgrade for the recipient, new revision, full bill and fee, and funded demand; only one inscription is active per host",
+        "durable settlement binds maker character, order unit, design, payer/funding receipt, recipient character, host GUID, inscription revision, input-consumption receipt and exact application receipt"
+      ],
+      "receipt_key": [
+        "maker_character_id",
+        "order_unit_id",
+        "recipe_id",
+        "payer_or_funding_receipt_id",
+        "recipient_character_id",
+        "host_item_guid",
+        "inscription_revision",
+        "input_consumption_receipt_id",
+        "application_receipt_id"
+      ],
+      "same_host_rule": "The exact design ID may earn practice on a given host GUID once. Same-design removal/reapplication, refresh, no-op replacement, or wash never earns credit. A later distinct design can earn credit on that same GUID only as a genuinely useful recipient-requested functional upgrade under the replacement requirements.",
+      "no_credit_for": [
+        "timer slices",
+        "replayed callbacks or application receipts",
+        "transfers or shipments",
+        "returns/refunds/cancelled work",
+        "maker character as recipient",
+        "same-design reapplication on same host",
+        "unneeded/no-op replacement or unpaid work",
+        "reagent shuffles",
+        "native profession or character XP"
+      ],
+      "batch_rule": "Each paid unit is one host application with its own order, input-consumption receipt, new inscription revision, exact application receipt, and delivery of the same host GUID. Replays are idempotent."
+    },
+    "teaching": {
+      "eligible_after_custom_skill": 200,
+      "method": "A qualified mentor supervises a learner with required lesson and career gates while the learner performs a real full-bill funded host application for a distinct intended recipient. The payer may be a guild treasury and recipient may share the learner account; the host GUID is preserved.",
+      "learner_reward": "normal career point for the learner’s own uniquely settled application only",
+      "mentor_reward": "one non-repeat teaching citation after the learner’s distinct settled application; ledger/fame only",
+      "never_grants": [
+        "native skill",
+        "native rank",
+        "character XP",
+        "free career points"
+      ]
+    },
+    "specialties": [
+      {
+        "id": "resonant_arms",
+        "display_name": "Resonant Arms",
+        "requires": "Three distinct settled field applications across at least two weapon patterns, including a hostile-spell pattern.",
+        "masterwork_unlock": "rune.masterwork.61_70.chromatic_counterpoint"
+      },
+      {
+        "id": "aegis_relief",
+        "display_name": "Aegis Relief",
+        "requires": "Three distinct settled applications across shield and body-armor hosts, including an ally-protection or heal pattern.",
+        "masterwork_unlock": "rune.masterwork.71_80.last_light_lattice"
+      }
+    ],
+    "trainer_and_specialty_receipts": "Bound to distinct paid work; non-repeatable, non-transferable, and not convertible to character power."
+  },
+  "progression_matrix": [
+    {
+      "band": "novice",
+      "field_career_min": [
+        1,
+        10
+      ],
+      "masterwork_career_min": null,
+      "blank": "Copper Rune Blank",
+      "field_recipe_count": 2,
+      "wearer_level_band": [
+        1,
+        20
+      ],
+      "host_gate": "host native required level <= wearer; native slot/class/proficiency and recipe item-power budget/role must be compatible"
+    },
+    {
+      "band": "apprentice",
+      "field_career_min": 100,
+      "masterwork_career_min": null,
+      "blank": "Iron Rune Blank",
+      "field_recipe_count": 2,
+      "wearer_level_band": [
+        21,
+        40
+      ],
+      "host_gate": "host native required level <= wearer; native slot/class/proficiency and recipe item-power budget/role must be compatible"
+    },
+    {
+      "band": "journeyman",
+      "field_career_min": 200,
+      "masterwork_career_min": null,
+      "blank": "Mithril Rune Blank",
+      "field_recipe_count": 2,
+      "wearer_level_band": [
+        41,
+        60
+      ],
+      "host_gate": "host native required level <= wearer; native slot/class/proficiency and recipe item-power budget/role must be compatible"
+    },
+    {
+      "band": "artisan",
+      "field_career_min": 300,
+      "masterwork_career_min": 350,
+      "blank": "Adamantite Rune Blank",
+      "field_recipe_count": 2,
+      "wearer_level_band": [
+        61,
+        70
+      ],
+      "host_gate": "host native required level <= wearer; native slot/class/proficiency and recipe item-power budget/role must be compatible"
+    },
+    {
+      "band": "master",
+      "field_career_min": 350,
+      "masterwork_career_min": 400,
+      "blank": "Saronite Rune Blank",
+      "field_recipe_count": 2,
+      "wearer_level_band": [
+        71,
+        80
+      ],
+      "host_gate": "host native required level <= wearer; native slot/class/proficiency and recipe item-power budget/role must be compatible"
+    }
+  ],
+  "shared_rules": {
+    "pattern": "Exactly one shared-vocabulary trigger, transformation and release per recipe; combination admission remains explicit.",
+    "host": "Buyer or guild supplies one compatible existing item separately; wearer level selects the variant, host native required level must be <= wearer, and native slot/class/proficiency plus recipe item-power budget/role must be compatible. Successful application preserves the exact host GUID, creates a new inscription revision/receipt, and produces no new item. One rune inscription is active per host; a different design replacement requires a funded, useful functional upgrade. Host is not in the reagent bill.",
+    "native_gates": "Wearer level and host required level must both be within the recipe band. Preserve actual base item slot, class/subclass, class restrictions, native skill/level checks and wearer proficiency at order, completion and equip. Plate requires existing plate proficiency; shields require existing shield proficiency.",
+    "charges": "All inscriptions are durable and have no charge counter, refill, or scheduled upkeep.",
+    "identity": "Per-item ICD state persists through relog, trade, storage and equipment swaps. Duplicate copies of a design do not multiply one wearer's instance.",
+    "event_exclusions": [
+      "friendly",
+      "self-inflicted",
+      "periodic",
+      "reflected",
+      "environmental",
+      "probe",
+      "factory",
+      "administrative",
+      "custom-proc-generated"
+    ],
+    "prohibitions": [
+      "no proc recursion",
+      "no forced movement",
+      "no resurrection",
+      "no immunity",
+      "no resource generation",
+      "no free goods/skills/XP",
+      "no guaranteed victory",
+      "no DK ability dependency"
+    ],
+    "components": "Copper, Iron, Mithril, Adamantite and Saronite Rune Blank plus Runic Binder are custom_unimplemented. Recipes consume blanks/binders OR raw expansion components, never both; these cards consume named components plus listed ordinary reagents only.",
+    "native_item_entry": "null for every name reference; names are not admitted routes or sourcing claims.",
+    "client_and_policy": "Native profession/client UI feasibility and default two-profession-limit policy remain unqualified and pending; no displacement or native activation is implied.",
+    "city_service": "Quote complete bill, fee, station, active stages and delivery before accepting. City artisan benefit is fame and teaching eligibility only.",
+    "hostile_source_gate": "Hostile proc sources are NPC-only. Player/PvP damage triggers remain excluded pending separate qualification. Genuinely injured allied heal recipients may be players or NPCs.",
+    "application_receipt": "Award career credit only after unique authoritative same-host application and input-consumption receipts plus funded delivery to a distinct recipient character. Account or guild equality does not invalidate real society supply; maker-character self-recipient, repeated same-design host application, and wash/no-op replacements are ineligible."
+  },
+  "recipes": [
+    {
+      "design_id": "rune.field.novice.grounding_reprise",
+      "tier": "field",
+      "name": "Grounding Reprise",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "guard_block",
+        "transformation": "gather_impact",
+        "release": "reprisal_hit"
+      },
+      "host": {
+        "family": "shield",
+        "slots": [
+          "off_hand"
+        ],
+        "native_shield_proficiency_required": true,
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "shield",
+          "defense-capable-host"
+        ]
+      },
+      "roles": [
+        "shield-bearing frontline",
+        "protection"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          1,
+          20
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true,
+        "native_shield_proficiency_required": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 1,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "After wearer blocks a hostile melee attack, the next direct weapon hit on that attacker within 5 seconds.",
+        "effect": "That hit gains a small physical reprisal.",
+        "numbers": {
+          "bonus_weapon_hit_damage_percent": 6,
+          "max_extra_damage": 3,
+          "pending_seconds": 5
+        },
+        "icd_seconds": 20,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Copper Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Strange Dust",
+          "quantity": 5,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Magic Essence",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Set the grounding marks",
+          "active_minutes": 12
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require a genuine hostile direct melee block and same-hostile follow-up. Exclude custom events and proc recursion; persist item ICD through swaps, transfer and relog.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "native block-event provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; lower-band input names unverified; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.novice.kindled_mending",
+      "tier": "field",
+      "name": "Kindled Mending",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "mercy_heal",
+        "transformation": "weave_life",
+        "release": "heal_echo"
+      },
+      "host": {
+        "family": "body_armor",
+        "slots": [
+          "chest"
+        ],
+        "armor_classes": [
+          "cloth",
+          "leather",
+          "mail",
+          "plate_if_natively_proficient"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "armor"
+        ]
+      },
+      "roles": [
+        "healer",
+        "group support"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          1,
+          20
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "plate_requires_existing_plate_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 10,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "A direct heal restores at least 5% maximum health to a genuinely injured living friendly; the recipient remains injured at release.",
+        "effect": "Echo a small portion of that heal to the same recipient, bounded by current missing health; rune-origin healing cannot trigger another pattern.",
+        "numbers": {
+          "echo_percent": 10,
+          "max_echo": 3,
+          "recipient": "same injured friendly"
+        },
+        "icd_seconds": 30,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Copper Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Strange Dust",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Magic Essence",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Weave the first-aid stitch",
+          "active_minutes": 14
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require real missing health and direct healing to two distinct eligible allies; exclude self/friendly damage provenance, overheal, periodic heals and rune echoes.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "genuine injury/heal provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; lower-band input names unverified; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.apprentice.closing_cadence",
+      "tier": "field",
+      "name": "Closing Cadence",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "pursuit_approach",
+        "transformation": "resonate_pair",
+        "release": "haste_window"
+      },
+      "host": {
+        "family": "weapon",
+        "slots": [
+          "one_hand",
+          "two_hand"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "weapon"
+        ]
+      },
+      "roles": [
+        "melee initiator",
+        "pursuit"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          21,
+          40
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 100,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "Voluntary movement from at least 12 yards to within 5 yards of an already hostile target, followed by a direct hostile attack within 3 seconds.",
+        "effect": "Brief attack-speed window; no movement is forced or accelerated.",
+        "numbers": {
+          "attack_speed_percent": 4,
+          "duration_seconds": 4,
+          "approach_window_seconds": 3
+        },
+        "icd_seconds": 30,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Iron Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Soul Dust",
+          "quantity": 7,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Mystic Essence",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Small Glowing Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Tune the approach marks",
+          "active_minutes": 18
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Use wearer-origin voluntary movement and hostile-target provenance. Exclude scripted movement, probes, friendly events and rune-generated attacks.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "movement and hostile-event provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; lower-band input names unverified; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.apprentice.parry_shelter",
+      "tier": "field",
+      "name": "Parry Shelter",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "guard_parry",
+        "transformation": "bind_protection",
+        "release": "ward_absorb"
+      },
+      "host": {
+        "family": "shield",
+        "slots": [
+          "off_hand"
+        ],
+        "native_shield_proficiency_required": true,
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "shield",
+          "parry-capable-host",
+          "weapon-or-shield",
+          "defense-capable-host"
+        ]
+      },
+      "roles": [
+        "defender",
+        "off-tank"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          21,
+          40
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "native_shield_proficiency_required": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 100,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "After parrying hostile direct melee, the next hostile direct hit within 5 seconds.",
+        "effect": "Absorb a small portion of one hit.",
+        "numbers": {
+          "absorb_percent_max_health": 2,
+          "max_absorb": 16,
+          "pending_seconds": 5
+        },
+        "icd_seconds": 30,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Iron Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Soul Dust",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Mystic Essence",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Small Glowing Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Bind the shield ward",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require the exact shield host equipped for a genuine hostile melee parry. Never infer or grant shield proficiency.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "parry and hostile-hit provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; lower-band input names unverified; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.journeyman.duellists_spark",
+      "tier": "field",
+      "name": "Duellist's Spark",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "cadence_combat",
+        "transformation": "resonate_pair",
+        "release": "elemental_burst"
+      },
+      "host": {
+        "family": "weapon",
+        "slots": [
+          "one_hand",
+          "two_hand"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "weapon"
+        ]
+      },
+      "roles": [
+        "battlemage",
+        "hybrid damage"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          41,
+          60
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 200,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "The wearer lands a successful native melee special on a hostile NPC, then the wearer lands a hostile NPC direct spell within 6 seconds; the next hostile NPC direct spell within 5 seconds is the release.",
+        "effect": "Add capped fire damage to that next spell; no rune effect may prime another.",
+        "numbers": {
+          "bonus_spell_power_percent": 5,
+          "max_extra_damage": 24,
+          "prime_window_seconds": 5,
+          "event_sequence": [
+            "wearer_native_melee_special_hits_hostile_npc",
+            "wearer_hostile_npc_direct_spell"
+          ]
+        },
+        "icd_seconds": 25,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Mithril Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Vision Dust",
+          "quantity": 9,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Nether Essence",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Small Radiant Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Focus the paired attack marks",
+          "active_minutes": 24
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require separate native melee-special and hostile-spell event identities; use only direct hostile spells; exclude proc-generated hits and recursion.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "native ability and hostile-event provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; lower-band input names unverified; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.journeyman.held_ground",
+      "tier": "field",
+      "name": "Held Ground",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "steadfast_hold",
+        "transformation": "bind_protection",
+        "release": "escape_window"
+      },
+      "host": {
+        "family": "body_armor",
+        "slots": [
+          "chest"
+        ],
+        "armor_classes": [
+          "cloth",
+          "leather",
+          "mail",
+          "plate_if_natively_proficient"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "armor"
+        ]
+      },
+      "roles": [
+        "tank",
+        "line-holder"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          41,
+          60
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "plate_requires_existing_plate_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 200,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "While a hostile NPC remains within 8 yards, the wearer stays within a 1-yard radius of the same position for 5 continuously observed seconds. Circling, movement outside tolerance, forced displacement, or position correction resets the hold; the next hostile NPC direct hit qualifies.",
+        "effect": "Reduce root/snare duration applied for a brief window; does not break control or move wearer.",
+        "numbers": {
+          "root_snare_duration_reduction_percent": 20,
+          "duration_seconds": 4,
+          "hold_seconds": 5,
+          "position_tolerance_yards": 1,
+          "hostile_threat_range_yards": 8,
+          "continuous_hold_seconds": 5,
+          "reset_on": [
+            "circling",
+            "movement_outside_tolerance",
+            "forced_displacement",
+            "position_correction"
+          ]
+        },
+        "icd_seconds": 35,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Mithril Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Vision Dust",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Nether Essence",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Small Radiant Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Lay the steady guard weave",
+          "active_minutes": 26
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Use actual hostile attacker range and wearer movement state. Never force movement, clear active crowd control or count rune-generated hits.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "position, forced-movement and hostile-hit provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; lower-band input names unverified; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.artisan.measured_onslaught",
+      "tier": "field",
+      "name": "Measured Onslaught",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "cadence_combat",
+        "transformation": "gather_heat",
+        "release": "haste_window"
+      },
+      "host": {
+        "family": "weapon",
+        "slots": [
+          "one_hand",
+          "two_hand"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "weapon"
+        ]
+      },
+      "roles": [
+        "melee spellblade",
+        "fire-combat cadence"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          61,
+          70
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true,
+        "native_fire_spell_capability_required": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 300,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "The wearer lands a successful native melee special on a hostile NPC, then the wearer lands a successful native Fire spell on a hostile NPC within 8 seconds.",
+        "effect": "Prime a short melee-haste window. Native Fire spell capability is required; no class spell or school proficiency is granted.",
+        "numbers": {
+          "melee_haste_percent": 5,
+          "duration_seconds": 4,
+          "sequence_window_seconds": 8,
+          "event_sequence": [
+            "wearer_native_melee_special_hits_hostile_npc",
+            "wearer_native_fire_spell_hits_hostile_npc"
+          ]
+        },
+        "icd_seconds": 30,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Arcane Dust",
+          "quantity": 11,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Planar Essence",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Prismatic Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Set the measured cadence",
+          "active_minutes": 30
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require the same wearer’s successful native melee special and native Fire spell against hostile NPC targets in order within 8 seconds; no proc-generated events. Enforce the existing native Fire-capability gate.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "native ability identity and hostile-hit provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; input names are unverified name references; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.artisan.ambush_veil",
+      "tier": "field",
+      "name": "Ambush Veil",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "ambush_survive",
+        "transformation": "bind_protection",
+        "release": "ward_absorb"
+      },
+      "host": {
+        "family": "body_armor",
+        "slots": [
+          "chest"
+        ],
+        "armor_classes": [
+          "cloth",
+          "leather",
+          "mail",
+          "plate_if_natively_proficient"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "armor"
+        ]
+      },
+      "roles": [
+        "scout",
+        "backline survival"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          61,
+          70
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "plate_requires_existing_plate_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 300,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "In a newly identified engagement, the wearer survives the witnessed hostile NPC opener direct critical hit while at or below 60% health. Only that opener event can prime the pattern; later critical hits in the engagement do not.",
+        "effect": "Absorb the next hostile NPC direct spell hit within 5 seconds.",
+        "numbers": {
+          "absorb_percent_max_health": 3,
+          "max_absorb": 45,
+          "pending_seconds": 5,
+          "new_engagement_required": true,
+          "opener_event_only": true,
+          "wearer_survives_opener": true,
+          "health_percent_max": 60
+        },
+        "icd_seconds": 40,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Arcane Dust",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Planar Essence",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Prismatic Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Weave the ambush veil",
+          "active_minutes": 32
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require a newly identified engagement and the exact witnessed hostile NPC opener direct critical hit, with survival and pre-hit health threshold. Later critical hits in the same engagement cannot re-prime; exclude replayed, self/friendly, periodic, reflected and proc-origin damage.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "critical-hit, health and hostile-spell provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; input names are unverified name references; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.master.bulwarks_answer",
+      "tier": "field",
+      "name": "Bulwark's Answer",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "cadence_combat",
+        "transformation": "gather_impact",
+        "release": "reprisal_hit"
+      },
+      "host": {
+        "family": "weapon",
+        "slots": [
+          "one_hand",
+          "two_hand"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "weapon"
+        ]
+      },
+      "roles": [
+        "main tank",
+        "counterattack"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          71,
+          80
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 350,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "While a hostile NPC remains within 8 yards, the wearer stays within a 1-yard radius of the same position for 8 continuously observed seconds. Then a hostile direct melee hit lands on the wearer, followed by the wearer landing a native weapon special on that same NPC within 5 seconds; the counter special is the reprisal release.",
+        "effect": "The counter special receives a capped reprisal bonus against the causal attacker.",
+        "numbers": {
+          "bonus_weapon_hit_damage_percent": 7,
+          "max_extra_damage": 70,
+          "hold_seconds": 8,
+          "counter_window_seconds": 5,
+          "position_tolerance_yards": 1,
+          "hostile_threat_range_yards": 8,
+          "continuous_hold_seconds": 8
+        },
+        "icd_seconds": 35,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Saronite Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Infinite Dust",
+          "quantity": 12,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Set the counterstrike grain",
+          "active_minutes": 34
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Use hostile attacker identity, proximity and direct melee impact. Count a single native weapon special; exclude rune-generated attacks and repeated callback settlement.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "position, melee-hit and native special provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; high-band names are references only; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.field.master.vigilant_benediction",
+      "tier": "field",
+      "name": "Vigilant Benediction",
+      "source_boss": null,
+      "source_encounter": "City workshop field study; no boss provenance claimed",
+      "pattern": {
+        "trigger": "mercy_heal",
+        "transformation": "weave_life",
+        "release": "ward_absorb"
+      },
+      "host": {
+        "family": "shield",
+        "slots": [
+          "off_hand"
+        ],
+        "native_shield_proficiency_required": true,
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "shield",
+          "healer-host",
+          "armor"
+        ]
+      },
+      "roles": [
+        "healer",
+        "protective support"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          71,
+          80
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "native_shield_proficiency_required": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 350,
+        "trained_cap_must_permit_minimum": true,
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "While the shield is equipped, a direct heal restores at least 15% maximum health to a genuinely injured ally.",
+        "effect": "Grant that same ally an absorb for the next hostile NPC direct hit within 5 seconds.",
+        "numbers": {
+          "absorb_percent_wearer_max_health": 2,
+          "max_absorb": 90,
+          "recipient": "same healed ally",
+          "next_hit_window_seconds": 5
+        },
+        "icd_seconds": 35,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Saronite Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Infinite Dust",
+          "quantity": 10,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Set the guarded healing pair",
+          "active_minutes": 36
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Work only at the admitted city station with full bill, quoted fee, safe custody and real compatible existing host supplied by buyer or guild; preserve its item GUID; use the wearers level variant and require host native required level <= wearer plus compatible item-power budget/role; preserve urgent ordinary gear capacity.",
+      "abuse_rules": "Require real missing health, native shield host equipped, and two distinct direct-heal targets. Echo cannot target full health or trigger another rune.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and commission receipts",
+        "host-native equipment/proficiency validation",
+        "genuine injury/heal provenance",
+        "native shield proficiency verification",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, named components, gates and safety policy",
+        "WORKSHOPS.md: active city work and durable settlement policy",
+        "Custom effect/balance proposal; high-band names are references only; no source/drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.masterwork.61_70.chromatic_counterpoint",
+      "tier": "masterwork",
+      "name": "Chromatic Counterpoint",
+      "source_boss": null,
+      "source_encounter": "City workshop masterwork commission; no boss provenance claimed",
+      "pattern": {
+        "trigger": "spell_alternation",
+        "transformation": "resonate_pair",
+        "release": "elemental_burst"
+      },
+      "host": {
+        "family": "weapon",
+        "slots": [
+          "one_hand",
+          "two_hand"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "weapon"
+        ]
+      },
+      "roles": [
+        "battlemage",
+        "hybrid damage"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          61,
+          70
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 350,
+        "trained_cap_must_permit_minimum": true,
+        "specialty": "resonant_arms",
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "The wearer lands a hostile NPC direct spell of admitted school A, then the wearer lands a distinct native melee special on a hostile NPC, then the wearer completes a hostile NPC direct spell of a different admitted school B within 12 seconds. The two spell casts must have unique native cast IDs and different schools.",
+        "effect": "Final melee or spell hit adds capped arcane damage; rune cannot prime itself.",
+        "numbers": {
+          "applicable_attack_or_spell_power_percent": 8,
+          "max_extra_damage": 110,
+          "cycle_window_seconds": 12,
+          "final_hit_window_seconds": 5,
+          "distinct_spell_schools": 2,
+          "intervening_wearer_melee_specials": 1,
+          "cast_ids_unique": true,
+          "sequence_window_seconds": 12
+        },
+        "icd_seconds": 45,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Arcane Dust",
+          "quantity": 18,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lesser Planar Essence",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Prismatic Shard",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Pattern the counterpoint",
+          "active_minutes": 18
+        },
+        {
+          "name": "Temper the weapon lattice",
+          "active_minutes": 20
+        },
+        {
+          "name": "Inspect event and item identity",
+          "active_minutes": 17
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame_and_masterwork_ledger",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Reserve the full bill and protect ordinary gear capacity; each sequential stage needs continuous eligible city work. No offline, outage, pause or login catch-up.",
+      "abuse_rules": "Require distinct native event identities and correct alternating order. Exclude proc-generated events and protect one completed stage/cursor per committed work slice.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and masterwork stage receipts",
+        "host-native equipment/proficiency validation",
+        "resonant_arms credential",
+        "native spell/melee event provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, components, career separation and safety policy",
+        "WORKSHOPS.md: staged sequential active city work and durable settlement",
+        "Custom effect/balance proposal; no boss/source drop claim"
+      ]
+    },
+    {
+      "design_id": "rune.masterwork.71_80.last_light_lattice",
+      "tier": "masterwork",
+      "name": "Last-Light Lattice",
+      "source_boss": null,
+      "source_encounter": "City workshop masterwork commission; no boss provenance claimed",
+      "pattern": {
+        "trigger": "mercy_heal",
+        "transformation": "weave_life",
+        "release": "heal_echo"
+      },
+      "host": {
+        "family": "body_armor",
+        "slots": [
+          "chest"
+        ],
+        "armor_classes": [
+          "cloth",
+          "leather",
+          "mail",
+          "plate_if_natively_proficient"
+        ],
+        "base_item_must_be_native_usable": true,
+        "qualified_host_tags": [
+          "armor"
+        ]
+      },
+      "roles": [
+        "healer",
+        "rescue support"
+      ],
+      "wearer_gate": {
+        "level_band": [
+          71,
+          80
+        ],
+        "native_item_requirements_and_proficiency": true,
+        "plate_requires_existing_plate_proficiency": true,
+        "host_native_required_level_at_most_wearer": true,
+        "item_power_budget_and_role_compatible": true
+      },
+      "artisan_gate": {
+        "custom_career": "Runesmithing",
+        "minimum": 400,
+        "trained_cap_must_permit_minimum": true,
+        "specialty": "aegis_relief",
+        "native_profession_rank_not_substituted": true
+      },
+      "mechanic": {
+        "trigger": "Additional eligibility: wearer is at or below 35% health and survived a hostile NPC direct hit within the last 6 seconds. A direct heal to a genuinely injured ally is the actual mercy_heal trigger.",
+        "effect": "Echo part of that heal to the same recipient if still injured; no recursion, resurrection or overheal.",
+        "numbers": {
+          "echo_percent": 15,
+          "max_echo": 140,
+          "recipient": "same injured friendly",
+          "survival_gate_seconds": 6,
+          "wearer_health_percent_max": 35
+        },
+        "icd_seconds": 60,
+        "maintenance": "durable; no charge counter or refill"
+      },
+      "inputs": [
+        {
+          "name": "Saronite Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Infinite Dust",
+          "quantity": 20,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 5,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Prepare the rescue lattice",
+          "active_minutes": 20
+        },
+        {
+          "name": "Weave the guarded echo",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspect transfer and no-recursion behavior",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "kind": "durable",
+        "required": false,
+        "recharge": false,
+        "charge_state": "not_applicable"
+      },
+      "teaching": {
+        "eligible": true,
+        "citation_only_after_distinct_paid_learner_work": true
+      },
+      "maker_reward": {
+        "kind": "workshop_fame_and_masterwork_ledger",
+        "requires_settled_unique_paid_receipt": true,
+        "combat_power": false
+      },
+      "bot_rules": "Reserve the full bill and protect ordinary gear capacity; each sequential stage needs continuous eligible city work. No offline, outage, pause or login catch-up.",
+      "abuse_rules": "Require pre-hit low-health state, genuine hostile hit and distinct injured ally. Exclude periodic/self/friendly/proc damage, overheal and all recursion.",
+      "dependencies": [
+        "custom item/effect hook",
+        "durable item ICD and masterwork stage receipts",
+        "host-native equipment/proficiency validation",
+        "aegis_relief credential",
+        "genuine injury/heal and hostile-hit provenance",
+        "NPC-only hostile event gate; PvP trigger qualification pending"
+      ],
+      "sources": [
+        "BRIEF.md: shared glyphs, components, career separation and safety policy",
+        "WORKSHOPS.md: staged sequential active city work and durable settlement",
+        "Custom effect/balance proposal; high-band names are references only; no source/drop claim"
+      ]
+    }
+  ]
+}

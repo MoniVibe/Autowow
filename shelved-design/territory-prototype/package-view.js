@@ -1,0 +1,30 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const source=name=>fs.readFileSync(path.join(__dirname,name),'utf8');
+let fragment=source('view.fragment.html');
+for(const [token,file] of [['ENGINE','economy.js'],['SCENARIO','scenario.js'],['VIEW','view.js']])
+  fragment=fragment.replace(`/* AUTOWOW_OFFLINE_${token} */`,()=>source(file));
+if(fragment.includes('AUTOWOW_OFFLINE_')||Buffer.byteLength(fragment)>=1000000||/\\[n"]/.test(fragment)) throw new Error('Invalid fragment packaging');
+const output=path.join(__dirname,'territory-strategy.html');
+fs.writeFileSync(output,fragment);
+const assert=require('node:assert/strict');
+const ids=[...fragment.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
+const elements=Object.fromEntries(ids.map(id=>[id,{value:id==='autowow-strategy-hours'?'12':'',textContent:'',innerHTML:'',hidden:false,events:{},
+  addEventListener(event,handler){this.events[event]=handler;},querySelector(selector){const element=elements[selector.slice(1)];if(!element)throw new Error(`Missing element ${selector}`);return element;}}]));
+const context={document:{getElementById(id){if(!elements[id])throw new Error(`Missing root ${id}`);return elements[id];}},window:{addEventListener(){}}};
+vm.createContext(context);
+const scripts=[...fragment.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]);
+for(const script of scripts)vm.runInContext(script,context,{timeout:5000});
+assert.equal(elements['autowow-strategy-error'].hidden,true);
+assert.match(elements['autowow-strategy-comparison'].innerHTML,/>36</);
+assert.match(elements['autowow-strategy-comparison'].innerHTML,/>64</);
+elements['autowow-strategy-hours'].value='4';elements['autowow-strategy-hours'].events.change();
+assert.equal(elements['autowow-strategy-hour-value'].textContent,'4 hours');
+assert.match(elements['autowow-strategy-comparison'].innerHTML,/>12</);
+assert.match(elements['autowow-strategy-comparison'].innerHTML,/>0</);
+assert.equal(elements['autowow-strategy-error'].hidden,true);
+assert.match(elements['autowow-strategy-balances'].innerHTML,/Copper ore/);
+console.log('Fragment read-back, identifier/element checks and 12→4 hour interaction smoke PASS (synthetic DOM; no browser layout claim).');
+console.log(output);

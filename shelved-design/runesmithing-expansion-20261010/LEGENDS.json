@@ -1,0 +1,1472 @@
+{
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "LEGENDS",
+  "recipes": [
+    {
+      "design_id": "rune.legend.ragnaros",
+      "tier": "legendary",
+      "name": "Magmawake Inscription",
+      "source_boss": "Ragnaros",
+      "source_encounter": "Ragnaros, Molten Core raid encounter",
+      "pattern": {
+        "trigger": "spell_alternation",
+        "transformation": "gather_heat",
+        "release": "haste_window"
+      },
+      "host": "One existing caster main-hand weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "caster",
+        "spell-damage"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally know and be permitted to cast a direct hostile Fire spell and a direct hostile spell of a different native school; no spell is granted. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, complete two direct hostile spell casts of different native schools against the same hostile NPC within 8 seconds; one cast must be Fire school.",
+        "effect": "After the school-pair primes heat, the next completed direct Fire spell against a hostile NPC opens a self-only casting-tempo window; it causes no additional damage or spell.",
+        "numbers": "8% spell haste for 3 seconds after that Fire cast; one charge per window and no rune-added mana or cooldown reduction.",
+        "icd_seconds": 14,
+        "maintenance": "Exceptional charged signature; exact capacity and ordinary city refill bill are in the maintenance record."
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Titanium Bar",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Ragnaros Ember Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Billet preparation",
+          "active_minutes": 35
+        },
+        {
+          "name": "Rune-channel cutting",
+          "active_minutes": 30
+        },
+        {
+          "name": "Fire tempering",
+          "active_minutes": 40
+        },
+        {
+          "name": "Burst calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "The host remains ordinary durable equipment; only the signature is charged.",
+        "capacity": 30,
+        "activation_cost": 1,
+        "zero_charge_behavior": "At zero charges the rune is inert; the host remains usable and keeps its normal equipment behavior.",
+        "refill": {
+          "charges_restored": 5,
+          "minimum_missing": 5,
+          "active_city_minutes": 8,
+          "consumes_relic": false,
+          "inputs": [
+            {
+              "name": "Eternal Fire",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            },
+            {
+              "name": "Infinite Dust",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            }
+          ]
+        },
+        "identity": "Charge count and ICD remain bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset them."
+      },
+      "teaching": "A transferable Magmawake pattern blueprint is proposed as loot only after an eligible character participates in the exact Ragnaros encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Ragnaros Ember Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require two distinct native hostile spell schools against one hostile NPC, including Fire, then consume the primed state on one completed Fire cast. Ignore self, friendly, pet, environmental, training, probe, factory, and arranged events; no recursion, stacked rune haste, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, event provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.sapphiron",
+      "tier": "legendary",
+      "name": "Stillwinter Inscription",
+      "source_boss": "Sapphiron",
+      "source_encounter": "Sapphiron, Naxxramas raid encounter",
+      "pattern": {
+        "trigger": "steadfast_hold",
+        "transformation": "bind_protection",
+        "release": "escape_window"
+      },
+      "host": "One existing pair of boots; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "frontline",
+        "scout",
+        "survivability"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. No class ability is granted; native host requirements remain in force. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, hold a stable position within 1 yard for 8 uninterrupted seconds while a hostile threat remains active; then receive a hostile NPC root or movement slow within 5 seconds.",
+        "effect": "The inscription trims one qualifying impairment and opens a brief escape window; it does not prevent, remove, or make the wearer immune to control.",
+        "numbers": "Shortens that one effect's remaining duration by at most 1 second and grants 10% run speed for 2 seconds; one charge per release.",
+        "icd_seconds": 25,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Saronite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Infinite Dust",
+          "quantity": 16,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 5,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Frozen Orb",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Sapphiron Frostglass Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Boot-rune fitting",
+          "active_minutes": 30
+        },
+        {
+          "name": "Frostline carving",
+          "active_minutes": 25
+        },
+        {
+          "name": "Cold binding",
+          "active_minutes": 35
+        },
+        {
+          "name": "Movement calibration",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspection and sealing",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Stillwinter pattern blueprint is proposed as loot only after an eligible character participates in the exact Sapphiron encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Sapphiron Frostglass Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require an observed 1-yard stable hold under active hostile threat, followed by a hostile NPC root/slow; no forced movement, immunity, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, impairment provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.twin_emperors",
+      "tier": "legendary",
+      "name": "Concordant Tempo Inscription",
+      "source_boss": "Twin Emperors",
+      "source_encounter": "Twin Emperors, Temple of Ahn'Qiraj paired raid encounter",
+      "pattern": {
+        "trigger": "cadence_combat",
+        "transformation": "resonate_pair",
+        "release": "haste_window"
+      },
+      "host": "One existing caster main-hand weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "caster",
+        "support"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally have the native interrupt capability used by the trigger and a direct hostile spell of a different native school; no ability is granted. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, successfully interrupt one hostile NPC cast, then complete a direct hostile spell of a different native school against that same NPC within 6 seconds. The interrupt receipt and spell cast are the two named event categories.",
+        "effect": "The matched interrupt-and-spell pair opens self-only casting tempo; it creates no extra attack, spell, mana, or cooldown reduction.",
+        "numbers": "6% spell haste for 4 seconds; one window per eligible ICD.",
+        "icd_seconds": 20,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Mithril Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Infinite Dust",
+          "quantity": 14,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Scarlet Ruby",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Twin Emperors Concord Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Paired billet preparation",
+          "active_minutes": 30
+        },
+        {
+          "name": "Twin-channel inscription",
+          "active_minutes": 35
+        },
+        {
+          "name": "Resonance setting",
+          "active_minutes": 30
+        },
+        {
+          "name": "Tempo calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and sealing",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Concordant Tempo pattern blueprint is proposed as loot only after an eligible character participates in the exact Twin Emperors encounter and paired victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Twin Emperors Concord Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require one successful hostile interrupt receipt and the different-school direct spell against the same hostile NPC within the declared window; ignore arranged, friendly, self, pet, probe, factory, and proc-origin events.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, event provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.nefarian",
+      "tier": "legendary",
+      "name": "Blackwing Riposte Inscription",
+      "source_boss": "Nefarian",
+      "source_encounter": "Nefarian, Blackwing Lair raid encounter",
+      "pattern": {
+        "trigger": "guard_parry",
+        "transformation": "gather_impact",
+        "release": "reprisal_hit"
+      },
+      "host": "One existing one-handed melee weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "melee",
+        "tank",
+        "interrupter"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally meet native parry/weapon proficiency and interrupt requirements; the inscription grants neither. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, parry one melee attack from a hostile NPC, then successfully interrupt that same NPC's cast within 4 seconds.",
+        "effect": "The next melee special against that NPC within 5 seconds receives a bounded damage addition; it does not add an attack or interrupt by itself.",
+        "numbers": "Adds 10% of the triggering special's pre-rune damage, capped at 200 damage; one reprisal per eligible ICD window.",
+        "icd_seconds": 18,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Titanium Bar",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Monarch Topaz",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Nefarian Claw Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Weapon billet preparation",
+          "active_minutes": 35
+        },
+        {
+          "name": "Parry-channel cutting",
+          "active_minutes": 30
+        },
+        {
+          "name": "Impact binding",
+          "active_minutes": 40
+        },
+        {
+          "name": "Riposte calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Blackwing Riposte pattern blueprint is proposed as loot only after an eligible character participates in the exact Nefarian encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Nefarian Claw Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require native parry and interrupt receipts from the same hostile NPC; ignore self, friendly, pet, environmental, training, probe, factory, and arranged events. No recursion or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, combat-event provenance, interrupt receipt, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.kaelthas",
+      "tier": "legendary",
+      "name": "Phoenix Aegis Inscription",
+      "source_boss": "Kael'thas Sunstrider",
+      "source_encounter": "Kael'thas Sunstrider, Tempest Keep raid encounter",
+      "pattern": {
+        "trigger": "guard_block",
+        "transformation": "bind_protection",
+        "release": "ward_absorb"
+      },
+      "host": "One existing shield; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "tank",
+        "frontline",
+        "spell-defense"
+      ],
+      "wearer_gate": "Character level 70 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally meet native shield and block proficiency/capability requirements; the inscription does not grant block. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, block a melee attack by one hostile NPC, then observe that same NPC begin a direct spell cast within 4 seconds.",
+        "effect": "A short ward absorbs part of the next direct spell damage the wearer takes; it does not reflect damage or prevent control effects.",
+        "numbers": "Absorbs 15% of the wearer's maximum health, capped at 400 damage; expires after 5 seconds or on use; one charge per ward.",
+        "icd_seconds": 25,
+        "maintenance": "Exceptional charged signature; exact capacity and ordinary city refill bill are in the maintenance record."
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 4,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Spellweave",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Kael'thas Phoenix Crest Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Shield billet preparation",
+          "active_minutes": 35
+        },
+        {
+          "name": "Phoenix-channel cutting",
+          "active_minutes": 35
+        },
+        {
+          "name": "Arcane ward binding",
+          "active_minutes": 40
+        },
+        {
+          "name": "Absorption calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "The host remains ordinary durable equipment; only the signature is charged.",
+        "capacity": 30,
+        "activation_cost": 1,
+        "zero_charge_behavior": "At zero charges the rune is inert; the host remains usable and keeps its normal equipment behavior.",
+        "refill": {
+          "charges_restored": 5,
+          "minimum_missing": 5,
+          "active_city_minutes": 8,
+          "consumes_relic": false,
+          "inputs": [
+            {
+              "name": "Eternal Fire",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            },
+            {
+              "name": "Greater Cosmic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            }
+          ]
+        },
+        "identity": "Charge count and ICD remain bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset them."
+      },
+      "teaching": "A transferable Phoenix Aegis Script pattern blueprint is proposed as loot only after an eligible character participates in the exact Kael'thas Sunstrider encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Kael'thas Phoenix Crest Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require matching block and cast-start events from the same hostile NPC; ignore self, friendly, pet, environmental, training, probe, factory, and arranged events. No reflection, recursion, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, spell-damage provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.illidan",
+      "tier": "legendary",
+      "name": "Blackened Pursuit Inscription",
+      "source_boss": "Illidan Stormrage",
+      "source_encounter": "Illidan Stormrage, Black Temple raid encounter",
+      "pattern": {
+        "trigger": "ambush_survive",
+        "transformation": "bind_protection",
+        "release": "escape_window"
+      },
+      "host": "One existing pair of bracers; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "frontline",
+        "scout",
+        "survivability"
+      ],
+      "wearer_gate": "Character level 70 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. No class ability is granted; native host requirements remain in force. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During a newly identified hostile NPC engagement, survive the opener's first direct hit above 0 health; a direct hit from a different hostile NPC must land within 6 seconds.",
+        "effect": "The wearer gains a short voluntary escape window; it neither moves the character nor removes existing control.",
+        "numbers": "Grants 15% run speed for 2 seconds and reduces the next hostile slow's duration by at most 1 second if applied within 4 seconds; one window per eligible ICD.",
+        "icd_seconds": 30,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 4,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternium Thread",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Ebonweave",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Illidan Crescent Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Bracer backing preparation",
+          "active_minutes": 35
+        },
+        {
+          "name": "Pursuit-channel cutting",
+          "active_minutes": 35
+        },
+        {
+          "name": "Impact binding",
+          "active_minutes": 40
+        },
+        {
+          "name": "Escape calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final stitch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Blackened Pursuit pattern blueprint is proposed as loot only after an eligible character participates in the exact Illidan Stormrage encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Illidan Crescent Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require the opener in a newly identified hostile NPC engagement and a distinct hostile attacker; ignore self, friendly, pet, environmental, training, probe, factory, and arranged events. No death prevention, forced movement, recursion, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, attacker identity, damage provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.malygos",
+      "tier": "legendary",
+      "name": "Leyline Conductor Inscription",
+      "source_boss": "Malygos",
+      "source_encounter": "Malygos, Eye of Eternity raid encounter",
+      "pattern": {
+        "trigger": "spell_alternation",
+        "transformation": "focus_arcana",
+        "release": "elemental_burst"
+      },
+      "host": "One existing caster main-hand weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "caster",
+        "hybrid",
+        "spell-damage"
+      ],
+      "wearer_gate": "Character level 80 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally know a direct hostile Arcane spell and a direct hostile spell of a different native school; no spell is granted. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, complete two direct hostile spell casts of different native schools against the same hostile NPC within 8 seconds; one cast must be Arcane school.",
+        "effect": "The next direct Arcane spell the wearer lands against a hostile NPC within 6 seconds releases one single-target Arcane burst; it creates no second spell or splash damage.",
+        "numbers": "Adds Arcane damage equal to 8% of that spell's pre-rune damage, capped at 250 per activation; one burst per eligible ICD.",
+        "icd_seconds": 20,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Saronite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 4,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Sky Sapphire",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Malygos Arcane Conduit Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Conductor blank preparation",
+          "active_minutes": 30
+        },
+        {
+          "name": "Leyline-channel cutting",
+          "active_minutes": 35
+        },
+        {
+          "name": "Arcane focusing",
+          "active_minutes": 35
+        },
+        {
+          "name": "Burst calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Leyline Conductor pattern blueprint is proposed as loot only after an eligible character participates in the exact Malygos encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Malygos Arcane Conduit Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require two distinct successful native hostile spell schools against the same hostile NPC, including Arcane, then consume the primed state on one direct Arcane spell. Ignore self, friendly, environmental, training, probe, factory, and proc-origin events; no splash, recursion, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, spell-school provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.algalon",
+      "tier": "legendary",
+      "name": "Last Constellation Inscription",
+      "source_boss": "Algalon the Observer",
+      "source_encounter": "Algalon the Observer, Ulduar raid encounter",
+      "pattern": {
+        "trigger": "ambush_survive",
+        "transformation": "bind_protection",
+        "release": "ward_absorb"
+      },
+      "host": "One existing chest armor piece; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "tank",
+        "frontline",
+        "survivability"
+      ],
+      "wearer_gate": "Character level 80 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. No class ability is granted; native host requirements remain in force. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During a newly identified hostile NPC engagement, survive the opener's first direct hit above 0 health; if that hit leaves the wearer below 40% health, prepare a ward after the hit resolves.",
+        "effect": "The ward absorbs part of the next direct hostile NPC hit. It cannot prevent the opener hit, heal, revive, or grant immunity.",
+        "numbers": "Absorbs 12% of the wearer's maximum health, capped at 350 damage, from the next direct hostile-NPC damage within 4 seconds; one charge per ward.",
+        "icd_seconds": 35,
+        "maintenance": "Exceptional charged signature; exact capacity and ordinary city refill bill are in the maintenance record."
+      },
+      "inputs": [
+        {
+          "name": "Saronite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 4,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Titanium Bar",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Frozen Orb",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Algalon Star Map Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Armor plate preparation",
+          "active_minutes": 40
+        },
+        {
+          "name": "Constellation-channel cutting",
+          "active_minutes": 35
+        },
+        {
+          "name": "Paired-impact binding",
+          "active_minutes": 40
+        },
+        {
+          "name": "Ward calibration",
+          "active_minutes": 35
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "The host remains ordinary durable equipment; only the signature is charged.",
+        "capacity": 24,
+        "activation_cost": 1,
+        "zero_charge_behavior": "At zero charges the rune is inert; the host remains usable and keeps its normal equipment behavior.",
+        "refill": {
+          "charges_restored": 5,
+          "minimum_missing": 5,
+          "active_city_minutes": 8,
+          "consumes_relic": false,
+          "inputs": [
+            {
+              "name": "Eternal Earth",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            },
+            {
+              "name": "Infinite Dust",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            }
+          ]
+        },
+        "identity": "Charge count and ICD remain bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset them."
+      },
+      "teaching": "A transferable Last Constellation Seal pattern blueprint is proposed as loot only after an eligible character participates in the exact Algalon the Observer encounter and victory is recorded. A city artisan can study it once at a workshop without entering the raid. The separate Algalon Star Map Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require survival of the new engagement opener and the declared below-40% post-hit state; ignore self, friendly, pet, environmental, training, probe, factory, and arranged events. No lethal-hit prevention, recursion, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, health and damage provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.azuregos",
+      "tier": "legendary",
+      "name": "Blue Dragon's Measure Inscription",
+      "source_boss": "Azuregos",
+      "source_encounter": "Azuregos, outdoor world-boss encounter",
+      "pattern": {
+        "trigger": "spell_alternation",
+        "transformation": "resonate_pair",
+        "release": "haste_window"
+      },
+      "host": "One existing caster main-hand weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "caster",
+        "spell-damage"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally know and be permitted to cast two direct hostile spells of different native schools; no spell is granted. The wearer must also hold a stable position within 1 yard for 3 continuous seconds under a hostile threat. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, hold a stable position within 1 yard for 3 continuous seconds while a hostile threat remains active, then complete two direct hostile spell casts of different native schools against the same hostile NPC within 8 seconds. The hold is an additional eligibility condition; the spell schools form the admitted event pair.",
+        "effect": "The matched different-school casts open a self-only spell-tempo window; no spell, mana, or cooldown is created or refunded.",
+        "numbers": "10% spell haste for 3 seconds; one window per eligible ICD.",
+        "icd_seconds": 18,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Mithril Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 12,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Sky Sapphire",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Azuregos Mana Trace Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Off-hand blank preparation",
+          "active_minutes": 30
+        },
+        {
+          "name": "Leyline-channel cutting",
+          "active_minutes": 30
+        },
+        {
+          "name": "Arcane focusing",
+          "active_minutes": 35
+        },
+        {
+          "name": "Cast-tempo calibration",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Blue Dragon's Measure pattern blueprint is proposed as loot only after an eligible character participates in the exact Azuregos encounter and victory is recorded. A city artisan can study it once at a workshop without visiting the world-boss site. The separate Azuregos Mana Trace Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require an observed stable position within 1 yard for 3 seconds and a completed hostile cast; ignore forced motion, self, friendly, pet, environmental, training, probe, factory, and proc-origin events.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, cast-completion provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.classic_lord_kazzak",
+      "tier": "legendary",
+      "name": "Doomcaller's Mercy Inscription",
+      "source_boss": "Lord Kazzak (classic)",
+      "source_encounter": "Lord Kazzak, classic outdoor world-boss encounter",
+      "pattern": {
+        "trigger": "mercy_heal",
+        "transformation": "weave_life",
+        "release": "heal_echo"
+      },
+      "host": "One existing healer main-hand weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "healer",
+        "support",
+        "group-survival"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally know and be permitted to cast a direct heal; no healing spell is granted. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, directly heal a party member below 35% health whose recent health loss is attributable to hostile NPC damage. The next direct heal by the wearer on that same member within 8 seconds releases one small delayed echo.",
+        "effect": "The echo cannot trigger itself or another rune, and resolves only if the same party member is alive and missing health.",
+        "numbers": "Echoes 15% of the next heal's effective amount, capped at 180 healing, 0.2 seconds later; one charge per echo.",
+        "icd_seconds": 20,
+        "maintenance": "Exceptional charged signature; exact capacity and ordinary city refill bill are in the maintenance record."
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Lord Kazzak Doomcall Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Off-hand blank preparation",
+          "active_minutes": 35
+        },
+        {
+          "name": "Mercy-knot carving",
+          "active_minutes": 30
+        },
+        {
+          "name": "Life-thread binding",
+          "active_minutes": 40
+        },
+        {
+          "name": "Echo calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "The host remains ordinary durable equipment; only the signature is charged.",
+        "capacity": 24,
+        "activation_cost": 1,
+        "zero_charge_behavior": "At zero charges the rune is inert; the host remains usable and keeps its normal equipment behavior.",
+        "refill": {
+          "charges_restored": 5,
+          "minimum_missing": 5,
+          "active_city_minutes": 8,
+          "consumes_relic": false,
+          "inputs": [
+            {
+              "name": "Eternal Life",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            },
+            {
+              "name": "Infinite Dust",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null
+            }
+          ]
+        },
+        "identity": "Charge count and ICD remain bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset them."
+      },
+      "teaching": "A transferable Doomcaller's Mercy Knot pattern blueprint is proposed as loot only after an eligible character participates in the exact classic Lord Kazzak encounter and victory is recorded. A city artisan can study it once at a workshop without visiting the world-boss site. The separate Lord Kazzak Doomcall Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require genuine recent hostile-NPC injury on the same living party member for the qualifying heal and follow-up; ignore self-healing, overheal, friendly, pet, environmental, training, probe, factory, and arranged events. The echo cannot recurse.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, healing and injury provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.doomwalker",
+      "tier": "legendary",
+      "name": "Earthshaker Countermark Inscription",
+      "source_boss": "Doomwalker",
+      "source_encounter": "Doomwalker, outdoor world-boss encounter",
+      "pattern": {
+        "trigger": "pursuit_approach",
+        "transformation": "gather_impact",
+        "release": "haste_window"
+      },
+      "host": "One existing melee weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "melee",
+        "frontline",
+        "mobile"
+      ],
+      "wearer_gate": "Character level 70 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally meet the melee-special and weapon proficiency requirements of the host; no skill or attack is granted. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, voluntarily close at least 8 m toward one hostile NPC within 3 seconds, then land a melee special on that same NPC within 4 seconds.",
+        "effect": "The impact opens a self-only attack-tempo window; it causes no quake, slow, area damage, or forced movement.",
+        "numbers": "8% attack speed for 3 seconds; one window per eligible ICD.",
+        "icd_seconds": 16,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Titanium Bar",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Fire",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Doomwalker Stone Heart Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Shield billet preparation",
+          "active_minutes": 35
+        },
+        {
+          "name": "Impact-channel cutting",
+          "active_minutes": 30
+        },
+        {
+          "name": "Stone binding",
+          "active_minutes": 40
+        },
+        {
+          "name": "Countermark calibration",
+          "active_minutes": 30
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Earthshaker Countermark pattern blueprint is proposed as loot only after an eligible character participates in the exact Doomwalker encounter and victory is recorded. A city artisan can study it once at a workshop without visiting the world-boss site. The separate Doomwalker Stone Heart Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require voluntary distance closure and the melee special against the same hostile NPC; ignore forced movement, self, friendly, pet, environmental, training, probe, factory, and proc-origin events. No quake, slow, or ICD reset.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, block provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    },
+    {
+      "design_id": "rune.legend.ysondre",
+      "tier": "legendary",
+      "name": "Dreambough Cadence Inscription",
+      "source_boss": "Ysondre",
+      "source_encounter": "Ysondre, outdoor world-boss encounter",
+      "pattern": {
+        "trigger": "mercy_heal",
+        "transformation": "weave_life",
+        "release": "ward_absorb"
+      },
+      "host": "One existing healer main-hand weapon; the custom inscription host is supplied separately and not consumed.",
+      "roles": [
+        "healer",
+        "support",
+        "group-care"
+      ],
+      "wearer_gate": "Character level 60 or higher and native ability to equip the existing host under its class, level, skill, and proficiency rules. Naturally know and be permitted to cast a direct heal; no healing spell is granted. The existing host and wearer role must pass a reviewed per-host effect-power budget; if no compatible role/budget is admitted, the inscription cannot be attached.",
+      "artisan_gate": "Custom Runesmithing career rating at least 450 with this transferable pattern learned; useful-work mastery only, performed at a city workshop. This custom career grants no native profession skill, character XP, class ability, or bypass of host requirements; the artisan need not visit the source encounter.",
+      "mechanic": {
+        "trigger": "During hostile NPC combat, directly heal a living party member below 80% health whose recent health loss is attributable to hostile NPC damage.",
+        "effect": "The useful heal prepares a small ward on that same recipient against the next direct hostile-NPC damage; no area bloom or additional healing occurs.",
+        "numbers": "Absorbs 10% of the effective native heal amount, capped at 180 damage, for up to 4 seconds; one ward per eligible ICD.",
+        "icd_seconds": 25,
+        "maintenance": "Ordinary durable signature; no charge meter or refill chore."
+      },
+      "inputs": [
+        {
+          "name": "Mithril Rune Blank",
+          "quantity": 2,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Runic Binder",
+          "quantity": 3,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Eternal Shadow",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Forest Emerald",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null
+        },
+        {
+          "name": "Ysondre Dreamseed Relic",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "stages": [
+        {
+          "name": "Trinket blank preparation",
+          "active_minutes": 30
+        },
+        {
+          "name": "Dreambough carving",
+          "active_minutes": 30
+        },
+        {
+          "name": "Life-thread binding",
+          "active_minutes": 35
+        },
+        {
+          "name": "Healing-tempo calibration",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspection and final etch",
+          "active_minutes": 20
+        }
+      ],
+      "maintenance": {
+        "durability": "Ordinary durable inscription; no charge meter or compulsory refill.",
+        "capacity": null,
+        "activation_cost": 0,
+        "zero_charge_behavior": "Not applicable; the signature remains available under its item-family ICD.",
+        "refill": null,
+        "identity": "The ICD remains bound to this item and wearer family through trade, equip swaps, and relog; swaps cannot reset it."
+      },
+      "teaching": "A transferable Dreambough Cadence pattern blueprint is proposed as loot only after an eligible character participates in the exact Ysondre encounter and victory is recorded. A city artisan can study it once at a workshop without visiting the world-boss site. The separate Ysondre Dreamseed Relic is consumed once per commission; this is future custom loot, not an existing drop.",
+      "maker_reward": "One proposed mastery credit only for a completed paid useful order with inputs and result receipted and returned to the requester on an approved existing host. Guild or same-account supply is allowed. A credit requires a distinct useful order or a materially new inscription revision; no-op reapplications, authorship, idle time, relic pickup, and recycling earn nothing. Counts toward proposed specialization or alphabet teaching.",
+      "bot_rules": "Craft only at a city workshop with the qualified artisan present, safe, and supplied with the reserved bill; elapsed time is active workshop time. Signatures work against any eligible genuine hostile NPC; source encounter rules gate only proposed blueprint and relic acquisition.",
+      "abuse_rules": "Require a useful direct heal to one living party member with recent hostile-NPC injury provenance; ignore self-healing, overheal, friendly, pet, environmental, training, probe, factory, and arranged events. Ward absorption cannot trigger runes.",
+      "dependencies": [
+        "Future context-bound custom blueprint and relic drops; custom Runesmithing mastery and workshop commissioning; reviewed host compatibility, healing and injury provenance, and proc adapter. No native IDs or implementation are admitted.",
+        "Proposed wearer level floor and per-host role/effect-power budget require review before attachment."
+      ],
+      "sources": [
+        "outputs/runesmithing-expansion-20261010/GRAMMAR.json",
+        "outputs/enchantment-expansion-20261009/INDEX.md",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md"
+      ]
+    }
+  ]
+}

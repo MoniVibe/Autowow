@@ -1,0 +1,167 @@
+{
+  "status": "HISTORICAL_NAME_REFERENCE_NOT_RECIPE_ADMISSION",
+  "source": "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json",
+  "source_sha256": "bc6e09b1d8407c945443cd91d47b6678713f98029424b12983a66857b665696e",
+  "names": [
+    {
+      "item_name": "Abyss Crystal",
+      "native_item_entry": 34057
+    },
+    {
+      "item_name": "Arctic Fur",
+      "native_item_entry": 44128
+    },
+    {
+      "item_name": "Bloodstone",
+      "native_item_entry": 36917
+    },
+    {
+      "item_name": "Bolt of Frostweave",
+      "native_item_entry": 41510
+    },
+    {
+      "item_name": "Bolt of Imbued Frostweave",
+      "native_item_entry": 41511
+    },
+    {
+      "item_name": "Borean Leather",
+      "native_item_entry": 33568
+    },
+    {
+      "item_name": "Chalcedony",
+      "native_item_entry": 36923
+    },
+    {
+      "item_name": "Cobalt Bar",
+      "native_item_entry": 36916
+    },
+    {
+      "item_name": "Crystallized Fire",
+      "native_item_entry": 37702
+    },
+    {
+      "item_name": "Crystallized Water",
+      "native_item_entry": 37705
+    },
+    {
+      "item_name": "Dark Jade",
+      "native_item_entry": 36932
+    },
+    {
+      "item_name": "Dream Shard",
+      "native_item_entry": 34052
+    },
+    {
+      "item_name": "Ebonweave",
+      "native_item_entry": 41593
+    },
+    {
+      "item_name": "Eternal Air",
+      "native_item_entry": 35623
+    },
+    {
+      "item_name": "Eternal Earth",
+      "native_item_entry": 35624
+    },
+    {
+      "item_name": "Eternal Fire",
+      "native_item_entry": 36860
+    },
+    {
+      "item_name": "Eternal Life",
+      "native_item_entry": 35625
+    },
+    {
+      "item_name": "Eternal Shadow",
+      "native_item_entry": 35627
+    },
+    {
+      "item_name": "Eternal Water",
+      "native_item_entry": 35622
+    },
+    {
+      "item_name": "Eternium Thread",
+      "native_item_entry": 38426
+    },
+    {
+      "item_name": "Forest Emerald",
+      "native_item_entry": 36933
+    },
+    {
+      "item_name": "Froststeel Tube",
+      "native_item_entry": 39683
+    },
+    {
+      "item_name": "Frozen Orb",
+      "native_item_entry": 43102
+    },
+    {
+      "item_name": "Greater Cosmic Essence",
+      "native_item_entry": 34055
+    },
+    {
+      "item_name": "Handful of Cobalt Bolts",
+      "native_item_entry": 39681
+    },
+    {
+      "item_name": "Heavy Borean Leather",
+      "native_item_entry": 38425
+    },
+    {
+      "item_name": "Huge Citrine",
+      "native_item_entry": 36929
+    },
+    {
+      "item_name": "Infinite Dust",
+      "native_item_entry": 34054
+    },
+    {
+      "item_name": "Monarch Topaz",
+      "native_item_entry": 36930
+    },
+    {
+      "item_name": "Moonshroud",
+      "native_item_entry": 41594
+    },
+    {
+      "item_name": "Overcharged Capacitor",
+      "native_item_entry": 39682
+    },
+    {
+      "item_name": "Saronite Bar",
+      "native_item_entry": 36913
+    },
+    {
+      "item_name": "Scarlet Ruby",
+      "native_item_entry": 36918
+    },
+    {
+      "item_name": "Shadow Crystal",
+      "native_item_entry": 36926
+    },
+    {
+      "item_name": "Sky Sapphire",
+      "native_item_entry": 36924
+    },
+    {
+      "item_name": "Spellweave",
+      "native_item_entry": 41595
+    },
+    {
+      "item_name": "Sun Crystal",
+      "native_item_entry": 36920
+    },
+    {
+      "item_name": "Titanium Bar",
+      "native_item_entry": 41163
+    },
+    {
+      "item_name": "Titansteel Bar",
+      "native_item_entry": 37663
+    },
+    {
+      "item_name": "Twilight Opal",
+      "native_item_entry": 36927
+    }
+  ]
+}

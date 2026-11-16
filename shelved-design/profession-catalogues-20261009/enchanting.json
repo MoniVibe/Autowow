@@ -1,0 +1,703 @@
+{
+  "schema_version": 1,
+  "status": "DESIGN_ONLY_NOT_NATIVE_CATALOGUE",
+  "profession": "enchanting",
+  "native_active": false,
+  "candidates": [
+    {
+      "design_id": "enchant.field.warding-spark",
+      "proposed_name": "Warding Spark",
+      "tier": "field",
+      "item_form": "qualified defensive weapon finish",
+      "slots": [
+        "one-handed weapon",
+        "two-handed weapon"
+      ],
+      "roles": [
+        "tank",
+        "solo defender",
+        "weak adventurer"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "stamina",
+        "defense",
+        "block or parry priority within the base budget"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign stamina and defensive priority within the qualified base weapon's existing budget through an admitted compatible native enchant or socket channel. This finish adds no proc, aura, trigger, event hook or new adapter; it replaces the compatible channel and does not stack with other enchantments.",
+      "signature_family": null,
+      "materials_theme": "lawfully stocked common dust and a modest defensive shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible defensive weapon finish channel",
+        "Prepare the Warding Spark substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Warding Spark finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city warding enchanter",
+      "dependencies": [
+        "A real role-appropriate defensive weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.cinder-edge",
+      "proposed_name": "Cinder Edge",
+      "tier": "field",
+      "item_form": "qualified melee weapon finish",
+      "slots": [
+        "one-handed weapon",
+        "two-handed weapon"
+      ],
+      "roles": [
+        "melee damage",
+        "solo adventurer",
+        "weak adventurer"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "strength or agility as the base allows",
+        "haste",
+        "critical strike"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign strength or agility, haste and critical-strike priority within the qualified base melee weapon's existing budget through an admitted compatible native enchant or socket channel. This finish adds no proc, aura, trigger, event hook or new adapter; it replaces the compatible channel and does not stack with other enchantments.",
+      "signature_family": null,
+      "materials_theme": "common fire-dusted powder and a lawful ember shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible melee weapon finish channel",
+        "Prepare the Cinder Edge substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Cinder Edge finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city ember-edge enchanter",
+      "dependencies": [
+        "A real role-appropriate melee weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.mindglass-focus",
+      "proposed_name": "Mindglass Focus",
+      "tier": "field",
+      "item_form": "qualified main-hand caster weapon stat finish; off-hand focus channel unqualified pending native route",
+      "slots": [
+        "main-hand caster weapon",
+        "off-hand caster focus"
+      ],
+      "roles": [
+        "caster damage",
+        "healer",
+        "weak adventurer"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "spell power",
+        "haste or critical strike by role",
+        "intellect where native to the base"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign spell power, haste, critical-strike or intellect priority within a qualified base caster weapon's existing budget through an admitted compatible native enchant or socket channel. The off-hand focus channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. This finish adds no proc, aura, trigger, event hook or new adapter.",
+      "signature_family": null,
+      "materials_theme": "clear dust and a lawful mindglass shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible caster weapon or focus finish channel",
+        "Prepare the Mindglass Focus substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Mindglass Focus finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city mindglass enchanter",
+      "dependencies": [
+        "A real role-appropriate caster weapon or focus with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "The off-hand focus channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.stormstring",
+      "proposed_name": "Stormstring Finish",
+      "tier": "field",
+      "item_form": "proposed ranged weapon stat finish; ranged channel unqualified pending native route",
+      "slots": [
+        "ranged weapon"
+      ],
+      "roles": [
+        "ranged damage",
+        "expedition scout",
+        "weak adventurer"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "agility",
+        "haste",
+        "critical strike"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign agility, haste and critical-strike priority through an admitted compatible native ranged-weapon enchant or socket channel. The ranged channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. This finish adds no proc, aura, trigger, event hook or new adapter.",
+      "signature_family": null,
+      "materials_theme": "charged dust and a lawful storm shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible ranged weapon finish channel",
+        "Prepare the Stormstring Finish substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Stormstring Finish finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city stormstring enchanter",
+      "dependencies": [
+        "A real role-appropriate ranged weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "The ranged channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.frostguard-chest",
+      "proposed_name": "Frostguard Binding",
+      "tier": "field",
+      "item_form": "qualified chest-armor finish",
+      "slots": [
+        "chest"
+      ],
+      "roles": [
+        "tank",
+        "front-line adventurer",
+        "weak adventurer"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "stamina",
+        "defense or resilience by admitted route",
+        "armor family native to the base"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign stamina and defensive priority within the qualified base chest's existing armor budget through an admitted compatible native enchant or socket channel. This finish adds no proc, aura, trigger, event hook or new adapter; it replaces the compatible channel and does not stack with other enchantments.",
+      "signature_family": null,
+      "materials_theme": "frost dust and a lawful cold shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible chest armor finish channel",
+        "Prepare the Frostguard Binding substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Frostguard Binding finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city frostguard enchanter",
+      "dependencies": [
+        "A real role-appropriate armor-family chest with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Chest access needs an admitted native-compatible stat channel. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.steadfast-legs",
+      "proposed_name": "Steadfast Legweave",
+      "tier": "field",
+      "item_form": "proposed leg-armor stat finish; legs channel unqualified pending native route",
+      "slots": [
+        "legs"
+      ],
+      "roles": [
+        "tank",
+        "melee damage",
+        "expedition defender"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "stamina",
+        "strength or agility as the base allows",
+        "defense or critical strike by role"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign stamina plus strength, agility, defense or critical-strike priority within the base legs' existing budget through an admitted compatible native or custom enchant channel. The legs channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. This finish adds no proc, aura, trigger, event hook or new adapter.",
+      "signature_family": null,
+      "materials_theme": "steadying dust and a lawful binding shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible legs armor finish channel",
+        "Prepare the Steadfast Legweave substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Steadfast Legweave finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city legweave enchanter",
+      "dependencies": [
+        "A real role-appropriate armor-family legs with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "The legs channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.clearsight-helm",
+      "proposed_name": "Clearsight Helm Finish",
+      "tier": "field",
+      "item_form": "proposed head-armor stat finish; head channel unqualified pending native route",
+      "slots": [
+        "head"
+      ],
+      "roles": [
+        "caster",
+        "scout",
+        "weak adventurer"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "intellect or agility by base",
+        "haste",
+        "critical strike"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign intellect or agility, haste and critical-strike priority within the base head piece's existing budget through an admitted compatible native or custom enchant channel. The head channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. This finish adds no proc, aura, trigger, event hook or new adapter.",
+      "signature_family": null,
+      "materials_theme": "clear dust and a lawful lens shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible armor-family head finish channel",
+        "Prepare the Clearsight Helm Finish substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Clearsight Helm Finish finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city clearsight enchanter",
+      "dependencies": [
+        "A real role-appropriate head piece with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "The head channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.field.prismatic-shoulders",
+      "proposed_name": "Prismatic Shoulder Seal",
+      "tier": "field",
+      "item_form": "proposed shoulder-armor stat finish; shoulders channel unqualified pending native route",
+      "slots": [
+        "shoulders"
+      ],
+      "roles": [
+        "caster",
+        "melee damage",
+        "expedition support"
+      ],
+      "progression_band": "leveling through early Northrend",
+      "stat_priorities": [
+        "spell power or attack power by base",
+        "haste",
+        "critical strike"
+      ],
+      "mechanic": "Ordinary stat allocation only: assign spell power or attack power, haste and critical-strike priority within the base shoulders' existing budget through an admitted compatible native or custom enchant channel. The shoulders channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. This finish adds no proc, aura, trigger, event hook or new adapter.",
+      "signature_family": null,
+      "materials_theme": "prismatic dust and a lawful school shard from an authorized spare",
+      "stages": [
+        "Qualify the buyer-supplied base and compatible armor-family shoulders finish channel",
+        "Prepare the Prismatic Shoulder Seal substrate at a city enchanting station",
+        "Temper the chosen role priority within the base item's stat budget",
+        "Bind the admitted Prismatic Shoulder Seal finish",
+        "Inspect, attest the maker and seal the replacement finish"
+      ],
+      "maker_specialty": "city prismatic enchanter",
+      "dependencies": [
+        "A real role-appropriate shoulder piece with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "The shoulders channel remains unqualified until its native route is checked; use an existing native-compatible ordinary equivalent only if later admitted. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.masterwork.emberward-discipline",
+      "proposed_name": "Emberward Discipline",
+      "tier": "masterwork",
+      "item_form": "qualified tank weapon finish",
+      "slots": [
+        "one-handed weapon"
+      ],
+      "roles": [
+        "tank",
+        "group protector"
+      ],
+      "progression_band": "established Northrend and early endgame",
+      "stat_priorities": [
+        "stamina",
+        "defense",
+        "block or parry priority"
+      ],
+      "mechanic": "On the exact equipped tank weapon, an eligible hostile defensive event may release a restrained fire retaliation against that hostile attacker; proposed trigger chance, damage and cooldown require admission. An optional fire-resistance support finish follows the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not multiply with the same aura family, and neither effect recursively triggers another proc.",
+      "signature_family": null,
+      "materials_theme": "lawful ember dust, a stable shard and a masterwork catalyst from authorized spares",
+      "stages": [
+        "Qualify the buyer-supplied tank weapon base, purpose, compatible slot route and complete the accepted blueprint",
+        "Prepare the Emberward substrate at a qualified city enchanting station with the base maker's credited contribution",
+        "Temper the accepted Emberward stat priority within the base form's role budget",
+        "Bind the admitted Emberward Discipline finish and its separately qualified support finish",
+        "Inspect exact item identity, maker and collaborators, replacement channel, equipped lifecycle and quoted properties before delivery"
+      ],
+      "maker_specialty": "master emberward enchanter",
+      "dependencies": [
+        "A real role-appropriate tank weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "The support finish is optional, separately qualified and cannot be claimed as a universal party buff."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.masterwork.arcane-accord",
+      "proposed_name": "Arcane Accord",
+      "tier": "masterwork",
+      "item_form": "qualified caster weapon finish",
+      "slots": [
+        "main-hand caster weapon",
+        "staff"
+      ],
+      "roles": [
+        "caster damage",
+        "healer"
+      ],
+      "progression_band": "established Northrend and early endgame",
+      "stat_priorities": [
+        "spell power",
+        "haste",
+        "critical strike or mana-support priority by role"
+      ],
+      "mechanic": "On the exact equipped caster weapon, an eligible hostile spell hit may prepare the next compatible spell for that hostile target; proposed trigger condition, benefit and cooldown require admission. It ends on unequip, logout, death or removal, rejects friendly or ambient charging, has no automatic group aura, and cannot recursively trigger itself or another proc.",
+      "signature_family": null,
+      "materials_theme": "arcane dust, a stable caster shard and a masterwork catalyst from authorized spares",
+      "stages": [
+        "Qualify the buyer-supplied caster weapon base, purpose, compatible slot route and complete the accepted blueprint",
+        "Prepare the Arcane Accord substrate at a qualified city enchanting station with the base maker's credited contribution",
+        "Temper the accepted Arcane Accord stat priority within the base form's role budget",
+        "Bind the admitted Arcane Accord finish and its separately qualified support finish",
+        "Inspect exact item identity, maker and collaborators, replacement channel, equipped lifecycle and quoted properties before delivery"
+      ],
+      "maker_specialty": "master arcane enchanter",
+      "dependencies": [
+        "A real role-appropriate caster weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.masterwork.ironroot-plate",
+      "proposed_name": "Ironroot Plate Seal",
+      "tier": "masterwork",
+      "item_form": "qualified plate chest-armor finish",
+      "slots": [
+        "chest"
+      ],
+      "roles": [
+        "tank",
+        "front-line group protector"
+      ],
+      "progression_band": "established Northrend and early endgame",
+      "stat_priorities": [
+        "stamina",
+        "defense",
+        "armor and block priority within the base budget"
+      ],
+      "mechanic": "On the exact equipped plate chest, an eligible hostile melee hit while guarding an ally may grant a brief personal rooted stance; proposed trigger condition, mitigation and cooldown require a qualified native or custom route. It ends on unequip, logout, death or removal, has no blanket aura, and cannot recursively trigger itself or another proc.",
+      "signature_family": null,
+      "materials_theme": "dense dust, a lawful ironroot shard and a masterwork catalyst from authorized spares",
+      "stages": [
+        "Qualify the buyer-supplied plate chest base, purpose, compatible slot route and complete the accepted blueprint",
+        "Prepare the Ironroot substrate at a qualified city enchanting station with the base maker's credited contribution",
+        "Temper the accepted Ironroot stat priority within the base form's role budget",
+        "Bind the admitted Ironroot Plate Seal finish and its separately qualified support finish",
+        "Inspect exact item identity, maker and collaborators, replacement channel, equipped lifecycle and quoted properties before delivery"
+      ],
+      "maker_specialty": "master ironroot enchanter",
+      "dependencies": [
+        "A real role-appropriate qualified plate chest with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Chest finishing needs an admitted native or custom route. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed"
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.masterwork.tideglass-mail",
+      "proposed_name": "Tideglass Mail Finish",
+      "tier": "masterwork",
+      "item_form": "qualified mail shoulder-armor finish",
+      "slots": [
+        "shoulders"
+      ],
+      "roles": [
+        "ranged damage",
+        "healer",
+        "mail support"
+      ],
+      "progression_band": "established Northrend and early endgame",
+      "stat_priorities": [
+        "agility or intellect by base",
+        "haste",
+        "critical strike"
+      ],
+      "mechanic": "On the exact equipped mail shoulders, an eligible hostile hit or direct heal may prepare a short tide response for the bearer; proposed trigger eligibility, benefit and cooldown require admission. A qualified local support finish follows only the equipped bearer and eligible group members in native range, ends on unequip, logout, death, removal or group/range change, does not stack with its aura family, and cannot recursively trigger itself or another proc.",
+      "signature_family": null,
+      "materials_theme": "tide dust, a lawful water shard and a masterwork catalyst from authorized spares",
+      "stages": [
+        "Qualify the buyer-supplied mail shoulders base, purpose, compatible slot route and complete the accepted blueprint",
+        "Prepare the Tideglass substrate at a qualified city enchanting station with the base maker's credited contribution",
+        "Temper the accepted Tideglass stat priority within the base form's role budget",
+        "Bind the admitted Tideglass Mail Finish finish and its separately qualified support finish",
+        "Inspect exact item identity, maker and collaborators, replacement channel, equipped lifecycle and quoted properties before delivery"
+      ],
+      "maker_specialty": "master tideglass enchanter",
+      "dependencies": [
+        "A real role-appropriate mail shoulders with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Shoulder access needs a qualified native or custom route. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "Support is a separate qualified finish, not a universal strong-player buff."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.legendary.emberheart-furnace",
+      "proposed_name": "Emberheart, Furnace Pattern",
+      "tier": "legendary",
+      "item_form": "Ragnaros-family two-handed melee weapon signature finish",
+      "slots": [
+        "two-handed weapon"
+      ],
+      "roles": [
+        "melee damage",
+        "raid expedition striker"
+      ],
+      "progression_band": "legendary commission after approved core and qualified base",
+      "stat_priorities": [
+        "strength",
+        "critical strike",
+        "haste within the accepted weapon budget"
+      ],
+      "mechanic": "On the exact equipped two-handed weapon, an eligible hostile melee attack may release a local fire eruption at the struck enemy; proposed trigger chance, damage, area and cooldown require native or custom admission. An optional personal fire-resistance support finish affects the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not stack with the same aura family, and neither effect can recursively trigger itself or another proc.",
+      "signature_family": "Ragnaros Emberheart family",
+      "materials_theme": "lawful fire dust, authorized spare shards, a credited fire core and city finishing catalyst",
+      "stages": [
+        "Preparation: qualify the approved Ragnaros core, buyer purpose, two-handed base and complete the accepted blueprint",
+        "Forging or weaving: the city enchanter prepares the compatible fire substrate while the qualified weapon maker constructs or supplies the real weapon",
+        "Tempering: bind the accepted strength and critical emphasis without exceeding the weapon's role budget",
+        "Signature finishing: the credited legendary enchanter binds the admitted Furnace signature and separately qualified fire support finish",
+        "Inspection and attunement: verify exact item identity, maker and collaborators, replacement channel, equipped lifecycle and final quoted properties before delivery"
+      ],
+      "maker_specialty": "credited Emberheart signature finisher",
+      "dependencies": [
+        "A real role-appropriate two-handed melee weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "A qualified city enchanter, weapon maker and approved core lineage are separate credited contributions.",
+        "Common dust and shards are lawful-stock or authorized-spare inputs and are not raid-gated."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.legendary.emberheart-hearthguard",
+      "proposed_name": "Emberheart, Hearthguard Pattern",
+      "tier": "legendary",
+      "item_form": "Ragnaros-family one-handed tank weapon signature finish",
+      "slots": [
+        "one-handed weapon"
+      ],
+      "roles": [
+        "tank",
+        "group protector",
+        "raid expedition defender"
+      ],
+      "progression_band": "legendary commission after approved core and qualified base",
+      "stat_priorities": [
+        "stamina",
+        "defense",
+        "block or parry within the accepted weapon budget"
+      ],
+      "mechanic": "On the exact equipped one-handed tank weapon, an eligible hostile defensive event may trigger a local fire retaliation against that hostile attacker; proposed trigger chance, damage and cooldown require native or custom admission. An optional fire-resistance support finish follows the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not stack with its aura family, and neither effect can recursively trigger itself or another proc.",
+      "signature_family": "Ragnaros Emberheart family",
+      "materials_theme": "lawful hearth dust, authorized spare shards, a credited fire core and city finishing catalyst",
+      "stages": [
+        "Preparation: qualify the approved Ragnaros core, defensive purpose, one-handed base and complete the accepted blueprint",
+        "Forging or weaving: the city enchanter prepares the hearth substrate while the qualified weapon maker constructs or supplies the real weapon",
+        "Tempering: bind the accepted stamina and defense emphasis without exceeding the weapon's role budget",
+        "Signature finishing: the credited legendary enchanter binds the admitted Hearthguard signature and separately qualified fire support finish",
+        "Inspection and attunement: verify exact item identity, maker and collaborators, replacement channel, equipped lifecycle and final quoted properties before delivery"
+      ],
+      "maker_specialty": "credited Hearthguard signature finisher",
+      "dependencies": [
+        "A real role-appropriate one-handed tank weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "A qualified city enchanter, weapon maker and approved core lineage are separate credited contributions.",
+        "Common dust and shards are lawful-stock or authorized-spare inputs and are not raid-gated."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.legendary.blackflight-adaptation",
+      "proposed_name": "Blackflight Adaptation",
+      "tier": "legendary",
+      "item_form": "Nefarian-family caster weapon signature finish",
+      "slots": [
+        "main-hand caster weapon",
+        "staff"
+      ],
+      "roles": [
+        "caster damage",
+        "healer",
+        "raid expedition caster"
+      ],
+      "progression_band": "legendary commission after approved core and qualified base",
+      "stat_priorities": [
+        "spell power",
+        "haste",
+        "critical strike or mana-support priority by accepted role budget"
+      ],
+      "mechanic": "On the exact equipped caster weapon, an eligible hostile spell from a qualified school may prepare a limited response against that school; proposed school mapping, benefit and cooldown require native or custom admission. An optional school-specific support finish follows the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not stack with the same aura family, and neither effect recursively triggers itself or another proc.",
+      "signature_family": "Nefarian Blackflight family",
+      "materials_theme": "lawful black dust, authorized spare school shards, a credited black core and city finishing catalyst",
+      "stages": [
+        "Preparation: qualify the approved Nefarian core, caster purpose, weapon form and complete the accepted blueprint",
+        "Forging or weaving: the city enchanter prepares the school-adaptive substrate while the qualified weapon maker supplies the real caster weapon",
+        "Tempering: bind the chosen spell priority within the weapon's accepted stat budget",
+        "Signature finishing: the credited legendary enchanter binds Blackflight Adaptation and its separately qualified school support finish",
+        "Inspection and attunement: verify exact item identity, maker and collaborators, replacement channel, hostile-school lifecycle and final quoted properties before delivery"
+      ],
+      "maker_specialty": "credited Blackflight signature finisher",
+      "dependencies": [
+        "A real role-appropriate caster weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "A qualified city enchanter and weapon maker each contribute a recorded child commission alongside approved core lineage.",
+        "Common dust and shards are lawful-stock or authorized-spare inputs and are not raid-gated."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.legendary.prismatic-resonance",
+      "proposed_name": "Prismatic Resonance",
+      "tier": "legendary",
+      "item_form": "Chromaggus-family shoulder-armor signature finish",
+      "slots": [
+        "shoulders"
+      ],
+      "roles": [
+        "caster",
+        "melee damage",
+        "expedition support"
+      ],
+      "progression_band": "legendary commission after approved core and qualified base",
+      "stat_priorities": [
+        "spell power or attack power by base",
+        "haste",
+        "critical strike within the accepted armor budget"
+      ],
+      "mechanic": "On the exact equipped shoulders, an eligible hostile magic school event may prepare a narrow matching response for the bearer; proposed school mapping, trigger condition and cooldown require a qualified custom route. An optional local school ward affects the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not multiply identical aura families, and neither effect can recursively trigger itself or another proc.",
+      "signature_family": "Chromaggus Prismatic family",
+      "materials_theme": "lawful prismatic dust, authorized spare school shards, a credited chromatic core and city finishing catalyst",
+      "stages": [
+        "Preparation: qualify the approved Chromaggus core, shoulder armor family, role and complete the accepted blueprint",
+        "Forging or weaving: the city enchanter prepares the prismatic substrate with a qualified armor maker's real shoulders",
+        "Tempering: bind the chosen offensive priority without exceeding the shoulder armor's accepted budget",
+        "Signature finishing: the credited legendary enchanter binds Prismatic Resonance and its separately qualified local school ward",
+        "Inspection and attunement: verify exact item identity, maker and collaborators, qualified shoulder route, replacement channel and final quoted properties before delivery"
+      ],
+      "maker_specialty": "credited Prismatic signature finisher",
+      "dependencies": [
+        "A real role-appropriate armor-family shoulders with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Shoulder finishing requires an admitted native or custom route. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "A city enchanter and qualified armor maker contribute distinct credited work and materials alongside approved core lineage.",
+        "Common dust and shards are lawful-stock or authorized-spare inputs and are not raid-gated."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.legendary.tidebinder-current",
+      "proposed_name": "Tidebinder Current",
+      "tier": "legendary",
+      "item_form": "Vashj-family mail chest signature finish",
+      "slots": [
+        "chest"
+      ],
+      "roles": [
+        "healer",
+        "ranged damage",
+        "mail expedition support"
+      ],
+      "progression_band": "legendary commission after approved core and qualified base",
+      "stat_priorities": [
+        "intellect or agility by base",
+        "haste",
+        "critical strike or healing priority within the accepted armor budget"
+      ],
+      "mechanic": "On the exact equipped mail chest, an eligible direct heal or hostile attack may prepare a restrained lightning-tide response against the relevant hostile target or injured ally; proposed trigger eligibility, target rule and cooldown require native or custom admission. An optional tide support finish follows the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not stack with its aura family, and neither effect recursively triggers itself or another proc.",
+      "signature_family": "Vashj Tidebinder family",
+      "materials_theme": "lawful tide dust, authorized spare water shards, a credited tide core and city finishing catalyst",
+      "stages": [
+        "Preparation: qualify the approved Vashj core, mail chest, role purpose and complete the accepted blueprint",
+        "Forging or weaving: the city enchanter prepares the tide substrate while the qualified armor maker supplies the real chest",
+        "Tempering: bind the accepted haste, critical or healing emphasis within the chest's role budget",
+        "Signature finishing: the credited legendary enchanter binds Tidebinder Current and its separately qualified tide support finish",
+        "Inspection and attunement: verify exact item identity, maker and collaborators, qualified chest route, replacement channel and final quoted properties before delivery"
+      ],
+      "maker_specialty": "credited Tidebinder signature finisher",
+      "dependencies": [
+        "A real role-appropriate mail chest with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Chest access needs a qualified native or custom route. Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "A city enchanter and qualified armor maker provide separate credited work and materials alongside approved core lineage.",
+        "Common dust and shards are lawful-stock or authorized-spare inputs and are not raid-gated."
+      ],
+      "native_ids_admitted": false
+    },
+    {
+      "design_id": "enchant.legendary.sepulchral-conductor",
+      "proposed_name": "Sepulchral Conductor",
+      "tier": "legendary",
+      "item_form": "Kel'Thuzad-family caster or healer weapon signature finish",
+      "slots": [
+        "main-hand caster weapon",
+        "staff"
+      ],
+      "roles": [
+        "caster damage",
+        "healer",
+        "raid expedition caster"
+      ],
+      "progression_band": "legendary commission after approved core and qualified base",
+      "stat_priorities": [
+        "spell power",
+        "haste",
+        "critical strike or mana-support priority by accepted role budget"
+      ],
+      "mechanic": "On the exact equipped caster or healer weapon, an eligible hostile frost or shadow spell event may build a short matching ward for the bearer; proposed trigger eligibility, school mapping and cooldown require native or custom admission. An optional local anti-magic support finish affects the equipped bearer and eligible group members only in native range, ends on unequip, logout, death, removal or group/range change, does not stack with its aura family, and neither effect can recursively trigger itself or another proc.",
+      "signature_family": "Kel'Thuzad Sepulchral family",
+      "materials_theme": "lawful frost-shadow dust, authorized spare school shards, a credited sepulchral core and city finishing catalyst",
+      "stages": [
+        "Preparation: qualify the approved Kel'Thuzad core, caster or healer purpose, weapon form and complete the accepted blueprint",
+        "Forging or weaving: the city enchanter prepares the sepulchral substrate while the qualified weapon maker supplies the real weapon",
+        "Tempering: bind the accepted spell priority within the weapon's role budget",
+        "Signature finishing: the credited legendary enchanter binds Sepulchral Conductor and its separately qualified anti-magic support finish",
+        "Inspection and attunement: verify exact item identity, maker and collaborators, hostile-school lifecycle, replacement channel and final quoted properties before delivery"
+      ],
+      "maker_specialty": "credited Sepulchral signature finisher",
+      "dependencies": [
+        "A real role-appropriate caster or healer weapon with its own damage, armor and stats is required; the finish does not turn a white item into a good Northrend kit",
+        "Replaces the compatible native enchant or socket channel; enchantments do not all stack",
+        "Common materials come from lawful stock or authorized-spare disenchanting; useful equipped gear is never destroyed",
+        "A city enchanter and qualified weapon maker provide distinct credited work and materials alongside approved core lineage.",
+        "Common dust and shards are lawful-stock or authorized-spare inputs and are not raid-gated."
+      ],
+      "native_ids_admitted": false
+    }
+  ],
+  "provisioning_notes": [
+    "DESIGN ONLY: no native recipe, spell, item, property, socket, event hook, cast route or ID is admitted; every candidate remains blocked until a compatible native or explicitly qualified custom route is observed.",
+    "Base equipment comes first. A finish requires a buyer-supplied or commissioned role-appropriate weapon or armor with its own damage, armor and stats; an enchant alone does not make a white item a good Northrend kit.",
+    "Each finish replaces the compatible native enchant or socket channel. Enchantments and support finishes do not all stack; later maker skill does not mutate old gear.",
+    "Chest, legs, head and shoulders are qualified slot routes only. Their catalogue presence does not assert that a native cast or property route exists.",
+    "Field and masterwork inputs are common-need friendly: lawful stock and disenchanting of authorized spare items may supply dust or shards. Useful equipped gear is never destroyed, and common materials are not raid-gated.",
+    "City enchanters make an independent credited contribution at a qualified station. Legendary work additionally records the core owner, base maker, finisher and collaborators as separate child commissions; sharing a project is not free skill.",
+    "For every proc or aura, the exact equipped item is the source. Hostile or eligible ally targets, native group/range rules, removal on unequip/logout/death/removal/group or range change, cooldown, nonmultiplication of identical aura families and no recursive proc chain must be admitted and observed before release.",
+    "Personal earned boss legacies remain separate from maker rewards and these proposed finishes. No universal strong-player buff, friendly self-trigger, ambient damage charge or unlimited proc chain is implied.",
+    "The five legendary stages are meaningful production work: preparation, forging or weaving, tempering, signature finishing, and inspection and attunement. Early records are work or subcomponents until every stage qualifies for exact final-item materialization."
+  ]
+}

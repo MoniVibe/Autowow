@@ -1,0 +1,306 @@
+{
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "supply",
+  "native_ids_admitted": false,
+  "source_material_reference": {
+    "path": "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json",
+    "status": "historical name references only; no Runesmithing recipe or route admission"
+  },
+  "component_recipes": [
+    {
+      "design_id": "rune.component.copper-blank",
+      "name": "Copper Rune Blank",
+      "supplier_profession": "Blacksmithing",
+      "output": {
+        "name": "Copper Rune Blank",
+        "quantity": 1,
+        "unit": "items",
+        "kind": "custom_unimplemented",
+        "native_item_entry": null
+      },
+      "inputs": [
+        {
+          "name": "Copper Bar",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        },
+        {
+          "name": "Coarse Thread",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        }
+      ],
+      "active_minutes_per_output": 2,
+      "gate": {
+        "native_profession": "Blacksmithing",
+        "requires_learned_native_recipe_and_all_actual_native_skill_character_and_reagent_checks": true,
+        "native_skill_line_id": null,
+        "native_recipe_entry": null,
+        "proposed_skill_minimum": null,
+        "note": "Resolve the exact native recipe gate before admission; the custom city career grants no native skill or training."
+      },
+      "native_route_admitted": false
+    },
+    {
+      "design_id": "rune.component.iron-blank",
+      "name": "Iron Rune Blank",
+      "supplier_profession": "Blacksmithing",
+      "output": {
+        "name": "Iron Rune Blank",
+        "quantity": 1,
+        "unit": "items",
+        "kind": "custom_unimplemented",
+        "native_item_entry": null
+      },
+      "inputs": [
+        {
+          "name": "Iron Bar",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        },
+        {
+          "name": "Coarse Thread",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        }
+      ],
+      "active_minutes_per_output": 2,
+      "gate": {
+        "native_profession": "Blacksmithing",
+        "requires_learned_native_recipe_and_all_actual_native_skill_character_and_reagent_checks": true,
+        "native_skill_line_id": null,
+        "native_recipe_entry": null,
+        "proposed_skill_minimum": null,
+        "note": "Resolve the exact native recipe gate before admission; the custom city career grants no native skill or training."
+      },
+      "native_route_admitted": false
+    },
+    {
+      "design_id": "rune.component.mithril-blank",
+      "name": "Mithril Rune Blank",
+      "supplier_profession": "Blacksmithing",
+      "output": {
+        "name": "Mithril Rune Blank",
+        "quantity": 1,
+        "unit": "items",
+        "kind": "custom_unimplemented",
+        "native_item_entry": null
+      },
+      "inputs": [
+        {
+          "name": "Mithril Bar",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        },
+        {
+          "name": "Solid Stone",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        }
+      ],
+      "active_minutes_per_output": 3,
+      "gate": {
+        "native_profession": "Blacksmithing",
+        "requires_learned_native_recipe_and_all_actual_native_skill_character_and_reagent_checks": true,
+        "native_skill_line_id": null,
+        "native_recipe_entry": null,
+        "proposed_skill_minimum": null,
+        "note": "Resolve the exact native recipe gate before admission; the custom city career grants no native skill or training."
+      },
+      "native_route_admitted": false
+    },
+    {
+      "design_id": "rune.component.adamantite-blank",
+      "name": "Adamantite Rune Blank",
+      "supplier_profession": "Blacksmithing",
+      "output": {
+        "name": "Adamantite Rune Blank",
+        "quantity": 1,
+        "unit": "items",
+        "kind": "custom_unimplemented",
+        "native_item_entry": null
+      },
+      "inputs": [
+        {
+          "name": "Adamantite Bar",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        },
+        {
+          "name": "Golden Draenite",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        }
+      ],
+      "active_minutes_per_output": 4,
+      "gate": {
+        "native_profession": "Blacksmithing",
+        "requires_learned_native_recipe_and_all_actual_native_skill_character_and_reagent_checks": true,
+        "native_skill_line_id": null,
+        "native_recipe_entry": null,
+        "proposed_skill_minimum": null,
+        "note": "Resolve the exact native recipe gate before admission; the custom city career grants no native skill or training."
+      },
+      "native_route_admitted": false
+    },
+    {
+      "design_id": "rune.component.saronite-blank",
+      "name": "Saronite Rune Blank",
+      "supplier_profession": "Blacksmithing",
+      "output": {
+        "name": "Saronite Rune Blank",
+        "quantity": 1,
+        "unit": "items",
+        "kind": "custom_unimplemented",
+        "native_item_entry": null
+      },
+      "inputs": [
+        {
+          "name": "Saronite Bar",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "historical_name_reference_only"
+        },
+        {
+          "name": "Dark Jade",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "historical_name_reference_only"
+        }
+      ],
+      "active_minutes_per_output": 4,
+      "gate": {
+        "native_profession": "Blacksmithing",
+        "requires_learned_native_recipe_and_all_actual_native_skill_character_and_reagent_checks": true,
+        "native_skill_line_id": null,
+        "native_recipe_entry": null,
+        "proposed_skill_minimum": null,
+        "note": "Resolve the exact native recipe gate before admission; the custom city career grants no native skill or training."
+      },
+      "native_route_admitted": false
+    },
+    {
+      "design_id": "rune.component.runic-binder",
+      "name": "Runic Binder",
+      "supplier_profession": "Tailoring",
+      "output": {
+        "name": "Runic Binder",
+        "quantity": 1,
+        "unit": "items",
+        "kind": "custom_unimplemented",
+        "native_item_entry": null
+      },
+      "inputs": [
+        {
+          "name": "Linen Cloth",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        },
+        {
+          "name": "Coarse Thread",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "verification": "pending_exact_native_name_and_entry"
+        }
+      ],
+      "active_minutes_per_output": 2,
+      "gate": {
+        "native_profession": "Tailoring",
+        "requires_learned_native_recipe_and_all_actual_native_skill_character_and_reagent_checks": true,
+        "native_skill_line_id": null,
+        "native_recipe_entry": null,
+        "proposed_skill_minimum": null,
+        "note": "Keep this an ordinary, broadly available cloth-and-thread supply; no dust, shard, rare gem, or high-level skill gate is proposed. Exact native recipe gate remains unresolved."
+      },
+      "native_route_admitted": false
+    }
+  ],
+  "services": [
+    {
+      "service_id": "rune.service.inspect-restore",
+      "name": "Inspect or restore one rune imprint",
+      "max_items_per_order": 1,
+      "active_minutes": 3,
+      "bill_parameters": {
+        "inspection": {
+          "inputs": [],
+          "fee": "quote separately in real guild currency; no price proposed"
+        },
+        "restore_imprint_record": {
+          "inputs": [
+            {
+              "name": "Runic Binder",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "fee": "quote separately in real guild currency; no price proposed"
+        }
+      },
+      "effect_and_rights": "Inspection reports the exact item's recorded admitted recipe, identity, charges and state without changing them. Restoration repairs only that same recorded inscription after a verified state fault; it cannot change the pattern, effect, host, owner, capacity, or remaining charges. Require item owner or current guild representative authority and the item's intact recipe entitlement record; no boss entitlement is consumed or recreated.",
+      "custody_failure_transfer_and_version": "Work on one exact original item GUID at an approved city station, with custody held until a committed receipt. If completion or binder consumption is uncertain, hold for reconciliation; do not retry from timeout. Record service profile version, mode, input receipt, item GUID and before/after state in a once-only receipt. Transfers retain item identity and state; recheck owner and authority after transfer."
+    },
+    {
+      "service_id": "rune.service.reinscribe",
+      "name": "Re-inscribe one existing host",
+      "max_items_per_order": 1,
+      "active_minutes": 8,
+      "bill_parameters": {
+        "inputs": "Consume exactly one target recipe's admitted component bill OR its expanded raw bill, never both; include any recipe-specific Runic Binder once as part of that bill.",
+        "target_output_yield": 1,
+        "fee": "quote separately in real guild currency; no price proposed"
+      },
+      "effect_and_rights": "Replace one existing admitted pattern with one different explicitly admitted pattern compatible with the exact host. Require owner consent, target recipe entitlement, wearer/class/equip and artisan gates, and its full current-version input bill. The old pattern and any unused charges end on commit; no refund, extra host, free component, or relic. A source-encounter blueprint is transferable knowledge only where that recipe says so; each new legendary commission still consumes its one physical relic.",
+      "custody_failure_transfer_and_version": "Keep the same host item GUID and target materials in held custody through native completion; commit one before/after inscription receipt tied to target recipe and bill version. Unknown outcome stays held until native input and item state are reconciled. Recheck owner, entitlement and host compatibility after any transfer; no progress or input reservation moves to a different item implicitly."
+    },
+    {
+      "service_id": "rune.service.charge-maintenance",
+      "name": "Restore optional exceptional charges",
+      "max_items_per_order": 1,
+      "active_minutes": 5,
+      "bill_parameters": {
+        "eligibility": "Only a recipe that explicitly defines finite optional exceptional-power charges and a refill bill may use this service.",
+        "inputs": "Consume ceil(charges_restored / recipe_charges_per_refill_bill) copies of the exact recipe-version refill bill; add no default Runic Binder or other universal reagent, and never consume the relic core.",
+        "charges_restored": "min(recipe_max_restore_per_service, recipe_capacity - current_charges)",
+        "bill_scaling": "recipe_charges_per_refill_bill and the corresponding exact input bill are declared by the target recipe; charge restoration is capped at recipe_capacity.",
+        "example": "A recipe may define a five-charge refill batch; five is illustrative only and does not set a shared service limit.",
+        "fee": "quote separately in real guild currency; no price proposed"
+      },
+      "effect_and_rights": "Only the exact recorded recipe effect and capacity can be refilled. The target recipe defines whether this service exists, its refill bill, charges restored per bill, maximum restore per service, and zero-charge behavior. At zero charges the recipe's declared passive remains; only the optional charged effect stops. Durable field runes have no charge meter or routine upkeep. Require custody of the exact item and its recipe identity; refill does not grant blueprint rights, reset an item-family cooldown, alter the passive, exceed capacity, or restore a consumed relic.",
+      "custody_failure_transfer_and_version": "Hold the exact item GUID and refill inputs until one committed charge receipt binds service version, recipe version, input identities, and before/after charges. Unknown completion is held for reconciliation, never retried by timeout. Charges and item-family cooldown identity persist through trade, bank movement, owner change and relog; a transfer does not refill or reset them. Recheck current owner/authorized custodian and recipe-specific eligibility after transfer."
+    }
+  ],
+  "supply_policy": {
+    "component_accounting": "A downstream gear recipe consumes its listed components OR the exact expanded raw bill for those components, never both. All six component crafts yield one item per independent successful native craft and receipt; reserved input stock is not counted again at delivery.",
+    "owned_stock_and_provenance": "Inputs must be real, unreserved native goods already held by the artisan or guild, or bought with actual authorized funds. Gathered, loot, vendor and trade sources keep their original item identities and receipts. Pending names need exact native-name and item-entry verification before any route can be admitted. No timer, station, service, or guild ledger creates stock.",
+    "bulk_orders": "Quote and reserve the multiplied full bill before acceptance. Produce each output piece sequentially with a distinct native craft event, output identity and settlement receipt; shipments may combine completed pieces but do not add production. Release only unused reservations on cancellation and hold uncertain custody for reconciliation.",
+    "guild_authority": "Any guild member may deposit into the existing guild account. A current representative with explicit order, withdrawal and delivery authority may place or accept a contract; only authorized withdrawals reserve actual available funds through the existing bank path. Do not create a second spendable bank, seize deposits, or pay an unapproved withdrawal.",
+    "city_making_and_fame": "An eligible artisan works at an approved city station using actual native profession training, a learned and admitted route, current skill/character/class/equip gates, and reserved materials. A distinct earned city-career receipt may reward a useful completed craft once per unique output and accepted demand. Trade, mail, bank movement, relog, self-orders, wash trades, duplicate/replayed receipts, failed work, timer completion, and the same item changing hands do not earn another fame award or native XP.",
+    "relics_and_knowledge": "Where a legendary recipe specifies boss acquisition, blueprint knowledge and its transferable status are separate from the one scarce physical relic consumed for each commission. Inspection, repair, re-inscription of ordinary patterns, charge refill and station access never mint, duplicate, restore or consume a relic unless a recipe explicitly makes it a new commission input.",
+    "future_runeforge": "A future station upgrade may consume only separately verified actual resources and a quoted authorized cost. It cannot produce free components, grant native profession skill, bypass training or character gates, or create an unearned station entitlement.",
+    "activation": "No component, service, station, custom item, recipe, guild account mutation or native route is installed or active in this design lane. Native craft, inventory, payment, entitlement, and service adapters require their own source verification, durable custody and once-only settlement admission."
+  }
+}

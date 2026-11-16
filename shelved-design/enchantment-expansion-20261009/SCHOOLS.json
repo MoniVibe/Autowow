@@ -1,0 +1,4381 @@
+{
+  "schema_version": 1,
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "schools",
+  "all_values_proposed": true,
+  "statement": "All mechanics, material costs, tiers, city stations, skill/rank gates, charges, recharge terms, work stages, teaching and rewards in this file are proposed and inactive. source_boss/source_encounter are null for every recipe; no native recipe, trigger, item ID, or boss provenance is claimed. The pre-71 lower-tier reagent names are unverified name references with null entries pending qualification, not asserted vendor/drop routes.",
+  "tier_variants": [
+    {
+      "variant_id": "novice_1_20",
+      "label": "Novice 1-20",
+      "wearer_level_range": [
+        1,
+        20
+      ],
+      "base_item_required_level_range": [
+        1,
+        20
+      ],
+      "field_min_enchanting_skill": 25,
+      "masterwork_min_enchanting_skill": 75,
+      "dust": "Strange Dust",
+      "essence": "Lesser Magic Essence",
+      "shard": "Small Glimmering Shard",
+      "bill_quantities": {
+        "field": [
+          8,
+          2,
+          1
+        ],
+        "masterwork": [
+          16,
+          4,
+          2
+        ]
+      },
+      "recharge_minutes": 10,
+      "recharge_quantities": {
+        "field": [
+          12,
+          2,
+          1
+        ],
+        "masterwork": [
+          24,
+          5,
+          2
+        ]
+      },
+      "material_name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION",
+      "field_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 25; native rank label and character-level requirement remain authoritative",
+      "masterwork_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 75; native rank label and character-level requirement remain authoritative"
+    },
+    {
+      "variant_id": "apprentice_21_40",
+      "label": "Apprentice 21-40",
+      "wearer_level_range": [
+        21,
+        40
+      ],
+      "base_item_required_level_range": [
+        21,
+        40
+      ],
+      "field_min_enchanting_skill": 100,
+      "masterwork_min_enchanting_skill": 150,
+      "dust": "Soul Dust",
+      "essence": "Lesser Mystic Essence",
+      "shard": "Small Glowing Shard",
+      "bill_quantities": {
+        "field": [
+          10,
+          2,
+          1
+        ],
+        "masterwork": [
+          20,
+          4,
+          2
+        ]
+      },
+      "recharge_minutes": 13,
+      "recharge_quantities": {
+        "field": [
+          14,
+          2,
+          1
+        ],
+        "masterwork": [
+          28,
+          5,
+          2
+        ]
+      },
+      "material_name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION",
+      "field_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 100; native rank label and character-level requirement remain authoritative",
+      "masterwork_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 150; native rank label and character-level requirement remain authoritative"
+    },
+    {
+      "variant_id": "journeyman_41_60",
+      "label": "Journeyman 41-60",
+      "wearer_level_range": [
+        41,
+        60
+      ],
+      "base_item_required_level_range": [
+        41,
+        60
+      ],
+      "field_min_enchanting_skill": 200,
+      "masterwork_min_enchanting_skill": 250,
+      "dust": "Vision Dust",
+      "essence": "Lesser Nether Essence",
+      "shard": "Small Radiant Shard",
+      "bill_quantities": {
+        "field": [
+          12,
+          3,
+          1
+        ],
+        "masterwork": [
+          24,
+          5,
+          3
+        ]
+      },
+      "recharge_minutes": 16,
+      "recharge_quantities": {
+        "field": [
+          16,
+          3,
+          1
+        ],
+        "masterwork": [
+          32,
+          6,
+          3
+        ]
+      },
+      "material_name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION",
+      "field_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 200; native rank label and character-level requirement remain authoritative",
+      "masterwork_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 250; native rank label and character-level requirement remain authoritative"
+    },
+    {
+      "variant_id": "artisan_61_70",
+      "label": "Artisan 61-70",
+      "wearer_level_range": [
+        61,
+        70
+      ],
+      "base_item_required_level_range": [
+        61,
+        70
+      ],
+      "field_min_enchanting_skill": 300,
+      "masterwork_min_enchanting_skill": 350,
+      "dust": "Arcane Dust",
+      "essence": "Lesser Planar Essence",
+      "shard": "Prismatic Shard",
+      "bill_quantities": {
+        "field": [
+          14,
+          3,
+          2
+        ],
+        "masterwork": [
+          28,
+          6,
+          3
+        ]
+      },
+      "recharge_minutes": 18,
+      "recharge_quantities": {
+        "field": [
+          18,
+          3,
+          2
+        ],
+        "masterwork": [
+          36,
+          7,
+          3
+        ]
+      },
+      "material_name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION",
+      "field_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 300; native rank label and character-level requirement remain authoritative",
+      "masterwork_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 350; native rank label and character-level requirement remain authoritative"
+    },
+    {
+      "variant_id": "master_71_80",
+      "label": "Master 71-80",
+      "wearer_level_range": [
+        71,
+        80
+      ],
+      "base_item_required_level_range": [
+        71,
+        80
+      ],
+      "field_min_enchanting_skill": 350,
+      "masterwork_min_enchanting_skill": 400,
+      "recharge_minutes": 20,
+      "material_name_status": "NAME_REFERENCES_FROM_MATERIAL_REFERENCE_JSON",
+      "field_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 350; native rank label and character-level requirement remain authoritative",
+      "masterwork_training_rank_gate": "actual native Enchanting rank whose admitted cap permits skill 400; native rank label and character-level requirement remain authoritative"
+    }
+  ],
+  "candidates": [
+    {
+      "design_id": "enchant2.school.last-stand-aegis",
+      "name": "Last Stand Aegis",
+      "tier": "field",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "chest armor",
+        "item_family": "role-compatible body armor; plate is valid only if the wearer already has native plate proficiency, otherwise use a separately qualified wearer-proficient chest family",
+        "city_station": "Stormwind or Orgrimmar city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "tank",
+        "solo defender",
+        "front-line adventurer"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_armor_proficiency_for_selected_family": true,
+        "no_free_armor_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Stormwind or Orgrimmar city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 25,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 25; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 100,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 100; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 200,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 200; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 300,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 300; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": false
+      },
+      "mechanic": {
+        "trigger": "While this exact chest is equipped in hostile NPC combat, an eligible direct non-periodic hostile hit must move the wearer from above 30% to at or below 30% of maximum health. The trigger is after that hit resolves.",
+        "effect": "Consume one stored charge and place a personal absorb shield for 5 seconds; it only absorbs later eligible hostile damage.",
+        "numbers": {
+          "health_threshold_crossing_percent": 30,
+          "absorb_percent_of_wearer_max_health": 3,
+          "absorb_hard_cap_by_variant": {
+            "novice_1_20": 30,
+            "apprentice_21_40": 60,
+            "journeyman_41_60": 120,
+            "artisan_61_70": 180,
+            "master_71_80": 240
+          },
+          "absorb_duration_seconds": 5,
+          "first_hit_absorbed": false,
+          "max_charges": 24
+        },
+        "icd_seconds": 120,
+        "charges": 24,
+        "empty_behavior": "At zero charges the chest gives no Last Stand shield or substitute passive; only a completed city recharge restores 24 charges.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 24,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Last Stand Aegis Master Pattern",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 8,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Last Stand Aegis Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 10,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Last Stand Aegis Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 12,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Last Stand Aegis Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 14,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Last Stand Aegis Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 24,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 20,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 10,
+          "apprentice_21_40": 13,
+          "journeyman_41_60": 16,
+          "artisan_61_70": 18,
+          "master_71_80": 20
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 12,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 14,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 16,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 18,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Qualify role-compatible chest and replacement channel",
+          "active_minutes": 7
+        },
+        {
+          "name": "Lay the danger threshold and bind the ward",
+          "active_minutes": 11
+        },
+        {
+          "name": "Inspect item identity, charge ledger, and removal behavior",
+          "active_minutes": 7
+        }
+      ],
+      "total_active_work_minutes": 25,
+      "teaching": "PROPOSED: teach this exact Last Stand Aegis variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Last Stand Aegis when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider only for a tank/defender whose role and legally equippable role-compatible chest; plate requires existing native proficiency make the threshold shield useful; do not claim automatic survival or cheat-death.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible chest base, wearer-native armor proficiency, and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "Threshold crossing is one real hostile event, not a health probe or periodic-tick trigger.",
+        "Absorb amount is capped by both percent and the exact level-variant cap; it cannot prevent death from the triggering hit."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "User-directed Last Stand low-health shield motif; adjacent design vocabulary: Fankriss the Unyielding and Golemagg in outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.spellcatcher-relay",
+      "name": "Spellcatcher Relay",
+      "tier": "field",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "main-hand weapon",
+        "item_family": "caster or healer main-hand weapon",
+        "city_station": "Dalaran city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "caster damage",
+        "mana healer",
+        "hostile-spell responder"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_weapon_proficiency_for_selected_form": true,
+        "no_free_weapon_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Dalaran city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 25,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 25; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 100,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 100; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 200,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 200; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 300,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 300; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": false
+      },
+      "mechanic": {
+        "trigger": "During pre-damage resolution of one direct, non-periodic hostile NPC spell event against the wearer, reserve one stored charge. The hit must be eligible before it resolves. Commit that charge only if the same event settles with positive damage actually absorbed; if the event cancels or no damage is absorbed, release the reservation without charge loss. Friendly, self, reflected and periodic damage never qualify.",
+        "effect": "On that same damage event, absorb 40% of its eligible damage up to the variant cap and settle the actual absorbed amount once. Only after absorb settlement, store 25% of that actual amount as an arcane echo. The next direct hostile NPC spell cast by the wearer within 8 seconds deals that echo as bonus arcane damage up to its variant cap; unused echo expires.",
+        "numbers": {
+          "incoming_hit_absorb_percent": 40,
+          "absorbed_damage_cap_by_variant": {
+            "novice_1_20": 20,
+            "apprentice_21_40": 40,
+            "journeyman_41_60": 80,
+            "artisan_61_70": 120,
+            "master_71_80": 180
+          },
+          "echo_percent_of_actual_absorb": 25,
+          "echo_damage_cap_by_variant": {
+            "novice_1_20": 5,
+            "apprentice_21_40": 10,
+            "journeyman_41_60": 15,
+            "artisan_61_70": 20,
+            "master_71_80": 25
+          },
+          "echo_window_seconds": 8,
+          "max_charges": 24,
+          "mana_restored": 0,
+          "charge_reserve_point": "before qualifying damage resolves",
+          "charge_commit_condition": "positive damage actually absorbed from the same settled event",
+          "aborted_or_zero_absorb": "release reservation without consuming charge",
+          "echo_stored_after_absorb_settlement": true
+        },
+        "icd_seconds": 30,
+        "charges": 24,
+        "empty_behavior": "At zero charges the weapon neither absorbs nor stores/echoes energy; no mana or other resource is restored.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 22,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 5,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Water",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Spellcatcher Relay Matrix",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 8,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Spellcatcher Relay Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 10,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Spellcatcher Relay Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 12,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Spellcatcher Relay Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 14,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Spellcatcher Relay Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 24,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 4,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Water",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 20,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 10,
+          "apprentice_21_40": 13,
+          "journeyman_41_60": 16,
+          "artisan_61_70": 18,
+          "master_71_80": 20
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 12,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 14,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 16,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 18,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Qualify main-hand weapon and incoming-school event",
+          "active_minutes": 7
+        },
+        {
+          "name": "Bind the finite capture matrix",
+          "active_minutes": 11
+        },
+        {
+          "name": "Test charge/echo expiry and inspect",
+          "active_minutes": 7
+        }
+      ],
+      "total_active_work_minutes": 25,
+      "teaching": "PROPOSED: teach this exact Spellcatcher Relay variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Spellcatcher Relay when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider for mana-using caster or healer roles that face hostile NPC spells; do not purchase on melee-only or non-mana roles unless the recipient explicitly values the defensive route.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Spellcatcher reserves its charge before the eligible damage event resolves, commits once only after authoritative positive absorb settlement, and releases on abort/no-op; callback replay cannot consume or store echo twice.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible weapon/body-armor base and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "The hit is reduced only once, with the stated cap; the echo is damage and never refunds mana or another charge.",
+        "Echo damage cannot trigger Spellcatcher Relay, another proc, or itself.",
+        "Spellcatcher requires an admitted pre-damage resolution seam with reserve/commit/release and one idempotent settlement receipt for the same event before any absorb is applied."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "User-directed Spellcatcher limited absorbed hostile-energy motif; adjacent school-response vocabulary: Chromaggus and BOSS_LEGACIES.md.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.oathbound-bodyguards-resolve",
+      "name": "Oathbound Bodyguard's Resolve",
+      "tier": "field",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "chest armor",
+        "item_family": "role-compatible body armor; plate is valid only if the wearer already has native plate proficiency, otherwise use a separately qualified wearer-proficient chest family",
+        "city_station": "Stormwind or Orgrimmar city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "tank",
+        "captain",
+        "group bodyguard"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_armor_proficiency_for_selected_family": true,
+        "no_free_armor_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Stormwind or Orgrimmar city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 25,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 25; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 100,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 100; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 200,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 200; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 300,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 300; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": false
+      },
+      "mechanic": {
+        "trigger": "While the wearer has hit the same hostile NPC with a direct attack in the prior 5 seconds, an eligible different group member within 8 yards must cross from above 35% to at or below 35% maximum health due to that NPC's direct non-periodic hostile hit.",
+        "effect": "Grant that ally a 2.5% maximum-health absorb shield for 5 seconds and the wearer 4% damage reduction for 4 seconds. The hit that crossed the threshold is not undone and damage is never redirected.",
+        "numbers": {
+          "ally_health_threshold_crossing_percent": 35,
+          "required_same_hostile_player_hit_window_seconds": 5,
+          "ally_range_yards": 8,
+          "ally_absorb_percent_max_health": 2.5,
+          "ally_absorb_cap_by_variant": {
+            "novice_1_20": 25,
+            "apprentice_21_40": 50,
+            "journeyman_41_60": 100,
+            "artisan_61_70": 150,
+            "master_71_80": 220
+          },
+          "ally_absorb_duration_seconds": 5,
+          "wearer_damage_reduction_percent": 4,
+          "wearer_reduction_duration_seconds": 4,
+          "max_charges": 24
+        },
+        "icd_seconds": 90,
+        "charges": 24,
+        "empty_behavior": "At zero charges there is no ally shield or wearer resolve; the enchant has no passive aura or taunt.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 24,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Oathbound Bodyguard's Resolve Pattern",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 8,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Oathbound Bodyguard's Resolve Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 10,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Oathbound Bodyguard's Resolve Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 12,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Oathbound Bodyguard's Resolve Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 14,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Oathbound Bodyguard's Resolve Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 24,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 2,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 20,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 10,
+          "apprentice_21_40": 13,
+          "journeyman_41_60": 16,
+          "artisan_61_70": 18,
+          "master_71_80": 20
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 12,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 14,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 16,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 18,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Qualify role-compatible chest and group event",
+          "active_minutes": 7
+        },
+        {
+          "name": "Weave the oath thread through the resolve pattern",
+          "active_minutes": 11
+        },
+        {
+          "name": "Inspect ally target, range, charge and duplicate-family rules",
+          "active_minutes": 7
+        }
+      ],
+      "total_active_work_minutes": 25,
+      "teaching": "PROPOSED: teach this exact Oathbound Bodyguard's Resolve variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Oathbound Bodyguard's Resolve when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider only for a tank/captain currently serving a group role and using the compatible body-armor slot; solo bots receive no fabricated group benefit.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible chest base, wearer-native armor proficiency, and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "The recipient must be another current group member and actual recent hostile damage must be observed.",
+        "No autonomous bodyguard, taunt, forced arrival, damage transfer, rescue immunity, or protection aura is granted."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "User-directed Oathbound captain/bodyguard resolve motif; adjacent group-protection vocabulary: Maulgar and council, Razuvious, and BOSS_LEGACIES.md.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.wayfarers-wake",
+      "name": "Wayfarer's Wake",
+      "tier": "field",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "chest armor",
+        "item_family": "leather body armor",
+        "city_station": "Dalaran city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "scout",
+        "ranged adventurer",
+        "mobile support"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_armor_proficiency_for_selected_family": true,
+        "no_free_armor_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Dalaran city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 25,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 25; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 100,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 100; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 200,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 200; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 300,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 300; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": false
+      },
+      "mechanic": {
+        "trigger": "After an eligible hostile NPC root or snare of at least 2 seconds ends naturally on the wearer during hostile combat, consume one charge.",
+        "effect": "Grant 6-10% movement speed for 4-6 seconds by variant. It never shortens, cleanses, prevents, or changes the control effect.",
+        "numbers": {
+          "minimum_hostile_root_or_snare_duration_seconds": 2,
+          "movement_speed_bonus_percent_by_variant": {
+            "novice_1_20": 6,
+            "apprentice_21_40": 7,
+            "journeyman_41_60": 8,
+            "artisan_61_70": 9,
+            "master_71_80": 10
+          },
+          "duration_seconds_by_variant": {
+            "novice_1_20": 4,
+            "apprentice_21_40": 4,
+            "journeyman_41_60": 5,
+            "artisan_61_70": 5,
+            "master_71_80": 6
+          },
+          "max_charges": 20
+        },
+        "icd_seconds": 45,
+        "charges": 20,
+        "empty_behavior": "At zero charges the wearer gets no movement bonus; no control resistance or passive speed remains.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 20,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Wayfarer's Wake Windglass",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 8,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Wayfarer's Wake Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 10,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Wayfarer's Wake Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 12,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Wayfarer's Wake Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 14,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Wayfarer's Wake Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 20,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Air",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 18,
+        "charge_restored": 20,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 10,
+          "apprentice_21_40": 13,
+          "journeyman_41_60": 16,
+          "artisan_61_70": 18,
+          "master_71_80": 18
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 12,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 14,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 16,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 18,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Qualify leather chest and control-state event",
+          "active_minutes": 7
+        },
+        {
+          "name": "Bind the wake-thread and verify speed cap",
+          "active_minutes": 11
+        },
+        {
+          "name": "Inspect natural-ending and charge persistence",
+          "active_minutes": 7
+        }
+      ],
+      "total_active_work_minutes": 25,
+      "teaching": "PROPOSED: teach this exact Wayfarer's Wake variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Wayfarer's Wake when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider for scout or ranged roles on leather chest only when useful movement after hostile control is expected; never claim immunity or obstacle bypass.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible weapon/body-armor base and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "Only hostile applied roots/snares qualify; voluntary stops, jumps, fall damage, friendly control, and scripted movement do not.",
+        "The control must end by its own normal lifecycle; the enchant never dispels it."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "Original proposed mobility response; inspiration is design extrapolation, not a boss source or native effect.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.hearthkeepers-margin",
+      "name": "Hearthkeeper's Margin",
+      "tier": "field",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "main-hand weapon",
+        "item_family": "healer main-hand weapon",
+        "city_station": "Dalaran city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "healer",
+        "group support",
+        "mana healer"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_weapon_proficiency_for_selected_form": true,
+        "no_free_weapon_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Dalaran city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 25,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 25; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 100,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 100; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 200,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 200; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 300,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 300; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": false
+      },
+      "mechanic": {
+        "trigger": "A direct player-cast heal in hostile NPC combat must restore at least 2% of a different group ally's maximum health; that ally must be below 35% when the cast begins and have taken a direct hostile NPC hit in the prior 5 seconds.",
+        "effect": "Grant only that ally an absorb shield equal to 2% of their maximum health for 5 seconds, capped by the variant amount. Overheal, periodic healing, self-healing, and proc-generated healing do not qualify.",
+        "numbers": {
+          "target_health_max_at_cast_start_percent": 35,
+          "minimum_effective_heal_percent_of_target_max_health": 2,
+          "recent_hostile_damage_window_seconds": 5,
+          "target_absorb_percent_max_health": 2,
+          "target_absorb_cap_by_variant": {
+            "novice_1_20": 20,
+            "apprentice_21_40": 40,
+            "journeyman_41_60": 80,
+            "artisan_61_70": 120,
+            "master_71_80": 180
+          },
+          "absorb_duration_seconds": 5,
+          "max_charges": 24
+        },
+        "icd_seconds": 60,
+        "charges": 24,
+        "empty_behavior": "At zero charges the weapon applies no shield and provides no passive healing or resource bonus.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 22,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 5,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Hearthkeeper's Margin Filament",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 8,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Hearthkeeper's Margin Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 10,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Hearthkeeper's Margin Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 12,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Hearthkeeper's Margin Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 14,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Hearthkeeper's Margin Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 24,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 4,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Life",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 20,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 10,
+          "apprentice_21_40": 13,
+          "journeyman_41_60": 16,
+          "artisan_61_70": 18,
+          "master_71_80": 20
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 12,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 14,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 16,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 18,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Qualify healer weapon and effective-heal event",
+          "active_minutes": 7
+        },
+        {
+          "name": "Weave single-recipient margin ward",
+          "active_minutes": 11
+        },
+        {
+          "name": "Inspect absorb cap, ally targeting and no-recursion path",
+          "active_minutes": 7
+        }
+      ],
+      "total_active_work_minutes": 25,
+      "teaching": "PROPOSED: teach this exact Hearthkeeper's Margin variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Hearthkeeper's Margin when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider for healer roles that actively heal injured group allies in hostile NPC combat; avoid if current native gear or another same-family shield makes the finish redundant.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible weapon/body-armor base and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "The shield is applied once to the injured ally; it is not a heal and does not recursively trigger healing effects.",
+        "The target must have real hostile NPC damage in the stated window; no dummy or friendly-self damage charging."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "Original proposed single-ally support finish; contrast source study against the old Tideglass/Tidebinder entries in enchanting.json.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.triune-cadence",
+      "name": "Triune Cadence",
+      "tier": "field",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "main-hand weapon",
+        "item_family": "caster main-hand weapon",
+        "city_station": "Stormwind or Orgrimmar city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "caster damage",
+        "mana caster"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_weapon_proficiency_for_selected_form": true,
+        "no_free_weapon_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Stormwind or Orgrimmar city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 25,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 25; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 100,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 100; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 200,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 200; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 300,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 300; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": false
+      },
+      "mechanic": {
+        "trigger": "Three successful direct player-cast spells against the same hostile NPC within 8 seconds, while the weapon is equipped, consume one charge and prime the next eligible direct hostile spell cast within 6 seconds.",
+        "effect": "Reduce that next spell's cast time by 8%, capped by the variant seconds; instant spells are unchanged. The sequence must be real casts, not periodic ticks, proc spells, reflections, or friendly actions.",
+        "numbers": {
+          "required_successful_direct_casts": 3,
+          "same_hostile_target_required": true,
+          "sequence_window_seconds": 8,
+          "primed_spell_window_seconds": 6,
+          "cast_time_reduction_percent": 8,
+          "max_cast_time_reduction_seconds_by_variant": {
+            "novice_1_20": 0.15,
+            "apprentice_21_40": 0.2,
+            "journeyman_41_60": 0.3,
+            "artisan_61_70": 0.4,
+            "master_71_80": 0.5
+          },
+          "instant_cast_affected": false,
+          "max_charges": 24
+        },
+        "icd_seconds": 20,
+        "charges": 24,
+        "empty_behavior": "At zero charges a three-cast sequence primes nothing; no passive haste or spell power remains.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 24,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 5,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Air",
+          "quantity": 4,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 2,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Triune Cadence Rune Blank",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 8,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Triune Cadence Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 10,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Triune Cadence Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 12,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 1,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Triune Cadence Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 14,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Triune Cadence Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 24,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 4,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Air",
+            "quantity": 3,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 20,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 10,
+          "apprentice_21_40": 13,
+          "journeyman_41_60": 16,
+          "artisan_61_70": 18,
+          "master_71_80": 20
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 12,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 14,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 16,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 1,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 18,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Qualify caster weapon and direct-cast sequence",
+          "active_minutes": 7
+        },
+        {
+          "name": "Bind measured cadence into rune blank",
+          "active_minutes": 11
+        },
+        {
+          "name": "Inspect cast window, time cap, charge and relog behavior",
+          "active_minutes": 7
+        }
+      ],
+      "total_active_work_minutes": 25,
+      "teaching": "PROPOSED: teach this exact Triune Cadence variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Triune Cadence when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider only for mana-caster roles with repeated cast-time spells against hostile NPCs; instant-only rotations do not use the effect.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible weapon/body-armor base and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "The sequence expires at 8 seconds or if any cast targets another hostile; a missed/cancelled spell does not count.",
+        "The primed cast is one use; it cannot retrigger this sequence or any other proc."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "Original proposed casting-continuity effect; existing Arcane Accord was checked and this design requires a three-cast sequence and offers bounded cast-time reduction instead of a prepared bonus spell.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.captains-redoubt",
+      "name": "Captain's Redoubt",
+      "tier": "masterwork",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "chest armor",
+        "item_family": "role-compatible body armor; plate is valid only if the wearer already has native plate proficiency, otherwise use a separately qualified wearer-proficient chest family",
+        "city_station": "Stormwind or Orgrimmar city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "tank captain",
+        "group bodyguard",
+        "front-line protector"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_armor_proficiency_for_selected_family": true,
+        "no_free_armor_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Stormwind or Orgrimmar city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 75,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 75; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 150,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 150; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 250,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 250; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 400,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 400; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": true
+      },
+      "mechanic": {
+        "trigger": "A successful native taunt by the wearer against a hostile NPC that has dealt a direct hit to a different group member within the prior 5 seconds, with that ally within 8 yards, consumes one charge.",
+        "effect": "For 5 seconds grant that ally and wearer damage reduction by variant. The taunt follows its normal native result; this effect does not force target selection, redirect damage, or taunt automatically.",
+        "numbers": {
+          "taunted_hostile_must_have_hit_ally_within_seconds": 5,
+          "ally_range_yards": 8,
+          "ally_and_wearer_damage_reduction_percent_by_variant": {
+            "novice_1_20": {
+              "ally": 4,
+              "wearer": 3
+            },
+            "apprentice_21_40": {
+              "ally": 5,
+              "wearer": 4
+            },
+            "journeyman_41_60": {
+              "ally": 6,
+              "wearer": 5
+            },
+            "artisan_61_70": {
+              "ally": 7,
+              "wearer": 6
+            },
+            "master_71_80": {
+              "ally": 8,
+              "wearer": 6
+            }
+          },
+          "duration_seconds": 5,
+          "max_charges": 24
+        },
+        "icd_seconds": 60,
+        "charges": 24,
+        "empty_behavior": "At zero charges there is no resolve or passive threat bonus; native taunt is unchanged.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Earth",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Frozen Orb",
+          "quantity": 1,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Captain's Redoubt Master Seal",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 16,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 4,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Captain's Redoubt Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 20,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 4,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Captain's Redoubt Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 24,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 5,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Captain's Redoubt Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 28,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 6,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Captain's Redoubt Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 40,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Dream Shard",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Earth",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Abyss Crystal",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 30,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 15,
+          "apprentice_21_40": 18,
+          "journeyman_41_60": 21,
+          "artisan_61_70": 23,
+          "master_71_80": 30
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 24,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 5,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 28,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 5,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 32,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 6,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 36,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 7,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualified role/taunt contract",
+          "active_minutes": 15
+        },
+        {
+          "name": "Plate binding and accepted mitigation profile",
+          "active_minutes": 25
+        },
+        {
+          "name": "Resolve finishing on exact chest identity",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspect group range, taunt receipt, charge ledger and lifecycle",
+          "active_minutes": 15
+        }
+      ],
+      "total_active_work_minutes": 80,
+      "teaching": "PROPOSED: teach this exact Captain's Redoubt variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Captain's Redoubt when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider only for funded tank/bodyguard duty with a learned legal taunt and compatible legally equippable chest armor; plate requires existing native proficiency; a city artisan never joins the deployment.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible chest base, wearer-native armor proficiency, and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "Only a player-caused successful native taunt and recent hostile damage qualify.",
+        "Mitigation applies to exactly the wearer and one qualifying ally; same-family mitigation uses the locally admitted strongest-value policy and does not refresh from itself."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "Original proposed masterwork captain response, extrapolating user-requested Oathbound bodyguard resolve; not a boss drop or a copied legacy.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    },
+    {
+      "design_id": "enchant2.school.harmonic-succor",
+      "name": "Harmonic Succor",
+      "tier": "masterwork",
+      "source_boss": null,
+      "source_encounter": null,
+      "host": {
+        "item_slot": "main-hand weapon",
+        "item_family": "healer main-hand weapon",
+        "city_station": "Dalaran city Enchanting workshop",
+        "native_slot_route": "PROPOSED_UNQUALIFIED; exact existing item/form and compatible replacement channel require later admission",
+        "effect_bound_to_exact_item": true
+      },
+      "roles": [
+        "healer",
+        "mana healer",
+        "multi-target group support"
+      ],
+      "wearer_gate": {
+        "requires_compatible_real_base_item": true,
+        "requires_wearer_level_and_base_item_required_level_in_same_variant_band": true,
+        "variant_ids": [
+          "novice_1_20",
+          "apprentice_21_40",
+          "journeyman_41_60",
+          "artisan_61_70",
+          "master_71_80"
+        ],
+        "no_class_or_skill_grant": true,
+        "requires_native_weapon_proficiency_for_selected_form": true,
+        "no_free_weapon_proficiency": true
+      },
+      "artisan_gate": {
+        "city": "Dalaran city Enchanting workshop",
+        "station": "proposed city Enchanting workshop; exact native station route unqualified",
+        "must_remain_in_city_for_all_stages": true,
+        "adventure_or_boss_attendance_required": false,
+        "native_enchanting_rank_and_skill_must_already_be_learned": true,
+        "variant_requirements": [
+          {
+            "variant_id": "novice_1_20",
+            "wearer_level_range": [
+              1,
+              20
+            ],
+            "base_item_required_level_range": [
+              1,
+              20
+            ],
+            "minimum_enchanting_skill": 75,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 75; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "wearer_level_range": [
+              21,
+              40
+            ],
+            "base_item_required_level_range": [
+              21,
+              40
+            ],
+            "minimum_enchanting_skill": 150,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 150; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "wearer_level_range": [
+              41,
+              60
+            ],
+            "base_item_required_level_range": [
+              41,
+              60
+            ],
+            "minimum_enchanting_skill": 250,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 250; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "wearer_level_range": [
+              61,
+              70
+            ],
+            "base_item_required_level_range": [
+              61,
+              70
+            ],
+            "minimum_enchanting_skill": 350,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 350; preserve all native rank and character-level requirements"
+          },
+          {
+            "variant_id": "master_71_80",
+            "wearer_level_range": [
+              71,
+              80
+            ],
+            "base_item_required_level_range": [
+              71,
+              80
+            ],
+            "minimum_enchanting_skill": 400,
+            "recipe_variant_is_distinct": true,
+            "training_rank_gate": "actual native rank whose admitted cap permits Enchanting skill 400; preserve all native rank and character-level requirements"
+          }
+        ],
+        "masterwork_school_exam": true
+      },
+      "mechanic": {
+        "trigger": "During hostile NPC combat, three direct player-cast heals each restoring at least 2% of maximum health to three distinct grouped allies who each took a hostile NPC hit in the prior 5 seconds, all completed within 12 seconds, consume one charge and prime the next direct heal for 6 seconds.",
+        "effect": "That next direct heal has cast time reduced by 8% up to the variant cap and mana cost reduced by 10% of its normal native cost. Instant heals receive the mana-cost reduction only. No mana is restored; effective healing must be real and the primed heal cannot retrigger the sequence.",
+        "numbers": {
+          "required_effective_direct_heals": 3,
+          "distinct_group_allies": 3,
+          "minimum_each_heal_percent_of_target_max_health": 2,
+          "recent_hostile_damage_window_seconds": 5,
+          "sequence_window_seconds": 12,
+          "primed_heal_window_seconds": 6,
+          "cast_time_reduction_percent": 8,
+          "cast_time_reduction_cap_seconds_by_variant": {
+            "novice_1_20": 0.15,
+            "apprentice_21_40": 0.25,
+            "journeyman_41_60": 0.35,
+            "artisan_61_70": 0.45,
+            "master_71_80": 0.5
+          },
+          "mana_cost_reduction_percent": 10,
+          "mana_restored": 0,
+          "max_charges": 24
+        },
+        "icd_seconds": 75,
+        "charges": 24,
+        "empty_behavior": "At zero charges no healing sequence primes a discount or speed benefit; no passive healing or mana is granted.",
+        "proposed_only": true
+      },
+      "inputs": [
+        {
+          "name": "Infinite Dust",
+          "quantity": 40,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Greater Cosmic Essence",
+          "quantity": 8,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Dream Shard",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Eternal Life",
+          "quantity": 6,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Abyss Crystal",
+          "quantity": 3,
+          "kind": "existing_name_reference",
+          "native_item_entry": null,
+          "name_status": "NAME_REFERENCE_FROM_MATERIAL_REFERENCE_JSON"
+        },
+        {
+          "name": "Harmonic Succor Master Lattice",
+          "quantity": 1,
+          "kind": "custom_unimplemented",
+          "native_item_entry": null
+        }
+      ],
+      "reference_bill_scope": "One finish on one buyer-supplied compatible weapon or body-armor item; base item is not included; costs and recipe are proposed.",
+      "tier_variant_bills": [
+        {
+          "variant_id": "novice_1_20",
+          "label": "Novice 1-20",
+          "inputs": [
+            {
+              "name": "Strange Dust",
+              "quantity": 16,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Magic Essence",
+              "quantity": 4,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glimmering Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Novice Harmonic Succor Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "apprentice_21_40",
+          "label": "Apprentice 21-40",
+          "inputs": [
+            {
+              "name": "Soul Dust",
+              "quantity": 20,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Mystic Essence",
+              "quantity": 4,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Glowing Shard",
+              "quantity": 2,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Apprentice Harmonic Succor Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "journeyman_41_60",
+          "label": "Journeyman 41-60",
+          "inputs": [
+            {
+              "name": "Vision Dust",
+              "quantity": 24,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Nether Essence",
+              "quantity": 5,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Small Radiant Shard",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Journeyman Harmonic Succor Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        },
+        {
+          "variant_id": "artisan_61_70",
+          "label": "Artisan 61-70",
+          "inputs": [
+            {
+              "name": "Arcane Dust",
+              "quantity": 28,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Lesser Planar Essence",
+              "quantity": 6,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Prismatic Shard",
+              "quantity": 3,
+              "kind": "existing_name_reference",
+              "native_item_entry": null,
+              "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+            },
+            {
+              "name": "Artisan Harmonic Succor Pattern",
+              "quantity": 1,
+              "kind": "custom_unimplemented",
+              "native_item_entry": null
+            }
+          ],
+          "all_inputs_proposed_unverified": true
+        }
+      ],
+      "recharge": {
+        "inputs": [
+          {
+            "name": "Infinite Dust",
+            "quantity": 40,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Greater Cosmic Essence",
+            "quantity": 6,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Eternal Life",
+            "quantity": 5,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          },
+          {
+            "name": "Abyss Crystal",
+            "quantity": 1,
+            "kind": "existing_name_reference",
+            "native_item_entry": null
+          }
+        ],
+        "active_minutes": 30,
+        "charge_restored": 24,
+        "only_when_empty": true,
+        "no_offline_catchup": true,
+        "variant_active_minutes": {
+          "novice_1_20": 15,
+          "apprentice_21_40": 18,
+          "journeyman_41_60": 21,
+          "artisan_61_70": 23,
+          "master_71_80": 30
+        },
+        "lower_tier_bills": [
+          {
+            "variant_id": "novice_1_20",
+            "label": "Novice 1-20",
+            "inputs": [
+              {
+                "name": "Strange Dust",
+                "quantity": 24,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Magic Essence",
+                "quantity": 5,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glimmering Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "apprentice_21_40",
+            "label": "Apprentice 21-40",
+            "inputs": [
+              {
+                "name": "Soul Dust",
+                "quantity": 28,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Mystic Essence",
+                "quantity": 5,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Glowing Shard",
+                "quantity": 2,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "journeyman_41_60",
+            "label": "Journeyman 41-60",
+            "inputs": [
+              {
+                "name": "Vision Dust",
+                "quantity": 32,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Nether Essence",
+                "quantity": 6,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Small Radiant Shard",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          },
+          {
+            "variant_id": "artisan_61_70",
+            "label": "Artisan 61-70",
+            "inputs": [
+              {
+                "name": "Arcane Dust",
+                "quantity": 36,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Lesser Planar Essence",
+                "quantity": 7,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              },
+              {
+                "name": "Prismatic Shard",
+                "quantity": 3,
+                "kind": "existing_name_reference",
+                "native_item_entry": null,
+                "name_status": "UNVERIFIED_NAME_REFERENCE_PENDING_QUALIFICATION"
+              }
+            ],
+            "all_inputs_proposed_unverified": true
+          }
+        ]
+      },
+      "stages": [
+        {
+          "name": "Preparation and qualify three target receipts",
+          "active_minutes": 15
+        },
+        {
+          "name": "Weave the distinct-ally prayer lattice",
+          "active_minutes": 25
+        },
+        {
+          "name": "Tune cast-time and native mana-cost caps",
+          "active_minutes": 25
+        },
+        {
+          "name": "Inspect effective-heal, charge, relog and no-recursion evidence",
+          "active_minutes": 15
+        }
+      ],
+      "total_active_work_minutes": 80,
+      "teaching": "PROPOSED: teach this exact Harmonic Succor variant only at its city trainer after the existing native Enchanting rank/skill gate and a completed funded practice order using real inputs. Count one distinct useful design/variant lesson once; repeating, splitting, or bulk crafting grants no extra teaching credit, skill, XP, character level, or reputation.",
+      "maker_reward": "No active reward. If later implemented, the artisan who completes the authoritative useful commissioned work (the maker, not the wearer/recipient) may earn separate custom school mastery once per distinct design/variant/work receipt. It grants no automatic stat bonus, native skill, XP, character level, reputation, or free goods; authorship alone grants nothing.",
+      "supplier_contract": {
+        "status": "PROPOSED_UNIMPLEMENTED",
+        "reference_materials": "Existing-name references may be acquired from lawful paid city stock, gatherers, or trade if actually available; the reference does not assert a drop, vendor, or recipe route.",
+        "custom_inputs": "Every custom_unimplemented input requires a separately admitted funded supplier contract and real stock; no enchanter travel/adventure is required.",
+        "terms": "Quote exact names, quantities, payment, and delivery before order acceptance; no free replenishment or raid-only artisan reagent."
+      },
+      "bot_rules": {
+        "purchase": "Only consider Harmonic Succor when a funded city supplier offers the correct wearer-level variant, compatible item slot, role use, and complete bill; compare with current legal gear and expected benefit. Consider only for mana-healer roles that make useful direct heals across a group; require funded workshop stock and exact group-role use before commissioning.",
+        "equip": "Equip only the exact qualified variant on a legal compatible real item; do not equip duplicate copies to multiply one recipe family.",
+        "recharge": "At a city station, recharge only when all charges are spent, the complete bill and fee are funded, and the order is available; keep persisted charge state through relog and item swaps.",
+        "city_only": true
+      },
+      "abuse_rules": [
+        "All listed values and routes are proposals; no native trigger, proc, item ID, recipe, spell, client presentation, or persistence adapter is active.",
+        "Charge count and individual ICD limit this effect only; no global hero, legacy, loadout, or progression cap is added.",
+        "Charges persist on the exact item through relog, bank/mail and equip swaps; equipping, unequipping, trading, zoning, or restarting never refills them.",
+        "Exclude friendly, self-inflicted, periodic, reflected, environmental, training-probe, factory, administrative, pet/proc-generated events and all events generated by this or another custom effect.",
+        "No self/friendly damage, heal/absorb recursion, forced bodyguard, resurrection, immunity, or effect chaining; use native hostility, group, range, target, school, and removal rules after admission.",
+        "Only one instance of this recipe family may trigger per wearer at a time; this local duplicate-family arbitration does not cap other distinct designs."
+      ],
+      "dependencies": [
+        "Exact compatible weapon/body-armor base and replacement channel must be admitted; the existing base stays intact and is not destroyed.",
+        "A real context-bearing hostile-event seam must identify item GUID, wearer, hostile source, group/target state, eligible event type, and charge settlement.",
+        "Durable per-item charges, ICDs, activation windows, and cleanup must survive save/load, relog, equip swaps, trade/mail/bank and removal without duplicate callbacks.",
+        "City workshop scheduler must observe active eligible work only; no wall-clock/offline catch-up, restart-made output, free stage completion, or native-skill bypass.",
+        "A valid sequence needs three different injured group members and a current hostile NPC encounter; healing a friendly dummy or topping off healthy allies never qualifies.",
+        "The discount lowers the next native cost only; it does not mint, restore, transfer, or borrow mana and is unavailable to non-mana effects."
+      ],
+      "sources": [
+        "outputs/profession-catalogues-20261009/enchanting.json (existing names/mechanics checked for duplication only)",
+        "outputs/profession-catalogues-20261009/MATERIAL_BILLS.json (proposed bill patterns; no recipe/cost admission)",
+        "outputs/enchantment-expansion-20261009/MATERIAL_REFERENCE.json (historical material names only; item entries intentionally omitted)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md (city-only observed active work, no offline catch-up)",
+        "work/server-strategy-20261008/mod-autowow-strategy/docs/BOSS_LEGACIES.md (hostile-only attribution, persistence, no recursion, no global progression cap)",
+        "outputs/AUTOWOW_RAID_BOSS_REWARD_CATALOGUE_2026-10-09.md (design vocabulary for bounded boss-signature triggers; no implementation)",
+        "Original proposed masterwork multi-ally casting support; enchanting.json was checked for existing proc overlaps.",
+        "User-requested motif only; source_boss and source_encounter are null because no boss drop, recipe, or provenance is claimed."
+      ]
+    }
+  ]
+}

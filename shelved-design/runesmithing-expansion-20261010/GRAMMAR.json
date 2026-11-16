@@ -1,0 +1,326 @@
+{
+  "status": "DESIGN_ONLY_NOT_NATIVE",
+  "native_active": false,
+  "lane": "GRAMMAR",
+  "version": 1,
+  "grammar": {
+    "form": "exactly one Trigger -> exactly one Transformation -> exactly one Release",
+    "slot_order": ["trigger", "transformation", "release"],
+    "admission_rule": "Compatibility edges are necessary only. Admit each exact triple, host, gates, numbers, target rules, charge policy, and effect-family interactions explicitly; no Cartesian product of glyphs is active by default.",
+    "example_rule": "Illustrations are explanatory patterns, not gear recipes or admissions."
+  },
+  "glyphs": [
+    {
+      "id": "guard_block",
+      "slot": "trigger",
+      "evidence": "One authoritative successful native shield block against a legal hostile melee event, with wearer, item GUID, attacker, combat event ID, and result provenance.",
+      "role": "Select a witnessed defensive block as the pattern's initiating event.",
+      "cap": "At most one contribution per native event; one contribution per item per admitted trigger interval. No self, friendly, dummy, proc-origin, or arranged damage evidence.",
+      "compatibility": {
+        "host_tags": ["shield", "defense-capable-host"],
+        "transformations": ["gather_impact", "bind_protection"],
+        "releases": ["ward_absorb", "reprisal_hit"],
+        "notes": "Native shield and proficiency requirements still apply; a block does not by itself imply a proc outcome."
+      }
+    },
+    {
+      "id": "guard_parry",
+      "slot": "trigger",
+      "evidence": "One authoritative successful native parry against a legal hostile melee event, with exact wearer, item GUID, attacker, event ID, and provenance.",
+      "role": "Select a witnessed parry as the initiating event.",
+      "cap": "At most one contribution per native event and one per item per admitted trigger interval; never count a rune-origin hit as a new parry event.",
+      "compatibility": {
+        "host_tags": ["parry-capable-host", "weapon-or-shield"],
+        "transformations": ["gather_impact", "bind_protection", "resonate_pair"],
+        "releases": ["reprisal_hit", "ward_absorb", "haste_window"],
+        "notes": "Actual native weapon, class, and proficiency rules decide whether the wearer can parry."
+      }
+    },
+    {
+      "id": "steadfast_hold",
+      "slot": "trigger",
+      "evidence": "A continuous, observed hold interval at the same legal combat position while a hostile threat remains active; exclude forced movement and position corrections.",
+      "role": "Reward voluntarily holding ground under a real threat.",
+      "cap": "One hold qualification per item per interval; no repeated contributions until the hold expires and a new hostile engagement qualifies.",
+      "compatibility": {
+        "host_tags": ["armor", "shield", "defense-capable-host"],
+        "transformations": ["bind_protection", "resonate_pair"],
+        "releases": ["ward_absorb", "escape_window"],
+        "notes": "This is a qualifying observation, not a root, stun, taunt, or forced-position effect."
+      }
+    },
+    {
+      "id": "pursuit_approach",
+      "slot": "trigger",
+      "evidence": "Observed voluntary distance closure by the wearer toward a legal hostile target during combat; exclude knockback, pull, teleport, scripted movement, and server correction.",
+      "role": "Select deliberate pursuit as the initiating event.",
+      "cap": "One approach contribution per hostile target per admitted interval; position samples alone cannot create repeated progress.",
+      "compatibility": {
+        "host_tags": ["weapon", "light-armor", "mobile-host"],
+        "transformations": ["gather_impact", "focus_arcana", "resonate_pair"],
+        "releases": ["haste_window", "escape_window", "reprisal_hit", "elemental_burst"],
+        "notes": "The outcome may aid the wearer but cannot move the wearer or target."
+      }
+    },
+    {
+      "id": "spell_alternation",
+      "slot": "trigger",
+      "evidence": "Two distinct successful native hostile spell casts by the wearer, with different admitted schools/forms and unique cast IDs inside the admitted window; exclude item procs and duplicate callbacks.",
+      "role": "Recognize deliberate alternating magic without naming or granting a class spell.",
+      "cap": "One completed pair per item per admitted interval; each cast contributes at most once and excess casts do not bank.",
+      "compatibility": {
+        "host_tags": ["caster-host", "weapon", "off-hand", "held-focus"],
+        "transformations": ["focus_arcana", "gather_heat", "resonate_pair"],
+        "releases": ["elemental_burst", "haste_window", "ward_absorb"],
+        "notes": "Native cast, resource, class, and target checks remain authoritative."
+      }
+    },
+    {
+      "id": "mercy_heal",
+      "slot": "trigger",
+      "evidence": "A successful native heal to a living friendly with verified recent hostile injury in the same admitted combat; recipient GUID, healer, native heal event, actual amount, and injury provenance must match. Exclude overheal and self-healing.",
+      "role": "Select useful healing rather than raw healing volume.",
+      "cap": "At most one contribution per heal event and one per injured recipient per admitted interval; actual missing health bounds contribution.",
+      "compatibility": {
+        "host_tags": ["healer-host", "weapon", "held-focus", "armor"],
+        "transformations": ["weave_life", "resonate_pair"],
+        "releases": ["heal_echo", "ward_absorb"],
+        "notes": "A release may target only a still-living eligible friendly and cannot heal more than its admitted cap."
+      }
+    },
+    {
+      "id": "ambush_survive",
+      "slot": "trigger",
+      "evidence": "The wearer survives a witnessed hostile opener in a newly identified engagement; require hostile source and exact damage event provenance.",
+      "role": "Recognize survival through an opening threat.",
+      "cap": "One contribution per hostile engagement and item cooldown; no re-arming from combat-log replay, self-damage, or repeated damage from the same opener.",
+      "compatibility": {
+        "host_tags": ["armor", "shield", "defense-capable-host"],
+        "transformations": ["bind_protection", "resonate_pair"],
+        "releases": ["ward_absorb", "escape_window"],
+        "notes": "Survival never means resurrection, death prevention, or immunity."
+      }
+    },
+    {
+      "id": "cadence_combat",
+      "slot": "trigger",
+      "evidence": "A short ordered sequence of two distinct successful native hostile combat event types with unique event IDs, actor/target provenance, and no proc origin.",
+      "role": "Offer a general rhythm trigger when a design names the exact qualifying event types.",
+      "cap": "One sequence per item per admitted interval; sequence length, window, and event types are fixed per admitted design, never user-configurable at runtime.",
+      "compatibility": {
+        "host_tags": ["weapon", "armor", "caster-host", "shield"],
+        "transformations": ["gather_impact", "gather_heat", "bind_protection", "resonate_pair"],
+        "releases": ["reprisal_hit", "haste_window", "elemental_burst", "ward_absorb"],
+        "notes": "This constrained sequence is not a general event wildcard."
+      }
+    },
+    {
+      "id": "gather_impact",
+      "slot": "transformation",
+      "evidence": "Receives one already accepted block, parry, approach, or admitted combat-cadence token with a unique cause event ID.",
+      "role": "Turn qualifying impact/approach evidence into a bounded primed token for a later release.",
+      "cap": "Maximum two tokens; one per source event; fixed short expiry; clear after one release or expiry.",
+      "compatibility": {
+        "triggers": ["guard_block", "guard_parry", "pursuit_approach", "cadence_combat"],
+        "releases": ["reprisal_hit", "haste_window", "elemental_burst"],
+        "host_tags": ["weapon", "shield", "armor", "mobile-host"],
+        "notes": "Stores no damage for later replay and grants no resource."
+      }
+    },
+    {
+      "id": "gather_heat",
+      "slot": "transformation",
+      "evidence": "Receives only admitted, successful hostile fire-school cast evidence or a named fire event in the cadence, with unique native event provenance.",
+      "role": "Build a small, expiring heat state for an explicitly fire-themed release.",
+      "cap": "Maximum two heat tokens; one per cause event; short fixed expiry; a release consumes the priming state once.",
+      "compatibility": {
+        "triggers": ["spell_alternation", "cadence_combat"],
+        "releases": ["elemental_burst", "haste_window"],
+        "host_tags": ["weapon", "caster-host", "held-focus"],
+        "notes": "The exact school and target rules are declared by each admitted design."
+      }
+    },
+    {
+      "id": "focus_arcana",
+      "slot": "transformation",
+      "evidence": "Receives a completed eligible spell-alternation or explicitly admitted arcane cadence sequence; retain cast IDs and school distinction.",
+      "role": "Convert alternating native spell evidence into one focused release opportunity.",
+      "cap": "One primed opportunity at a time; short expiry; no mana or other resource is generated or refunded.",
+      "compatibility": {
+        "triggers": ["spell_alternation", "pursuit_approach", "cadence_combat"],
+        "releases": ["elemental_burst", "haste_window", "ward_absorb"],
+        "host_tags": ["caster-host", "weapon", "off-hand", "held-focus"],
+        "notes": "A pursuit pairing requires an explicitly named admitted arcane event sequence; movement alone supplies no spell evidence."
+      }
+    },
+    {
+      "id": "bind_protection",
+      "slot": "transformation",
+      "evidence": "Receives one accepted block, parry, steadfast-hold, ambush-survival, or named defensive cadence token.",
+      "role": "Prepare one bounded protective opportunity without applying an effect during buildup.",
+      "cap": "One protective token; short expiry; consumed once; cannot stack with another rune absorb beyond the admitted family ceiling.",
+      "compatibility": {
+        "triggers": ["guard_block", "guard_parry", "steadfast_hold", "ambush_survive", "cadence_combat"],
+        "releases": ["ward_absorb", "escape_window", "reprisal_hit"],
+        "host_tags": ["armor", "shield", "defense-capable-host"],
+        "notes": "Cannot create immunity or bypass an existing native damage resolution."
+      }
+    },
+    {
+      "id": "weave_life",
+      "slot": "transformation",
+      "evidence": "Receives one accepted mercy-heal token with recipient identity and verified actual healing/missing-health context.",
+      "role": "Shape a bounded support opportunity from useful healing.",
+      "cap": "One recipient-bound token; cap by actual useful healing and recipient missing health; expires quickly and clears after release.",
+      "compatibility": {
+        "triggers": ["mercy_heal"],
+        "releases": ["heal_echo", "ward_absorb"],
+        "host_tags": ["healer-host", "weapon", "held-focus", "armor"],
+        "notes": "No overheal, autonomous repeat healing, or healing feedback is retained."
+      }
+    },
+    {
+      "id": "resonate_pair",
+      "slot": "transformation",
+      "evidence": "Accepts exactly two causal records with different native event IDs. The admitted design names both predicates and one fixed discriminator: native event type, spell school, or injured-recipient GUID. Event-type pairs must match the two named types; school pairs require separate successful cast IDs and different named schools; recipient pairs require separate qualifying heal IDs and different recipient GUIDs. No one event may fill both halves; reject an unrestricted different-anything wildcard.",
+      "role": "Require the exact recipe-named two-record pair and discriminator before one composed release.",
+      "cap": "One pair, one primed opportunity, short fixed expiry; a native event cannot fill both halves.",
+      "compatibility": {
+        "triggers": ["guard_parry", "steadfast_hold", "pursuit_approach", "spell_alternation", "mercy_heal", "ambush_survive", "cadence_combat"],
+        "releases": ["reprisal_hit", "elemental_burst", "haste_window", "escape_window", "heal_echo"],
+        "host_tags": ["weapon", "armor", "shield", "caster-host", "held-focus"],
+        "notes": "The admitted design fixes both predicates and their discriminator; pair evidence must have separate causal event IDs. This is not an arbitrary event combiner."
+      }
+    },
+    {
+      "id": "reprisal_hit",
+      "slot": "release",
+      "evidence": "Immediately revalidate that the original hostile source remains alive, hostile, attackable, and legal for a direct hit; bind resolution to the claimed event and item.",
+      "role": "Deliver one bounded response against the causal hostile attacker.",
+      "cap": "One target and one hit; magnitude is capped by the admitted design and causal event; no chain, splash, forced movement, or recursion.",
+      "compatibility": {
+        "triggers": ["guard_block", "guard_parry", "pursuit_approach", "cadence_combat"],
+        "transformations": ["gather_impact", "bind_protection", "resonate_pair"],
+        "host_tags": ["weapon", "shield", "defense-capable-host"],
+        "notes": "If pre-claim target validation fails, no settlement or charge debit occurs."
+      }
+    },
+    {
+      "id": "ward_absorb",
+      "slot": "release",
+      "evidence": "Revalidate the admitted wearer or eligible ally and a compatible short-duration absorb family before the claimed release is applied.",
+      "role": "Grant one bounded defensive absorb to an admitted recipient.",
+      "cap": "One absorb instance; total value and duration have explicit per-design ceilings; no stacking beyond the family ceiling; no invulnerability.",
+      "compatibility": {
+        "triggers": ["guard_block", "guard_parry", "steadfast_hold", "spell_alternation", "mercy_heal", "ambush_survive", "cadence_combat"],
+        "transformations": ["bind_protection", "focus_arcana", "weave_life"],
+        "host_tags": ["armor", "shield", "caster-host", "healer-host"],
+        "notes": "Absorbed damage is settled once and does not become rune trigger evidence."
+      }
+    },
+    {
+      "id": "haste_window",
+      "slot": "release",
+      "evidence": "Resolve once for the wearer after the claimed release; check active rune-family haste limits and current item entitlement.",
+      "role": "Offer a brief self-only attack or casting tempo window.",
+      "cap": "One short window with an explicit per-design ceiling; no stacking, extra turns, movement control, or proc chain.",
+      "compatibility": {
+        "triggers": ["guard_parry", "pursuit_approach", "spell_alternation", "cadence_combat"],
+        "transformations": ["gather_impact", "gather_heat", "focus_arcana", "resonate_pair"],
+        "host_tags": ["weapon", "caster-host", "mobile-host"],
+        "notes": "An admitted design selects attack or cast tempo and cannot grant both unless separately admitted."
+      }
+    },
+    {
+      "id": "escape_window",
+      "slot": "release",
+      "evidence": "Resolve once for the wearer after the claimed release; verify alive state, legal location, and effect-family cap.",
+      "role": "Offer a brief defensive or self-directed escape aid.",
+      "cap": "One short self-only window with explicit magnitude and duration ceilings; no teleport, forced movement, immunity, or repeated refresh.",
+      "compatibility": {
+        "triggers": ["steadfast_hold", "pursuit_approach", "ambush_survive"],
+        "transformations": ["bind_protection", "resonate_pair"],
+        "host_tags": ["armor", "shield", "mobile-host"],
+        "notes": "The wearer chooses any movement; the release does not reposition any unit."
+      }
+    },
+    {
+      "id": "heal_echo",
+      "slot": "release",
+      "evidence": "Revalidate the exact living friendly recipient, current missing health, and one claimed useful-heal token.",
+      "role": "Deliver one small follow-up heal to the qualifying injured friendly.",
+      "cap": "One heal, one recipient, capped by the admitted design and current missing health; no overheal credit, repeat, or healing feedback.",
+      "compatibility": {
+        "triggers": ["mercy_heal"],
+        "transformations": ["weave_life", "resonate_pair"],
+        "host_tags": ["healer-host", "weapon", "held-focus", "armor"],
+        "notes": "A release heal is rune-origin and cannot qualify another mercy-heal pattern."
+      }
+    },
+    {
+      "id": "elemental_burst",
+      "slot": "release",
+      "evidence": "Revalidate one legal hostile target and the admitted element/school. Bind the burst to the claimed native cast or impact evidence.",
+      "role": "Deliver one bounded single-target elemental response.",
+      "cap": "One target, one hit, one admitted school, and an explicit per-design magnitude ceiling; no splash, chain, forced movement, or recursion.",
+      "compatibility": {
+        "triggers": ["pursuit_approach", "spell_alternation", "cadence_combat"],
+        "transformations": ["gather_impact", "gather_heat", "focus_arcana", "resonate_pair"],
+        "host_tags": ["weapon", "caster-host", "held-focus"],
+        "notes": "No class spell, free mana, or automatic school proficiency is granted."
+      }
+    }
+  ],
+  "examples": [
+    {
+      "id": "parry_reprise",
+      "pattern": {"trigger": "guard_parry", "transformation": "gather_impact", "release": "reprisal_hit"},
+      "meaning": "A witnessed hostile parry primes one capped hit on the still-legal original attacker. A shield-block version using guard_block is a separate admission."
+    },
+    {
+      "id": "hold_ground",
+      "pattern": {"trigger": "steadfast_hold", "transformation": "bind_protection", "release": "ward_absorb"},
+      "meaning": "A voluntary hold under threat primes one brief personal absorb without rooting or moving the wearer."
+    },
+    {
+      "id": "pursuit_tempo",
+      "pattern": {"trigger": "pursuit_approach", "transformation": "gather_impact", "release": "haste_window"},
+      "meaning": "Voluntary closure toward a hostile target primes a capped, short self-only tempo window without forced movement."
+    },
+    {
+      "id": "alternating_magic",
+      "pattern": {"trigger": "spell_alternation", "transformation": "focus_arcana", "release": "elemental_burst"},
+      "meaning": "Two distinct successful hostile spells of alternating admitted schools prime one bounded single-target burst."
+    },
+    {
+      "id": "useful_healing",
+      "pattern": {"trigger": "mercy_heal", "transformation": "weave_life", "release": "heal_echo"},
+      "meaning": "A useful heal to a genuinely injured living friendly primes one capped echo on that still-injured recipient; rune-origin healing cannot feed another proc."
+    },
+    {
+      "id": "survive_opener",
+      "pattern": {"trigger": "ambush_survive", "transformation": "bind_protection", "release": "escape_window"},
+      "meaning": "Surviving one witnessed hostile opener primes a short self-only defensive window with no teleport, forced movement, or death prevention."
+    }
+  ],
+  "contracts": {
+    "evidence_admission": "Require unique native event/cast identity, exact wearer/item/actor/target, successful result, and provenance. Missing or uncertain evidence fails closed. Reject self/friendly/proc-origin/dummy/factory/arranged-farming events. Healing requires recent genuine hostile injury; approach requires voluntary closure.",
+    "finite_state": {
+      "states": ["Dormant", "Primed", "Claimed", "Cooldown", "Depleted"],
+      "rules": "Counters, expiry, windows, and thresholds are fixed per admitted design. One event contributes at most one unit; excess is discarded; one successful release clears priming. Depleted applies only to a charged pattern."
+    },
+    "atomic_event_and_cooldown_settlement": "After eligibility and target checks, claim one idempotent settlement keyed by native event ID, item GUID, wearer, and pattern version. Advance state, set item plus wearer/effect-family ICDs, and debit an applicable charge once before emitting the effect. Duplicate callbacks return their prior result; uncertain outcomes are held for exact reconciliation, never retried as new procs.",
+    "swap_trade_relog": "Priming, charges, and item ICD follow the exact item GUID through trade, equip changes, and relog. Wearer/effect-family ICD remains with that wearer across item swaps and copies. Transfers cannot refresh item state or charge identity.",
+    "ordinary_and_charged_patterns": "Ordinary patterns are durable and impose no recurring recharge chore. An explicitly rare/strong pattern may have finite visible charges, exact zero-charge behavior, and a priced ordinary-input refill that restores an exact missing amount; recharge consumes no boss relic. Trade, equipment changes, death, relog, and downtime restore no charges. At zero, the release is disabled except for an explicitly admitted passive baseline.",
+    "item_finish_enchant_gems": "Treat the Runesmith finish as its own explicitly admitted channel. Preserve compatible native enchant and gems. Require host/slot/type, native class/proficiency, existing-finish conflict, and effect-family stacking checks; reject conflicts rather than silently replacing gear features. Compatibility is per design, not a global trait or four-item loadout cap.",
+    "nonrecursive_effects": "Tag every rune output with rune-origin provenance and exclude it from every rune trigger and progression path. One claimed release creates at most its admitted output once. Bound damage/healing from verified causal events; prevent damage-heal and heal-damage feedback.",
+    "gameplay_boundaries": "No forced movement, teleport, resurrection, guaranteed victory, free resources/items/skills/XP, remote goods seizure, or copied death-knight ability. Native profession training and character/class/level/proficiency gates remain in force. Custom artisan mastery is separate from native character progression.",
+    "implementation_status": "Pure proposal only. This artifact claims no native event hook, recipe, skill line, client interface, persistence schema, or live behavior. Native admission requires exact evidence and durable settlement seams plus review of every admitted pattern."
+  },
+  "sources": [
+    {"path": "BRIEF.md", "use": "Shared proposed glyph IDs; non-native scope, class/proficiency gates, and gameplay/abuse boundaries."},
+    {"path": "../../work/server-strategy-20261008/mod-autowow-strategy/docs/WORKSHOPS.md", "use": "Proposed staged-work, event identity, durable settlement, and reconciliation constraints."},
+    {"path": "../enchantment-expansion-20261009/INDEX.md", "use": "Earlier design-only event-pattern examples and distinction between ordinary finishes and charged patterns."},
+    {"path": "../enchantment-expansion-20261009/ROOT_DESIGN_REVIEW.md", "use": "Design precedent for item/owner-family cooldown continuity, charge identity, compatibility, and separation from native progression."}
+  ]
+}

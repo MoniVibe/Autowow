@@ -1,0 +1,32 @@
+<div id="autowow-territory-strategy-20261008">
+  <h3>Supply workshops or invest in territory?</h3>
+  <div class="text-small text-muted">Offline projection · identical illustrative inputs for each faction · batches are not real gear</div>
+  <div class="viz-controls">
+    <label class="form-label" for="autowow-strategy-hours">Elapsed time: <output id="autowow-strategy-hour-value" class="tabular-nums">12 hours</output>
+      <input class="form-range" id="autowow-strategy-hours" type="range" min="1" max="24" value="12" step="1">
+    </label>
+  </div>
+  <div aria-live="polite">
+    <table class="table table-sm">
+      <caption class="text-small">Results per faction: Alliance and Horde each start with one tier-1 territory.</caption>
+      <thead><tr><th scope="col">At this horizon</th><th scope="col">Supply now</th><th scope="col">Invest first</th></tr></thead>
+      <tbody id="autowow-strategy-comparison"></tbody>
+    </table>
+    <div class="text-small" id="autowow-strategy-detail"></div>
+  </div>
+  <details>
+    <summary>Resource balances per faction</summary>
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead><tr><th scope="col">Policy / material</th><th scope="col">Produced</th><th scope="col">Workshop use</th><th scope="col">Upgrade cost</th><th scope="col">Held</th><th scope="col">Overflow</th></tr></thead>
+        <tbody id="autowow-strategy-balances"></tbody>
+      </table>
+    </div>
+  </details>
+  <div id="autowow-strategy-error" class="text-destructive" role="alert" hidden></div>
+</div>
+<script>
+/* AUTOWOW_OFFLINE_ENGINE */
+/* AUTOWOW_OFFLINE_SCENARIO */
+/* AUTOWOW_OFFLINE_VIEW */
+</script>
